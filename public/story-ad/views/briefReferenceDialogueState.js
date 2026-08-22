@@ -6,8 +6,15 @@ export function referenceDialogueStatus(reference = {}) {
   const progress = Math.max(0, Math.min(100, Number(reference.progress || 0) || 0));
   const phase = String(reference.phase || '').trim();
   const error = String(reference.error?.message || reference.error || '').trim();
+  const errorCode = String(reference.error_code || reference.error?.code || '');
+  const preflight = reference.analysis_preflight && typeof reference.analysis_preflight === 'object'
+    ? reference.analysis_preflight
+    : {};
   if (status === 'completed' && reference.analysis_valid === true) return '参考视频分析完成，已把识别结果同步到当前项目。请先核对参考理解，再继续生成。';
   if (status === 'completed') return '参考视频已读取完成，但分析结果不完整。请重新识别或更换参考视频。';
+  if (status === 'failed' && errorCode === 'REFERENCE_VIDEO_EXTENDED_ANALYSIS_CONFIRMATION_REQUIRED') {
+    return `参考视频已免费预检：检测到 ${Number(preflight.segment_count || 0)} 个片段，需要 ${Number(preflight.batch_count || 0)} 批完整读取；尚未启动付费模型，请在分析卡确认后继续。`;
+  }
   if (status === 'failed') return `参考视频分析失败：${error || '未取得可用结果，请重试或更换链接。'}`;
   if (status === 'cancelled') return '参考视频分析已停止。如仍需使用，请重新添加链接或上传视频。';
   if (status === 'sync_interrupted') return `参考分析仍在服务器继续，页面暂时无法取得最新进度：${error || '请稍后重试。'}`;
@@ -106,6 +113,9 @@ export function referenceActionState(reference = {}, contentMode = '') {
       || confirmation.confirmed === true || ['confirmed', 'authoritative_input'].includes(String(confirmation.status || confirmation.confirmation || '').toLowerCase());
     if (hasUnderstanding && !confirmed) return { blocked: true, label: '先确认上方参考理解' };
     return { blocked: false, label: `下一步：生成${output}` };
+  }
+  if (status === 'failed' && String(reference.error_code || reference.error?.code || '') === 'REFERENCE_VIDEO_EXTENDED_ANALYSIS_CONFIRMATION_REQUIRED') {
+    return { blocked: true, label: '先确认参考视频分批分析' };
   }
   if (status === 'failed') return { blocked: true, label: '参考视频分析失败，请重试' };
   if (status === 'cancelled') return { blocked: true, label: '参考视频分析已停止，请更换' };

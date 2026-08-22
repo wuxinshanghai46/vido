@@ -693,6 +693,22 @@ async function main() {
   assert.ok(shotAwarePlan.length > 8, '镜头感知取证不得再固定为八张');
   assert.ok(shotAwarePlan.every(item => item.frame_id && item.shot_index && item.shot_range.length === 2));
   assert.ok(new Set(shotAwarePlan.map(item => item.shot_index)).size >= 5, '超过六秒的长镜头必须继续拆分取证窗口');
+  const extendedCuts = Array.from({ length: 41 }, (_, index) => Number(((index + 1) * 2.75).toFixed(3)));
+  const extendedPlan = service._private.buildShotAwareEvidencePlan(116.542, extendedCuts);
+  assert.equal(new Set(extendedPlan.map(item => item.shot_index)).size, 42, '复杂参考视频的 42 个片段必须全部保留');
+  assert.equal(extendedPlan.length, 42, '超出普通预算后只为每个片段保留一个代表帧，不能无界增加费用');
+  const extendedPreflight = service._private.evidencePreflight({
+    source: { size_bytes: 154029661, metadata: { duration_seconds: 116.542, width: 1936, height: 1080 } },
+  }, { cuts: extendedCuts }, extendedPlan);
+  assert.equal(extendedPreflight.requires_extended_confirmation, true);
+  assert.equal(extendedPreflight.batch_count, 11);
+  assert.equal(extendedPreflight.extra_batch_count, 1);
+  assert.equal(service._private.extendedAnalysisConfirmed({ analysis_preflight: extendedPreflight }, extendedPreflight), false);
+  assert.equal(service._private.extendedAnalysisConfirmed({
+    analysis_preflight: extendedPreflight,
+    extended_analysis_confirmation: { confirmed: true, fingerprint: extendedPreflight.fingerprint },
+  }, extendedPreflight), true);
+  assert.equal(service._private.confirmationRequiredError(extendedPreflight).code, 'REFERENCE_VIDEO_EXTENDED_ANALYSIS_CONFIRMATION_REQUIRED');
   assert.throws(
     () => service._private.buildShotAwareEvidencePlan(180, Array.from({ length: 60 }, (_, index) => 1 + index * 2.5)),
     error => error.code === 'REFERENCE_VIDEO_TOO_MANY_SHOTS',
@@ -1338,6 +1354,13 @@ async function main() {
   const referenceVideoSource = fs.readFileSync(path.resolve(__dirname, '../src/services/newStoryAd/referenceVideoAnalysisService.js'), 'utf8');
   assert.match(referenceVideoSource, /maxTokens: 4200,[\s\S]*?stageBudgetMs: 180000,[\s\S]*?maxCandidates: 5/,
     'targeted semantic contract repair must reach the fourth DeepSeek candidate instead of overriding the gateway cap with three');
+  assert.ok(
+    referenceVideoSource.indexOf('const preflight = canReuseConfirmedPreflight')
+      < referenceVideoSource.indexOf('pendingTranscript = Promise.resolve(transcribeAudio(record))'),
+    '免费镜头预算预检和扩展确认必须发生在外部语音转写之前',
+  );
+  assert.match(referenceVideoSource, /stage: 'new_story_ad\.reference_video_transcript'[\s\S]*?billing_state:/,
+    '参考视频语音转写必须进入模型调用与计费状态账本');
   assert.deepStrictEqual(
     modelGateway.classifyError(new Error('400 status code (no body)')),
     { code: 'PROVIDER_REQUEST_REJECTED', retryable: false },

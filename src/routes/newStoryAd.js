@@ -806,7 +806,10 @@ router.post('/reference-video-analyses', uploadReferenceVideo, asyncRoute(async 
 }));
 
 router.post('/reference-video-analyses/:analysisId/start', asyncRoute(async (req, res) => {
-  const started = referenceVideoAnalyses.start(req.params.analysisId, userFromReq(req));
+  const started = referenceVideoAnalyses.start(req.params.analysisId, userFromReq(req), {
+    extendedAnalysisConfirmed: req.body?.extended_analysis_confirmed === true,
+    preflightFingerprint: String(req.body?.preflight_fingerprint || ''),
+  });
   return res.status(202).json({ success: true, ...started, analysis: started.record });
 }));
 
@@ -838,7 +841,10 @@ router.post('/reference-video-analyses/:analysisId/reanalyze', asyncRoute(async 
     }
     scenePlan = storage.getOutput(taskId, 'scene_config');
   }
-  const started = referenceVideoAnalyses.reanalyze(req.params.analysisId, user, taskId ? {
+  const started = referenceVideoAnalyses.reanalyze(req.params.analysisId, user, {
+    extendedAnalysisConfirmed: req.body?.extended_analysis_confirmed === true,
+    preflightFingerprint: String(req.body?.preflight_fingerprint || ''),
+    ...(taskId ? {
     // Give the 202 response a short flush window before the synchronous part
     // of the legacy SQLite + JSON task projection begins in the background.
     scheduleDelayMs: 100,
@@ -848,7 +854,8 @@ router.post('/reference-video-analyses/:analysisId/reanalyze', asyncRoute(async 
       referenceVideoAnalyses.taskRecord(queuedRecord),
       req.body || {},
     ), user),
-  } : {});
+    } : {}),
+  });
   return res.status(202).json({
     success: true,
     ...started,

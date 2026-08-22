@@ -333,7 +333,18 @@ assert.match(
   /重新识别当前视频/,
   '取消后原视频仍在时必须允许用户直接重新识别',
 );
+const extendedConfirmationCard = briefModule.referenceProgress({
+  analysis_id: 'extended-42',
+  status: 'failed',
+  error_code: 'REFERENCE_VIDEO_EXTENDED_ANALYSIS_CONFIRMATION_REQUIRED',
+  analysis_preflight: { segment_count: 42, batch_count: 11, extra_batch_count: 1 },
+});
+assert.match(extendedConfirmationCard, /等待确认分批分析/);
+assert.match(extendedConfirmationCard, /确认分批分析（11 批）/);
+assert.match(extendedConfirmationCard, /尚未启动语音、视觉或语义模型/);
 assert.match(briefView, /可能产生新的模型费用/, '证据不完整时必须在确认框明确提醒会重新调用视觉模型');
+assert.match(briefView, /extended_analysis_confirmed:\s*true[\s\S]*preflight_fingerprint:/,
+  '扩展分析确认必须连同服务端预检指纹提交，不能只信任客户端片段数量');
 assert.match(briefView, /store\.retryReferenceAnalysis\(\)/, '失败卡必须复用同一分析 ID 重试，不能要求更换视频制造重复视觉调用');
 assert.match(briefView, /无需更换或重新上传|不需要更换或重新上传/, '质量无效完成态必须明确告知用户保留当前视频');
 assert.doesNotMatch(briefView, /store\.getState\(\)/, '重试按钮不得调用 Store 未公开的 getState 接口');
@@ -383,6 +394,8 @@ assert.match(projectStore, /applyReferenceLiveState\(analysis\)/, '同一状态�
 assert.match(projectStore, /async function hydrateReferenceFailure\(\)/, '历史失败任务必须从权威分析记录补回中文错误原因');
 assert.match(projectStore, /live\.error\.message \|\| live\.error\.code/, '实时失败状态必须优先展示中文错误信息而不是内部代码');
 assert.match(projectStore, /async function retryReferenceAnalysis\(\)/, '参考分析失败后必须提供同一 ID 的缓存重试能力');
+assert.match(projectStore, /extended_analysis_confirmed:\s*options\.extended_analysis_confirmed === true[\s\S]*preflight_fingerprint:/,
+  '同一分析 ID 的重试接口必须传递扩展费用确认和预检指纹');
 assert.match(projectStore, /beginReferenceRetry\(state, set\)[\s\S]*request\(`\/api\/new-story-ad\/reference-video-analyses/, '点击重新识别后必须先显示本地受理状态，不能等待网络响应');
 assert.match(projectStore, /catch \(error\)[\s\S]*restoreReferenceRetry\(state, set, previousReference, error\)/, '重新识别请求失败时必须恢复权威旧状态');
 assert.match(projectStore, /reference-video-analyses\/\$\{encodeURIComponent\(analysisId\)\}\/reanalyze/, '重新识别必须调用专用接口，不能被 completed 幂等门静默吞掉');
@@ -408,6 +421,8 @@ const releaseDeploySource = collectStoryAdReleaseFiles({ root }).join('\n');
 assert.match(releaseDeploySource, /src\/services\/newStoryAd\/referenceDetachService\.js/, '生产发布清单必须包含重新识别使用的项目清理服务');
 
 const newStoryAdRoute = read('src/routes/newStoryAd.js');
+assert.match(newStoryAdRoute, /extendedAnalysisConfirmed:\s*req\.body\?\.extended_analysis_confirmed === true[\s\S]*preflightFingerprint:/,
+  '启动与重新识别接口必须把扩展分析确认交给服务层校验');
 assert.match(newStoryAdRoute, /analysis\.task_sync\?\.status !== 'synced'/, '已经由服务端同步成功的终态轮询必须保持只读');
 assert.match(newStoryAdRoute, /function bindInitialReferenceTask[\s\S]*referenceVideoAnalyses\.taskRecord/, '参考来源创建后必须在接口返回前绑定当前任务');
 assert.match(newStoryAdRoute, /reference-video-links[\s\S]*task_bound:\s*Boolean\(taskMutation\)/, '链接创建接口必须明确返回服务端绑定结果');

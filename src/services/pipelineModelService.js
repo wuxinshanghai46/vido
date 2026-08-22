@@ -70,6 +70,7 @@ const PIPELINE_SCHEMA = {
     { id: 'luxury_ad.post',         name: '5 广告合成 / 字幕后期',   type: 'video', desc: '镜头拼接、字幕、调色、片尾包装等后期处理' },
   ],
   '新剧情广告': [
+  { id: 'new_story_ad.reference_video_transcript', name: '0 参考视频语音转写', type: 'asr', desc: '在镜头预算预检通过后转写参考视频声音，并记录供应商提交与计费状态' },
   { id: 'new_story_ad.reference_video_vision', name: '0 参考视频内容识别', type: 'vlm', desc: '读取参考视频证据帧，生成可编辑的人物、场景、剧情与镜头分析草稿' },
   { id: 'new_story_ad.reference_video_synthesis', name: '0.1 参考证据语义总编', type: 'story', desc: '综合全部证据帧，区分广告产品与环境，并按独立物理空间整理人物、场景和剧情' },
   { id: 'new_story_ad.asset_plan', name: '1 统一资产计划', type: 'story', desc: '一次规划人物、道具、场景和故事种子；默认继承场景配置文本路由' },

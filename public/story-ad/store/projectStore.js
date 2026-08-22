@@ -262,13 +262,17 @@ export function createProjectStore() {
   }
 
   async function retryReferenceAnalysis() {
+    const options = arguments[0] || {};
     const analysisId = state.bundle?.reference?.analysis_id || '';
     if (!analysisId) throw new Error('当前没有可重新整理的参考视频。');
     const previousReference = beginReferenceRetry(state, set);
     try {
       const data = await request(`/api/new-story-ad/reference-video-analyses/${encodeURIComponent(analysisId)}/reanalyze`, {
         method: 'POST',
-        body: {},
+        body: {
+          extended_analysis_confirmed: options.extended_analysis_confirmed === true,
+          preflight_fingerprint: String(options.preflight_fingerprint || ''),
+        },
       });
       const analysis = data.analysis || {};
       applyReferenceLiveState(analysis);
@@ -297,6 +301,10 @@ export function createProjectStore() {
       checkpoints: Array.isArray(analysis.checkpoints) ? analysis.checkpoints.slice(-12) : [],
       source: analysis.source || null,
       error: analysis.error || null,
+      error_code: String(analysis.error?.code || analysis.error_code || ''),
+      analysis_preflight: analysis.analysis_preflight && typeof analysis.analysis_preflight === 'object'
+        ? analysis.analysis_preflight
+        : null,
       visual_evidence_reusable: analysis.visual_evidence_reusable === true,
       semantic_result_reusable: analysis.semantic_result_reusable === true,
       evidence_batch_progress: analysis.evidence_batch_progress && typeof analysis.evidence_batch_progress === 'object' ? analysis.evidence_batch_progress : { total: 0, completed: 0, remaining: 0, failed: 0 },
@@ -344,6 +352,8 @@ export function createProjectStore() {
           error: live.error && typeof live.error === 'object'
             ? (live.error.message || live.error.code || '')
             : (live.error || ''),
+          error_code: live.error_code,
+          analysis_preflight: live.analysis_preflight,
           retry_after_ms: Math.max(0, Number(live.error?.retry_after_ms || 0) || 0),
           visual_evidence_reusable: live.visual_evidence_reusable === true,
           semantic_result_reusable: live.semantic_result_reusable === true,

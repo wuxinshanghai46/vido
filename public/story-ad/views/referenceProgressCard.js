@@ -46,6 +46,11 @@ export function referenceProgress(reference = {}) {
   const completed = status === 'completed';
   const completedInvalid = completed && reference.analysis_valid !== true;
   const failed = status === 'failed';
+  const errorCode = String(reference.error_code || reference.error?.code || '');
+  const extendedConfirmation = failed && errorCode === 'REFERENCE_VIDEO_EXTENDED_ANALYSIS_CONFIRMATION_REQUIRED';
+  const preflight = reference.analysis_preflight && typeof reference.analysis_preflight === 'object'
+    ? reference.analysis_preflight
+    : {};
   const cancelled = status === 'cancelled';
   const interrupted = status === 'sync_interrupted';
   const batchProgress = reference.evidence_batch_progress && typeof reference.evidence_batch_progress === 'object' ? reference.evidence_batch_progress : {};
@@ -58,13 +63,15 @@ export function referenceProgress(reference = {}) {
     uploading: '正在上传参考视频', importing: '正在读取参考链接', uploaded: '视频已就绪，等待分析', queued: '已进入分析队列',
     running: '正在分析参考视频', cancelling: '正在停止分析',
     completed: completedInvalid ? '镜头读取完成，深度识别未通过' : '参考视频分析完成',
-    failed: completeEvidence ? '镜头证据已保留，语义整理待补齐' : '参考视频分析失败',
+    failed: extendedConfirmation ? '参考视频较复杂，等待确认分批分析' : (completeEvidence ? '镜头证据已保留，语义整理待补齐' : '参考视频分析失败'),
     cancelled: '参考视频分析已取消', sync_interrupted: '状态同步暂时中断',
   };
   const numeric = Math.max(0, Math.min(100, Number(reference.progress || 0) || 0));
   const percent = completed ? 100 : numeric;
-  const phase = completedInvalid ? '深度识别未通过质量校验，旧结果已停止使用' : String(reference.phase || labels[status] || '等待分析').trim();
-  const tone = failed || completedInvalid ? 'is-failed' : (completed ? 'is-completed' : (cancelled || interrupted ? 'is-cancelled' : 'is-active'));
+  const phase = extendedConfirmation
+    ? `已免费预检 ${Number(preflight.segment_count || 0)} 个片段，确认后按 ${Number(preflight.batch_count || 0)} 批完整读取`
+    : (completedInvalid ? '深度识别未通过质量校验，旧结果已停止使用' : String(reference.phase || labels[status] || '等待分析').trim());
+  const tone = (failed && !extendedConfirmation) || completedInvalid ? 'is-failed' : (completed ? 'is-completed' : (cancelled || interrupted || extendedConfirmation ? 'is-cancelled' : 'is-active'));
   const hasDeepReport = !!(
     Object.keys(reference.reference_understanding?.story_bible || reference.reference_understanding?.story_summary || reference.story_bible || {}).length
     || (reference.reference_understanding?.story_events || reference.reference_understanding?.causal_chain || reference.story_events)?.length
@@ -79,9 +86,11 @@ export function referenceProgress(reference = {}) {
         : (hasDeepReport
           ? '深度理解报告已就绪。请核对故事、人物、场景、品牌、镜头与声音证据；确认前不会进入后续资产创建。'
           : '广告目标已自动填入；故事、人物/动物、场景、分镜和机位已分配到后续对应环节。'))
-      : (failed
+      : (extendedConfirmation
+        ? `本次比普通分析多 ${Number(preflight.extra_batch_count || 0)} 批；尚未启动语音、视觉或语义模型。确认后完整覆盖全部片段，并逐批保存成功结果。`
+        : (failed
         ? (reference.error || '本次分析没有完成，请按下方保留状态继续处理。')
-        : (cancelled ? '分析已经停止，当前未完成的结果不会进入后续制作环节。' : '正在后台读取和理解视频；完成后会自动填写广告目标，并把其他结果分配到对应制作环节。'));
+        : (cancelled ? '分析已经停止，当前未完成的结果不会进入后续制作环节。' : '正在后台读取和理解视频；完成后会自动填写广告目标，并把其他结果分配到对应制作环节。')));
   const retryMinutes = Math.ceil(Math.max(0, Number(reference.retry_after_ms || 0) || 0) / 60000);
   const note = [
     baseNote,
@@ -91,11 +100,13 @@ export function referenceProgress(reference = {}) {
     failed && retryMinutes > 0 ? `备用模型正在限流保护中，建议约 ${retryMinutes} 分钟后继续。` : '',
   ].filter(Boolean).join(' ');
   const canReuseEvidence = reference.visual_evidence_reusable === true || completeEvidence;
-  const retryLabel = reference.semantic_result_reusable === true
+  const retryLabel = extendedConfirmation
+    ? `确认分批分析（${Number(preflight.batch_count || 0)} 批）`
+    : (reference.semantic_result_reusable === true
     ? '复用已保留结果重新校验'
     : (canReuseEvidence
       ? '仅补齐缺失语义（不重读镜头）'
-      : (completedInvalid || cancelled ? '重新识别当前视频' : (partialEvidence ? `继续读取缺失镜头（${batchCompleted}/${batchTotal} 批）` : '重新读取镜头证据')));
+      : (completedInvalid || cancelled ? '重新识别当前视频' : (partialEvidence ? `继续读取缺失镜头（${batchCompleted}/${batchTotal} 批）` : '重新读取镜头证据'))));
   const retry = (failed || cancelled || completedInvalid) && reference.client_pending !== true
     ? `<button class="btn" type="button" data-reference-retry>${retryLabel}</button>` : '';
   const finishedAt = reference.completed_at || reference.failed_at || reference.cancelled_at || reference.sync_interrupted_at || reference.updated_at || '';

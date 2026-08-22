@@ -439,6 +439,8 @@
     if (analysis?.id) state.explicitlyRemoved = false;
     const current = analysis?.status === 'uploading' ? analysis : (state.analysis || {});
     const status = $('#dhNsaReferenceVideoState');
+    const extendedConfirmation = String(current.error?.code || current.error_code || '')
+      === 'REFERENCE_VIDEO_EXTENDED_ANALYSIS_CONFIRMATION_REQUIRED';
     const labels = {
       importing: '读取链接中',
       uploaded: '已上传',
@@ -447,7 +449,7 @@
       cancelling: '取消中',
       cancelled: '已取消',
       completed: '分析完成',
-      failed: '分析失败',
+      failed: extendedConfirmation ? '等待确认分批分析' : '分析失败',
       uploading: '上传中',
     };
     if (status) status.textContent = labels[current.status] || '未添加';
@@ -487,9 +489,14 @@
     const open = $('#dhNsaReferenceVideoOpen');
     if (open) open.textContent = occupied ? '查看参考视频' : '添加参考视频';
     const start = $('#dhNsaReferenceVideoStart');
-    if (start) start.disabled = !current.id
-      || !current.source?.metadata?.duration_seconds
-      || !['uploaded', 'cancelled', 'failed'].includes(current.status);
+    if (start) {
+      start.disabled = !current.id
+        || !current.source?.metadata?.duration_seconds
+        || !['uploaded', 'cancelled', 'failed'].includes(current.status);
+      start.textContent = extendedConfirmation
+        ? `确认分批分析（${Number(current.analysis_preflight?.batch_count || 0)} 批）`
+        : '开始智能分析';
+    }
     const clears = [
       $('#dhNsaReferenceVideoClear'),
       $('#dhNsaReferenceVideoDialogClear'),
@@ -658,8 +665,21 @@
 
   async function start() {
     if (!state.analysis?.id) return;
+    const extendedConfirmation = String(state.analysis.error?.code || state.analysis.error_code || '')
+      === 'REFERENCE_VIDEO_EXTENDED_ANALYSIS_CONFIRMATION_REQUIRED';
+    const preflight = state.analysis.analysis_preflight || {};
+    if (extendedConfirmation && !window.confirm(
+      `检测到 ${Number(preflight.segment_count || 0)} 个片段，需要 ${Number(preflight.batch_count || 0)} 批视觉读取，`
+      + `比普通分析增加 ${Number(preflight.extra_batch_count || 0)} 批模型费用。确认后完整读取全部片段，是否继续？`,
+    )) return;
     try {
-      const result = await api().request(`/api/new-story-ad/reference-video-analyses/${encodeURIComponent(state.analysis.id)}/start`, { method: 'POST' });
+      const result = await api().request(`/api/new-story-ad/reference-video-analyses/${encodeURIComponent(state.analysis.id)}/start`, {
+        method: 'POST',
+        body: extendedConfirmation ? {
+          extended_analysis_confirmed: true,
+          preflight_fingerprint: String(preflight.fingerprint || ''),
+        } : {},
+      });
       render(result.analysis);
       persistCurrent('reference_video_started');
       stopPolling();

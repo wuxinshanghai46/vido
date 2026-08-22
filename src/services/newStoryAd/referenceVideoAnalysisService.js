@@ -20,6 +20,7 @@ const entityContinuity = require('./referenceEntityContinuityService');
 const evidenceStrategy = require('./referenceEvidenceStrategyService');
 const semanticRecovery = require('./referenceSemanticRecoveryService');
 const semanticContractPrompts = require('./referenceSemanticContractPromptService');
+const storage = require('./storageService');
 
 const execFileAsync = promisify(execFile);
 const ROOT_DIR = path.resolve(process.env.OUTPUT_DIR || './outputs', 'new-story-ad', 'reference-video-analyses');
@@ -31,8 +32,12 @@ const EVIDENCE_CONTRACT_VERSION = 'shot-aware-v2';
 const SHOT_DETECTION_THRESHOLD = 0.4;
 const SHOT_MIN_GAP_SECONDS = 0.75;
 const MAX_EVIDENCE_SEGMENT_SECONDS = 6;
-const MAX_EVIDENCE_FRAMES = 40;
+// 40 帧是普通分析的费用预算，不是供应商硬限制。复杂视频允许在用户
+// 明确确认后扩展到 60 帧；仍保留硬上限，避免 180 秒高频剪辑失控。
+const STANDARD_EVIDENCE_FRAMES = 40;
+const MAX_EVIDENCE_FRAMES = 60;
 const VISION_BATCH_SIZE = 4;
+const EXTENDED_ANALYSIS_CONFIRMATION_CODE = 'REFERENCE_VIDEO_EXTENDED_ANALYSIS_CONFIRMATION_REQUIRED';
 const NON_RETRYABLE_TRANSCRIPT_CODES = new Set([
   'AUTH_CONFIG',
   'MODEL_CONFIG',
@@ -169,6 +174,10 @@ function taskRecord(analysis = {}) {
     checkpoints: Array.isArray(analysis.checkpoints) ? analysis.checkpoints.slice(-12) : [],
     source: analysis.source || null,
     error: analysis.error || null,
+    error_code: String(analysis.error?.code || analysis.error_code || ''),
+    analysis_preflight: analysis.analysis_preflight && typeof analysis.analysis_preflight === 'object'
+      ? analysis.analysis_preflight
+      : null,
     visual_evidence_reusable: analysis.visual_evidence_reusable === true,
     semantic_result_reusable: analysis.semantic_result_reusable === true,
     evidence_batch_progress: analysis.evidence_batch_progress && typeof analysis.evidence_batch_progress === 'object'
@@ -791,7 +800,7 @@ function shotSegments(duration, cuts = []) {
 function buildShotAwareEvidencePlan(duration, cuts = []) {
   const segments = shotSegments(duration, cuts);
   if (segments.length > MAX_EVIDENCE_FRAMES) {
-    const error = new Error(`参考视频检测到 ${segments.length} 个取证片段，超过单次最多 ${MAX_EVIDENCE_FRAMES} 个；请缩短视频或拆分后分析。`);
+    const error = new Error(`参考视频检测到 ${segments.length} 个取证片段，超过扩展分析最多 ${MAX_EVIDENCE_FRAMES} 个；请拆分视频后分别分析。`);
     error.code = 'REFERENCE_VIDEO_TOO_MANY_SHOTS';
     error.status = 422;
     error.retryable = false;
@@ -801,7 +810,9 @@ function buildShotAwareEvidencePlan(duration, cuts = []) {
     return evidenceStrategy.buildAdaptiveEvidencePlan({
       duration,
       segments,
-      max_frames: MAX_EVIDENCE_FRAMES,
+      // 超过普通预算时，每个片段至少保留一个代表帧；普通视频仍可把
+      // 额外预算用于片段开端/中点/结尾，不静默丢弃任何完整片段。
+      max_frames: Math.max(STANDARD_EVIDENCE_FRAMES, segments.length),
     }).frames;
   } catch (error) {
     if (error.code === 'REFERENCE_EVIDENCE_SEGMENT_BUDGET_EXCEEDED') {
@@ -809,6 +820,62 @@ function buildShotAwareEvidencePlan(duration, cuts = []) {
     }
     throw error;
   }
+}
+
+function evidencePreflight(record = {}, shotDetection = {}, evidencePlan = []) {
+  const frames = Array.isArray(evidencePlan) ? evidencePlan : [];
+  const segmentCount = new Set(frames.map(item => Number(item?.shot_index || 0)).filter(Boolean)).size;
+  const frameCount = frames.length;
+  const batchCount = Math.ceil(frameCount / VISION_BATCH_SIZE);
+  const source = {
+    size_bytes: Number(record.source?.size_bytes || record.source?.metadata?.size_bytes || 0),
+    duration_seconds: Number(record.source?.metadata?.duration_seconds || 0),
+    width: Number(record.source?.metadata?.width || 0),
+    height: Number(record.source?.metadata?.height || 0),
+  };
+  const fingerprint = crypto.createHash('sha256').update(JSON.stringify({
+    contract_version: EVIDENCE_CONTRACT_VERSION,
+    source,
+    cuts: Array.isArray(shotDetection?.cuts) ? shotDetection.cuts.map(Number) : [],
+    frames: frames.map(item => ({
+      frame_id: String(item?.frame_id || ''),
+      shot_index: Number(item?.shot_index || 0),
+      timestamp_seconds: Number(item?.timestamp_seconds || 0),
+      shot_range: Array.isArray(item?.shot_range) ? item.shot_range.map(Number) : [],
+    })),
+  })).digest('hex');
+  return {
+    contract_version: 'reference-analysis-preflight-v1',
+    fingerprint,
+    segment_count: segmentCount,
+    frame_count: frameCount,
+    batch_count: batchCount,
+    standard_frame_budget: STANDARD_EVIDENCE_FRAMES,
+    hard_frame_limit: MAX_EVIDENCE_FRAMES,
+    extra_batch_count: Math.max(0, batchCount - Math.ceil(STANDARD_EVIDENCE_FRAMES / VISION_BATCH_SIZE)),
+    requires_extended_confirmation: frameCount > STANDARD_EVIDENCE_FRAMES,
+    confirmed: false,
+    model_call_count: 0,
+    created_at: now(),
+  };
+}
+
+function extendedAnalysisConfirmed(record = {}, preflight = record.analysis_preflight || {}) {
+  return preflight?.requires_extended_confirmation !== true
+    || (record.extended_analysis_confirmation?.confirmed === true
+      && String(record.extended_analysis_confirmation?.fingerprint || '') === String(preflight?.fingerprint || ''));
+}
+
+function confirmationRequiredError(preflight = {}) {
+  const error = new Error(
+    `参考视频检测到 ${Number(preflight.segment_count || 0)} 个取证片段，`
+    + `需要 ${Number(preflight.batch_count || 0)} 批完整读取；普通分析包含 10 批。`
+    + '为避免未经确认增加模型费用，请确认后继续分批分析。',
+  );
+  error.code = EXTENDED_ANALYSIS_CONFIRMATION_CODE;
+  error.status = 409;
+  error.retryable = false;
+  return error;
 }
 
 async function detectShotBoundaries(record) {
@@ -922,6 +989,7 @@ async function transcribeAudio(record) {
   const apiKey = getApiKey('openai') || process.env.OPENAI_API_KEY;
   if (!apiKey) return { status: 'provider_not_configured', text: '', segments: [] };
   const audioPath = path.join(analysisDir(record.user_id, record.id), 'transcript-audio.mp3');
+  const callStartedAt = Date.now();
   try {
     await execFileAsync(ffmpegPath, [
       '-hide_banner', '-loglevel', 'error', '-y',
@@ -941,6 +1009,17 @@ async function transcribeAudio(record) {
       maxContentLength: 60 * 1024 * 1024,
       maxBodyLength: 60 * 1024 * 1024,
     });
+    storage.saveModelCall({
+      task_id: record.task_id || record.id,
+      stage: 'new_story_ad.reference_video_transcript',
+      provider_id: 'openai',
+      model_id: 'whisper-1',
+      status: 'success',
+      provider_request_id: String(response.headers?.['x-request-id'] || ''),
+      provider_submission_state: 'completed',
+      billing_state: 'confirmed',
+      latency_ms: Date.now() - callStartedAt,
+    });
     const segments = (response.data?.segments || []).map(item => ({
       start: Number(item.start || 0),
       end: Number(item.end || 0),
@@ -954,6 +1033,21 @@ async function transcribeAudio(record) {
   } catch (error) {
     if (error.cancelled) throw error;
     const classified = modelGateway.classifyError(error);
+    const definitelyRejected = ['AUTH_CONFIG', 'MODEL_CONFIG', 'INVALID_PROVIDER_INPUT', 'INPUT_SENSITIVE_CONTENT']
+      .includes(String(classified.code || '')) || [400, 401, 403, 404, 422].includes(Number(error.response?.status || 0));
+    storage.saveModelCall({
+      task_id: record.task_id || record.id,
+      stage: 'new_story_ad.reference_video_transcript',
+      provider_id: 'openai',
+      model_id: 'whisper-1',
+      status: 'failed',
+      error_code: classified.code || error.code || 'ASR_FAILED',
+      error_message: String(error.message || error).slice(0, 500),
+      provider_request_id: String(error.response?.headers?.['x-request-id'] || ''),
+      provider_submission_state: definitelyRejected ? 'submission_rejected' : 'submitted_unknown',
+      billing_state: definitelyRejected ? 'not_billed' : 'unknown',
+      latency_ms: Date.now() - callStartedAt,
+    });
     return {
       status: 'failed_non_blocking',
       text: '',
@@ -3294,6 +3388,7 @@ async function rebuildStoredAnalysis(analysisId, user = {}) {
 
 async function runAnalysis(initialRecord, options = {}) {
   let record = initialRecord;
+  let pendingTranscript = null;
   try {
     record = checkpoint(record, '任务已受理，正在准备项目状态', Math.max(2, Number(record.progress || 0)), {
       status: 'running',
@@ -3321,15 +3416,40 @@ async function runAnalysis(initialRecord, options = {}) {
           : '已复用画面证据并独立恢复语音转写，重新整理分析结构', 55, { evidence_frames: frames, transcript });
     } else {
       record = checkpoint(record, '正在检测真实镜头边界', 14);
-      const transcriptPromise = transcribeAudio(record);
-      const shotDetection = await detectShotBoundaries(record);
-      const evidencePlan = buildShotAwareEvidencePlan(record.source.metadata.duration_seconds, shotDetection.cuts);
+      const storedPreflight = record.analysis_preflight && typeof record.analysis_preflight === 'object'
+        ? record.analysis_preflight
+        : null;
+      const canReuseConfirmedPreflight = storedPreflight
+        && extendedAnalysisConfirmed(record, storedPreflight)
+        && Array.isArray(record.shot_detection?.cuts)
+        && Array.isArray(record.evidence_plan)
+        && record.evidence_plan.length === Number(storedPreflight.frame_count || 0);
+      const shotDetection = canReuseConfirmedPreflight
+        ? record.shot_detection
+        : await detectShotBoundaries(record);
+      const evidencePlan = canReuseConfirmedPreflight
+        ? record.evidence_plan
+        : buildShotAwareEvidencePlan(record.source.metadata.duration_seconds, shotDetection.cuts);
+      const preflight = canReuseConfirmedPreflight
+        ? storedPreflight
+        : evidencePreflight(record, shotDetection, evidencePlan);
+      const confirmed = extendedAnalysisConfirmed(record, preflight);
       record = checkpoint(record, `已规划 ${new Set(evidencePlan.map(item => item.shot_index)).size} 个镜头片段、${evidencePlan.length} 张证据帧`, 24, {
         shot_detection: shotDetection,
         evidence_plan: evidencePlan,
+        analysis_preflight: { ...preflight, confirmed },
+      });
+      if (!confirmed) throw confirmationRequiredError(preflight);
+      // 只有免费镜头预检和扩展费用确认均通过后才允许启动外部 ASR。
+      // 转写结果独立落盘，后续取帧/视觉失败时重试不会再次为同一音频付费。
+      pendingTranscript = Promise.resolve(transcribeAudio(record)).then(result => {
+        const latest = readRecord(record.user_id, record.id) || record;
+        save(latest, { transcript: result, transcript_checkpointed_at: now() });
+        return result;
       });
       frames = await extractEvidenceFrames(record, evidencePlan);
-      transcript = await transcriptPromise;
+      transcript = await pendingTranscript;
+      pendingTranscript = null;
       record = checkpoint(record, `已提取 ${frames.length} 张镜头证据帧与语音`, 42, { evidence_frames: frames, transcript });
     }
     throwIfCancelled(record);
@@ -3380,6 +3500,10 @@ async function runAnalysis(initialRecord, options = {}) {
       });
     }
   } catch (error) {
+    if (pendingTranscript) {
+      try { await pendingTranscript; } catch {}
+      pendingTranscript = null;
+    }
     const latest = readRecord(record.user_id, record.id) || record;
     let terminal;
     if (error.cancelled || latest.cancelled) {
@@ -3416,8 +3540,43 @@ function scheduleAnalysis(record, options = {}) {
   return promise;
 }
 
+function applyExtendedAnalysisConfirmation(record = {}, options = {}) {
+  if (options.extendedAnalysisConfirmed !== true) return record;
+  const preflight = record.analysis_preflight && typeof record.analysis_preflight === 'object'
+    ? record.analysis_preflight
+    : null;
+  const requestedFingerprint = String(options.preflightFingerprint || '');
+  if (!preflight?.requires_extended_confirmation || !preflight.fingerprint
+    || !requestedFingerprint || requestedFingerprint !== String(preflight.fingerprint)) {
+    const error = new Error('参考视频预检结果已变化，请重新预检后再确认分批分析。');
+    error.code = 'REFERENCE_VIDEO_PREFLIGHT_CONFIRMATION_STALE';
+    error.status = 409;
+    error.retryable = false;
+    throw error;
+  }
+  if (Number(preflight.frame_count || 0) > MAX_EVIDENCE_FRAMES) {
+    const error = new Error(`参考视频证据帧超过扩展分析最多 ${MAX_EVIDENCE_FRAMES} 帧，请拆分视频后分析。`);
+    error.code = 'REFERENCE_VIDEO_TOO_MANY_SHOTS';
+    error.status = 422;
+    error.retryable = false;
+    throw error;
+  }
+  return save(record, {
+    extended_analysis_confirmation: {
+      confirmed: true,
+      fingerprint: preflight.fingerprint,
+      segment_count: Number(preflight.segment_count || 0),
+      frame_count: Number(preflight.frame_count || 0),
+      batch_count: Number(preflight.batch_count || 0),
+      confirmed_at: now(),
+    },
+    analysis_preflight: { ...preflight, confirmed: true },
+  });
+}
+
 function start(analysisId, user = {}, options = {}) {
   let record = assertOwned(analysisId, user);
+  record = applyExtendedAnalysisConfirmation(record, options);
   const restartingTerminal = ['failed', 'cancelled'].includes(String(record.status || '').toLowerCase());
   if (record.status === 'completed') return { record: publicRecord(record), accepted: false, duplicate: true };
   if (activeImports.has(analysisId) || record.status === 'importing') {
@@ -3682,6 +3841,10 @@ module.exports = {
     normalizeShotCuts,
     shotSegments,
     buildShotAwareEvidencePlan,
+    evidencePreflight,
+    extendedAnalysisConfirmed,
+    confirmationRequiredError,
+    applyExtendedAnalysisConfirmation,
     detectShotBoundaries,
     extractEvidenceFrames,
     validateUpload,

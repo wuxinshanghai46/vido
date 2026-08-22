@@ -513,13 +513,20 @@ ${renderAdvancedReferenceControls(bundle, route.isNew)}
     referenceRetryPending = true;
     setButtonBusy(button, true, '正在确认…');
     const currentReference = store.state.bundle?.reference || {};
+    const extendedConfirmation = String(currentReference.error_code || currentReference.error?.code || '')
+      === 'REFERENCE_VIDEO_EXTENDED_ANALYSIS_CONFIRMATION_REQUIRED';
+    const preflight = currentReference.analysis_preflight && typeof currentReference.analysis_preflight === 'object'
+      ? currentReference.analysis_preflight
+      : {};
     const batchProgress = currentReference.evidence_batch_progress || {};
     const completeEvidence = Number(batchProgress.total || 0) > 0 && Number(batchProgress.completed || 0) === Number(batchProgress.total || 0);
     const reusable = currentReference.visual_evidence_reusable === true || completeEvidence;
     const semanticReusable = store.state.bundle?.reference?.semantic_result_reusable === true;
     const completedInvalid = currentReference.status === 'completed' && currentReference.analysis_valid !== true;
     const partialEvidence = Number(batchProgress.completed || 0) > 0 && Number(batchProgress.completed || 0) < Number(batchProgress.total || 0);
-    const retryMessage = completedInvalid
+    const retryMessage = extendedConfirmation
+      ? `系统已免费检测到 ${Number(preflight.segment_count || 0)} 个取证片段，需要 ${Number(preflight.batch_count || 0)} 批视觉读取；普通分析包含 10 批，本次将增加 ${Number(preflight.extra_batch_count || 0)} 批。确认后会完整读取全部片段，并按批保存进度；失败重试不会重复读取已通过批次。是否继续？`
+      : completedInvalid
       ? (reusable
         ? '不需要更换或重新上传。系统会保留当前视频、撤下本次不合格结果，复用已校验的镜头证据并重新调用语义识别模型，可能产生新的模型费用。是否继续？'
         : '不需要更换或重新上传。系统会保留当前视频、撤下本次不合格结果，并重新调用视觉与语义识别模型，可能产生新的模型费用。是否继续？')
@@ -533,8 +540,8 @@ ${renderAdvancedReferenceControls(bundle, route.isNew)}
     let confirmed = false;
     try {
       confirmed = await confirmDialog(retryMessage, {
-        title: completedInvalid ? '重新识别当前视频' : (semanticReusable ? '重新校验参考视频' : (reusable ? '继续补齐语义结构' : '重新读取镜头证据')),
-        confirmText: completedInvalid ? '确认重新识别' : (semanticReusable ? '确认重新校验' : (reusable ? '确认重新整理' : '确认重新分析')),
+        title: extendedConfirmation ? '确认分批分析参考视频' : (completedInvalid ? '重新识别当前视频' : (semanticReusable ? '重新校验参考视频' : (reusable ? '继续补齐语义结构' : '重新读取镜头证据'))),
+        confirmText: extendedConfirmation ? `确认读取 ${Number(preflight.batch_count || 0)} 批` : (completedInvalid ? '确认重新识别' : (semanticReusable ? '确认重新校验' : (reusable ? '确认重新整理' : '确认重新分析'))),
       });
     } catch (error) {
       referenceRetryPending = false;
@@ -548,9 +555,16 @@ ${renderAdvancedReferenceControls(bundle, route.isNew)}
       return;
     }
     try {
-      setButtonBusy(button, true, completedInvalid ? '正在重新识别…' : (semanticReusable ? '正在重新校验…' : (reusable ? '正在重新整理…' : '正在重新分析…')), { elapsed: true });
-      await store.retryReferenceAnalysis();
-      toast(completedInvalid ? '已保留当前视频并开始重新识别，无需重新上传。' : (semanticReusable ? '已复用现有结果开始重新校验，不会再次调用模型。' : (reusable ? '已复用完整镜头证据，只继续补齐语义结构。' : '已开始重新检测并分析镜头证据。')), 'success');
+      setButtonBusy(button, true, extendedConfirmation ? '正在启动分批分析…' : (completedInvalid ? '正在重新识别…' : (semanticReusable ? '正在重新校验…' : (reusable ? '正在重新整理…' : '正在重新分析…'))), { elapsed: true });
+      if (extendedConfirmation) {
+        await store.retryReferenceAnalysis({
+          extended_analysis_confirmed: true,
+          preflight_fingerprint: String(preflight.fingerprint || ''),
+        });
+      } else {
+        await store.retryReferenceAnalysis();
+      }
+      toast(extendedConfirmation ? `已确认 ${Number(preflight.batch_count || 0)} 批完整分析；已通过批次会持续保存。` : (completedInvalid ? '已保留当前视频并开始重新识别，无需重新上传。' : (semanticReusable ? '已复用现有结果开始重新校验，不会再次调用模型。' : (reusable ? '已复用完整镜头证据，只继续补齐语义结构。' : '已开始重新检测并分析镜头证据。'))), 'success');
     } catch (error) {
       toast(error.message, 'danger');
       setButtonBusy(button, false);
