@@ -1,5 +1,5 @@
-import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260822-provider-contract-recovery-v161';
-import { bindMoreMedia, moreMediaButton } from './finalMediaPagination.js?v=20260822-provider-contract-recovery-v161';
+import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260822-provider-contract-recovery-v162';
+import { bindMoreMedia, moreMediaButton } from './finalMediaPagination.js?v=20260822-provider-contract-recovery-v162';
 
 function itemIndex(item = {}, index = 0) {
   const value = Number(item.shot_index ?? item.shotIndex ?? item.index);

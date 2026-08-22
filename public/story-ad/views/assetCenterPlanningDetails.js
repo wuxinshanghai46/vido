@@ -1,9 +1,9 @@
-import { escapeHtml, mediaPreview } from '../components/ui.js?v=20260822-provider-contract-recovery-v161';
-import { bindMediaLightbox } from './mediaLightbox.js?v=20260822-provider-contract-recovery-v161';
-import { personDossierShowcase } from './personDossierShowcase.js?v=20260822-provider-contract-recovery-v161';
-import { bindSceneDossierCard, renderSceneDossierCard } from './sceneDossierCard.js?v=20260822-provider-contract-recovery-v161';
-import { bindPersonLookForm } from './assetCenterPersonLooks.js?v=20260822-provider-contract-recovery-v161';
-import { bindPersonEvolutionForm } from './assetCenterPersonEvolution.js?v=20260822-provider-contract-recovery-v161';
+import { escapeHtml, mediaPreview } from '../components/ui.js?v=20260822-provider-contract-recovery-v162';
+import { bindMediaLightbox } from './mediaLightbox.js?v=20260822-provider-contract-recovery-v162';
+import { personDossierShowcase } from './personDossierShowcase.js?v=20260822-provider-contract-recovery-v162';
+import { bindSceneDossierCard, renderSceneDossierCard } from './sceneDossierCard.js?v=20260822-provider-contract-recovery-v162';
+import { bindPersonLookForm } from './assetCenterPersonLooks.js?v=20260822-provider-contract-recovery-v162';
+import { bindPersonEvolutionForm } from './assetCenterPersonEvolution.js?v=20260822-provider-contract-recovery-v162';
 
 export function ownedPropDetails(item = {}) {
   const rows = Array.isArray(item.owned_props) ? item.owned_props : [];

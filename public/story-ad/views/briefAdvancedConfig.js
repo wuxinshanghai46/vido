@@ -1,4 +1,4 @@
-import { renderBriefMaterialRows } from './briefMaterials.js?v=20260822-provider-contract-recovery-v161';
+import { renderBriefMaterialRows } from './briefMaterials.js?v=20260822-provider-contract-recovery-v162';
 
 function hasMaterials(bundle) {
   const reference = bundle?.reference || {};

@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260822-provider-contract-recovery-v161';
-import { confirmDialog } from '../components/dialog.js?v=20260822-provider-contract-recovery-v161';
-export { ensureSubjectRecoveryReady } from './subjectRecoveryPreflightAction.js?v=20260822-provider-contract-recovery-v161';
+import { request } from '../api.js?v=20260822-provider-contract-recovery-v162';
+import { confirmDialog } from '../components/dialog.js?v=20260822-provider-contract-recovery-v162';
+export { ensureSubjectRecoveryReady } from './subjectRecoveryPreflightAction.js?v=20260822-provider-contract-recovery-v162';
 
 function reviewLabel(review = {}) {
   if (review.kind === 'scene') return `场景“${review.scene_id || '未命名场景'}”的${review.unit || '视图'}`;

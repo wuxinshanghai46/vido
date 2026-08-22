@@ -1,4 +1,4 @@
-import { request } from '../api.js?v=20260822-provider-contract-recovery-v161';
+import { request } from '../api.js?v=20260822-provider-contract-recovery-v162';
 
 export function bindBriefViewport(host) {
   host.classList?.add('brief-dialogue-view');
