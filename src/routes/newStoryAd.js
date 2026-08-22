@@ -1920,6 +1920,20 @@ router.post('/tasks/:id/scene-plan', asyncRoute(async (req, res) => {
 
 router.post('/tasks/:id/blueprint', asyncRoute(async (req, res) => {
   const forceRegenerate = req.body?.force_regenerate === true || req.body?.forceRegenerate === true;
+  if (!forceRegenerate) {
+    const recovered = service.recoverBlueprintStage(req.params.id);
+    if (recovered) {
+      return res.json({
+        success: true,
+        accepted: true,
+        recovered: true,
+        provider_calls: 0,
+        task_id: req.params.id,
+        blueprint: recovered.blueprint,
+        task: service.taskSummary(storage.getTask(req.params.id)),
+      });
+    }
+  }
   return queueTaskStage(req, res, 'blueprint', job => service.generateBlueprintStage(req.params.id, { ...job, force_regenerate: forceRegenerate }));
 }));
 

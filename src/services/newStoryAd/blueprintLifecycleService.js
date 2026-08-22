@@ -94,6 +94,41 @@ function publishReusedBlueprint(taskId, task, blueprint, inputFingerprint, meta 
   return recovered;
 }
 
+function recoverBlueprintWithoutProvider(taskId) {
+  const task = storage.getTask(taskId);
+  if (!task) throw new Error('任务不存在');
+  const ctx = assertContextConsistent(storage.getOutput(taskId, 'context') || task.request || {});
+  const assetPlan = assetPlanPublication.currentPlan(taskId) || {};
+  const inputFingerprint = blueprintInputFingerprint(task, { ...ctx, asset_plan_fingerprint: assetPlan.fingerprint || '' });
+  const current = storage.getOutput(taskId, 'blueprint') || {};
+  const currentMeta = storage.getOutput(taskId, 'blueprint_meta') || {};
+  if (currentMeta.input_fingerprint === inputFingerprint && Array.isArray(current.beats) && current.beats.length) {
+    return { blueprint: current, input_fingerprint: inputFingerprint, artifact_id: '', source: 'current' };
+  }
+  const artifact = findReusableBlueprintArtifact(taskId, task, {
+    ...ctx,
+    asset_plan_fingerprint: assetPlan.fingerprint || '',
+  }, inputFingerprint);
+  if (!artifact) return null;
+  const blueprint = publishReusedBlueprint(taskId, task, artifact.payload, inputFingerprint, { artifact_id: artifact.id });
+  blueprintProgress.update(taskId, {
+    phase: 'artifact_recovered',
+    completed: blueprintProgress.BLUEPRINT_PROGRESS_TOTAL,
+    total: blueprintProgress.BLUEPRINT_PROGRESS_TOTAL,
+    message: '已恢复语义一致的历史剧情蓝图，本次没有再次调用模型。',
+  });
+  storage.updateTask(taskId, {
+    status: 'done',
+    stage: 'blueprint_done',
+    active_stage: '',
+    active_generation_id: '',
+    error: '',
+    error_code: '',
+    retryable: false,
+  });
+  return { blueprint, input_fingerprint: inputFingerprint, artifact_id: artifact.id, source: 'artifact' };
+}
+
 async function generateBlueprintStage(taskId, options = {}, {
   versionedBlueprint,
   generateBlueprintFn = generateBlueprint,
@@ -219,4 +254,5 @@ module.exports = {
   blueprintInputFingerprint,
   findReusableBlueprintArtifact,
   publishReusedBlueprint,
+  recoverBlueprintWithoutProvider,
 };

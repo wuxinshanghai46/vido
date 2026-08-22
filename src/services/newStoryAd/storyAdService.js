@@ -814,6 +814,17 @@ async function generateBlueprintStage(taskId, options = {}) {
   return blueprint;
 }
 
+function recoverBlueprintStage(taskId) {
+  const recovered = blueprintLifecycle.recoverBlueprintWithoutProvider(taskId);
+  if (!recovered) return null;
+  const task = storage.getTask(taskId);
+  const ctx = storage.getOutput(taskId, 'context') || task?.request || {};
+  const nextCtx = blueprintCharacterProjection.projectCharacters(ctx, recovered.blueprint);
+  storage.saveOutput(taskId, 'context', nextCtx);
+  storage.updateTask(taskId, { request: nextCtx, updated_at: new Date().toISOString() });
+  return recovered;
+}
+
 const runTextStageWithRecovery = createTextStageRecovery(storage, cleanText);
 
 async function generateScriptPackageStage(taskId, options = {}) {
@@ -3691,6 +3702,7 @@ module.exports = {
   updatePersonPlan,
   updateScenePlan,
   generateBlueprintStage,
+  recoverBlueprintStage,
   generateScriptPackageStage,
   runTextStageWithRecovery,
   generateStoryboardStage,

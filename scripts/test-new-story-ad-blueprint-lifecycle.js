@@ -218,6 +218,27 @@ async function main() {
     storage.saveOutput(recoveryTaskId, 'blueprint', premiumBlueprint, { input_fingerprint: recoveryFingerprint });
     const historicalArtifact = storage.listArtifacts(recoveryTaskId, 'blueprint')[0];
     storage.deleteOutput(recoveryTaskId, 'blueprint');
+    storage.createGenerationRun({
+      id: 'blueprint-recovery-unknown-unit',
+      work_id: recoveryTaskId,
+      task_id: recoveryTaskId,
+      domain: 'blueprint',
+      target_permanent_id: `${recoveryTaskId}:blueprint`,
+      operation: 'run_blueprint',
+      input_fingerprint: 'legacy-unknown-request',
+      state: 'billing_unknown',
+      billing_state: 'unknown',
+      provider_submission_state: 'submitted_unknown',
+      retry_blocked: true,
+    });
+    storage.updateTask(recoveryTaskId, { status: 'failed', stage: 'blueprint_failed' });
+    const directRecovery = storyService.recoverBlueprintStage(recoveryTaskId);
+    assert.equal(directRecovery.source, 'artifact');
+    assert.equal(directRecovery.artifact_id, historicalArtifact.id);
+    assert.equal(storage.getTask(recoveryTaskId).stage, 'blueprint_done');
+    assert.equal(storage.getGenerationRun('blueprint-recovery-unknown-unit').state, 'billing_unknown', '零调用恢复不得改写原未知计费审计');
+    storage.deleteOutput(recoveryTaskId, 'blueprint');
+    storage.deleteOutput(recoveryTaskId, 'blueprint_meta');
     let recoveryModelCalls = 0;
     const recoveredArtifactBlueprint = await blueprintLifecycle.generateBlueprintStage(recoveryTaskId, {
       inputFingerprint: recoveryFingerprint,
