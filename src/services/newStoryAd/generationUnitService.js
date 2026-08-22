@@ -82,11 +82,39 @@ function findByIdempotency(storage, key) {
   return storage.listGenerationRuns().find(unit => unit.idempotency_key === key) || null;
 }
 
-function currentTargetBlocker(storage, identity, key) {
+function targetUnits(storage, identity) {
   return storage.listGenerationRuns({ work_id: identity.work_id, target_permanent_id: identity.target_permanent_id })
-    .filter(unit => unit.idempotency_key !== key)
-    .sort((left, right) => String(right.updated_at || '').localeCompare(String(left.updated_at || '')))
-    .find(unit => ACTIVE_STATES.has(unit.state) || unit.state === 'billing_unknown') || null;
+    .sort((left, right) => String(right.updated_at || '').localeCompare(String(left.updated_at || '')));
+}
+
+function createExplicitRetry(storage, identity, baseKey, blocker, at) {
+  const siblings = targetUnits(storage, identity)
+    .filter(unit => String(unit.explicit_user_retry_of || '') === String(blocker.id));
+  const retryOrdinal = siblings.length + 1;
+  const key = sha256(`${baseKey}:explicit_user_retry:${blocker.id}:${retryOrdinal}`);
+  const id = unitId(key);
+  const created = storage.createGenerationRun({
+    id,
+    ...identity,
+    task_id: identity.work_id,
+    idempotency_key: key,
+    contract_version: GENERATION_UNIT_CONTRACT_VERSION,
+    state: 'ready',
+    unit_version: 1,
+    provider_submission_state: 'not_submitted',
+    billing_state: 'not_submitted',
+    retry_blocked: false,
+    automatic_retry_allowed: false,
+    provider_task_id: '',
+    error_code: '',
+    error_message: '',
+    explicit_user_retry: true,
+    explicit_user_retry_of: blocker.id,
+    explicit_user_retry_ordinal: retryOrdinal,
+    prior_billing_state: blocker.billing_state || '',
+    state_history: [{ from: '', to: 'ready', reason: 'explicit_user_retry_after_terminal_unknown', at }],
+  });
+  return { claimed: true, duplicate: false, restarted: false, reusable: false, blocked: false, unit: created };
 }
 
 function claim(input = {}, {
@@ -97,6 +125,14 @@ function claim(input = {}, {
   const identity = normalizedIdentity(input);
   const key = buildIdempotencyKey(identity);
   const existing = findByIdempotency(storage, key);
+  const unitsForTarget = targetUnits(storage, identity);
+  const activeBlocker = unitsForTarget.find(unit => ACTIVE_STATES.has(unit.state) && unit.idempotency_key !== key) || null;
+  if (activeBlocker) {
+    throw fail('同一生成目标已有活动生成单元，禁止并发覆盖', 'GENERATION_TARGET_ACTIVE', 409, {
+      blocking_unit_id: activeBlocker.id,
+      billing_state: activeBlocker.billing_state || '',
+    });
+  }
   if (existing) {
     if (existing.execution_disabled === true || existing.cache_readonly === true) {
       throw fail('历史生成单元只允许查看，禁止重试或继续执行', 'GENERATION_UNIT_EXECUTION_DISABLED');
@@ -120,6 +156,9 @@ function claim(input = {}, {
       });
       return { claimed: true, duplicate: false, restarted: true, reusable: false, blocked: false, unit: restarted };
     }
+    if (existing.state === 'billing_unknown' && explicit_user_retry === true) {
+      return createExplicitRetry(storage, identity, key, existing, at);
+    }
     return {
       claimed: false,
       duplicate: true,
@@ -128,15 +167,13 @@ function claim(input = {}, {
       unit: existing,
     };
   }
-  const blocker = currentTargetBlocker(storage, identity, key);
+  const blocker = unitsForTarget.find(unit => unit.state === 'billing_unknown') || null;
   if (blocker) {
-    const unknown = blocker.state === 'billing_unknown';
-    throw fail(
-      unknown ? '同一生成目标存在计费未知记录，人工核账前禁止再次提交' : '同一生成目标已有活动生成单元，禁止并发覆盖',
-      unknown ? 'GENERATION_BILLING_REVIEW_REQUIRED' : 'GENERATION_TARGET_ACTIVE',
-      409,
-      { blocking_unit_id: blocker.id, billing_state: blocker.billing_state || '' },
-    );
+    if (explicit_user_retry === true) return createExplicitRetry(storage, identity, key, blocker, at);
+    throw fail('该生成记录需要后台核对', 'GENERATION_BILLING_REVIEW_REQUIRED', 409, {
+      blocking_unit_id: blocker.id,
+      billing_state: blocker.billing_state || '',
+    });
   }
   const id = unitId(key);
   const created = storage.createGenerationRun({

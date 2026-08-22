@@ -75,6 +75,26 @@ try {
     () => units.claim({ ...identity, input_fingerprint: 'input-fingerprint-v2', spec_revision: 2 }),
     claimError => claimError.code === 'GENERATION_BILLING_REVIEW_REQUIRED',
   );
+  const explicitRetry = units.claim(
+    { ...identity, input_fingerprint: 'input-fingerprint-v2', spec_revision: 2 },
+    { explicit_user_retry: true },
+  );
+  assert.strictEqual(explicitRetry.claimed, true, '用户主动重生成必须创建新的生成单元');
+  assert.strictEqual(explicitRetry.unit.explicit_user_retry_of, unknown.id);
+  assert.strictEqual(explicitRetry.unit.prior_billing_state, 'unknown');
+  assert.strictEqual(storage.getGenerationRun(unknown.id).state, 'billing_unknown', '旧计费记录必须原样保留');
+  assert.throws(
+    () => units.claim(
+      { ...identity, input_fingerprint: 'input-fingerprint-v3', spec_revision: 3 },
+      { explicit_user_retry: true },
+    ),
+    claimError => claimError.code === 'GENERATION_TARGET_ACTIVE',
+    '新生成仍处于活动状态时必须禁止重复提交',
+  );
+  const explicitQueued = units.transition(explicitRetry.unit.id, 'queued', {}, { expected_version: explicitRetry.unit.unit_version });
+  units.transition(explicitQueued.id, 'cancelled', {
+    billing_state: 'not_submitted', provider_submission_state: 'not_submitted',
+  }, { expected_version: explicitQueued.unit_version });
   assert.throws(
     () => units.transition(unknown.id, 'failed_terminal', { billing_state: 'not_billed' }),
     transitionError => transitionError.code === 'GENERATION_BILLING_RECONCILIATION_REQUIRED',
@@ -85,7 +105,7 @@ try {
   assert.strictEqual(reconciled.state, 'failed_terminal');
   assert.strictEqual(reconciled.billing_state, 'not_billed');
 
-  const second = units.claim({ ...identity, input_fingerprint: 'input-fingerprint-v2', spec_revision: 2 });
+  const second = units.claim({ ...identity, input_fingerprint: 'input-fingerprint-v3', spec_revision: 3 });
   assert.strictEqual(second.claimed, true);
   assert.notStrictEqual(second.unit.id, unknown.id);
   assert.throws(
@@ -126,6 +146,8 @@ try {
     stale_write_blocked: true,
     illegal_transition_blocked: true,
     billing_unknown_quarantined: true,
+    explicit_user_regeneration_allowed: true,
+    active_duplicate_still_blocked: true,
     automatic_paid_retry: 0,
     manual_reconciliation_required: true,
     provider_circuit_persisted: true,

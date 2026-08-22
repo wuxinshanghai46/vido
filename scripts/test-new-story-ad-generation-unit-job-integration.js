@@ -67,13 +67,18 @@ const waitFor = async (predicate, timeoutMs = 2500) => {
       && storage.getGenerationRun(failed.job.generation_unit_id));
     assert.strictEqual(unknown.retry_blocked, true);
     assert.strictEqual(unknown.provider_task_id, 'paid-task-unknown');
-    assert.throws(
-      () => jobs.queueStage({
-        taskId: 'job-unknown', stage: 'visual_assets', expectedContentRevision: 1,
-        inputFingerprint: 'visual-input-v2', idempotencyKey: 'job-unknown:visual:r1:retry', execute: async () => {},
-      }),
-      error => error.code === 'GENERATION_BILLING_REVIEW_REQUIRED',
-    );
+    let explicitRetryExecutions = 0;
+    const explicitRetry = jobs.queueStage({
+      taskId: 'job-unknown', stage: 'visual_assets', expectedContentRevision: 1,
+      inputFingerprint: 'visual-input-v2', idempotencyKey: 'job-unknown:visual:r1:retry',
+      execute: async () => { explicitRetryExecutions += 1; },
+    });
+    assert.strictEqual(explicitRetry.accepted, true, '用户主动重生成必须进入新队列');
+    const explicitSucceeded = await waitFor(() => storage.getGenerationRun(explicitRetry.job.generation_unit_id)?.state === 'succeeded'
+      && storage.getGenerationRun(explicitRetry.job.generation_unit_id));
+    assert.strictEqual(explicitSucceeded.explicit_user_retry_of, unknown.id);
+    assert.strictEqual(storage.getGenerationRun(unknown.id).state, 'billing_unknown');
+    assert.strictEqual(explicitRetryExecutions, 1);
 
     storage.createTask({ id: 'job-interrupted', content_revision: 1, request: { brief: 'interrupted' } });
     storage.updateTask('job-interrupted', {
@@ -105,7 +110,8 @@ const waitFor = async (predicate, timeoutMs = 2500) => {
       passed: true,
       real_queue_integrated: true,
       duplicate_execution_count: executions,
-      billing_unknown_blocks_new_queue: true,
+      automatic_retry_remains_blocked: true,
+      explicit_user_regeneration_allowed: true,
       provider_task_evidence_preserved: true,
       worker_restart_recovered: true,
     }));
