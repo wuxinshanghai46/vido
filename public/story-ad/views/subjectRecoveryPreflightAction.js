@@ -1,4 +1,4 @@
-import { request } from '../api.js?v=20260822-reference-failure-recovery-v146';
+import { request } from '../api.js?v=20260822-reference-failure-recovery-v147';
 
 async function preflight(bundle = {}, generationPayload = {}, apply = false, proofToken = '') {
   const taskId = bundle?.project?.id || '';

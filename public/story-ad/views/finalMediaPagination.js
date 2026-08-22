@@ -1,4 +1,4 @@
-import { setButtonBusy, toast } from '../components/ui.js?v=20260822-reference-failure-recovery-v146';
+import { setButtonBusy, toast } from '../components/ui.js?v=20260822-reference-failure-recovery-v147';
 
 export function moreMediaButton(catalog = {}, kind = 'keyframes', label = '继续加载') {
   return catalog?.has_more
