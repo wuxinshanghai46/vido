@@ -1,5 +1,5 @@
-import { setButtonBusy, toast } from '../components/ui.js?v=20260822-reference-failure-recovery-v144';
-import { confirmDialog } from '../components/dialog.js?v=20260822-reference-failure-recovery-v144';
+import { setButtonBusy, toast } from '../components/ui.js?v=20260822-reference-failure-recovery-v145';
+import { confirmDialog } from '../components/dialog.js?v=20260822-reference-failure-recovery-v145';
 
 export function scenePlanBlockedView(eligibility = {}, generationActive = false) {
   const failed = (eligibility.issues || []).includes('task_current_planning_stage_failed');

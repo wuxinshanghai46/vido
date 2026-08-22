@@ -1,4 +1,4 @@
-import { escapeHtml } from '../components/ui.js?v=20260822-reference-failure-recovery-v144';
+import { escapeHtml } from '../components/ui.js?v=20260822-reference-failure-recovery-v145';
 
 export const BRIEF_MATERIALS = [
   ['reference', '参考视频', '上传视频或粘贴公开链接，系统会识别可见人物、场景、动作与广告主体'],

@@ -1,7 +1,7 @@
-import { request } from '../api.js?v=20260822-reference-failure-recovery-v144';
-import { promptDialog } from '../components/dialog.js?v=20260822-reference-failure-recovery-v144';
-import { setButtonBusy, toast } from '../components/ui.js?v=20260822-reference-failure-recovery-v144';
-import { applyGeneratedPersonLooks, collectPersonLookValues } from './assetCenterPersonLooks.js?v=20260822-reference-failure-recovery-v144';
+import { request } from '../api.js?v=20260822-reference-failure-recovery-v145';
+import { promptDialog } from '../components/dialog.js?v=20260822-reference-failure-recovery-v145';
+import { setButtonBusy, toast } from '../components/ui.js?v=20260822-reference-failure-recovery-v145';
+import { applyGeneratedPersonLooks, collectPersonLookValues } from './assetCenterPersonLooks.js?v=20260822-reference-failure-recovery-v145';
 
 export function createAssetAssistHandlers(bundle) {
   const assistPerson = async (item, form, button = null) => {
