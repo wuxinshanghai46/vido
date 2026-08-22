@@ -1,7 +1,7 @@
-import { request, uploadAsset, uploadReferenceVideo } from '../api.js?v=20260822-knowledge-director-learning-v137';
-import { beginReferenceReplacement, beginReferenceRetry, referenceSyncInterrupted, replacementCurrent, removeProjectReference, restoreReferenceReplacement, restoreReferenceRetry } from './referenceReplacementState.js?v=20260822-knowledge-director-learning-v137';
-import { loadProjectList } from './projectListStore.js?v=20260822-knowledge-director-learning-v137';
-import { loadProjectBundle, refreshProjectBundle } from './projectBundleStore.js?v=20260822-knowledge-director-learning-v137';
+import { request, uploadAsset, uploadReferenceVideo } from '../api.js?v=20260822-knowledge-director-learning-v138';
+import { beginReferenceReplacement, beginReferenceRetry, referenceSyncInterrupted, replacementCurrent, removeProjectReference, restoreReferenceReplacement, restoreReferenceRetry } from './referenceReplacementState.js?v=20260822-knowledge-director-learning-v138';
+import { loadProjectList } from './projectListStore.js?v=20260822-knowledge-director-learning-v138';
+import { loadProjectBundle, refreshProjectBundle } from './projectBundleStore.js?v=20260822-knowledge-director-learning-v138';
 export function createProjectStore() {
   const state = {
     projects: [],
@@ -54,7 +54,7 @@ export function createProjectStore() {
     hydrateReferenceFailure();
     return bundle;
   }
-  const mediaStore = () => import('./mediaCatalogStore.js?v=20260822-knowledge-director-learning-v137'), loadMediaPage = async options => (await mediaStore()).loadMediaPage({ request, state }, options);
+  const mediaStore = () => import('./mediaCatalogStore.js?v=20260822-knowledge-director-learning-v138'), loadMediaPage = async options => (await mediaStore()).loadMediaPage({ request, state }, options);
   const loadMoreMedia = async (kind = 'keyframes', limit = 24) => (await mediaStore()).loadMoreMedia({ request, state, set }, kind, limit);
 
   async function refreshSections(sections) {

@@ -1,19 +1,19 @@
-import { request } from '../api.js?v=20260822-knowledge-director-learning-v137';
-import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260822-knowledge-director-learning-v137';
-import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260822-knowledge-director-learning-v137';
-import { briefSettingsSummary } from './briefSettingsSummary.js?v=20260822-knowledge-director-learning-v137';
-import { worldSettingFields } from './briefWorldSettings.js?v=20260822-knowledge-director-learning-v137';
-import { bindNarrativeRecognitionLayout } from './briefNarrativeRecognition.js?v=20260822-knowledge-director-learning-v137';
-import { referenceProgress as renderReferenceProgress } from './referenceProgressCard.js?v=20260822-knowledge-director-learning-v137';
-import { assertBriefReadback } from './briefTextContract.js?v=20260822-knowledge-director-learning-v137';
-import { confirmContentModeMigration } from './briefContentModeMigration.js?v=20260822-knowledge-director-learning-v137';
-import { BRIEF_MATERIALS } from './briefMaterials.js?v=20260822-knowledge-director-learning-v137';
-import { bindAdvancedReferenceControls, renderAdvancedReferenceControls } from './briefAdvancedConfig.js?v=20260822-knowledge-director-learning-v137';
-import { bindBriefDialogueWorkflow, briefDialogueMarkup, referenceNextStepDescription } from './briefDialoguePanel.js?v=20260822-knowledge-director-learning-v137';
-import { referenceActionState, syncReferenceAction, syncReferenceDialogueStatus } from './briefReferenceDialogueState.js?v=20260822-knowledge-director-learning-v137';
-import { bindBriefViewport, briefDialogueAssist } from './briefDialogueRuntime.js?v=20260822-knowledge-director-learning-v137';
-import { bindBriefSettingsModal } from './briefSettingsModal.js?v=20260822-knowledge-director-learning-v137';
-import { formPayload } from './briefFormPayload.js?v=20260822-knowledge-director-learning-v137';
+import { request } from '../api.js?v=20260822-knowledge-director-learning-v138';
+import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260822-knowledge-director-learning-v138';
+import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260822-knowledge-director-learning-v138';
+import { briefSettingsSummary } from './briefSettingsSummary.js?v=20260822-knowledge-director-learning-v138';
+import { worldSettingFields } from './briefWorldSettings.js?v=20260822-knowledge-director-learning-v138';
+import { bindNarrativeRecognitionLayout } from './briefNarrativeRecognition.js?v=20260822-knowledge-director-learning-v138';
+import { referenceProgress as renderReferenceProgress } from './referenceProgressCard.js?v=20260822-knowledge-director-learning-v138';
+import { assertBriefReadback } from './briefTextContract.js?v=20260822-knowledge-director-learning-v138';
+import { confirmContentModeMigration } from './briefContentModeMigration.js?v=20260822-knowledge-director-learning-v138';
+import { BRIEF_MATERIALS } from './briefMaterials.js?v=20260822-knowledge-director-learning-v138';
+import { bindAdvancedReferenceControls, renderAdvancedReferenceControls } from './briefAdvancedConfig.js?v=20260822-knowledge-director-learning-v138';
+import { bindBriefDialogueWorkflow, briefDialogueMarkup, referenceNextStepDescription } from './briefDialoguePanel.js?v=20260822-knowledge-director-learning-v138';
+import { referenceActionState, syncReferenceAction, syncReferenceDialogueStatus } from './briefReferenceDialogueState.js?v=20260822-knowledge-director-learning-v138';
+import { bindBriefViewport, briefDialogueAssist } from './briefDialogueRuntime.js?v=20260822-knowledge-director-learning-v138';
+import { bindBriefSettingsModal } from './briefSettingsModal.js?v=20260822-knowledge-director-learning-v138';
+import { formPayload } from './briefFormPayload.js?v=20260822-knowledge-director-learning-v138';
 export function referenceProgress(reference = {}) { return renderReferenceProgress(reference); }
 
 export async function mount(host, context) {
@@ -131,7 +131,7 @@ ${renderAdvancedReferenceControls(bundle, route.isNew)}
       if (understandingHost) understandingHost.innerHTML = '';
       return;
     }
-    const module = await import('./referenceUnderstandingView.js?v=20260822-knowledge-director-learning-v137');
+    const module = await import('./referenceUnderstandingView.js?v=20260822-knowledge-director-learning-v138');
     if (disposed || sequence !== understandingLoadSequence || !understandingHost) return;
     if (understandingController) understandingController.update(reference);
     else understandingController = module.mountReferenceUnderstanding(understandingHost, {

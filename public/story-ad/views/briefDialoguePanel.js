@@ -1,7 +1,7 @@
-import { escapeHtml } from '../components/ui.js?v=20260822-knowledge-director-learning-v137';
-import { createReferenceLinkDialogueHandler, referenceDialogueStatus, referenceNextStepDescription, routeReferenceInput, syncReferenceDialogueStatus } from './briefReferenceDialogueState.js?v=20260822-knowledge-director-learning-v137';
-import { dialogueBudgetReached, referenceDialoguePhase, sanitizeDialogueTopics } from './briefDialoguePolicy.js?v=20260822-knowledge-director-learning-v137';
-import { followConversationAfter } from './briefConversationScroll.js?v=20260822-knowledge-director-learning-v137';
+import { escapeHtml } from '../components/ui.js?v=20260822-knowledge-director-learning-v138';
+import { createReferenceLinkDialogueHandler, referenceDialogueStatus, referenceNextStepDescription, routeReferenceInput, syncReferenceDialogueStatus } from './briefReferenceDialogueState.js?v=20260822-knowledge-director-learning-v138';
+import { dialogueBudgetReached, referenceDialoguePhase, sanitizeDialogueTopics } from './briefDialoguePolicy.js?v=20260822-knowledge-director-learning-v138';
+import { followConversationAfter } from './briefConversationScroll.js?v=20260822-knowledge-director-learning-v138';
 export { referenceDialogueStatus, referenceNextStepDescription, syncReferenceDialogueStatus };
 
 function modeLabel(value = '') {
@@ -163,7 +163,7 @@ export function bindBriefDialogue(host, { form, referenceState = {}, referenceAt
   const appendReferenceQuestion = async () => {
     if (referenceQuestionLoading || conversation.querySelector('[data-reference-question]') || referencePresent || referenceSkipped) return;
     referenceQuestionLoading = true;
-    const { mountReferenceQuestion } = await import('./briefReferenceQuestion.js?v=20260822-knowledge-director-learning-v137');
+    const { mountReferenceQuestion } = await import('./briefReferenceQuestion.js?v=20260822-knowledge-director-learning-v138');
     mountReferenceQuestion(conversation, {
       mode: String(control('content_mode')?.value || ''),
       idea: briefIdeaPreview(String(control('brief')?.value || ''), 54).text,
@@ -182,7 +182,7 @@ export function bindBriefDialogue(host, { form, referenceState = {}, referenceAt
   const appendSpecificationQuestion = async () => {
     if (specificationQuestionLoading || conversation.querySelector('[data-specification-question]') || specificationsConfirmed) return;
     specificationQuestionLoading = true;
-    const { mountSpecificationQuestion } = await import('./briefSpecificationQuestion.js?v=20260822-knowledge-director-learning-v137');
+    const { mountSpecificationQuestion } = await import('./briefSpecificationQuestion.js?v=20260822-knowledge-director-learning-v138');
     mountSpecificationQuestion(conversation, {
       mode: String(control('content_mode')?.value || ''),
       duration: Number(control('target_duration')?.value || 30) || 30,
@@ -288,7 +288,7 @@ export function bindBriefDialogue(host, { form, referenceState = {}, referenceAt
     sending = true;
     send.disabled = true;
     panel.setAttribute('aria-busy', 'true');
-    const explicitSettings = await import('./briefExplicitSettings.js?v=20260822-knowledge-director-learning-v137');
+    const explicitSettings = await import('./briefExplicitSettings.js?v=20260822-knowledge-director-learning-v138');
     input.value = '';
     const intakeBefore = sync();
     if (await routeReferenceInput({
@@ -442,7 +442,7 @@ export function bindBriefDialogue(host, { form, referenceState = {}, referenceAt
   const initialReferencePhase = referenceDialoguePhase(currentReference);
   applyReferenceGate(currentReference).catch(() => {});
   if (!requireUserInitiation && initialReferencePhase === 'none' && String(control('brief')?.value || '').trim() && !ideaReady) {
-    import('./briefGuidedResume.js?v=20260822-knowledge-director-learning-v137').then(({ guidedResumePrompt }) => {
+    import('./briefGuidedResume.js?v=20260822-knowledge-director-learning-v138').then(({ guidedResumePrompt }) => {
       if (disposed) return;
       const guidance = guidedResumePrompt({ mode: String(control('content_mode')?.value || ''), idea: String(control('brief')?.value || '') });
       const entry = message('assistant', guidance.text);

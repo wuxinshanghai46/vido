@@ -1,7 +1,7 @@
-import { request } from '../api.js?v=20260822-knowledge-director-learning-v137';
-import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260822-knowledge-director-learning-v137';
-import { bindMediaLightbox } from './mediaLightbox.js?v=20260822-knowledge-director-learning-v137';
-import { confirmDialog } from '../components/dialog.js?v=20260822-knowledge-director-learning-v137';
+import { request } from '../api.js?v=20260822-knowledge-director-learning-v138';
+import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260822-knowledge-director-learning-v138';
+import { bindMediaLightbox } from './mediaLightbox.js?v=20260822-knowledge-director-learning-v138';
+import { confirmDialog } from '../components/dialog.js?v=20260822-knowledge-director-learning-v138';
 
 export function friendlyBindings(bundle = {}, shot = {}) {
   const assets = bundle.assets || {};
@@ -105,7 +105,7 @@ function sketchGateReason(gate = {}, fallback = '文字分镜审核通过后才�
 
 export async function mount(host, context) {
   if (context.route?.params?.get('stage') === 'shot') {
-    const shotDesigner = await import('./shotDesignerView.js?v=20260822-knowledge-director-learning-v137');
+    const shotDesigner = await import('./shotDesignerView.js?v=20260822-knowledge-director-learning-v138');
     return shotDesigner.mount(host, context);
   }
   const { bundle, store } = context;

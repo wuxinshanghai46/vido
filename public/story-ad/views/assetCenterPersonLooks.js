@@ -1,4 +1,4 @@
-import { escapeHtml } from '../components/ui.js?v=20260822-knowledge-director-learning-v137';
+import { escapeHtml } from '../components/ui.js?v=20260822-knowledge-director-learning-v138';
 
 function rows(profile = {}) {
   const source = Array.isArray(profile.look_profiles) ? profile.look_profiles : [];

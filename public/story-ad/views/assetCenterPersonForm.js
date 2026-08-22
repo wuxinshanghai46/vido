@@ -1,7 +1,7 @@
-import { escapeHtml } from '../components/ui.js?v=20260822-knowledge-director-learning-v137';
-import { personAgeDisplay } from './assetCenterPersonState.js?v=20260822-knowledge-director-learning-v137';
-import { renderPersonLookEditors } from './assetCenterPersonLooks.js?v=20260822-knowledge-director-learning-v137';
-import { renderPersonEvolutionEditor } from './assetCenterPersonEvolution.js?v=20260822-knowledge-director-learning-v137';
+import { escapeHtml } from '../components/ui.js?v=20260822-knowledge-director-learning-v138';
+import { personAgeDisplay } from './assetCenterPersonState.js?v=20260822-knowledge-director-learning-v138';
+import { renderPersonLookEditors } from './assetCenterPersonLooks.js?v=20260822-knowledge-director-learning-v138';
+import { renderPersonEvolutionEditor } from './assetCenterPersonEvolution.js?v=20260822-knowledge-director-learning-v138';
 
 export function personEditForm(item = {}) {
   const profile = item.profile || {};

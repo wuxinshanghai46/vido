@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260822-knowledge-director-learning-v137';
-import { escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260822-knowledge-director-learning-v137';
-import { confirmDialog } from '../components/dialog.js?v=20260822-knowledge-director-learning-v137';
+import { request } from '../api.js?v=20260822-knowledge-director-learning-v138';
+import { escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260822-knowledge-director-learning-v138';
+import { confirmDialog } from '../components/dialog.js?v=20260822-knowledge-director-learning-v138';
 
 function assetModal(title = '') {
   const previouslyFocused = document.activeElement;
