@@ -1,4 +1,4 @@
-import { request } from '../api.js?v=20260823-speaker-recovery-v170';
+import { request } from '../api.js?v=20260823-cast-autosave-v171';
 
 async function preflight(bundle = {}, generationPayload = {}, apply = false, proofToken = '') {
   const taskId = bundle?.project?.id || '';

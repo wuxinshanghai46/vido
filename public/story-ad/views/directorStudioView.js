@@ -1,6 +1,6 @@
-import * as THREE from '../vendor/three.module.min.js?v=20260823-speaker-recovery-v170';
-import { request, uploadAsset } from '../api.js?v=20260823-speaker-recovery-v170';
-import { escapeHtml, toast } from '../components/ui.js?v=20260823-speaker-recovery-v170';
+import * as THREE from '../vendor/three.module.min.js?v=20260823-cast-autosave-v171';
+import { request, uploadAsset } from '../api.js?v=20260823-cast-autosave-v171';
+import { escapeHtml, toast } from '../components/ui.js?v=20260823-cast-autosave-v171';
 
 const VERSION = '20260803-photoreal-director-v8';
 

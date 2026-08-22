@@ -1,4 +1,4 @@
-import { followConversationAfter } from './briefConversationScroll.js?v=20260823-speaker-recovery-v170';
+import { followConversationAfter } from './briefConversationScroll.js?v=20260823-cast-autosave-v171';
 
 export function referenceDialogueStatus(reference = {}) {
   const status = String(reference.status || '').toLowerCase();

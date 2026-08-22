@@ -1,4 +1,4 @@
-import { escapeHtml } from '../components/ui.js?v=20260823-speaker-recovery-v170';
+import { escapeHtml } from '../components/ui.js?v=20260823-cast-autosave-v171';
 
 export function uniqueLightboxEntries(nodes = [], group = 'media') {
   return [...nodes].filter(node => (node.dataset?.mediaZoomGroup || 'media') === group)

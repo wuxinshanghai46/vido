@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260823-speaker-recovery-v170';
-import { escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260823-speaker-recovery-v170';
-import { confirmDialog } from '../components/dialog.js?v=20260823-speaker-recovery-v170';
+import { request } from '../api.js?v=20260823-cast-autosave-v171';
+import { escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260823-cast-autosave-v171';
+import { confirmDialog } from '../components/dialog.js?v=20260823-cast-autosave-v171';
 
 function assetModal(title = '') {
   const previouslyFocused = document.activeElement;

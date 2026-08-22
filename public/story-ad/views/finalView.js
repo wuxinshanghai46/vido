@@ -1,5 +1,5 @@
-import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260823-speaker-recovery-v170';
-import { bindMoreMedia, moreMediaButton } from './finalMediaPagination.js?v=20260823-speaker-recovery-v170';
+import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260823-cast-autosave-v171';
+import { bindMoreMedia, moreMediaButton } from './finalMediaPagination.js?v=20260823-cast-autosave-v171';
 
 function itemIndex(item = {}, index = 0) {
   const value = Number(item.shot_index ?? item.shotIndex ?? item.index);

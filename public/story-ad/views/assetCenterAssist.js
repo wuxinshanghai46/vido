@@ -1,7 +1,7 @@
-import { request } from '../api.js?v=20260823-speaker-recovery-v170';
-import { promptDialog } from '../components/dialog.js?v=20260823-speaker-recovery-v170';
-import { setButtonBusy, toast } from '../components/ui.js?v=20260823-speaker-recovery-v170';
-import { applyGeneratedPersonLooks, collectPersonLookValues } from './assetCenterPersonLooks.js?v=20260823-speaker-recovery-v170';
+import { request } from '../api.js?v=20260823-cast-autosave-v171';
+import { promptDialog } from '../components/dialog.js?v=20260823-cast-autosave-v171';
+import { setButtonBusy, toast } from '../components/ui.js?v=20260823-cast-autosave-v171';
+import { applyGeneratedPersonLooks, collectPersonLookValues } from './assetCenterPersonLooks.js?v=20260823-cast-autosave-v171';
 
 export function createAssetAssistHandlers(bundle) {
   const assistPerson = async (item, form, button = null) => {
