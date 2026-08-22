@@ -60,7 +60,7 @@ const DOMAIN_RULES = [
     patterns: [
       /^src\/services\/newStoryAd\/(?:blueprint|storyboard)/i,
       /^scripts\/test-(?:new-)?story-ad-(?:blueprint|storyboard|detail-sketch)/i,
-      /^src\/services\/newStoryAd\/(?:productionBoardContract|qualityReview|storyAdService|storyBeatAssist|ttsAdapter)\.js$/i,
+      /^src\/services\/newStoryAd\/(?:productionBoardContractService|qualityReviewService|storyAdService|storyBeatAssistService|ttsAdapter)\.js$/i,
       /^scripts\/test-story-ad-production-board-v158\.js$/i,
     ],
   },
