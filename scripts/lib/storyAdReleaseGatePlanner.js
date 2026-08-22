@@ -107,6 +107,7 @@ const DOMAIN_RULES = [
       /^src\/services\/storyAdWorkspace\/briefProjectionService\.js$/,
       /^scripts\/test-story-ad-workspace/i,
       /^scripts\/test-story-ad-dialogue/i,
+      /^scripts\/test-story-ad-brief/i,
       /^src\/services\/newStoryAd\/briefDialogueHistoryService\.js$/,
       /^scripts\/test-story-ad-historical-asset-actions-v61\.js$/,
     ],

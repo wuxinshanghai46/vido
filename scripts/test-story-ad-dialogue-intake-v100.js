@@ -20,13 +20,19 @@ async function main() {
   const referenceStateSource = read('public/story-ad/views/briefReferenceDialogueState.js')
     .replace(/^import[^\n]+briefConversationScroll[^\n]+\n/m, '')
     .replace(/\bexport\s+/g, '');
+  const projectionSource = read('public/story-ad/views/briefDialogueProjection.js')
+    .replace(/^import[^\n]+components\/ui[^\n]+\n/m, '')
+    .replace(/\bexport\s+/g, '');
+  const readinessSource = read('public/story-ad/views/briefDialogueReadiness.js').replace(/\bexport\s+/g, '');
   const dialogueSource = read('public/story-ad/views/briefDialoguePanel.js')
-    .replace(/^import[^\n]+components\/ui[^\n]+\n/m, 'const escapeHtml = value => String(value ?? "");\n')
+    .replace(/^import[^\n]+components\/ui[^\n]+\n/m, '')
     .replace(/^import[^\n]+briefReferenceDialogueState[^\n]+\n/m, '')
     .replace(/^import[^\n]+briefDialoguePolicy[^\n]+\n/m, '')
     .replace(/^import[^\n]+briefConversationScroll[^\n]+\n/m, '')
+    .replace(/^import[^\n]+briefDialogueProjection[^\n]+\n/m, '')
+    .replace(/^import[^\n]+briefDialogueReadiness[^\n]+\n/m, '')
     .replace(/^export \{ referenceDialogueStatus[^\n]+\n/m, '');
-  const dialogue = await asModule(`${scrollSource}\n${policySource}\n${referenceStateSource}\n${dialogueSource}`);
+  const dialogue = await asModule(`${scrollSource}\n${policySource}\n${referenceStateSource}\nconst escapeHtml = value => String(value ?? "");\n${projectionSource}\n${readinessSource}\n${dialogueSource}`);
   const guidedResume = await asModule(read('public/story-ad/views/briefGuidedResume.js'));
   const explicitSettings = await asModule(read('public/story-ad/views/briefExplicitSettings.js'));
   const referenceQuestion = await asModule(read('public/story-ad/views/briefReferenceQuestion.js'));
@@ -111,7 +117,7 @@ async function main() {
   assert.equal(castQuestion.castChoices().find(choice => choice.id === 'presenter_customer').cast_intent.expected_people, 2, '设计师向客户现场介绍必须形成双人合同');
   assert.equal(castQuestion.castChoices().find(choice => choice.id === 'audience_only').cast_intent.expected_people, 0, '客户只是受众时不得生成客户人物资产');
   assert.match(dialogueSource, /conversation\.querySelector\('\[data-reference-question\]'\)/, '同一次对话不得重复插入参考问题');
-  assert.match(dialogueSource, /referenceAttached \|\| referenceSkipped/, '已附参考或已明确跳过时不得再次追问');
+  assert.match(dialogueSource, /referencePresent \|\| referenceSkipped/, '已附参考或已明确跳过时不得再次追问');
   assert.ok(dialogueSource.indexOf("intakeBefore.next === 'reference'") < dialogueSource.indexOf("const previous = String(control('brief')"), '参考阶段的短回答必须在写入核心创意和模型调用前处理');
   assert.match(dialogueSource, /isNoReferenceReply\(text\)/, '“没有参考”必须走本地即时判断');
   assert.ok(dialogueSource.indexOf('routeReferenceInput({') < dialogueSource.indexOf('await onAssist?.({'), '链接与上传意图必须在导演模型调用前完成路由');
@@ -128,7 +134,7 @@ async function main() {
   assert.equal(resumed.answers.length, 3);
   assert.ok(resumed.answers.some(answer => /真实历史朝代/.test(answer)), '宽泛的“古代”必须追问可执行的世界设定');
   assert.doesNotMatch(dialogueSource, /这份设想尚未完成专业创作确认|缺少的内容会在对话中逐项询问/, '恢复已有项目时不得用系统规则冒充下一问');
-  assert.match(dialogueSource, /dataset\.dialogueSuggestions/);
+  assert.match(projectionSource, /dataset\.dialogueSuggestions/);
   assert.doesNotMatch(dialogueSource, /正在理解你的想法/, '等待态不得显示解释性占位文案');
   assert.match(dialogueSource, /pending\.article\.remove\(\)/, '进入规格阶段时必须移除模型过渡气泡，避免规格重复询问');
   assert.doesNotMatch(dialogueSource, /核对右侧确认单/, '所有问题问完后不得把下一步推给右侧确认单');

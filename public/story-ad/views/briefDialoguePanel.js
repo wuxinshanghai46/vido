@@ -1,47 +1,12 @@
-import { escapeHtml } from '../components/ui.js?v=20260822-reference-blueprint-complete-v150';
-import { createReferenceLinkDialogueHandler, referenceDialogueStatus, referenceNextStepDescription, routeReferenceInput, syncReferenceDialogueStatus } from './briefReferenceDialogueState.js?v=20260822-reference-blueprint-complete-v150';
-import { dialogueBudgetReached, referenceDialoguePhase, sanitizeDialogueTopics } from './briefDialoguePolicy.js?v=20260822-reference-blueprint-complete-v150';
-import { followConversationAfter } from './briefConversationScroll.js?v=20260822-reference-blueprint-complete-v150';
+import { escapeHtml } from '../components/ui.js?v=20260822-dialogue-cast-blueprint-v155';
+import { createReferenceLinkDialogueHandler, referenceDialogueStatus, referenceNextStepDescription, routeReferenceInput, syncReferenceDialogueStatus } from './briefReferenceDialogueState.js?v=20260822-dialogue-cast-blueprint-v155';
+import { dialogueBudgetReached,referenceDialoguePhase,sanitizeDialogueTopics } from './briefDialoguePolicy.js?v=20260822-dialogue-cast-blueprint-v155';
+import { followConversationAfter } from './briefConversationScroll.js?v=20260822-dialogue-cast-blueprint-v155';
+import { appendDialogueSuggestions,briefIdeaPreview,contextualDialogueFallback,dialogueHistoryMarkup,ideaMarkup,modeLabel,normalizedDialogueHistory,recordDialogueHistory } from './briefDialogueProjection.js?v=20260822-dialogue-cast-blueprint-v156';
+import { dialogueIntakeState, dialogueProgressState } from './briefDialogueReadiness.js?v=20260822-dialogue-cast-blueprint-v156';
 export { referenceDialogueStatus, referenceNextStepDescription, syncReferenceDialogueStatus };
-
-function modeLabel(value = '') {
-  return value === 'commercial_subject' ? '商业广告' : (value === 'narrative_story' ? '剧情短片' : '待确认');
-}
-
-const IDEA_SECTION_MARKER = /(?:^|\n)\s*(?:【?(?:详细剧情描述|剧情表达补充|出场人物|主要场景|剧情段落|结尾|主题|人物设定|场景设定)】?|#{1,4}\s*(?:剧情|人物|场景))/i;
-
-export function briefIdeaPreview(value = '', max = 420) {
-  const full = String(value || '').trim();
-  if (!full) return { text: '', full: '', collapsed: false };
-  const sectionIndex = full.search(IDEA_SECTION_MARKER);
-  const source = sectionIndex > 80 ? full.slice(0, sectionIndex).trim() : full;
-  const text = source.length > max ? `${source.slice(0, max).trim()}…` : source;
-  return { text, full, collapsed: text !== full };
-}
-
-function ideaMarkup(value = '', location = 'conversation') {
-  const preview = briefIdeaPreview(value, location === 'contract' ? 180 : 420);
-  if (!preview.text) return '<em>等待你的描述</em>';
-  return `<p>${escapeHtml(preview.text)}</p>${preview.collapsed ? `<details class="brief-idea-details"><summary>查看完整设想</summary><div>${escapeHtml(preview.full)}</div></details>` : ''}`;
-}
-
-function normalizedDialogueHistory(value = []) {
-  return (Array.isArray(value) ? value : []).map((item, index) => ({
-    id: String(item?.id || `dialogue_${index + 1}`),
-    seq: index + 1,
-    role: item?.role === 'assistant' ? 'assistant' : 'user',
-    content: String(item?.content || '').trim().slice(0, 1200),
-    topic: String(item?.topic || '').trim().slice(0, 40),
-    selected_answer: item?.selected_answer === true,
-    created_at: String(item?.created_at || ''),
-  })).filter(item => item.content).slice(-60);
-}
-
-function dialogueHistoryMarkup(value = []) {
-  return normalizedDialogueHistory(value).map(item => `<article class="brief-message ${item.role === 'user' ? 'is-user' : 'is-assistant'}" data-dialogue-message-id="${escapeHtml(item.id)}"><span class="brief-message-avatar">${item.role === 'user' ? '你' : '导'}</span><div><small>${item.role === 'user' ? '你' : '导演助理'}</small><div class="brief-bubble"><p>${escapeHtml(item.content)}</p></div></div></article>`).join('');
-}
-
-export function briefDialogueMarkup(bundle = {}, route = {}, options = {}) {
+export { briefIdeaPreview,dialogueIntakeState,dialogueProgressState };
+export function briefDialogueMarkup(bundle={}, _route={}, options={}) {
   const brief = bundle.brief || {};
   const commercial = brief.content_mode_source === 'user' && brief.content_mode === 'commercial_subject';
   const narrative = brief.content_mode_source === 'user' && brief.content_mode === 'narrative_story';
@@ -81,37 +46,7 @@ export function briefDialogueMarkup(bundle = {}, route = {}, options = {}) {
   </section>`;
 }
 
-export function dialogueIntakeState({ name = '', mode = '', idea = '', ideaReady, castIntentConfirmed = false, specificationsConfirmed = false, referenceAttached = false, referenceSkipped = false } = {}) {
-  const missing = [];
-  if (!mode) missing.push('mode');
-  if (!idea) missing.push('idea');
-  else if (ideaReady !== true) missing.push('idea_details');
-  if (idea && ideaReady === true && mode === 'commercial_subject' && !castIntentConfirmed) missing.push('cast');
-  if (idea && ideaReady === true && (mode !== 'commercial_subject' || castIntentConfirmed) && !specificationsConfirmed) missing.push('specifications');
-  if (idea && ideaReady === true && specificationsConfirmed && !referenceAttached && !referenceSkipped) missing.push('reference');
-  if (!name) missing.push('name');
-  return {
-    ready: Boolean(name && mode && idea && ideaReady === true && (mode !== 'commercial_subject' || castIntentConfirmed) && specificationsConfirmed && (referenceAttached || referenceSkipped)),
-    missing,
-    next: missing[0] || '',
-  };
-}
-
-export function dialogueProgressState({ name = '', mode = '', idea = '', ideaReady = false, castIntentConfirmed = false, specificationsConfirmed = false, referenceAttached = false, referenceSkipped = false, confirmed = false } = {}) {
-  const complete = {
-    mode: Boolean(mode),
-    idea: Boolean(idea && ideaReady),
-    name: Boolean(name),
-    cast: mode !== 'commercial_subject' || castIntentConfirmed,
-    specifications: Boolean(specificationsConfirmed),
-    reference: Boolean(referenceAttached || referenceSkipped),
-    confirm: Boolean(confirmed),
-  };
-  const weights = { mode: 15, idea: 30, name: 10, cast: 10, specifications: 15, reference: 10, confirm: 10 };
-  return { percent: Object.keys(weights).reduce((sum, key) => sum + (complete[key] ? weights[key] : 0), 0), complete };
-}
-
-export function bindBriefDialogue(host, { form, referenceState = {}, referenceAttached = false, requireUserInitiation = false, onAssist, onDialogueState, onConfirm, onReference, onReferenceLink, onProfessional } = {}) {
+export function bindBriefDialogue(host, { form, referenceState={}, referenceAttached=false, requireUserInitiation=false, onAssist, onDialogueState, onConfirm, onReference, onReferenceLink, onProfessional }={}) {
   const panel = host.querySelector('[data-brief-dialogue]');
   if (!panel || !form) return () => {};
   const conversation = panel.querySelector('[data-brief-conversation]');
@@ -125,14 +60,7 @@ export function bindBriefDialogue(host, { form, referenceState = {}, referenceAt
   let castIntent = {};
   try { castIntent = JSON.parse(String(control('cast_intent')?.value || '{}')) || {}; } catch { castIntent = {}; }
   const recordHistory = (role, content, { topic = '', selectedAnswer = false } = {}) => {
-    const text = String(content || '').trim();
-    if (!text) return;
-    const previous = history.at(-1);
-    if (previous?.role === role && previous?.content === text && previous?.topic === topic) return;
-    const id = globalThis.crypto?.randomUUID?.() || `dialogue_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-    history = normalizedDialogueHistory([...history, {
-      id, role, content: text, topic, selected_answer: selectedAnswer, created_at: new Date().toISOString(),
-    }]);
+    history = recordDialogueHistory(history, role, content, { topic, selectedAnswer });
     if (control('dialogue_history')) control('dialogue_history').value = JSON.stringify(history);
   };
   const modeAtMount = String(control('content_mode')?.value || '');
@@ -153,27 +81,10 @@ export function bindBriefDialogue(host, { form, referenceState = {}, referenceAt
     return { article, textNode: article.querySelector('.brief-bubble p') };
   };
   const retireSuggestions = () => conversation.querySelectorAll('[data-dialogue-suggestions] button').forEach(button => { button.disabled = true; });
-  const appendSuggestions = (entry, answers = []) => {
-    const values = [...new Set((Array.isArray(answers) ? answers : []).map(value => String(value || '').trim()).filter(Boolean))].slice(0, 3);
-    if (!entry?.article || values.length < 2) return;
-    const actions = document.createElement('div');
-    actions.className = 'brief-quick-actions brief-dialogue-suggestions';
-    actions.dataset.dialogueSuggestions = '';
-    values.forEach(value => {
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.textContent = value;
-      button.addEventListener('click', () => {
-        if (sending) return;
-        retireSuggestions();
-        input.value = value;
-        input.dispatchEvent(new Event('input', { bubbles: true }));
-        submit();
-      });
-      actions.appendChild(button);
-    });
-    entry.article.lastElementChild?.appendChild(actions);
-  };
+  const appendSuggestions = (entry, answers = []) => appendDialogueSuggestions(entry, answers, {
+    isSending: () => sending,
+    onSelect: value => { retireSuggestions(); input.value = value; input.dispatchEvent(new Event('input', { bubbles: true })); submit(); },
+  });
   const streamMessage = async (text, target = null, meta = {}) => {
     const entry = target || message('assistant');
     const value = String(text || '').trim();
@@ -205,7 +116,7 @@ export function bindBriefDialogue(host, { form, referenceState = {}, referenceAt
   const appendReferenceQuestion = async () => {
     if (referenceQuestionLoading || conversation.querySelector('[data-reference-question]') || referencePresent || referenceSkipped) return;
     referenceQuestionLoading = true;
-    const { mountReferenceQuestion, referenceQuestionText } = await import('./briefReferenceQuestion.js?v=20260822-reference-blueprint-complete-v150');
+    const { mountReferenceQuestion, referenceQuestionText } = await import('./briefReferenceQuestion.js?v=20260822-dialogue-cast-blueprint-v155');
     recordHistory('assistant', referenceQuestionText({ mode: String(control('content_mode')?.value || ''), idea: briefIdeaPreview(String(control('brief')?.value || ''), 54).text }), { topic: 'reference' });
     mountReferenceQuestion(conversation, {
       mode: String(control('content_mode')?.value || ''),
@@ -226,7 +137,7 @@ export function bindBriefDialogue(host, { form, referenceState = {}, referenceAt
   const appendSpecificationQuestion = async () => {
     if (specificationQuestionLoading || conversation.querySelector('[data-specification-question]') || specificationsConfirmed) return;
     specificationQuestionLoading = true;
-    const { mountSpecificationQuestion, specificationQuestionText } = await import('./briefSpecificationQuestion.js?v=20260822-reference-blueprint-complete-v150');
+    const { mountSpecificationQuestion, specificationQuestionText } = await import('./briefSpecificationQuestion.js?v=20260822-dialogue-cast-blueprint-v155');
     recordHistory('assistant', specificationQuestionText({ mode: String(control('content_mode')?.value || ''), duration: Number(control('target_duration')?.value || 30) || 30, ratio: String(control('output_ratio')?.value || '9:16'), resolution: String(control('video_resolution')?.value || '1080p') }), { topic: 'specifications' });
     mountSpecificationQuestion(conversation, {
       mode: String(control('content_mode')?.value || ''),
@@ -262,7 +173,7 @@ export function bindBriefDialogue(host, { form, referenceState = {}, referenceAt
   const appendCastQuestion = async () => {
     if (castQuestionLoading || conversation.querySelector('[data-cast-question]') || castIntent?.confirmed === true || String(control('content_mode')?.value || '') !== 'commercial_subject') return;
     castQuestionLoading = true;
-    const { mountCastQuestion, castQuestionText } = await import('./briefCastQuestion.js?v=20260822-reference-blueprint-complete-v150');
+    const { mountCastQuestion, castQuestionText } = await import('./briefCastQuestion.js?v=20260822-dialogue-cast-blueprint-v155');
     const question = castQuestionText();
     recordHistory('assistant', question, { topic: 'on_screen_cast' });
     mountCastQuestion(conversation, {
@@ -351,19 +262,13 @@ export function bindBriefDialogue(host, { form, referenceState = {}, referenceAt
     }
     return phase;
   };
-  const contextualFallback = (text, mode, ready) => {
-    if (!ready) return mode === 'narrative_story'
-      ? '发生什么事后，人物不得不面对这场冲突？'
-      : '你最希望观众看完后记住什么？';
-    return '请选择成片时长、画幅和清晰度。';
-  };
   const submit = async () => {
     const text = input.value.trim();
     if (!text || sending) return;
     sending = true;
     send.disabled = true;
     panel.setAttribute('aria-busy', 'true');
-    const explicitSettings = await import('./briefExplicitSettings.js?v=20260822-reference-blueprint-complete-v150');
+    const explicitSettings = await import('./briefExplicitSettings.js?v=20260822-dialogue-cast-blueprint-v155');
     input.value = '';
     const intakeBefore = sync();
     if (await routeReferenceInput({
@@ -474,7 +379,7 @@ export function bindBriefDialogue(host, { form, referenceState = {}, referenceAt
       });
       ideaReady = result?.idea_ready === true;
       activeQuestionTopic = ideaReady ? '' : (sanitizeDialogueTopics([String(result?.question_topic || '').trim()], mode)[0] || '');
-      const reply = String(result?.dialogue_reply || contextualFallback(text, mode, ideaReady));
+      const reply = String(result?.dialogue_reply || contextualDialogueFallback(mode, ideaReady));
       pending.article.classList.remove('is-thinking');
       if (ideaReady && result?.next_step === 'specifications') pending.article.remove();
       else {
@@ -483,7 +388,7 @@ export function bindBriefDialogue(host, { form, referenceState = {}, referenceAt
       }
     } catch {
       ideaReady = false;
-      const reply = contextualFallback(text, mode, ideaReady);
+      const reply = contextualDialogueFallback(mode, ideaReady);
       pending.article.classList.remove('is-thinking');
       await streamMessage(reply, pending, { topic: activeQuestionTopic || answeredTopic });
     } finally {
@@ -518,7 +423,7 @@ export function bindBriefDialogue(host, { form, referenceState = {}, referenceAt
   const initialReferencePhase = referenceDialoguePhase(currentReference);
   applyReferenceGate(currentReference).catch(() => {});
   if (!requireUserInitiation && initialReferencePhase === 'none' && String(control('brief')?.value || '').trim() && !ideaReady) {
-    import('./briefGuidedResume.js?v=20260822-reference-blueprint-complete-v150').then(({ guidedResumePrompt }) => {
+    import('./briefGuidedResume.js?v=20260822-dialogue-cast-blueprint-v155').then(({ guidedResumePrompt }) => {
       if (disposed) return;
       const guidance = guidedResumePrompt({ mode: String(control('content_mode')?.value || ''), idea: String(control('brief')?.value || '') });
       const entry = message('assistant', guidance.text);
