@@ -349,6 +349,7 @@ function generationPrompt(block = {}, shots = [], contracts = [], repairInstruct
     camera_movement: clipped(beat.camera_movement, 90), entry_frame_state: clipped(beat.entry_frame_state, 90),
     exit_frame_state: clipped(beat.exit_frame_state, 90), screen_direction: clipped(beat.screen_direction, 60),
     object_states: clipped(beat.object_states, 90), characters: beat.characters,
+    action_contract: beat.action_contract || null,
     temporal_evidence: beat.temporal_evidence || null,
   }));
   const oneTake = block.generation_mode === 'one_take' && block.member_indexes.length > 1;

@@ -14,7 +14,7 @@ function compactKeyframePrompt(parts = [], maxChars = 2400) {
     { name: 'context', cap: 140, items: 2, match: /^Campaign brief:|^Photorealistic live-action/i },
     { name: 'subject', cap: 130, items: 2, match: /^Advertised subject|^Shot \d+:/i },
     { name: 'visual', cap: 300, items: 2, match: /User-edited visual override|^Visual:|Final priority:/i },
-    { name: 'action', cap: 180, items: 2, match: /^Action:|^Current shot action:|Visible interaction grounding/i },
+    { name: 'action', cap: 460, items: 3, match: /^Action:|^Current shot action:|^Action staging contract:|Visible interaction grounding/i },
     { name: 'design', cap: 880, items: 10, whole_lines: true, match: /^Shot scope:|^This is an isolated product\/sample comparison insert|^Master environment only|Surface topology lock:|Surface conflict resolution \(authoritative\):|Seam policy:|Finish distribution:|Task-specific surface note:|Motion effect plan:|START KEYFRAME|Effect source state|Later animation target|Preserve the locked scene geometry|Target reference asset|Task-specific effect note:/i },
     { name: 'actor', cap: 700, items: 7, match: /Actor photorealism lock|Actor compliance lock|Person QA required|no-human lock|If the shot includes any body part|actor consistency lock|Actor wardrobe lock|Actor identity|Actor hair|Actor appearance|Actor name|Actor reference|Locked real actor|Locked cast profiles|Do not crop/i },
     { name: 'pet', cap: 340, items: 2, match: /Pet consistency lock/i },
@@ -37,7 +37,11 @@ function compactKeyframePrompt(parts = [], maxChars = 2400) {
   });
   const excerpts = categories.map((category, categoryIndex) => {
     let values = buckets.get(category.name) || [];
-    if (category.name === 'actor') {
+    if (category.name === 'action') {
+      const rank = value => /^Action staging contract:/i.test(value) ? 0
+        : (/^Action:|^Current shot action:/i.test(value) ? 1 : 2);
+      values = values.slice().sort((a, b) => rank(a) - rank(b));
+    } else if (category.name === 'actor') {
       const rank = value => /Actor photorealism lock/i.test(value) ? 0
         : (/Actor compliance lock/i.test(value) ? 1
           : (/actor consistency lock|Actor wardrobe lock/i.test(value) ? 2
@@ -119,6 +123,7 @@ function compactKeyframePrompt(parts = [], maxChars = 2400) {
     if (excerpt.name === 'pet') return /Pet consistency lock:/i.test(excerpt.text);
     if (excerpt.name === 'product') return /Product identity lock:/i.test(excerpt.text);
     if (excerpt.name === 'visual') return /User-edited visual override, highest priority:/i.test(excerpt.text);
+    if (excerpt.name === 'action') return /Action staging contract:/i.test(excerpt.text);
     // Knowledge is an enhancement layer. It may use remaining prompt budget,
     // but it must never evict identity, scene, product, surface or semantic
     // fidelity contracts and make an otherwise valid base generation fail.
@@ -136,7 +141,7 @@ function compactKeyframePrompt(parts = [], maxChars = 2400) {
   };
   // Reserve every generation-critical category before filling optional context.
   // The final output is restored to its natural category order afterwards.
-  const requiredPriority = ['safety', 'visual', 'scene', 'actor', 'product', 'pet', 'design'];
+  const requiredPriority = ['safety', 'visual', 'action', 'scene', 'actor', 'product', 'pet', 'design'];
   for (const name of requiredPriority) {
     for (const excerpt of excerpts.filter(item => item.name === name && requiredExcerpt(item))) reserve(excerpt);
   }

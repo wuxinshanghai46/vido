@@ -74,6 +74,17 @@ class AgentCallContext {
   }
 }
 
+function attachKnowledgeTrace(record, ...contexts) {
+  const rows = contexts.filter(Boolean);
+  const ids = [...new Set(rows.flatMap(item => item.knowledge_ids || []))];
+  record.knowledge = {
+    knowledge_ids: ids,
+    static_fingerprint: rows[0]?.knowledge_fingerprint || '',
+    dynamic_fingerprint: rows[1]?.knowledge_fingerprint || '',
+    injected_count: ids.length,
+  };
+}
+
 // ———————————————————————————————————————————————
 // 单 agent 执行：统一接口
 // 任何 agent 都可以通过此接口被调用
@@ -88,9 +99,10 @@ async function executeAgent(agentId, task, context = null) {
     if (!agent) throw new Error(`Unknown agent: ${agentId}`);
 
     // 组装 KB 上下文：静态注入 + RAG 动态检索
-    const staticCtx = kb.buildAgentContext(agentId, { maxDocs: 3 });
-    const dynamicCtx = kb.searchForAgent(agentId, task, { limit: 5 });
-    const kbContext = [staticCtx, dynamicCtx].filter(Boolean).join('\n\n');
+    const staticCtx = kb.buildAgentContext(agentId, { maxDocs: 3, withTrace: true });
+    const dynamicCtx = kb.searchForAgent(agentId, task, { limit: 5, withTrace: true });
+    attachKnowledgeTrace(record, staticCtx, dynamicCtx);
+    const kbContext = [staticCtx.context, dynamicCtx.context].filter(Boolean).join('\n\n');
 
     // 4 个已有的 callable agent 走专门实现
     let result;
@@ -931,9 +943,10 @@ async function runAgentInPhase(agent, phase, task, priorPhases, ctx) {
     }
 
     // 组装 KB 上下文（静态 + 动态）
-    const staticCtx = kb.buildAgentContext(agent.id, { maxDocs: 2 });
-    const dynamicCtx = kb.searchForAgent(agent.id, task, { limit: 3 });
-    const kbContext = [staticCtx, dynamicCtx].filter(Boolean).join('\n\n');
+    const staticCtx = kb.buildAgentContext(agent.id, { maxDocs: 2, withTrace: true });
+    const dynamicCtx = kb.searchForAgent(agent.id, task, { limit: 3, withTrace: true });
+    attachKnowledgeTrace(phaseRecord, staticCtx, dynamicCtx);
+    const kbContext = [staticCtx.context, dynamicCtx.context].filter(Boolean).join('\n\n');
 
     // 格式化之前阶段的产出
     const priorSummary = priorPhases.length === 0 ? '(无，你是第一阶段)' :

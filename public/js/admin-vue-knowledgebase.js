@@ -53,6 +53,13 @@
           search: '',
           appliesTo: '',
           forceKb: true,
+          candidates: [],
+          candidateOpen: false,
+          candidateForm: {
+            source_url: '', source_label: '', title: '', author: '', published_at: '', summary: '', content: '',
+            factsText: '', inferencesText: '', rulesText: '', limitationsText: '', tagsText: '', appliesText: 'director,storyboard,character_consistency,prompt_engineer,product_manager',
+            collection: 'production', subcategory: '外部学习'
+          },
           importOpen: false,
           importForm: {
             source: '飞书 wiki',
@@ -65,6 +72,9 @@
       computed: {
         collectionIds() {
           return this.collections.length ? this.collections.map(item => item.id) : ['digital_human', 'drama', 'storyboard', 'atmosphere', 'production', 'engineering'];
+        },
+        pendingCandidateCount() {
+          return this.candidates.filter(item => item.status === 'pending').length;
         }
       },
       methods: {
@@ -79,7 +89,7 @@
             this.collections = arr(collections);
             this.agentTypes = arr(agents);
             this.forceKb = forceState?.enabled !== false;
-            await this.loadDocs(force);
+            await Promise.all([this.loadDocs(force), this.loadCandidates(force)]);
           } catch (error) {
             notify('加载知识库失败: ' + (error.message || error), 'error');
           } finally {
@@ -96,6 +106,61 @@
             this.docs = await api.get('/api/admin/knowledgebase?' + params.toString(), { cache: !force, ttl: 8000 });
           } catch (error) {
             notify('加载条目失败: ' + (error.message || error), 'error');
+          }
+        },
+        async loadCandidates(force = false) {
+          try {
+            this.candidates = arr(await api.get('/api/admin/knowledgebase/candidates', { cache: !force, ttl: 5000 }));
+          } catch (error) {
+            notify('加载知识候选失败: ' + (error.message || error), 'error');
+          }
+        },
+        resetCandidateForm() {
+          this.candidateForm = {
+            source_url: '', source_label: '', title: '', author: '', published_at: '', summary: '', content: '',
+            factsText: '', inferencesText: '', rulesText: '', limitationsText: '', tagsText: '', appliesText: 'director,storyboard,character_consistency,prompt_engineer,product_manager',
+            collection: 'production', subcategory: '外部学习'
+          };
+        },
+        async submitCandidate() {
+          const form = this.candidateForm;
+          if (!form.title.trim() || form.content.trim().length < 20) return notify('标题必填，正文至少 20 个字符', 'error');
+          try {
+            await api.post('/api/admin/knowledgebase/candidates', {
+              ...form,
+              facts: String(form.factsText || '').split('\n').map(value => value.trim()).filter(Boolean),
+              inferences: String(form.inferencesText || '').split('\n').map(value => value.trim()).filter(Boolean),
+              executable_rules: String(form.rulesText || '').split('\n').map(value => value.trim()).filter(Boolean),
+              limitations: String(form.limitationsText || '').split('\n').map(value => value.trim()).filter(Boolean),
+              tags: csv(form.tagsText),
+              applies_to: csv(form.appliesText),
+            });
+            notify('知识已进入候选审核区，不会直接影响生成');
+            this.resetCandidateForm();
+            await this.loadCandidates(true);
+          } catch (error) {
+            notify('候选入库失败: ' + (error.message || error), 'error');
+          }
+        },
+        async approveCandidate(candidate) {
+          if (!confirm(`确认将“${candidate.title}”写入正式知识库？`)) return;
+          try {
+            await api.post(`/api/admin/knowledgebase/candidates/${encodeURIComponent(candidate.id)}/approve`, {});
+            notify('审核通过，已写入正式知识库并刷新运行时规则缓存');
+            await Promise.all([this.loadCandidates(true), this.loadDocs(true)]);
+          } catch (error) {
+            notify('审核失败: ' + (error.message || error), 'error');
+          }
+        },
+        async rejectCandidate(candidate) {
+          const note = prompt('请填写拒绝原因（可留空）', '') ?? null;
+          if (note === null) return;
+          try {
+            await api.post(`/api/admin/knowledgebase/candidates/${encodeURIComponent(candidate.id)}/reject`, { review_note: note });
+            notify('候选已拒绝');
+            await this.loadCandidates(true);
+          } catch (error) {
+            notify('拒绝失败: ' + (error.message || error), 'error');
           }
         },
         selectCollection(collection, subcategory = '') {
@@ -214,6 +279,7 @@
                 <option v-for="agent in agentTypes" :key="agent.id" :value="agent.id">{{ agent.name || agent.id }}</option>
               </select>
               <button class="btn-primary" @click="newDoc">+ 新建条目</button>
+              <button class="btn-sm" @click="candidateOpen = true">知识候选 <b v-if="pendingCandidateCount">{{ pendingCandidateCount }}</b></button>
               <button class="btn-sm" @click="preview">预览 Agent 注入</button>
               <button class="btn-sm" @click="importOpen = true">飞书提示词同步</button>
               <label class="kb-check"><input type="checkbox" v-model="forceKb" @change="toggleForce" />强制使用 KB</label>
@@ -294,6 +360,36 @@
               <div class="form-group"><label>适用 Agent</label><input v-model="importForm.applies" placeholder="screenwriter,director" /></div>
               <div class="form-group"><label>提示词内容</label><textarea v-model="importForm.content" rows="14"></textarea></div>
               <div class="form-actions"><button class="btn-primary" @click="doImport">导入</button><button class="btn-sm" @click="importOpen = false">取消</button></div>
+            </div>
+          </div>
+          <div v-if="candidateOpen" class="modal-overlay show" @click.self="candidateOpen = false">
+            <div class="modal-box vue-kb-import kb-candidate-modal">
+              <div class="form-title">知识候选审核</div>
+              <p class="kb-candidate-note">文章、会话和手动资料先进入候选区；只有审核通过后才会进入 Agent 与剧情广告运行时。</p>
+              <div class="kb-candidate-layout">
+                <section class="kb-candidate-form">
+                  <div class="form-row"><div class="form-group"><label>文章链接</label><input v-model="candidateForm.source_url" /></div><div class="form-group"><label>来源说明</label><input v-model="candidateForm.source_label" /></div></div>
+                  <div class="form-row"><div class="form-group"><label>标题</label><input v-model="candidateForm.title" /></div><div class="form-group"><label>作者</label><input v-model="candidateForm.author" /></div><div class="form-group"><label>发布日期</label><input v-model="candidateForm.published_at" /></div></div>
+                  <div class="form-group"><label>摘要</label><input v-model="candidateForm.summary" /></div>
+                  <div class="form-group"><label>原始正文 / 完整研究记录</label><textarea v-model="candidateForm.content" rows="8"></textarea></div>
+                  <div class="form-row"><div class="form-group"><label>已确认事实（每行一条）</label><textarea v-model="candidateForm.factsText" rows="5"></textarea></div><div class="form-group"><label>VIDO 推论（每行一条）</label><textarea v-model="candidateForm.inferencesText" rows="5"></textarea></div></div>
+                  <div class="form-row"><div class="form-group"><label>可执行规则（每行一条）</label><textarea v-model="candidateForm.rulesText" rows="4"></textarea></div><div class="form-group"><label>适用边界（每行一条）</label><textarea v-model="candidateForm.limitationsText" rows="4"></textarea></div></div>
+                  <div class="form-row"><div class="form-group"><label>合集</label><select v-model="candidateForm.collection"><option v-for="id in collectionIds" :key="id" :value="id">{{ id }}</option></select></div><div class="form-group"><label>子分类</label><input v-model="candidateForm.subcategory" /></div><div class="form-group"><label>标签</label><input v-model="candidateForm.tagsText" /></div></div>
+                  <div class="form-group"><label>适用 Agent</label><input v-model="candidateForm.appliesText" /></div>
+                  <button class="btn-primary" @click="submitCandidate">保存为待审核候选</button>
+                </section>
+                <section class="kb-candidate-list">
+                  <article v-for="candidate in candidates" :key="candidate.id" :class="'is-' + candidate.status">
+                    <header><div><small>{{ candidate.source_type }} · {{ candidate.status }}</small><h4>{{ candidate.title }}</h4></div><span>{{ (candidate.applies_to || []).length }} agents</span></header>
+                    <p>{{ candidate.summary || candidate.content.slice(0, 150) }}</p>
+                    <div><a v-if="candidate.source_url" :href="candidate.source_url" target="_blank" rel="noreferrer">查看来源</a><code>{{ candidate.content_hash.slice(0, 12) }}</code></div>
+                    <footer v-if="candidate.status === 'pending'"><button class="btn-primary" @click="approveCandidate(candidate)">审核通过</button><button class="btn-sm danger" @click="rejectCandidate(candidate)">拒绝</button></footer>
+                    <footer v-else><span>{{ candidate.review_note || (candidate.status === 'approved' ? '已进入正式知识库' : '已拒绝') }}</span></footer>
+                  </article>
+                  <div v-if="!candidates.length" class="kb-empty">暂无候选；可在左侧粘贴文章，或等待每日学习采集会话决策。</div>
+                </section>
+              </div>
+              <div class="form-actions"><button class="btn-sm" @click="candidateOpen = false">关闭</button></div>
             </div>
           </div>
         </section>

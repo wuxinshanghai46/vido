@@ -13,6 +13,7 @@ const db = require('../models/database');
 const seedDocs = require('./knowledgeBaseSeed');
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 
 // 自定义 agent 存储（独立 JSON 文件）
 const CUSTOM_AGENTS_FILE = path.resolve(__dirname, '../../outputs/custom_agents.json');
@@ -128,11 +129,23 @@ function _docsForAgent(agentType) {
   return [...byId.values()];
 }
 
+function tracedContext(context = '', docs = []) {
+  const knowledgeIds = [...new Set(docs.map(doc => String(doc.id || '')).filter(Boolean))];
+  const knowledgeFingerprint = crypto.createHash('sha256')
+    .update(JSON.stringify(docs.map(doc => [doc.id, doc.updated_at || doc.created_at || '', doc.source_content_hash || ''])))
+    .digest('hex');
+  return { context, knowledge_ids: knowledgeIds, knowledge_fingerprint: knowledgeFingerprint };
+}
+
+function emptyContext(withTrace = false) {
+  return withTrace ? tracedContext('', []) : '';
+}
+
 // ———————————————————————————————————————————————
 // 为 agent 构建静态上下文（用于注入 systemPrompt）
 // ———————————————————————————————————————————————
 function buildAgentContext(agentType, opts = {}) {
-  const { genre, maxDocs = 12, maxCharsPerDoc = 600, includeCache = true } = opts;
+  const { genre, maxDocs = 12, maxCharsPerDoc = 600, includeCache = true, withTrace = false } = opts;
 
   let docs = _docsForAgent(agentType);
 
@@ -168,7 +181,7 @@ function buildAgentContext(agentType, opts = {}) {
   }
 
   const picked = docs.slice(0, maxDocs);
-  if (picked.length === 0) return '';
+  if (picked.length === 0) return emptyContext(withTrace);
 
   const lines = picked.map(d => {
     const bullets = [];
@@ -187,11 +200,12 @@ function buildAgentContext(agentType, opts = {}) {
     return `${header}\n${bullets.join('\n')}`;
   });
 
-  return [
+  const context = [
     '【知识库上下文（由管理后台知识库自动注入，请深度学习并严格遵循下列要点）】',
     ...lines,
     '【上下文结束】',
   ].join('\n\n');
+  return withTrace ? tracedContext(context, picked) : context;
 }
 
 // 全量 KB 注入：将该 Agent 的所有知识一次性注入（用于强制学习模式）
@@ -229,8 +243,8 @@ function buildFullKBContext(agentType, opts = {}) {
 //   const dynamicCtx = kb.searchForAgent('director', '沙漠 末日 孤独 长镜头', { limit: 5 });
 // ———————————————————————————————————————————————
 function searchForAgent(agentType, query, opts = {}) {
-  const { limit = 5, maxCharsPerDoc = 600, team = null } = opts;
-  if (!query) return '';
+  const { limit = 5, maxCharsPerDoc = 600, team = null, withTrace = false } = opts;
+  if (!query) return emptyContext(withTrace);
 
   // 1. 先取该 agent 可用的所有 docs
   let docs = _docsForAgent(agentType);
@@ -238,7 +252,7 @@ function searchForAgent(agentType, query, opts = {}) {
   // 2. 如果指定了 team，再按团队过滤（双重保险：agent 属于此 team）
   if (team) {
     const teamAgentIds = AGENT_TYPES.filter(a => a.team === team).map(a => a.id);
-    if (!teamAgentIds.includes(agentType)) return '';
+    if (!teamAgentIds.includes(agentType)) return emptyContext(withTrace);
   }
 
   // 3. 提取 query 关键词（简单 tokenize）
@@ -247,7 +261,7 @@ function searchForAgent(agentType, query, opts = {}) {
     .split(/[\s,，。；、\/\|·\-—_]+/)
     .filter(t => t && t.length >= 2);
 
-  if (tokens.length === 0) return '';
+  if (tokens.length === 0) return emptyContext(withTrace);
 
   // 4. 打分排序
   const scored = docs.map(d => {
@@ -274,7 +288,7 @@ function searchForAgent(agentType, query, opts = {}) {
   scored.sort((a, b) => b.score - a.score);
   const picked = scored.slice(0, limit).map(x => x.d);
 
-  if (picked.length === 0) return '';
+  if (picked.length === 0) return emptyContext(withTrace);
 
   const lines = picked.map(d => {
     const bullets = [];
@@ -290,11 +304,12 @@ function searchForAgent(agentType, query, opts = {}) {
     return `${header}\n${bullets.join('\n')}`;
   });
 
-  return [
+  const context = [
     '【动态检索到的知识（基于你当前任务的关键词匹配，请深度学习并在输出中体现）】',
     ...lines,
     '【动态知识结束】',
   ].join('\n\n');
+  return withTrace ? tracedContext(context, picked) : context;
 }
 
 // ———————————————————————————————————————————————

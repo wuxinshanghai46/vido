@@ -90,6 +90,8 @@
   }
 
   function renderPeople(people = {}) {
+    const completeness = people.completeness || {};
+    const completenessPanel = completeness.total ? `<article class="dh-nsa-director-action"><div><b>人物完整度 ${Number(completeness.score) || 0}%</b><span>已覆盖 ${Number(completeness.completed) || 0}/${Number(completeness.total) || 0} 个身份与制作维度</span>${(completeness.checks || []).map(item => `<span>${item.pass ? '✓' : '○'} ${escapeHtml(item.label)} · ${escapeHtml(item.detail || '')}</span>`).join('')}</div></article>` : '';
     const actions = (people.action_pack || []).map(action => `
       <article class="dh-nsa-director-action">
         ${action.image_url ? `<img src="${escapeHtml(action.image_url)}" alt="第 ${Number(action.shot_index) || 1} 镜动作" loading="lazy" decoding="async">` : ''}
@@ -101,12 +103,12 @@
           ${action.expression_change ? `<span>表情变化：${escapeHtml(action.expression_change)}</span>` : ''}
         </div>
       </article>`).join('');
-    if (!actions) return '';
+    if (!actions && !completenessPanel) return '';
     return `
       <section class="dh-nsa-director-block">
         <div class="dh-nsa-director-title"><div><small>剧情生成后的执行记录</small><h3>人物动作前后状态</h3></div><span>${(people.action_pack || []).length} 组动作</span></div>
         <p class="dh-nsa-director-purpose">人物的姓名、外貌、服装和妆造只在下方人物设置中编辑；这里仅显示剧情生成后新增的动作连续性记录。</p>
-        <div class="dh-nsa-director-actions">${actions}</div>
+        <div class="dh-nsa-director-actions">${completenessPanel}${actions}</div>
       </section>`;
   }
 
@@ -174,6 +176,10 @@
   function shotCard(shot = {}) {
     const preview = shot.keyframe?.image_url;
     const candidateCount = (shot.keyframe?.candidates || []).length + (shot.video?.candidates || []).length;
+    const card = shot.director_card || {};
+    const actionContract = shot.action_contract || {};
+    const phaseLabels = { setup: '准备', anticipation: '预备', attack: '主动作', defense: '防御', contact: '接触', reaction: '反馈', counter: '回应', recovery: '恢复' };
+    const phaseRows = Object.entries(actionContract.phases || {}).map(([key, value]) => `<span>${escapeHtml(phaseLabels[key] || key)}：${escapeHtml(value)}</span>`).join('');
     return `
       <article class="dh-nsa-director-shot">
         <div class="dh-nsa-director-shot-preview">
@@ -184,6 +190,9 @@
           <header><span>${Number(shot.index) || 1}</span><div><small>${escapeHtml(shot.narrative_function || '剧情镜头')}</small><h4>${escapeHtml(shot.title)}</h4></div></header>
           <p>${escapeHtml(shot.visual || '')}</p>
           ${shot.action ? `<p><b>人物/主体动作：</b>${escapeHtml(shot.action)}</p>` : ''}
+          ${actionContract.phase_count ? `<div class="dh-nsa-director-tags change"><b>动作节拍</b>${phaseRows}</div>` : ''}
+          ${(card.camera || card.staging || card.performance) ? `<div class="dh-nsa-director-state-row"><div><small>导演目标</small><p>${escapeHtml(card.objective || '待补齐')}</p></div><div><small>调度 / 机位</small><p>${escapeHtml([card.staging, card.camera].filter(Boolean).join(' · '))}</p></div><div><small>表演 / 连续性</small><p>${escapeHtml([card.performance, card.continuity].filter(Boolean).join(' · '))}</p></div></div>` : ''}
+          ${shot.previs_3d?.recommended ? `<p><b>建议使用3D导演预演：</b>${escapeHtml((shot.previs_3d.reasons || []).join('；'))}<br><small>${escapeHtml(shot.previs_3d.capability_boundary || '')}</small></p>` : ''}
           ${shot.expression ? `<p><b>情绪：</b>${escapeHtml(shot.expression)}</p>` : ''}
           ${shot.scene?.name ? `<p><b>场景：</b>${escapeHtml(shot.scene.name)}${shot.scene.zone ? ` · ${escapeHtml(shot.scene.zone)}` : ''}</p>` : ''}
           <div class="dh-nsa-director-state-row">

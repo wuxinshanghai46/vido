@@ -18,6 +18,7 @@
 const fs = require('fs');
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
+const learningTime = require('./learningTimeService');
 
 // ———————————————————————————————————————————————
 // Source 基类
@@ -50,7 +51,7 @@ class SessionDigestSource extends KnowledgeSource {
 
   async fetch(context) {
     // 优先读新路径 docs/logs/sessions/，回退到旧路径 docs/sessions/
-    const newSessionDir = path.resolve(__dirname, '../../docs/logs/sessions');
+    const newSessionDir = path.resolve(context.sessionsDir || this.opts.sessionsDir || path.resolve(__dirname, '../../docs/logs/sessions'));
     const legacySessionDir = path.resolve(__dirname, '../../docs/sessions');
     const sessionDir = fs.existsSync(newSessionDir) ? newSessionDir : legacySessionDir;
     if (!fs.existsSync(sessionDir)) return [];
@@ -59,8 +60,8 @@ class SessionDigestSource extends KnowledgeSource {
     if (files.length === 0) return [];
 
     // 只看昨天和今天的日志
-    const today = new Date().toISOString().slice(0, 10);
-    const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+    const today = learningTime.dateKey();
+    const yesterday = learningTime.previousDateKey();
     const recentFiles = files.filter(f => f.includes(today) || f.includes(yesterday));
     if (recentFiles.length === 0) return [];
 
@@ -69,29 +70,31 @@ class SessionDigestSource extends KnowledgeSource {
     for (const file of recentFiles) {
       const content = fs.readFileSync(path.join(sessionDir, file), 'utf8');
 
-      // 简单规则：匹配"## 关键决策" / "## 用户偏好" / "## 待办" 段落
-      const sections = {
-        '关键决策': this.extractSection(content, '关键决策'),
-        '用户偏好': this.extractSection(content, '用户偏好'),
-      };
-
-      for (const [type, text] of Object.entries(sections)) {
-        if (!text || text.length < 50) continue;
-        const id = `kb_session_${file.replace('.md', '')}_${type}`;
+      // 统一解析项目助理的真实事件标题。候选知识仍需审核，不能因标题中出现关键词就直接成为运行时规则。
+      const sections = this.extractKnowledgeSections(content);
+      for (const { type, heading, text, index } of sections) {
+        if (!text || text.length < 20) continue;
+        const stableHeading = this.hash(`${heading}\n${text}`).slice(0, 12);
+        const id = `kb_session_${file.replace('.md', '')}_${type}_${stableHeading || index}`;
         if ((context.existingIds || new Set()).has(id)) continue;
 
         docs.push({
           id,
+          source_type: 'session_digest',
           collection: 'engineering',
           subcategory: '自学习机制',
-          title: `[session] ${file.replace('.md', '')} ${type}`,
-          summary: `从 ${file} 自动提炼的${type}`,
+          title: `[session] ${file.replace('.md', '')} ${heading}`,
+          summary: `从 ${file} 提取的${type}候选，审核后才能进入正式知识库`,
           content: text.slice(0, 2000),
-          tags: ['session', '自动提炼', type],
+          facts: type === '验证' ? text.split('\n').map(value => value.replace(/^[-*]\s*/, '').trim()).filter(Boolean).slice(0, 12) : [],
+          inferences: [],
+          limitations: ['会话日志只能证明项目内决策与执行记录，不能替代外部文章原文或供应商能力证据。'],
+          tags: ['session', '知识候选', type],
           keywords: ['session digest', 'auto-extracted'],
           prompt_snippets: [],
-          applies_to: ['workflow_engineer', 'executive_producer'],
-          source: `docs/sessions/${file} - 自动提炼`,
+          applies_to: this.appliesTo(type),
+          source: `docs/logs/sessions/${file} - 候选提取`,
+          source_label: `docs/logs/sessions/${file}#${heading}`,
           lang: 'zh',
           enabled: true,
         });
@@ -104,6 +107,40 @@ class SessionDigestSource extends KnowledgeSource {
     const re = new RegExp(`##[^\\n]*${title}[^\\n]*\\n([\\s\\S]*?)(?=\\n## |$)`, 'i');
     const m = md.match(re);
     return m ? m[1].trim() : '';
+  }
+
+  extractKnowledgeSections(md = '') {
+    const rows = [];
+    const re = /(?:^|\r?\n)##\s+([^\r\n]+)\r?\n([\s\S]*?)(?=\r?\n##\s+|$)/g;
+    const types = [
+      ['决策', /决策|决定|授权/],
+      ['用户偏好', /用户偏好|偏好|禁忌/],
+      ['需求', /用户需求|用户要求|需求/],
+      ['反馈', /用户反馈|反馈/],
+      ['根因', /根因|Bug|缺陷|异常/],
+      ['验证', /验证|验收|核对|审计|发布结果/],
+    ];
+    let match;
+    while ((match = re.exec(String(md || ''))) !== null) {
+      const heading = match[1].trim();
+      if (/当日概览|事件流水|每日学习事件/.test(heading)) continue;
+      const type = types.find(([, pattern]) => pattern.test(heading))?.[0];
+      if (!type) continue;
+      rows.push({ heading, type, text: match[2].trim(), index: rows.length + 1 });
+    }
+    return rows;
+  }
+
+  appliesTo(type = '') {
+    if (type === '根因' || type === '验证') return ['project_manager', 'project_assistant', 'test_engineer', 'workflow_engineer'];
+    if (type === '需求' || type === '反馈') return ['product_manager', 'project_manager', 'project_assistant'];
+    return ['project_manager', 'project_assistant', 'executive_producer'];
+  }
+
+  hash(value = '') {
+    let h = 0;
+    for (let i = 0; i < value.length; i++) h = ((h << 5) - h + value.charCodeAt(i)) | 0;
+    return Math.abs(h).toString(36);
   }
 }
 
@@ -196,7 +233,7 @@ class ManualFileSource extends KnowledgeSource {
   }
 
   async fetch(context) {
-    const dir = path.resolve(__dirname, '../../outputs/kb_manual');
+    const dir = path.resolve(context.manualDir || this.opts.manualDir || path.join(process.env.OUTPUT_DIR || path.resolve(__dirname, '../../outputs'), 'kb_manual'));
     if (!fs.existsSync(dir)) return [];
 
     const files = fs.readdirSync(dir).filter(f => f.endsWith('.json'));

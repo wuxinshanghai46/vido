@@ -3,11 +3,10 @@
  *
  * 功能：
  *   1. 每天 00:00 自动触发（Node 原生 setTimeout，无新依赖）
- *   2. 从所有 knowledgeSources 拉取新知识并增量写入 KB
- *   3. 对每个 agent 计算"今天新增了哪些相关的 KB 条目"
- *   4. 为每个 agent 生成 daily digest 写入 docs/learning/YYYY-MM-DD/<agent_id>.md
- *   5. 生成总日 digest 写入 docs/learning/YYYY-MM-DD/_summary.md
- *   6. 写入会话日志 docs/sessions/YYYY-MM-DD.md 记录学习事件
+ *   2. 从所有 knowledgeSources 拉取知识候选，经审核后才写入 KB
+ *   3. 对每个 agent 计算"今天审核新增了哪些相关的 KB 条目"
+ *   4. 为每个 agent 生成 daily digest 写入持久化 learning/YYYY-MM-DD/<agent_id>.md
+ *   5. 生成总日 digest并写入会话日志
  */
 
 const fs = require('fs');
@@ -15,6 +14,8 @@ const path = require('path');
 const db = require('../models/database');
 const kb = require('./knowledgeBaseService');
 const sources = require('./knowledgeSources');
+const candidates = require('./knowledgeCandidateService');
+const learningTime = require('./learningTimeService');
 
 // ═══════════════════════════════════════════════════
 // 【v7 统一日志目录】所有日志集中在 docs/logs/ 下
@@ -25,12 +26,18 @@ const sources = require('./knowledgeSources');
 //     ├── deployments/     部署记录 (按天)
 //     └── README.md        日志索引
 // ═══════════════════════════════════════════════════
-const LOGS_ROOT = path.resolve(__dirname, '../../docs/logs');
+const PROJECT_ROOT = path.resolve(__dirname, '../..');
+const OUTPUT_ROOT = path.resolve(process.env.OUTPUT_DIR || path.join(PROJECT_ROOT, 'outputs'));
+const externalOutputRoot = OUTPUT_ROOT !== PROJECT_ROOT && !OUTPUT_ROOT.startsWith(`${PROJECT_ROOT}${path.sep}`);
+// 本地继续遵守项目 docs/logs 协议；生产 OUTPUT_DIR 位于数据盘时自动迁出不可变发布目录。
+const LOGS_ROOT = path.resolve(process.env.VIDO_LOGS_ROOT || (externalOutputRoot
+  ? path.join(path.dirname(OUTPUT_ROOT), 'logs')
+  : path.join(PROJECT_ROOT, 'docs/logs')));
 const LEARNING_DIR = path.join(LOGS_ROOT, 'learning');
 const SESSIONS_DIR = path.join(LOGS_ROOT, 'sessions');
 const CHANGES_DIR = path.join(LOGS_ROOT, 'changes');
 const DEPLOYMENTS_DIR = path.join(LOGS_ROOT, 'deployments');
-const STATE_FILE = path.resolve(__dirname, '../../outputs/daily_learn_state.json');
+const STATE_FILE = path.join(OUTPUT_ROOT, 'daily_learn_state.json');
 
 // 启动时一次性迁移：docs/sessions / docs/learning → docs/logs/{sessions,learning}
 function migrateLogsFromLegacy() {
@@ -122,9 +129,9 @@ docs/logs/
 
 ### 🎓 learning - 每日学习
 每天 00:00 由 \`dailyLearnService\` 自动触发：
-1. 从所有 knowledgeSources 拉取新知识
-2. 增量写入 KB
-3. 为 22 个 agent 各生成一份 digest
+1. 从所有 knowledgeSources 拉取知识候选
+2. 管理员审核通过后增量写入 KB
+3. 为各 agent 生成已审核知识 digest
 4. 追加事件到当天 sessions 日志
 
 ### 🔧 changes - 修改日志
@@ -206,7 +213,7 @@ function docsForLearningAgent(agentId, docs = []) {
 // ———————————————————————————————————————————————
 async function runDailyLearn({ manual = false } = {}) {
   const runId = Date.now();
-  const today = new Date().toISOString().slice(0, 10);
+  const today = learningTime.dateKey();
   const startTime = new Date();
   console.log(`[DailyLearn] 🌅 开始每日学习 (${manual ? '手动' : '自动'}) - ${today}`);
 
@@ -215,28 +222,35 @@ async function runDailyLearn({ manual = false } = {}) {
 
   // Step 1: 从所有 source 拉新知识
   let fetchResults = {};
-  let newDocsFromSources = [];
+  let sourceCandidates = [];
+  const candidateResults = { created: 0, updated: 0, duplicate: 0, failed: 0 };
   try {
     fetchResults = await sources.fetchAllSources({
       lastRunAt: state.lastRunAt,
       existingIds,
+      sessionsDir: SESSIONS_DIR,
+      manualDir: path.join(OUTPUT_ROOT, 'kb_manual'),
     });
     for (const [sid, result] of Object.entries(fetchResults)) {
-      if (result.docs) newDocsFromSources.push(...result.docs);
+      if (result.docs) sourceCandidates.push(...result.docs);
     }
   } catch (e) {
     console.error('[DailyLearn] fetchAllSources failed:', e.message);
   }
 
-  // Step 2: 增量写入 KB
-  if (newDocsFromSources.length > 0) {
+  // Step 2: 所有 source 先进入候选审核区。任何外部文字都不能绕过审核直接成为生成规则。
+  for (const sourceCandidate of sourceCandidates) {
     try {
-      db.bulkInsertKnowledgeDocs(newDocsFromSources);
-      console.log(`[DailyLearn] ✓ 从 source 新增 ${newDocsFromSources.length} 条 KB`);
-    } catch (e) {
-      console.warn('[DailyLearn] bulkInsert failed:', e.message);
+      const result = candidates.ingest(sourceCandidate);
+      if (result.created) candidateResults.created += 1;
+      else if (result.updated) candidateResults.updated += 1;
+      else candidateResults.duplicate += 1;
+    } catch (error) {
+      candidateResults.failed += 1;
+      console.warn('[DailyLearn] candidate ingest failed:', error.message);
     }
   }
+  if (sourceCandidates.length) console.log(`[DailyLearn] 候选采集: ${JSON.stringify(candidateResults)}`);
 
   // Step 3: 计算昨今 KB 差分
   const currentDocs = db.listKnowledgeDocs({ enabledOnly: true });
@@ -261,7 +275,7 @@ async function runDailyLearn({ manual = false } = {}) {
       agent_name: agent.name,
       new_docs_count: agentNewDocs.length,
       total_docs: docsForLearningAgent(agent.id, currentDocs).length,
-      digest_file: `docs/learning/${today}/${agent.id}.md`,
+      digest_file: path.relative(PROJECT_ROOT, filePath).replace(/\\/g, '/'),
     });
   }
 
@@ -270,7 +284,8 @@ async function runDailyLearn({ manual = false } = {}) {
     today,
     startTime,
     fetchResults,
-    newDocsFromSources: newDocsFromSources.length,
+    sourceCandidates: sourceCandidates.length,
+    candidateResults,
     totalKBChange: {
       before: state.lastSnapshot.length,
       after: currentDocs.length,
@@ -285,6 +300,7 @@ async function runDailyLearn({ manual = false } = {}) {
     runId,
     manual,
     newDocsCount: newDocs.length,
+    pendingCandidates: candidates.stats().pending,
     agentCount: agentTypes.length,
   });
 
@@ -304,7 +320,7 @@ async function runDailyLearn({ manual = false } = {}) {
     new_docs: newDocs.length,
     total_docs: currentDocs.length,
     agent_digests: agentDigests,
-    summary_file: `docs/learning/${today}/_summary.md`,
+    summary_file: path.relative(PROJECT_ROOT, path.join(digestDir, '_summary.md')).replace(/\\/g, '/'),
   };
 }
 
@@ -312,7 +328,7 @@ async function runDailyLearn({ manual = false } = {}) {
 // 为单个 agent 生成 digest
 // ———————————————————————————————————————————————
 function generateAgentDigest(agent, newDocs, allDocs) {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = learningTime.dateKey();
   const agentDocs = docsForLearningAgent(agent.id, allDocs);
 
   const lines = [];
@@ -372,17 +388,18 @@ function generateAgentDigest(agent, newDocs, allDocs) {
 // ———————————————————————————————————————————————
 // 生成总日 summary
 // ———————————————————————————————————————————————
-function generateDailySummary({ today, startTime, fetchResults, newDocsFromSources, totalKBChange, agentDigests }) {
+function generateDailySummary({ today, startTime, fetchResults, sourceCandidates, candidateResults, totalKBChange, agentDigests }) {
   const lines = [];
   lines.push(`# VIDO AI 团队每日学习总结 - ${today}`);
   lines.push('');
   lines.push(`> 自动生成于 ${startTime.toISOString()}  `);
-  lines.push(`> 触发时机: 每日 00:00 UTC  `);
+  lines.push(`> 触发时机: 每日 00:00 Asia/Shanghai  `);
   lines.push('');
   lines.push('## 📊 学习概览');
   lines.push('');
   lines.push(`- **KB 总量变化**: ${totalKBChange.before} → ${totalKBChange.after} (+${totalKBChange.added})`);
-  lines.push(`- **从 source 新增**: ${newDocsFromSources} 条`);
+  lines.push(`- **采集知识候选**: ${sourceCandidates} 条（新增 ${candidateResults.created} / 更新 ${candidateResults.updated} / 重复 ${candidateResults.duplicate} / 失败 ${candidateResults.failed}）`);
+  lines.push(`- **审核后新增 KB**: ${totalKBChange.added} 条`);
   lines.push(`- **涉及 agent 数**: ${agentDigests.length}`);
   lines.push(`- **产出 digest 文件**: ${agentDigests.length + 1} 份`);
   lines.push('');
@@ -437,12 +454,13 @@ function generateDailySummary({ today, startTime, fetchResults, newDocsFromSourc
 function appendToSessionLog(today, data) {
   try {
     const logFile = path.join(SESSIONS_DIR, `${today}.md`);
-    const timestamp = new Date().toTimeString().slice(0, 5);
+    const timestamp = learningTime.timeKey();
     const entry = `
 ## [${timestamp}] 每日学习事件${data.manual ? '（手动触发）' : '（自动 00:00）'}
 - KB 新增: ${data.newDocsCount} 条
+- 待审核知识候选: ${data.pendingCandidates} 条
 - Agent digest: ${data.agentCount} 份
-- 详情: docs/learning/${today}/_summary.md
+- 详情: ${path.relative(PROJECT_ROOT, path.join(LEARNING_DIR, today, '_summary.md')).replace(/\\/g, '/')}
 `;
     // 如果日志文件不存在就创建
     if (!fs.existsSync(logFile)) {
@@ -508,7 +526,7 @@ function readRecentDigests(days = 3) {
 // ———————————————————————————————————————————————
 async function forceFullStudy() {
   const kb = require('./knowledgeBaseService');
-  const today = new Date().toISOString().slice(0, 10);
+  const today = learningTime.dateKey();
   console.log(`[ForceStudy] 🎓 开始强制全量学习...`);
 
   const agentTypes = kb.listAgentTypes();
@@ -564,7 +582,7 @@ async function forceFullStudy() {
 }
 
 function generateFullStudyDigest(agent, docs) {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = learningTime.dateKey();
   const lines = [];
   lines.push(`# ${agent.emoji} ${agent.name} 全量知识学习报告`);
   lines.push(`> 日期: ${today} · 强制全量学习模式`);

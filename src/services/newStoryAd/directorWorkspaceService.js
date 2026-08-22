@@ -88,6 +88,14 @@ function peopleProjection(ctx = {}, blueprint = {}, personProduction = {}) {
     ...viewMedia(personAsset.view_images, 12),
     ...viewMedia(dossier.atomic_assets, 20),
   ];
+  const completenessChecks = [
+    { key: 'identity', label: '身份锚点', pass: !!(personAsset.image_url || baseViews.length), detail: personAsset.image_url || baseViews.length ? '已有主参考或身份视角' : '缺少主参考与身份视角' },
+    { key: 'full_body', label: '完整体态', pass: baseViews.some(view => /body|front|全身|正面/i.test(`${view.id} ${view.label}`)), detail: '需能核对头身比例与鞋履' },
+    { key: 'wardrobe', label: '服装细节', pass: Array.isArray(dossier.atomic_assets) && dossier.atomic_assets.some(item => /wardrobe|detail|服装|妆造/i.test(`${item?.kind} ${item?.label}`)), detail: '需覆盖服装、材质或配饰细节' },
+    { key: 'expressions', label: '表情范围', pass: Array.isArray(dossier.expressions) && dossier.expressions.length > 0, detail: '需覆盖剧情所需表情变化' },
+    { key: 'action', label: '动作连续性', pass: actionAssets.length > 0, detail: '剧情生成后按镜头形成动作前后状态' },
+  ];
+  const completed = completenessChecks.filter(item => item.pass).length;
   return {
     status: clean(dossier.status || (personAsset.image_url ? 'asset_ready' : (characters.length ? 'profile_ready' : 'not_required')), 40),
     dossier_revision: Math.max(0, Number(dossier.revision || personAsset.person_revision || 0) || 0),
@@ -110,6 +118,13 @@ function peopleProjection(ctx = {}, blueprint = {}, personProduction = {}) {
     wardrobe_detail_count: Array.isArray(dossier.atomic_assets)
       ? dossier.atomic_assets.filter(item => item?.kind === 'wardrobe' || item?.kind === 'detail').length
       : 0,
+    completeness: {
+      score: Math.round((completed / completenessChecks.length) * 100),
+      completed,
+      total: completenessChecks.length,
+      checks: completenessChecks,
+      missing: completenessChecks.filter(item => !item.pass).map(item => item.label),
+    },
     action_pack: actionAssets.slice(0, 30).map((asset, index) => ({
       id: clean(asset?.id || `action_${index + 1}`, 100),
       shot_index: Math.max(1, Number(asset?.contract?.shot_index ?? index) + (Number(asset?.contract?.shot_index ?? index) === 0 ? 1 : 0)),
@@ -260,6 +275,13 @@ function shotProjection({ shot = {}, position = 0, ctx = {}, sceneAssets = [], k
   const videoCandidates = Array.isArray(clip.candidates)
     ? clip.candidates
     : (Array.isArray(clip.attempts) ? clip.attempts : []);
+  const actionContract = object(shot.action_contract);
+  const phases = object(actionContract.phases);
+  const actionPhaseCount = Object.values(phases).filter(value => clean(value, 20)).length;
+  const complexAction = actionPhaseCount >= 3 || list(actionContract.participants, 12, 100).length >= 2
+    || list(actionContract.props, 12, 100).length > 0 || /orbit|tracking|handheld|环绕|跟拍|手持/i.test(shot.camera_movement || '');
+  const spatialComplexity = list(shot.zone_ids, 12, 80).length > 1 || list(shot.anchor_ids, 20, 80).length >= 3
+    || /穿越|绕行|遮挡|楼梯|多层|追逐|打斗|交互/i.test(`${shot.action || ''} ${actionContract.spatial_relation || ''}`);
   return {
     index: Math.max(1, Number(shot.index || shot.shot_index || position + 1) || position + 1),
     title: clean(shot.title || `第 ${position + 1} 镜`, 120),
@@ -267,6 +289,32 @@ function shotProjection({ shot = {}, position = 0, ctx = {}, sceneAssets = [], k
     narrative_function: clean(shot.purpose || shot.role, 260),
     visual: clean(shot.visual || shot.story_visual || shot.promo_visual, 520),
     action: clean(shot.action, 360),
+    action_contract: {
+      participants: list(actionContract.participants, 12, 100),
+      props: list(actionContract.props, 12, 100),
+      spatial_relation: clean(actionContract.spatial_relation, 360),
+      camera_axis: clean(actionContract.camera_axis, 180),
+      screen_direction: clean(actionContract.screen_direction, 180),
+      start_pose: clean(actionContract.start_pose, 300),
+      phases: Object.fromEntries(Object.entries(phases).map(([key, value]) => [key, clean(value, 300)]).filter(([, value]) => value)),
+      end_pose: clean(actionContract.end_pose, 300),
+      continuity_notes: clean(actionContract.continuity_notes, 500),
+      phase_count: actionPhaseCount,
+    },
+    director_card: {
+      objective: clean(shot.purpose || shot.role, 260),
+      staging: clean(actionContract.spatial_relation || shot.subject_position || shot.scene_zone, 360),
+      camera: clean([shot.shot_size, shot.camera_angle, shot.lens_mm ? `${shot.lens_mm}mm` : '', shot.camera_movement].filter(Boolean).join(' · '), 260),
+      performance: clean([actionContract.start_pose, ...Object.values(phases), actionContract.end_pose].filter(Boolean).join(' → ') || shot.action, 700),
+      continuity: clean(actionContract.continuity_notes || [shot.entry_frame_state, shot.exit_frame_state].filter(Boolean).join(' → '), 500),
+      evidence: list(temporal.evidence_requirements || shot.keyframe_notes, 10, 240),
+    },
+    previs_3d: {
+      recommended: complexAction || spatialComplexity,
+      level: spatialComplexity ? 'structured_3d' : (complexAction ? 'camera_blocking' : 'not_required'),
+      reasons: [complexAction ? '动作/机位编排复杂' : '', spatialComplexity ? '存在空间路径、遮挡或多锚点验证需求' : ''].filter(Boolean),
+      capability_boundary: '结构化3D导演预演用于机位、路径与遮挡验证，不等于真实6DoF或最终画面生成。',
+    },
     expression: clean(shot.expression_change || shot.emotional_turn || shot.emotion, 180),
     scene: {
       id: clean(shot.scene_id || shot.scene_asset_id, 100),

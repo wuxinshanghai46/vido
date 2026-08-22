@@ -39,6 +39,7 @@ const FINISH_DISTRIBUTIONS = ['auto', 'uniform', 'gradient', 'regional', 'sample
 const SECONDARY_SURFACE_POLICIES = ['auto', 'forbidden', 'task_defined'];
 const MOTION_EFFECTS = ['none', 'particle_assembly', 'mechanical_assembly', 'explode_view', 'layer_separation', 'material_morph', 'cutaway_reveal', 'before_after_reveal', 'fade', 'dissolve', 'material_flow', 'custom'];
 const EFFECT_INTENSITIES = ['low', 'medium', 'high'];
+const ACTION_PHASE_KEYS = ['setup', 'anticipation', 'attack', 'defense', 'contact', 'reaction', 'counter', 'recovery'];
 
 function normalizeSurfaceTopology(input = null) {
   const raw = typeof input === 'string' ? { mode: input } : (input && typeof input === 'object' ? input : {});
@@ -229,12 +230,54 @@ function normalizeMotionEffect(input = null) {
   return meaningful ? effect : undefined;
 }
 
+function normalizeActionContract(input = null) {
+  const raw = input && typeof input === 'object' && !Array.isArray(input) ? input : {};
+  const phasesInput = raw.phases && typeof raw.phases === 'object' ? raw.phases : {};
+  const phases = Object.fromEntries(ACTION_PHASE_KEYS.map(key => [key, clean(phasesInput[key] || raw[key] || '', 360)]));
+  const contract = {
+    schema_version: 1,
+    participants: (Array.isArray(raw.participants) ? raw.participants : String(raw.participants || '').split(/[,，；;]/))
+      .map(value => clean(value, 100)).filter(Boolean).slice(0, 12),
+    props: (Array.isArray(raw.props) ? raw.props : String(raw.props || raw.weapons || '').split(/[,，；;]/))
+      .map(value => clean(value, 100)).filter(Boolean).slice(0, 12),
+    spatial_relation: clean(raw.spatial_relation || raw.spatialRelation || '', 360),
+    camera_axis: clean(raw.camera_axis || raw.cameraAxis || '', 180),
+    screen_direction: clean(raw.screen_direction || raw.screenDirection || '', 180),
+    start_pose: clean(raw.start_pose || raw.startPose || '', 300),
+    phases,
+    end_pose: clean(raw.end_pose || raw.endPose || '', 300),
+    continuity_notes: clean(raw.continuity_notes || raw.continuityNotes || '', 500),
+  };
+  const meaningful = contract.participants.length || contract.props.length || contract.spatial_relation
+    || contract.camera_axis || contract.screen_direction || contract.start_pose || contract.end_pose
+    || contract.continuity_notes || Object.values(phases).some(Boolean);
+  return meaningful ? contract : undefined;
+}
+
+function actionContractSummary(input = null) {
+  const contract = normalizeActionContract(input);
+  if (!contract) return '';
+  const labels = {
+    setup: '准备', anticipation: '预备', attack: '攻击', defense: '闪避/防御', contact: '接触',
+    reaction: '受击反馈', counter: '反击', recovery: '恢复',
+  };
+  return [
+    contract.start_pose ? `起始姿态：${contract.start_pose}` : '',
+    ...ACTION_PHASE_KEYS.map(key => contract.phases[key] ? `${labels[key]}：${contract.phases[key]}` : ''),
+    contract.end_pose ? `结束姿态：${contract.end_pose}` : '',
+    contract.camera_axis ? `摄影轴线：${contract.camera_axis}` : '',
+    contract.screen_direction ? `银幕方向：${contract.screen_direction}` : '',
+    contract.continuity_notes ? `连续性：${contract.continuity_notes}` : '',
+  ].filter(Boolean).join('；');
+}
+
 function normalizeShotDesign(shot = {}) {
   const scope = openValue(shot.shot_scope || shot.shotScope, 'auto');
   return {
     shot_scope: scope,
     surface_topology: normalizeSurfaceTopology(shot.surface_topology || shot.surfaceTopology),
     motion_effect: normalizeMotionEffect(shot.motion_effect || shot.motionEffect),
+    action_contract: normalizeActionContract(shot.action_contract || shot.actionContract),
   };
 }
 
@@ -274,6 +317,7 @@ function compileShotDesign({ shot = {}, sceneSurface = null, sceneText = '' } = 
     }, sceneContext);
     return {
       ...normalized,
+      action_prompt: actionContractSummary(normalized.action_contract),
       surface_topology: effectiveSurface,
       surface_resolution: {
         authority: 'scene_contract',
@@ -291,6 +335,7 @@ function compileShotDesign({ shot = {}, sceneSurface = null, sceneText = '' } = 
     : (resolveSurfaceTopology(normalized.surface_topology, shotText) || resolvedScene);
   return {
     ...normalized,
+    action_prompt: actionContractSummary(normalized.action_contract),
     surface_topology: effectiveSurface,
     surface_resolution: {
       authority: isolatedComparison && normalized.surface_topology ? 'isolated_shot_contract' : (normalized.surface_topology ? 'shot_contract' : (resolvedScene ? 'scene_contract' : 'none')),
@@ -490,6 +535,8 @@ module.exports = {
   normalizeMaterialContract,
   normalizeMotionEffect,
   normalizeShotDesign,
+  normalizeActionContract,
+  actionContractSummary,
   compileShotDesign,
   compileBoundShotDesign,
   surfacePrompt,

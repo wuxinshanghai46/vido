@@ -4307,6 +4307,8 @@ body {
   resize: vertical;
 }
 
+.kb-candidate-modal{width:min(1280px,96vw);max-height:92vh;overflow:auto}.kb-candidate-note{margin:-4px 0 14px;color:var(--text2);font-size:12px}.kb-candidate-layout{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(340px,.85fr);gap:16px}.kb-candidate-form,.kb-candidate-list{min-width:0}.kb-candidate-list{display:grid;align-content:start;gap:9px;max-height:72vh;overflow:auto;padding-right:4px}.kb-candidate-list article{display:grid;gap:8px;padding:12px;border:1px solid var(--border2);border-radius:10px;background:var(--bg2)}.kb-candidate-list article.is-approved{border-color:color-mix(in srgb,var(--success) 55%,var(--border2))}.kb-candidate-list article.is-rejected{opacity:.68}.kb-candidate-list header,.kb-candidate-list footer,.kb-candidate-list article>div{display:flex;align-items:center;justify-content:space-between;gap:10px}.kb-candidate-list header>div{min-width:0}.kb-candidate-list h4{margin:3px 0 0;overflow-wrap:anywhere}.kb-candidate-list small,.kb-candidate-list p,.kb-candidate-list span{color:var(--text2);font-size:11px;line-height:1.55}.kb-candidate-list code{font-size:10px}.kb-candidate-list footer{justify-content:flex-end;padding-top:3px}.vue-native-actions button b{display:inline-grid;min-width:18px;height:18px;place-items:center;margin-left:4px;border-radius:999px;background:var(--warning);color:#18120a;font-size:10px}@media(max-width:900px){.kb-candidate-layout{grid-template-columns:1fr}.kb-candidate-list{max-height:none}}
+
 .vue-workflows-page .wf-layout {
   min-height: 560px;
 }

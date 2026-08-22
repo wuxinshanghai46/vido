@@ -249,6 +249,7 @@ function normalizeShot(shot, ctx, idx, defaultDuration = 3) {
     shot_scope: design.shot_scope,
     surface_topology: design.surface_topology,
     motion_effect: design.motion_effect,
+    action_contract: design.action_contract,
     // V2.0 允许模型直接描述任意行业的状态、变化、证据和连续性约束；
     // 这里仅做开放结构归一化，不把内容限制为预设行业或预设场景。
     temporal_state: temporalEvidenceGraph.normalizeShotState(

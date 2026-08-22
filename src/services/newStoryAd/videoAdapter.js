@@ -300,6 +300,7 @@ function clipPrompt(shot = {}, ctx = {}, contract = {}, previousShot = null, key
     `Required movement: ${shot.action || shot.visual_action || ''}`,
     `Camera: ${shot.camera || shot.camera_movement || contract.camera_strategy || ''}`,
     continuityPrompt(shot, previousShot),
+    design.action_contract ? `Action beat contract:\n${shotDesign.actionContractSummary(design.action_contract)}\nExecute the authored beats in causal order and visibly preserve contact, reaction and recovery states that are present.` : '',
     // V2.0 与关键帧共用状态合同，只执行 intended_changes 并保持 invariants。
     (contract.temporal_evidence_lock || shot.temporal_evidence) ? `剧情广告 V2.0 时序证据合同：\n${JSON.stringify(contract.temporal_evidence_lock || shot.temporal_evidence)}\n只执行 intended_changes；保持 invariants；在片段结束前呈现 evidence_requirements。` : '',
     speechPrompt(shot, contract),

@@ -44,6 +44,29 @@ function motionEffectEditor(shot = {}) {
   </section>`;
 }
 
+const ACTION_PHASES = [
+  ['setup', '准备'], ['anticipation', '预备'], ['attack', '攻击 / 主动作'], ['defense', '闪避 / 防御'],
+  ['contact', '接触'], ['reaction', '反馈'], ['counter', '反击 / 回应'], ['recovery', '恢复'],
+];
+
+function actionContractEditor(shot = {}) {
+  const contract = shot.action_contract || {};
+  const phases = contract.phases || {};
+  return `<section class="motion-effect-editor action-contract-editor"><h3>动作编排节拍</h3><p>把复杂动作拆成可拍、可验的起点—过程—结果；没有的阶段可以留空。</p>
+    <div class="form-grid">
+      <label class="field full"><span>参与者</span><input class="input" data-action-contract-list="participants" value="${escapeHtml((contract.participants || []).join('、'))}" placeholder="例：主角、对手"></label>
+      <label class="field full"><span>道具 / 武器</span><input class="input" data-action-contract-list="props" value="${escapeHtml((contract.props || []).join('、'))}" placeholder="例：咖啡杯、手提包"></label>
+      <label class="field full"><span>空间关系</span><textarea class="textarea" rows="2" data-action-contract-field="spatial_relation">${escapeHtml(contract.spatial_relation || '')}</textarea></label>
+      <label class="field"><span>摄影轴线</span><input class="input" data-action-contract-field="camera_axis" value="${escapeHtml(contract.camera_axis || '')}"></label>
+      <label class="field"><span>银幕方向</span><input class="input" data-action-contract-field="screen_direction" value="${escapeHtml(contract.screen_direction || '')}"></label>
+      <label class="field full"><span>起始姿态</span><textarea class="textarea" rows="2" data-action-contract-field="start_pose">${escapeHtml(contract.start_pose || '')}</textarea></label>
+      ${ACTION_PHASES.map(([key, label]) => `<label class="field full"><span>${label}</span><textarea class="textarea" rows="2" data-action-phase="${key}">${escapeHtml(phases[key] || '')}</textarea></label>`).join('')}
+      <label class="field full"><span>结束姿态</span><textarea class="textarea" rows="2" data-action-contract-field="end_pose">${escapeHtml(contract.end_pose || '')}</textarea></label>
+      <label class="field full"><span>连续性约束</span><textarea class="textarea" rows="2" data-action-contract-field="continuity_notes">${escapeHtml(contract.continuity_notes || '')}</textarea></label>
+    </div>
+  </section>`;
+}
+
 function shotNumber(shot = {}, index = 0) {
   return Number(shot.shot_index || shot.index || index + 1) || index + 1;
 }
@@ -119,6 +142,13 @@ function collectShot(host, original) {
   host.querySelectorAll('[data-motion-effect-field]').forEach(input => { effect[input.dataset.motionEffectField] = input.value.trim(); });
   effect.preserve_scene_geometry = original.motion_effect?.preserve_scene_geometry !== false;
   next.motion_effect = effect;
+  const actionContract = { ...(original.action_contract || {}), phases: { ...(original.action_contract?.phases || {}) } };
+  host.querySelectorAll('[data-action-contract-field]').forEach(input => { actionContract[input.dataset.actionContractField] = input.value.trim(); });
+  host.querySelectorAll('[data-action-contract-list]').forEach(input => {
+    actionContract[input.dataset.actionContractList] = input.value.split(/[,，、；;]/).map(value => value.trim()).filter(Boolean);
+  });
+  host.querySelectorAll('[data-action-phase]').forEach(input => { actionContract.phases[input.dataset.actionPhase] = input.value.trim(); });
+  next.action_contract = actionContract;
   next.visual_description = next.visual;
   next.duration_sec = Math.max(1, Number(next.duration) || Number(next.duration_sec) || 3);
   next.duration = next.duration_sec;
@@ -130,12 +160,14 @@ function shotEditableFingerprint(shot = {}) {
     'visual', 'action', 'duration', 'voiceover',
     ...FIELD_GROUPS.flatMap(([, definitions]) => definitions.map(([name]) => name)),
     'motion_effect',
+    'action_contract',
   ];
   return JSON.stringify(Object.fromEntries(fields.map(name => {
     if (name === 'visual') return [name, String(shot.visual || shot.visual_description || '').trim()];
     if (name === 'voiceover') return [name, String(shot.voiceover || shot.narration || '').trim()];
     if (name === 'duration') return [name, Math.max(1, Number(shot.duration || shot.duration_sec || 3) || 3)];
     if (name === 'motion_effect') return [name, JSON.stringify(shot.motion_effect || {})];
+    if (name === 'action_contract') return [name, JSON.stringify(shot.action_contract || {})];
     return [name, shot[name] === undefined || shot[name] === null ? '' : String(shot[name]).trim()];
   })));
 }
@@ -233,6 +265,7 @@ export async function mount(host, context) {
         <div class="card-body settings-groups">
           <section class="shot-readable-summary"><h3>当前拍摄摘要</h3>${shotSummary(bundle, selected).map(([label, value]) => `<div><span>${escapeHtml(label)}</span><p>${escapeHtml(value)}</p></div>`).join('')}</section>
           ${FIELD_GROUPS.map(([title, fields]) => `<section><h3>${escapeHtml(title)}</h3><div class="form-grid">${fields.map(field => fieldEditor(bundle, selected, field)).join('')}</div></section>`).join('')}
+          ${actionContractEditor(selected)}
           ${motionEffectEditor(selected)}
           <details class="technical-details"><summary>查看技术标识</summary><dl><div><dt>场景标识</dt><dd>${escapeHtml(selected.scene_id || selected.scene_asset_id || '未设置')}</dd></div><div><dt>机位标识</dt><dd>${escapeHtml(selected.camera_id || '未设置')}</dd></div></dl></details>
         </div>

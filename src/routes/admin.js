@@ -1796,6 +1796,57 @@ router.put('/knowledgebase/_force', (req, res) => {
     res.status(500).json({ success: false, error: e.message });
   }
 });
+
+// 知识候选先审核、后入库。外部文章、会话摘要和手动粘贴共用同一条证据链。
+router.get('/knowledgebase/candidates', (req, res) => {
+  try {
+    const service = require('../services/knowledgeCandidateService');
+    res.json({
+      success: true,
+      data: service.listCandidates({ status: req.query.status, source_type: req.query.source_type, q: req.query.q }),
+      stats: service.stats(),
+    });
+  } catch (e) {
+    res.status(e.status || 500).json({ success: false, error: e.message });
+  }
+});
+
+router.post('/knowledgebase/candidates', (req, res) => {
+  try {
+    const service = require('../services/knowledgeCandidateService');
+    const result = service.ingest({ ...(req.body || {}), source_type: req.body?.source_type || 'manual' });
+    res.status(result.created ? 201 : 200).json({
+      success: true,
+      data: result.candidate,
+      meta: { created: result.created, updated: result.updated, duplicate: result.duplicate },
+    });
+  } catch (e) {
+    res.status(e.status || 500).json({ success: false, error: e.message });
+  }
+});
+
+router.post('/knowledgebase/candidates/:id/approve', (req, res) => {
+  try {
+    const service = require('../services/knowledgeCandidateService');
+    const actor = req.user?.id || req.user?.username || 'admin';
+    const result = service.approve(req.params.id, { ...(req.body || {}), reviewed_by: actor });
+    res.json({ success: true, data: result.candidate, knowledge: result.document, meta: { created: result.created } });
+  } catch (e) {
+    res.status(e.status || 500).json({ success: false, error: e.message });
+  }
+});
+
+router.post('/knowledgebase/candidates/:id/reject', (req, res) => {
+  try {
+    const service = require('../services/knowledgeCandidateService');
+    const actor = req.user?.id || req.user?.username || 'admin';
+    const candidate = service.reject(req.params.id, { ...(req.body || {}), reviewed_by: actor });
+    res.json({ success: true, data: candidate });
+  } catch (e) {
+    res.status(e.status || 500).json({ success: false, error: e.message });
+  }
+});
+
 router.get('/knowledgebase/:id', (req, res) => {
   const doc = kb.getDoc(req.params.id);
   if (!doc) return res.status(404).json({ success: false, error: '鏂囨。涓嶅瓨鍦? '});
@@ -2160,4 +2211,3 @@ router.put('/pipeline-models/:stageId', async (req, res) => {
 });
 
 module.exports = router;
-
