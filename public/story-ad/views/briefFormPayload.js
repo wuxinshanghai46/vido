@@ -1,4 +1,4 @@
-import { worldSettingPayload } from './briefWorldSettings.js?v=20260822-reference-extended-analysis-v143';
+import { worldSettingPayload } from './briefWorldSettings.js?v=20260822-reference-failure-recovery-v144';
 
 export function formPayload(form) {
   const data = new FormData(form);

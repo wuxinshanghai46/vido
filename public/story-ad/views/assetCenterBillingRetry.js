@@ -1,5 +1,5 @@
-import { request } from '../api.js?v=20260822-reference-extended-analysis-v143';
-import { setButtonBusy, toast } from '../components/ui.js?v=20260822-reference-extended-analysis-v143';
+import { request } from '../api.js?v=20260822-reference-failure-recovery-v144';
+import { setButtonBusy, toast } from '../components/ui.js?v=20260822-reference-failure-recovery-v144';
 
 export function visualGenerationState(bundle, missingSubjectCount, missingSceneCount) {
   const progress = bundle.generation?.progress || {};
@@ -21,7 +21,7 @@ export function visualGenerationState(bundle, missingSubjectCount, missingSceneC
 
 let billingReviewDialogPromise;
 function billingReviewDialog() {
-  billingReviewDialogPromise ||= import('./assetCenterBillingReviewDialog.js?v=20260822-reference-extended-analysis-v143');
+  billingReviewDialogPromise ||= import('./assetCenterBillingReviewDialog.js?v=20260822-reference-failure-recovery-v144');
   return billingReviewDialogPromise;
 }
 export async function loadBillingReviews(options = {}) {

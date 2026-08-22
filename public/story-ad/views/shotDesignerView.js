@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260822-reference-extended-analysis-v143';
-import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260822-reference-extended-analysis-v143';
-import { bindMediaLightbox } from './mediaLightbox.js?v=20260822-reference-extended-analysis-v143';
+import { request } from '../api.js?v=20260822-reference-failure-recovery-v144';
+import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260822-reference-failure-recovery-v144';
+import { bindMediaLightbox } from './mediaLightbox.js?v=20260822-reference-failure-recovery-v144';
 
 const FIELD_GROUPS = [
   ['场景与机位', [
