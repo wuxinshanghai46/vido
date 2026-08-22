@@ -89,7 +89,7 @@ const DOMAIN_RULES = [
   {
     domain: 'workspace_ui',
     risk: 'ui',
-    patterns: [/^public\/story-ad\//, /^src\/routes\/storyAdWorkspace\.js$/],
+    patterns: [/^public\/story-ad\//, /^src\/routes\/storyAdWorkspace\.js$/, /^scripts\/test-story-ad-workspace/i],
   },
 ];
 
@@ -114,6 +114,15 @@ function scopedDomainFromPatch(file = '', patch = '') {
 
 function diffPatch(root, baseRevision, targetRevision, file) {
   try { return git(root, ['diff', '--unified=0', baseRevision, targetRevision, '--', file]); } catch { return ''; }
+}
+
+function generatedReleaseOnlyChange(file = '', patch = '') {
+  const normalized = normalizeFile(file);
+  if (['config/story-ad-runtime-manifest.json', 'public/story-ad/release-manifest.json'].includes(normalized)) return true;
+  if (!/^public\/story-ad\//.test(normalized)) return false;
+  const changed = String(patch || '').split(/\r?\n/)
+    .filter(line => /^[+-]/.test(line) && !/^(?:\+\+\+|---)/.test(line));
+  return changed.length > 0 && changed.every(line => /\?v=202\d|(?:CLIENT_)?BUILD_ID\s*=\s*['"]202\d/i.test(line));
 }
 
 function git(root, args = []) {
@@ -265,11 +274,18 @@ function createPlan({
       runtimeFiles = delta.files.filter(file => file !== 'config/story-ad-release.json');
     }
   }
+  const patchByFile = Object.fromEntries(runtimeFiles.map(file => [
+    file,
+    patches[file] || (!Array.isArray(files) ? diffPatch(root, effectiveBaseRevision, targetRevision, file) : ''),
+  ]));
+  if (targetedHome) {
+    const generatedFiles = runtimeFiles.filter(file => generatedReleaseOnlyChange(file, patchByFile[file]));
+    metadataFiles.push(...generatedFiles);
+    runtimeFiles = runtimeFiles.filter(file => !generatedFiles.includes(file));
+  }
   const scopedDomains = Object.fromEntries(runtimeFiles.map(file => [
     file,
-    scopedDomainFromPatch(file, patches[file] || (!Array.isArray(files)
-      ? diffPatch(root, effectiveBaseRevision, targetRevision, file)
-      : '')),
+    scopedDomainFromPatch(file, patchByFile[file]),
   ]).filter(([, domain]) => domain));
   const targetedPlannerFiles = targetedHome
     ? runtimeFiles.filter(file => TARGETED_HOME_PLANNER_FILES.has(file))
@@ -440,4 +456,5 @@ module.exports = {
   runPlan,
   saveGateCache,
   scopedDomainFromPatch,
+  generatedReleaseOnlyChange,
 };

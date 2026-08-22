@@ -54,6 +54,16 @@ assert.equal(planner.scopedDomainFromPatch('src/routes/newStoryAd.js', [
   '@@ -10 +10 @@ router.post(\'/tasks\'',
   '+  unrelatedMutation();',
 ].join('\n')), '');
+assert.equal(planner.generatedReleaseOnlyChange('public/story-ad/app.js', [
+  '@@ import',
+  "-import x from './x.js?v=20260822-old';",
+  "+import x from './x.js?v=20260822-new';",
+].join('\n')), true);
+assert.equal(planner.generatedReleaseOnlyChange('public/story-ad/app.js', [
+  '@@ behavior',
+  '-const enabled = false;',
+  '+const enabled = true;',
+].join('\n')), false);
 const targetedReferencePlan = planner.createPlan({
   root: process.cwd(),
   baseRevision: 'a'.repeat(40),
@@ -63,6 +73,10 @@ const targetedReferencePlan = planner.createPlan({
     'scripts/lib/storyAdReleaseGatePlanner.js',
     'scripts/deploy-story-ad-immutable-release.js',
     'scripts/test-story-ad-release-gate-planner.js',
+    'config/story-ad-runtime-manifest.json',
+    'public/story-ad/release-manifest.json',
+    'public/story-ad/app.js',
+    'scripts/test-story-ad-workspace-v6-ui-regressions.js',
     'src/routes/newStoryAd.js',
     'src/services/pipelineModelService.js',
     'src/services/newStoryAd/referenceVideoAnalysisService.js',
@@ -70,6 +84,7 @@ const targetedReferencePlan = planner.createPlan({
   patches: {
     'src/routes/newStoryAd.js': '@@ route reference-video-analyses\n+ extendedAnalysisConfirmed',
     'src/services/pipelineModelService.js': '@@ schema\n+ new_story_ad.reference_video_transcript',
+    'public/story-ad/app.js': '@@ import\n-import x from \'./x.js?v=20260822-old\';\n+import x from \'./x.js?v=20260822-new\';',
   },
   targetedHome: true,
 });
