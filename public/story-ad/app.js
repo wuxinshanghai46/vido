@@ -1,7 +1,7 @@
-import { createProjectStore } from './store/projectStore.js?v=20260823-cast-autosave-v171';
-import { bindHoverVideoPreviews, escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, toast } from './components/ui.js?v=20260823-cast-autosave-v171';
-import { assertCurrentRelease, startReleaseHeartbeat } from './api.js?v=20260823-cast-autosave-v171';
-import { confirmDialog } from './components/dialog.js?v=20260823-cast-autosave-v171';
+import { createProjectStore } from './store/projectStore.js?v=20260823-cast-autosave-v172';
+import { bindHoverVideoPreviews, escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, toast } from './components/ui.js?v=20260823-cast-autosave-v172';
+import { assertCurrentRelease, startReleaseHeartbeat } from './api.js?v=20260823-cast-autosave-v172';
+import { confirmDialog } from './components/dialog.js?v=20260823-cast-autosave-v172';
 
 await assertCurrentRelease();
 startReleaseHeartbeat();
@@ -19,13 +19,13 @@ const VIEW_META = {
   workflow: ['⌘', '工作流画布'],
 };
 const VIEW_MODULES = {
-  brief: () => import('./views/briefView.js?v=20260823-cast-autosave-v171'),
-  assets: () => import('./views/assetCenterView.js?v=20260823-cast-autosave-v171'),
-  scene: () => import('./views/sceneWorldPage.js?v=20260823-cast-autosave-v171'),
-  plot: () => import('./views/plotRoomView.js?v=20260823-cast-autosave-v171'),
-  storyboard: () => import('./views/storyboardView.js?v=20260823-cast-autosave-v171'),
-  final: () => import('./views/finalView.js?v=20260823-cast-autosave-v171'),
-  workflow: () => import('./views/workflowView.js?v=20260823-cast-autosave-v171'),
+  brief: () => import('./views/briefView.js?v=20260823-cast-autosave-v172'),
+  assets: () => import('./views/assetCenterView.js?v=20260823-cast-autosave-v172'),
+  scene: () => import('./views/sceneWorldPage.js?v=20260823-cast-autosave-v172'),
+  plot: () => import('./views/plotRoomView.js?v=20260823-cast-autosave-v172'),
+  storyboard: () => import('./views/storyboardView.js?v=20260823-cast-autosave-v172'),
+  final: () => import('./views/finalView.js?v=20260823-cast-autosave-v172'),
+  workflow: () => import('./views/workflowView.js?v=20260823-cast-autosave-v172'),
 };
 const VIEW_SECTIONS = Object.freeze({
   brief: 'summary,reference',
@@ -398,7 +398,7 @@ document.addEventListener('input', async ({ target }) => {
   else if (target.matches('[data-project-type-filter]')) centerQuery.taskType = target.value || 'all';
   else if (target.matches('[data-project-stage-filter]')) centerQuery.stage = target.value || 'all';
   else return;
-  const filters = await import('./projectCenterFilters.js?v=20260823-cast-autosave-v171');
+  const filters = await import('./projectCenterFilters.js?v=20260823-cast-autosave-v172');
   centerVisibleIds = filters.matchingProjectIds(store.state.projects.map(project => ({
     id: project.id, title: project.title, type: project.content_mode, stage: statusView(project).label,
   })), centerQuery);

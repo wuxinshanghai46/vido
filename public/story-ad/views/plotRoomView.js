@@ -1,7 +1,7 @@
-import { request } from '../api.js?v=20260823-cast-autosave-v171';
-import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260823-cast-autosave-v171';
-import { confirmDialog } from '../components/dialog.js?v=20260823-cast-autosave-v171';
-import { applyBeat, beatEditor, collectBeat, collectBlueprint, productionIssues, syncFloatingEditor } from './plotBeatEditor.js?v=20260823-cast-autosave-v171';
+import { request } from '../api.js?v=20260823-cast-autosave-v172';
+import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260823-cast-autosave-v172';
+import { confirmDialog } from '../components/dialog.js?v=20260823-cast-autosave-v172';
+import { applyBeat, beatEditor, collectBeat, collectBlueprint, productionIssues, syncFloatingEditor } from './plotBeatEditor.js?v=20260823-cast-autosave-v172';
 
 function characterEditor(character = {}, index = 0) {
   const gender = String(character.gender || '').toLowerCase();
@@ -75,7 +75,7 @@ export async function mount(host, context) {
   }
 
   const characterAutosave = characters.length
-    ? (await import('./plotCharacterAutosave.js?v=20260823-cast-autosave-v171'))
+    ? (await import('./plotCharacterAutosave.js?v=20260823-cast-autosave-v172'))
       .bindCharacterAutosave({ host, blueprint, store, collectBlueprint, toast })
     : null;
 
@@ -152,7 +152,7 @@ export async function mount(host, context) {
     pop.style.left = `${left}px`; pop.style.top = `${top}px`;
   };
   const openEditor = async (button, row, group) => {
-    cellEditorModule ||= await import('./plotBeatCellPopover.js?v=20260823-cast-autosave-v171');
+    cellEditorModule ||= await import('./plotBeatCellPopover.js?v=20260823-cast-autosave-v172');
     const currentCharacters = collectBlueprint(host, blueprint).characters;
     closeAll(); active = row; pop.innerHTML = cellEditorModule.beatCellEditor(row, group, currentCharacters); pop.dataset.group = group; pop.dataset.dialogueEditor = group === 'spoken_line' ? 'true' : 'false'; pop.showPopover(); place(button);
     pop.querySelector('[data-floating-field]')?.focus();
