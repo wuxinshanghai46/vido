@@ -1,5 +1,5 @@
-import { request } from '../api.js?v=20260822-reference-blueprint-complete-v150';
-import { setButtonBusy, toast } from '../components/ui.js?v=20260822-reference-blueprint-complete-v150';
+import { request } from '../api.js?v=20260822-dialogue-cast-blueprint-v157';
+import { setButtonBusy, toast } from '../components/ui.js?v=20260822-dialogue-cast-blueprint-v157';
 
 export function visualGenerationState(bundle, missingSubjectCount, missingSceneCount) {
   const progress = bundle.generation?.progress || {};
@@ -21,7 +21,7 @@ export function visualGenerationState(bundle, missingSubjectCount, missingSceneC
 
 let billingReviewDialogPromise;
 function billingReviewDialog() {
-  billingReviewDialogPromise ||= import('./assetCenterBillingReviewDialog.js?v=20260822-reference-blueprint-complete-v150');
+  billingReviewDialogPromise ||= import('./assetCenterBillingReviewDialog.js?v=20260822-dialogue-cast-blueprint-v157');
   return billingReviewDialogPromise;
 }
 export async function loadBillingReviews(options = {}) {

@@ -1,4 +1,4 @@
-import { confirmDialog } from '../components/dialog.js?v=20260822-reference-blueprint-complete-v150';
+import { confirmDialog } from '../components/dialog.js?v=20260822-dialogue-cast-blueprint-v157';
 
 export async function confirmContentModeMigration(savedMode = '', nextMode = '') {
   if (!savedMode || savedMode === nextMode) return { cancelled: false, confirmed: false };

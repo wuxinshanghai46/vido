@@ -1,4 +1,4 @@
-import { escapeHtml } from '../components/ui.js?v=20260822-dialogue-cast-blueprint-v156';
+import { escapeHtml } from '../components/ui.js?v=20260822-dialogue-cast-blueprint-v157';
 
 export function modeLabel(value = '') {
   return value === 'commercial_subject' ? '商业广告' : (value === 'narrative_story' ? '剧情短片' : '待确认');

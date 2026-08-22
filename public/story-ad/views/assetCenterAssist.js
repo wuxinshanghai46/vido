@@ -1,7 +1,7 @@
-import { request } from '../api.js?v=20260822-reference-blueprint-complete-v150';
-import { promptDialog } from '../components/dialog.js?v=20260822-reference-blueprint-complete-v150';
-import { setButtonBusy, toast } from '../components/ui.js?v=20260822-reference-blueprint-complete-v150';
-import { applyGeneratedPersonLooks, collectPersonLookValues } from './assetCenterPersonLooks.js?v=20260822-reference-blueprint-complete-v150';
+import { request } from '../api.js?v=20260822-dialogue-cast-blueprint-v157';
+import { promptDialog } from '../components/dialog.js?v=20260822-dialogue-cast-blueprint-v157';
+import { setButtonBusy, toast } from '../components/ui.js?v=20260822-dialogue-cast-blueprint-v157';
+import { applyGeneratedPersonLooks, collectPersonLookValues } from './assetCenterPersonLooks.js?v=20260822-dialogue-cast-blueprint-v157';
 
 export function createAssetAssistHandlers(bundle) {
   const assistPerson = async (item, form, button = null) => {

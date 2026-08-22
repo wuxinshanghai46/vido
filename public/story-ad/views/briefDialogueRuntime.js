@@ -1,4 +1,4 @@
-import { request } from '../api.js?v=20260822-reference-blueprint-complete-v150';
+import { request } from '../api.js?v=20260822-dialogue-cast-blueprint-v157';
 
 export function bindBriefViewport(host) {
   host.classList?.add('brief-dialogue-view');

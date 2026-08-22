@@ -1,7 +1,7 @@
-import { request } from '../api.js?v=20260822-reference-blueprint-complete-v150';
-import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260822-reference-blueprint-complete-v150';
-import { confirmDialog } from '../components/dialog.js?v=20260822-reference-blueprint-complete-v150';
-import { applyBeat, beatEditor, collectBeat, collectBlueprint, syncBeatPresentation } from './plotBeatEditor.js?v=20260822-dialogue-cast-blueprint-v151';
+import { request } from '../api.js?v=20260822-dialogue-cast-blueprint-v157';
+import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260822-dialogue-cast-blueprint-v157';
+import { confirmDialog } from '../components/dialog.js?v=20260822-dialogue-cast-blueprint-v157';
+import { applyBeat, beatEditor, collectBeat, collectBlueprint, syncBeatPresentation } from './plotBeatEditor.js?v=20260822-dialogue-cast-blueprint-v157';
 
 function domainContractBanner(brief = {}) {
   const contract = brief.content_domain_contract || {};

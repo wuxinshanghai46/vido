@@ -1,4 +1,4 @@
-import { escapeHtml } from '../components/ui.js?v=20260822-reference-blueprint-complete-v150';
+import { escapeHtml } from '../components/ui.js?v=20260822-dialogue-cast-blueprint-v157';
 
 function ageRows(profile = {}) {
   const rows = Array.isArray(profile.age_states) ? profile.age_states : [];
