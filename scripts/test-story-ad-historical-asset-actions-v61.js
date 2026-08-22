@@ -147,7 +147,8 @@ assert.match(
   'brief 完成态必须作为两张引导卡的共同显示门禁',
 );
 assert.match(brief, /\$\{showReferenceStepGuidance && !referenceAction\.blocked \? `<section[^`]*data-brief-inline-action/s, '下一步卡必须受完成态门禁控制');
-assert.match(brief, /\$\{showReferenceStepGuidance \? `<div data-reference-progress-host/s, '参考进度卡必须受完成态门禁控制');
+assert.match(brief, /referenceProgressMarkup:\s*showReferenceStepGuidance\s*\?\s*referenceProgress\(bundle\.reference\)\s*:\s*''/,
+  '对话内参考进度卡必须受完成态门禁控制');
 
 // 视觉规范：默认低调，只有 hover/focus/busy 才突出；disabled 必须清楚但不能伪装成高亮。
 const primaryDefault = cssRule(styles, '.btn.primary');
