@@ -25,7 +25,7 @@ function ideaMarkup(value = '', location = 'conversation') {
   return `<p>${escapeHtml(preview.text)}</p>${preview.collapsed ? `<details class="brief-idea-details"><summary>查看完整设想</summary><div>${escapeHtml(preview.full)}</div></details>` : ''}`;
 }
 
-export function briefDialogueMarkup(bundle = {}, route = {}) {
+export function briefDialogueMarkup(bundle = {}, route = {}, options = {}) {
   const brief = bundle.brief || {};
   const commercial = brief.content_mode_source === 'user' && brief.content_mode === 'commercial_subject';
   const narrative = brief.content_mode_source === 'user' && brief.content_mode === 'narrative_story';
@@ -40,6 +40,7 @@ export function briefDialogueMarkup(bundle = {}, route = {}) {
       <div class="brief-conversation-scroll" data-brief-conversation aria-live="polite">
         ${hasIdea ? `<article class="brief-message is-user"><span class="brief-message-avatar">你</span><div><small>当前设想</small><div class="brief-bubble" data-dialogue-current-idea>${ideaMarkup(brief.text, 'conversation')}</div></div></article>` : ''}
         ${referenceStatus ? `<article class="brief-message is-assistant" data-reference-dialogue-status data-reference-status="${escapeHtml(String(bundle.reference?.status || '').toLowerCase())}"><span class="brief-message-avatar">导</span><div><small>导演助理 · 参考分析</small><div class="brief-bubble"><p>${escapeHtml(referenceStatus)}</p></div></div></article>` : ''}
+        ${options.referenceProgressMarkup ? `<div class="brief-reference-progress-slot" data-reference-progress-host>${options.referenceProgressMarkup}</div>` : ''}
       </div>
       <footer class="brief-composer"><label><span data-dialogue-context>${hasIdea ? '继续补充或修改核心设想' : '直接说说你想做什么，由你发起对话'}</span><button type="button" data-dialogue-expand aria-expanded="false">展开输入</button></label><div><button type="button" class="brief-attach" data-dialogue-reference title="添加参考材料">参考</button><textarea rows="2" data-dialogue-input placeholder="输入你的想法；内容较多时可拖动右下角，或点击“展开输入”…"></textarea><button type="button" class="brief-send" data-dialogue-send>发送</button></div><small>只追问少量关键问题；有参考视频时会先完成分析，不会同时追问</small></footer>
     </div>

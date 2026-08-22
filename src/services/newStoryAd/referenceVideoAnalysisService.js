@@ -175,6 +175,8 @@ function taskRecord(analysis = {}) {
     source: analysis.source || null,
     error: analysis.error || null,
     error_code: String(analysis.error?.code || analysis.error_code || ''),
+    billing_state: String(analysis.error?.billing_state || analysis.billing_state || ''),
+    provider_submission_state: String(analysis.error?.provider_submission_state || analysis.provider_submission_state || ''),
     analysis_preflight: analysis.analysis_preflight && typeof analysis.analysis_preflight === 'object'
       ? analysis.analysis_preflight
       : null,
@@ -210,12 +212,18 @@ function taskRecord(analysis = {}) {
 
 function publicVisionFailure(error = {}) {
   const failedModels = (Array.isArray(error.failed_models) ? error.failed_models : [])
-    .map(item => ({
-      provider_id: String(item?.provider_id || ''),
-      model_id: String(item?.model_id || ''),
-      code: String(item?.code || 'UNKNOWN'),
-      retry_after_ms: Math.max(0, Number(item?.retry_after_ms || 0)),
-    }))
+    .map(item => {
+      const billingState = String(item?.billing_state || '');
+      const submissionState = String(item?.provider_submission_state || '');
+      return {
+        provider_id: String(item?.provider_id || ''),
+        model_id: String(item?.model_id || ''),
+        code: String(item?.code || 'UNKNOWN'),
+        retry_after_ms: Math.max(0, Number(item?.retry_after_ms || 0)),
+        ...(billingState ? { billing_state: billingState } : {}),
+        ...(submissionState ? { provider_submission_state: submissionState } : {}),
+      };
+    })
     .filter(item => item.provider_id && item.model_id);
   const code = String(error.code || 'REFERENCE_VIDEO_ANALYSIS_FAILED');
   const failureLabels = {
@@ -239,6 +247,8 @@ function publicVisionFailure(error = {}) {
     code,
     message,
     retryable: error.retryable === true,
+    billing_state: String(error.billing_state || error.billingState || ''),
+    provider_submission_state: String(error.provider_submission_state || error.providerSubmissionState || ''),
     retry_after_ms: Math.max(0, Number(error.retry_after_ms || 0)),
     failed_models: failedModels,
     failures: (Array.isArray(error.failures) ? error.failures : [])
@@ -246,6 +256,13 @@ function publicVisionFailure(error = {}) {
       .filter(Boolean)
       .slice(0, 20),
   };
+}
+
+function requiresBillingAcknowledgement(record = {}) {
+  const error = record.error && typeof record.error === 'object' ? record.error : {};
+  return String(record.status || '').toLowerCase() === 'failed'
+    && (String(error.billing_state || '').toLowerCase() === 'unknown'
+      || String(error.provider_submission_state || '').toLowerCase() === 'submitted_unknown');
 }
 
 function assertOwned(analysisId, user = {}) {
@@ -3576,6 +3593,14 @@ function applyExtendedAnalysisConfirmation(record = {}, options = {}) {
 
 function start(analysisId, user = {}, options = {}) {
   let record = assertOwned(analysisId, user);
+  if (requiresBillingAcknowledgement(record) && options.acknowledgeBillingUnknown !== true) {
+    const error = new Error('上一次语义模型请求已发出但计费结果未知。镜头证据已保留；如需仅重试语义，请先明确确认可能产生一次新的模型费用，或选择不使用参考继续。');
+    error.code = 'REFERENCE_VIDEO_BILLING_REVIEW_REQUIRED';
+    error.status = 409;
+    error.retryable = false;
+    error.billing_state = 'unknown';
+    throw error;
+  }
   record = applyExtendedAnalysisConfirmation(record, options);
   const restartingTerminal = ['failed', 'cancelled'].includes(String(record.status || '').toLowerCase());
   if (record.status === 'completed') return { record: publicRecord(record), accepted: false, duplicate: true };
@@ -3877,6 +3902,7 @@ module.exports = {
     narrativeAnimalEvidence,
     characterEvidenceProfiles,
     evidenceBatchProgress,
+    requiresBillingAcknowledgement,
     publicRecord,
   },
 };

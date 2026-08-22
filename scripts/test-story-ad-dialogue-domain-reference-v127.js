@@ -31,6 +31,7 @@ async function loadModule(filePath) {
 async function main() {
   const module = await loadModule(path.join(root, 'public/story-ad/views/briefDialoguePanel.js'));
   const { briefDialogueMarkup, referenceDialogueStatus } = module.namespace;
+  const progressModule = await loadModule(path.join(root, 'public/story-ad/views/referenceProgressCard.js'));
   const runningReference = {
     analysis_id: 'reference-v127', status: 'running', progress: 42, phase: '正在分析产品画面',
   };
@@ -49,6 +50,26 @@ async function main() {
   assert.match(commercialMarkup, /确认设想，生成广告脚本/);
   assert.match(commercialMarkup, /data-reference-dialogue-status/);
   assert.doesNotMatch(commercialMarkup, /确认设想，生成剧情与对白/);
+
+  const failedProgress = progressModule.namespace.referenceProgress({
+    analysis_id: 'failed-billing-reference',
+    status: 'failed',
+    progress: 82,
+    error: '语义整理超时',
+    billing_state: 'unknown',
+    provider_submission_state: 'submitted_unknown',
+    visual_evidence_reusable: true,
+    evidence_batch_progress: { total: 10, completed: 10, remaining: 0, failed: 0 },
+  });
+  assert.match(failedProgress, /data-reference-abandon/);
+  assert.match(failedProgress, /确认费用风险，仅重试语义/);
+  assert.match(failedProgress, /没有自动切换备用模型，避免重复付费/);
+  const recoveryMarkup = briefDialogueMarkup({
+    brief: { content_mode: 'commercial_subject', content_mode_source: 'user', text: '不锈钢板材广告' },
+    reference: { analysis_id: 'failed-billing-reference', status: 'failed' },
+  }, {}, { referenceProgressMarkup: failedProgress });
+  assert.match(recoveryMarkup, /brief-conversation-scroll[\s\S]*data-reference-progress-host/,
+    '失败恢复操作必须位于可滚动对话区内，不能落在桌面裁剪容器之外');
 
   const narrativeMarkup = briefDialogueMarkup({
     brief: { content_mode: 'narrative_story', content_mode_source: 'user', text: '雨夜重逢故事' },
@@ -81,7 +102,7 @@ async function main() {
 
   console.log(JSON.stringify({
     passed: true,
-    checks: 16,
+    checks: 21,
     scope: 'story-ad-dialogue-domain-reference-v127',
     real_model_calls: 0,
     paid_generation_calls: 0,

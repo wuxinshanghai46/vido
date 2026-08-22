@@ -809,6 +809,7 @@ router.post('/reference-video-analyses/:analysisId/start', asyncRoute(async (req
   const started = referenceVideoAnalyses.start(req.params.analysisId, userFromReq(req), {
     extendedAnalysisConfirmed: req.body?.extended_analysis_confirmed === true,
     preflightFingerprint: String(req.body?.preflight_fingerprint || ''),
+    acknowledgeBillingUnknown: req.body?.acknowledge_billing_unknown === true,
   });
   return res.status(202).json({ success: true, ...started, analysis: started.record });
 }));
@@ -844,6 +845,7 @@ router.post('/reference-video-analyses/:analysisId/reanalyze', asyncRoute(async 
   const started = referenceVideoAnalyses.reanalyze(req.params.analysisId, user, {
     extendedAnalysisConfirmed: req.body?.extended_analysis_confirmed === true,
     preflightFingerprint: String(req.body?.preflight_fingerprint || ''),
+    acknowledgeBillingUnknown: req.body?.acknowledge_billing_unknown === true,
     ...(taskId ? {
     // Give the 202 response a short flush window before the synchronous part
     // of the legacy SQLite + JSON task projection begins in the background.

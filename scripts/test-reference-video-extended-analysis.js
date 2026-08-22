@@ -93,6 +93,31 @@ async function main() {
   assert.equal(completed.result.evidence_coverage.expected_frame_count, 42);
   assert.equal(completed.result.evidence_coverage.covered_frame_count, 42);
   assert.equal(completed.transcript.status, 'no_audio');
+
+  const billingId = 'ref_video_billing_unknown_guard';
+  const billingDir = service._private.analysisDir(user.id, billingId);
+  fs.mkdirSync(billingDir, { recursive: true });
+  const billingSource = path.join(billingDir, 'source.mp4');
+  fs.copyFileSync(sourcePath, billingSource);
+  fs.writeFileSync(path.join(billingDir, 'record.json'), JSON.stringify({
+    ...base,
+    id: billingId,
+    source: { ...base.source, local_path: billingSource, private_directory: billingDir },
+    error: {
+      code: 'MODEL_ATTEMPTS_EXHAUSTED',
+      message: 'reference synthesis timeout',
+      retryable: true,
+      billing_state: 'unknown',
+      provider_submission_state: 'submitted_unknown',
+    },
+  }, null, 2));
+  const billingRecord = service.get(billingId, user);
+  assert.equal(billingRecord.error.billing_state, 'unknown', '计费未知必须保留到公开恢复状态');
+  assert.throws(
+    () => service.start(billingId, user),
+    error => error.code === 'REFERENCE_VIDEO_BILLING_REVIEW_REQUIRED' && error.status === 409,
+    '计费未知的失败任务不得在未明确确认费用风险时重试',
+  );
   console.log(JSON.stringify({ passed: true, segments: 42, frames: 42, batches: 11, transcript: 'no_audio' }));
 }
 

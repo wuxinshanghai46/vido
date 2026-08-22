@@ -206,6 +206,8 @@
 .reference-progress-foot { display: flex; align-items: center; gap: 14px; }
 .reference-progress-foot p { flex: 1; }
 .reference-progress-foot .btn { flex: 0 0 auto; }
+.reference-progress-actions { display: flex; flex: 0 0 auto; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.brief-reference-progress-slot { width: 100%; }
 .reference-progress-card.is-failed { border-color: color-mix(in srgb, var(--danger) 52%, var(--line)); }
 .reference-progress-card.is-failed .reference-progress-head strong, .reference-progress-card.is-failed .reference-progress-phase { color: var(--danger); }
 .reference-progress-card.is-failed .reference-progress-pulse, .reference-progress-card.is-failed .reference-progress-track i { background: var(--danger); }

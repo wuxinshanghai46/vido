@@ -272,6 +272,7 @@ export function createProjectStore() {
         body: {
           extended_analysis_confirmed: options.extended_analysis_confirmed === true,
           preflight_fingerprint: String(options.preflight_fingerprint || ''),
+          acknowledge_billing_unknown: options.acknowledge_billing_unknown === true,
         },
       });
       const analysis = data.analysis || {};
@@ -302,6 +303,8 @@ export function createProjectStore() {
       source: analysis.source || null,
       error: analysis.error || null,
       error_code: String(analysis.error?.code || analysis.error_code || ''),
+      billing_state: String(analysis.error?.billing_state || analysis.billing_state || ''),
+      provider_submission_state: String(analysis.error?.provider_submission_state || analysis.provider_submission_state || ''),
       analysis_preflight: analysis.analysis_preflight && typeof analysis.analysis_preflight === 'object'
         ? analysis.analysis_preflight
         : null,
@@ -353,6 +356,8 @@ export function createProjectStore() {
             ? (live.error.message || live.error.code || '')
             : (live.error || ''),
           error_code: live.error_code,
+          billing_state: live.billing_state,
+          provider_submission_state: live.provider_submission_state,
           analysis_preflight: live.analysis_preflight,
           retry_after_ms: Math.max(0, Number(live.error?.retry_after_ms || 0) || 0),
           visual_evidence_reusable: live.visual_evidence_reusable === true,

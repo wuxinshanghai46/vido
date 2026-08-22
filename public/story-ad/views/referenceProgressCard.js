@@ -100,22 +100,26 @@ export function referenceProgress(reference = {}) {
     failed && retryMinutes > 0 ? `备用模型正在限流保护中，建议约 ${retryMinutes} 分钟后继续。` : '',
   ].filter(Boolean).join(' ');
   const canReuseEvidence = reference.visual_evidence_reusable === true || completeEvidence;
+  const billingUnknown = String(reference.billing_state || '').toLowerCase() === 'unknown'
+    || String(reference.provider_submission_state || '').toLowerCase() === 'submitted_unknown';
   const retryLabel = extendedConfirmation
     ? `确认分批分析（${Number(preflight.batch_count || 0)} 批）`
     : (reference.semantic_result_reusable === true
     ? '复用已保留结果重新校验'
     : (canReuseEvidence
-      ? '仅补齐缺失语义（不重读镜头）'
+      ? (billingUnknown ? '确认费用风险，仅重试语义' : '仅补齐缺失语义（不重读镜头）')
       : (completedInvalid || cancelled ? '重新识别当前视频' : (partialEvidence ? `继续读取缺失镜头（${batchCompleted}/${batchTotal} 批）` : '重新读取镜头证据'))));
   const retry = (failed || cancelled || completedInvalid) && reference.client_pending !== true
     ? `<button class="btn" type="button" data-reference-retry>${retryLabel}</button>` : '';
+  const abandon = (failed || cancelled || completedInvalid) && reference.client_pending !== true
+    ? '<button class="btn" type="button" data-reference-abandon>不使用参考，继续</button>' : '';
   const finishedAt = reference.completed_at || reference.failed_at || reference.cancelled_at || reference.sync_interrupted_at || reference.updated_at || '';
   return `<section class="reference-progress-card ${tone}" aria-live="polite">
     <div class="reference-progress-head"><span><b>${escapeHtml(labels[status] || '参考视频状态')}</b><small>${escapeHtml(reference.filename || '当前参考视频')}</small></span><span class="reference-progress-stats">${elapsedTimeTag({ startedAt: reference.started_at, finishedAt, active })}<strong>${percent}%</strong></span></div>
     <div class="reference-progress-phase"><span class="reference-progress-pulse" aria-hidden="true"></span>${escapeHtml(phase)}</div>
     <div class="reference-progress-track" role="progressbar" aria-label="参考视频分析进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${percent}"><i style="width:${percent}%"></i></div>
     ${recoveryBreakdown({ batchTotal, batchCompleted, semanticProgress })}
-    <div class="reference-progress-foot"><p>${escapeHtml(note)}</p>${retry}</div>
+    <div class="reference-progress-foot"><p>${escapeHtml(note)}${billingUnknown ? ' 上一次语义请求计费结果未知，系统没有自动切换备用模型，避免重复付费。' : ''}</p><div class="reference-progress-actions">${abandon}${retry}</div></div>
   </section>`;
 }
 

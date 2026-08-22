@@ -29,12 +29,13 @@ export async function mount(host, context) {
   const referenceStepVisible = referenceAttached && !route.isNew;
   const showReferenceStepGuidance = referenceStepVisible && bundle.navigation?.steps?.brief?.completed !== true;
   host.innerHTML = `
-    ${briefDialogueMarkup(bundle, route)}
+    ${briefDialogueMarkup(bundle, route, {
+      referenceProgressMarkup: showReferenceStepGuidance ? referenceProgress(bundle.reference) : '',
+    })}
     ${showReferenceStepGuidance && !referenceAction.blocked ? `<section class="card brief-reference-primary-action is-top-action" data-brief-inline-action aria-live="polite">
       <div class="brief-next-step-copy"><span class="status-tag is-info" data-brief-next-tag>下一步</span><div><h2>生成${escapeHtml(outputLabel)}</h2><p data-brief-next-description>${escapeHtml(referenceNextStepDescription(bundle.reference || {}, referenceAction, brief.content_mode))}</p></div></div>
       <button class="btn primary" type="submit" form="storyAdBriefForm" data-brief-submit>${escapeHtml(referenceAction.label)}</button>
     </section>` : ''}
-    ${showReferenceStepGuidance ? `<div data-reference-progress-host>${referenceProgress(bundle.reference)}</div>` : ''}
     <div data-brief-settings-anchor>
     <dialog class="brief-settings-modal" data-brief-settings-modal aria-labelledby="brief-settings-modal-title">
       <div class="brief-settings-dialog" data-brief-settings-layout>
@@ -507,6 +508,25 @@ ${renderAdvancedReferenceControls(bundle, route.isNew)}
       setButtonBusy(button, false);
     }
   });
+  const handleReferenceAbandon = async event => {
+    const button = event.target.closest('[data-reference-abandon]');
+    if (!button || button.disabled) return;
+    const confirmed = await confirmDialog('系统会解除当前项目的参考视频，并保留你已经手动填写的内容。已完成的镜头证据将不再用于这个项目；之后可以重新添加参考视频。是否不使用本次参考继续？', {
+      title: '不使用参考继续',
+      confirmText: '不使用参考，继续填写',
+    });
+    if (!confirmed) return;
+    try {
+      setButtonBusy(button, true, '正在解除…');
+      await store.removeReference();
+      toast('已解除失败的参考视频，现在可以继续输入并完成立项。', 'success');
+      await context.refreshShell();
+    } catch (error) {
+      toast(error.message, 'danger');
+      setButtonBusy(button, false);
+    }
+  };
+  host.addEventListener('click', handleReferenceAbandon);
   let referenceRetryPending = false;
   const handleReferenceRetry = async event => {
     const button = event.target.closest('[data-reference-retry]');
@@ -523,9 +543,13 @@ ${renderAdvancedReferenceControls(bundle, route.isNew)}
     const completeEvidence = Number(batchProgress.total || 0) > 0 && Number(batchProgress.completed || 0) === Number(batchProgress.total || 0);
     const reusable = currentReference.visual_evidence_reusable === true || completeEvidence;
     const semanticReusable = store.state.bundle?.reference?.semantic_result_reusable === true;
+    const billingUnknown = String(currentReference.billing_state || '').toLowerCase() === 'unknown'
+      || String(currentReference.provider_submission_state || '').toLowerCase() === 'submitted_unknown';
     const completedInvalid = currentReference.status === 'completed' && currentReference.analysis_valid !== true;
     const partialEvidence = Number(batchProgress.completed || 0) > 0 && Number(batchProgress.completed || 0) < Number(batchProgress.total || 0);
-    const retryMessage = extendedConfirmation
+    const retryMessage = billingUnknown
+      ? `上一次语义模型请求已发出，但供应商没有返回可确认的计费结果；它可能已经产生费用。${Number(batchProgress.total || 0) > 0 ? `已完成的 ${Number(batchProgress.completed || 0)}/${Number(batchProgress.total || 0)} 批镜头证据都会保留` : '已通过校验的镜头证据都会保留'}，本次只重新调用语义整理模型，不会重读图片，但可能新增一次模型费用。是否明确承担这次重试风险并继续？`
+      : extendedConfirmation
       ? `系统已免费检测到 ${Number(preflight.segment_count || 0)} 个取证片段，需要 ${Number(preflight.batch_count || 0)} 批视觉读取；普通分析包含 10 批，本次将增加 ${Number(preflight.extra_batch_count || 0)} 批。确认后会完整读取全部片段，并按批保存进度；失败重试不会重复读取已通过批次。是否继续？`
       : completedInvalid
       ? (reusable
@@ -541,8 +565,8 @@ ${renderAdvancedReferenceControls(bundle, route.isNew)}
     let confirmed = false;
     try {
       confirmed = await confirmDialog(retryMessage, {
-        title: extendedConfirmation ? '确认分批分析参考视频' : (completedInvalid ? '重新识别当前视频' : (semanticReusable ? '重新校验参考视频' : (reusable ? '继续补齐语义结构' : '重新读取镜头证据'))),
-        confirmText: extendedConfirmation ? `确认读取 ${Number(preflight.batch_count || 0)} 批` : (completedInvalid ? '确认重新识别' : (semanticReusable ? '确认重新校验' : (reusable ? '确认重新整理' : '确认重新分析'))),
+        title: billingUnknown ? '确认可能新增一次模型费用' : (extendedConfirmation ? '确认分批分析参考视频' : (completedInvalid ? '重新识别当前视频' : (semanticReusable ? '重新校验参考视频' : (reusable ? '继续补齐语义结构' : '重新读取镜头证据')))),
+        confirmText: billingUnknown ? '确认风险，仅重试语义' : (extendedConfirmation ? `确认读取 ${Number(preflight.batch_count || 0)} 批` : (completedInvalid ? '确认重新识别' : (semanticReusable ? '确认重新校验' : (reusable ? '确认重新整理' : '确认重新分析')))),
       });
     } catch (error) {
       referenceRetryPending = false;
@@ -563,7 +587,7 @@ ${renderAdvancedReferenceControls(bundle, route.isNew)}
           preflight_fingerprint: String(preflight.fingerprint || ''),
         });
       } else {
-        await store.retryReferenceAnalysis();
+        await store.retryReferenceAnalysis({ acknowledge_billing_unknown: billingUnknown });
       }
       toast(extendedConfirmation ? `已确认 ${Number(preflight.batch_count || 0)} 批完整分析；已通过批次会持续保存。` : (completedInvalid ? '已保留当前视频并开始重新识别，无需重新上传。' : (semanticReusable ? '已复用现有结果开始重新校验，不会再次调用模型。' : (reusable ? '已复用完整镜头证据，只继续补齐语义结构。' : '已开始重新检测并分析镜头证据。'))), 'success');
     } catch (error) {
@@ -576,6 +600,7 @@ ${renderAdvancedReferenceControls(bundle, route.isNew)}
   host.addEventListener('click', handleReferenceRetry);
   return () => {
     disposed = true;
+    host.removeEventListener('click', handleReferenceAbandon);
     cleanupBriefViewport();
     understandingLoadSequence += 1;
     understandingController?.destroy();
