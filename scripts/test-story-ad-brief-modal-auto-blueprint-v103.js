@@ -267,7 +267,7 @@ async function main() {
       }) };
     }, BUILD);
     assert.equal(await page.$$eval('.brief-message.is-assistant', items => items.length), 0, '新项目不得预置助手对话，必须由用户先发起');
-    await page.type('[data-dialogue-input]', '林夏与周远在雨夜车站重逢，两人最终没有复合，而是在遗憾中彼此释然。');
+    await page.type('[data-dialogue-input]', '剧情短片：林夏与周远在雨夜车站重逢，两人最终没有复合，而是在遗憾中彼此释然。');
     await page.click('[data-dialogue-send]');
     await page.waitForSelector('.brief-message.is-streaming');
     await new Promise(resolve => setTimeout(resolve, 180));
@@ -287,7 +287,7 @@ async function main() {
     }));
     assert.equal(dialogueQa.modelCalls, 1, '每条用户消息只能触发一次导演助理调用');
     assert.match(dialogueQa.payload.accumulated_idea, /雨夜车站重逢/);
-    assert.equal(dialogueQa.progress, '60%', '内容完整、名称已建议但规格未确认时准备度必须为 60%');
+    assert.equal(dialogueQa.progress, '65%', '剧情项目内容完整、名称已建议且无广告出镜人物待确认，但规格未确认时准备度必须为 65%');
     assert.equal(dialogueQa.specificationQuestion, true, '内容完整后必须先整体确认成片规格');
     assert.equal(dialogueQa.referenceQuestion, false, '规格未确认前不得提前进入参考材料决定');
     await page.click('[data-spec-choice="confirm"]');
