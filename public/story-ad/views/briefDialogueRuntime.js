@@ -1,4 +1,4 @@
-import { request } from '../api.js?v=20260822-reference-failure-recovery-v145';
+import { request } from '../api.js?v=20260822-reference-failure-recovery-v146';
 
 export function bindBriefViewport(host) {
   host.classList?.add('brief-dialogue-view');

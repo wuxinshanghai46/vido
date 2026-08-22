@@ -1,9 +1,9 @@
-import { escapeHtml, mediaPreview } from '../components/ui.js?v=20260822-reference-failure-recovery-v145';
-import { bindMediaLightbox } from './mediaLightbox.js?v=20260822-reference-failure-recovery-v145';
-import { personDossierShowcase } from './personDossierShowcase.js?v=20260822-reference-failure-recovery-v145';
-import { bindSceneDossierCard, renderSceneDossierCard } from './sceneDossierCard.js?v=20260822-reference-failure-recovery-v145';
-import { bindPersonLookForm } from './assetCenterPersonLooks.js?v=20260822-reference-failure-recovery-v145';
-import { bindPersonEvolutionForm } from './assetCenterPersonEvolution.js?v=20260822-reference-failure-recovery-v145';
+import { escapeHtml, mediaPreview } from '../components/ui.js?v=20260822-reference-failure-recovery-v146';
+import { bindMediaLightbox } from './mediaLightbox.js?v=20260822-reference-failure-recovery-v146';
+import { personDossierShowcase } from './personDossierShowcase.js?v=20260822-reference-failure-recovery-v146';
+import { bindSceneDossierCard, renderSceneDossierCard } from './sceneDossierCard.js?v=20260822-reference-failure-recovery-v146';
+import { bindPersonLookForm } from './assetCenterPersonLooks.js?v=20260822-reference-failure-recovery-v146';
+import { bindPersonEvolutionForm } from './assetCenterPersonEvolution.js?v=20260822-reference-failure-recovery-v146';
 
 export function ownedPropDetails(item = {}) {
   const rows = Array.isArray(item.owned_props) ? item.owned_props : [];
