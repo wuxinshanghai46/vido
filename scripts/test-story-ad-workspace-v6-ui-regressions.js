@@ -109,10 +109,14 @@ assert.match(briefView, /referenceStepVisible && bundle\.navigation\?\.steps\?\.
 assert.match(briefView, /form="storyAdBriefForm" data-brief-submit/, '折叠区外的下一步必须提交同一份可编辑表单');
 assert.match(briefView, /你可以直接修改，保存后将以你的版本为准/, '识别出的广告目标必须保持可编辑且以用户修改为准');
 assert.match(briefView, /data-brief-settings-anchor>[\s\S]*data-brief-settings-modal[\s\S]*data-brief-settings-layout/, '广告目标与启动材料必须保留在稳定 modal 内');
-assert.ok(
-  briefView.indexOf('data-reference-progress-host') < briefView.indexOf('data-brief-settings-anchor'),
-  '分析中或失败时，参考视频状态卡必须位于广告目标与启动材料上方',
-);
+assert.match(briefView, /referenceProgressMarkup:\s*showReferenceStepGuidance\s*\?\s*referenceProgress\(bundle\.reference\)/,
+  '目标页必须把参考状态卡注入对话内部，而不是继续渲染为固定高度容器外的兄弟节点');
+assert.match(briefDialoguePanel, /data-brief-conversation[^>]*>[\s\S]*data-reference-progress-host[\s\S]*<\/div>\s*<footer class="brief-composer">/,
+  '分析中或失败时，参考状态卡必须位于可滚动对话区内并在输入区上方');
+assert.match(referenceProgressSource, /data-reference-abandon/,
+  '失败参考必须提供不使用参考继续的可见恢复动作');
+assert.match(referenceProgressSource, /确认费用风险，仅重试语义/,
+  '计费未知时必须明确费用风险，不能静默切换备用模型');
 assert.ok(
   briefView.indexOf('data-brief-settings-anchor') < briefView.indexOf('data-reference-understanding-host'),
   '没有可用报告时，广告目标与启动材料必须保留在报告挂载点上方',
@@ -346,7 +350,8 @@ assert.match(extendedConfirmationCard, /尚未启动语音、视觉或语义模�
 assert.match(briefView, /可能产生新的模型费用/, '证据不完整时必须在确认框明确提醒会重新调用视觉模型');
 assert.match(briefView, /extended_analysis_confirmed:\s*true[\s\S]*preflight_fingerprint:/,
   '扩展分析确认必须连同服务端预检指纹提交，不能只信任客户端片段数量');
-assert.match(briefView, /store\.retryReferenceAnalysis\(\)/, '失败卡必须复用同一分析 ID 重试，不能要求更换视频制造重复视觉调用');
+assert.match(briefView, /store\.retryReferenceAnalysis\(\{\s*acknowledge_billing_unknown:\s*billingUnknown\s*\}\)/,
+  '失败卡必须复用同一分析 ID，并仅在计费未知时携带用户确认，不能更换视频或静默重复调用');
 assert.match(briefView, /无需更换或重新上传|不需要更换或重新上传/, '质量无效完成态必须明确告知用户保留当前视频');
 assert.doesNotMatch(briefView, /store\.getState\(\)/, '重试按钮不得调用 Store 未公开的 getState 接口');
 assert.match(briefView, /const currentReference = store\.state\.bundle\?\.reference \|\| \{\};[\s\S]*currentReference\.visual_evidence_reusable/, '重试按钮必须从 Store 公开 state 读取当前任务证据状态');
