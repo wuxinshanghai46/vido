@@ -24,7 +24,7 @@ const GATES = Object.freeze({
     label: '工作台 UI、对话立项、首屏轻量投影与模块边界',
   },
   story_content: {
-    command: 'node scripts/test-new-story-ad-blueprint-quality.js && node scripts/test-new-story-ad-blueprint-lifecycle.js && node scripts/test-new-story-ad-content-versioning.js && node scripts/test-new-story-ad-storyboard-guards.js && node scripts/test-new-story-ad-storyboard-ui.js && node scripts/test-new-story-ad-storyboard-continuity-gate.js && node scripts/test-story-ad-detail-sketch-batch.js',
+    command: 'node scripts/test-new-story-ad-blueprint-quality.js && node scripts/test-new-story-ad-blueprint-lifecycle.js && node scripts/test-new-story-ad-content-versioning.js && node scripts/test-new-story-ad-storyboard-guards.js && node scripts/test-new-story-ad-storyboard-ui.js && node scripts/test-new-story-ad-storyboard-continuity-gate.js && node scripts/test-story-ad-detail-sketch-batch.js && node scripts/test-story-ad-production-board-v158.js',
     label: '内容蓝图、完整分镜、连续性与细化批次',
   },
   reference: {
@@ -60,6 +60,8 @@ const DOMAIN_RULES = [
     patterns: [
       /^src\/services\/newStoryAd\/(?:blueprint|storyboard)/i,
       /^scripts\/test-(?:new-)?story-ad-(?:blueprint|storyboard|detail-sketch)/i,
+      /^src\/services\/newStoryAd\/(?:productionBoardContract|qualityReview|storyAdService|storyBeatAssist|ttsAdapter)\.js$/i,
+      /^scripts\/test-story-ad-production-board-v158\.js$/i,
     ],
   },
   {
@@ -96,7 +98,7 @@ const DOMAIN_RULES = [
   {
     domain: 'asset_plan',
     risk: 'asset_plan',
-    patterns: [/(?:assetPlan|PlanningDetails|PlanRelease|PlanMigration|scenePlanStatus|contextBuilder)/i],
+    patterns: [/(?:assetPlan|PlanningDetails|PlanRelease|PlanMigration|scenePlanStatus|contextBuilder|subjectAssetBundle)/i],
   },
   {
     domain: 'workspace_ui',
