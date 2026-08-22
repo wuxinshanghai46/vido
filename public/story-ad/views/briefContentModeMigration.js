@@ -1,4 +1,4 @@
-import { confirmDialog } from '../components/dialog.js?v=20260823-user-regenerate-v169';
+import { confirmDialog } from '../components/dialog.js?v=20260823-speaker-recovery-v170';
 
 export async function confirmContentModeMigration(savedMode = '', nextMode = '') {
   if (!savedMode || savedMode === nextMode) return { cancelled: false, confirmed: false };

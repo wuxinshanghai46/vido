@@ -1,4 +1,4 @@
-import { elapsedTimeTag, escapeHtml } from '../components/ui.js?v=20260823-user-regenerate-v169';
+import { elapsedTimeTag, escapeHtml } from '../components/ui.js?v=20260823-speaker-recovery-v170';
 
 const CONTRACT_LABELS = Object.freeze({
   story: '内容主线',

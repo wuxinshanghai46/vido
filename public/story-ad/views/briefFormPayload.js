@@ -1,4 +1,4 @@
-import { worldSettingPayload } from './briefWorldSettings.js?v=20260823-user-regenerate-v169';
+import { worldSettingPayload } from './briefWorldSettings.js?v=20260823-speaker-recovery-v170';
 
 export function formPayload(form) {
   const data = new FormData(form);

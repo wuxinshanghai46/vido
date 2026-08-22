@@ -1,4 +1,4 @@
-import { escapeHtml } from '../components/ui.js?v=20260823-user-regenerate-v169';
+import { escapeHtml } from '../components/ui.js?v=20260823-speaker-recovery-v170';
 
 function ageRows(profile = {}) {
   const rows = Array.isArray(profile.age_states) ? profile.age_states : [];

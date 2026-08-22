@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260823-user-regenerate-v169';
-import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260823-user-regenerate-v169';
-import { bindMediaLightbox } from './mediaLightbox.js?v=20260823-user-regenerate-v169';
+import { request } from '../api.js?v=20260823-speaker-recovery-v170';
+import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260823-speaker-recovery-v170';
+import { bindMediaLightbox } from './mediaLightbox.js?v=20260823-speaker-recovery-v170';
 
 const FIELD_GROUPS = [
   ['场景与机位', [

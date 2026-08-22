@@ -1,5 +1,5 @@
-import { escapeHtml as e } from '../components/ui.js?v=20260823-user-regenerate-v169';
-import { beatDialogueEditor, handleDialogueAction } from './plotBeatDialoguePopover.js?v=20260823-user-regenerate-v169';
+import { escapeHtml as e } from '../components/ui.js?v=20260823-speaker-recovery-v170';
+import { beatDialogueEditor, handleDialogueAction } from './plotBeatDialoguePopover.js?v=20260823-speaker-recovery-v170';
 
 const G={duration:'duration',scene:'scene',visual:'title,visual,action,visual_proof',shot_size:'shot_size',lighting_mood:'lighting_mood',sound_design:'sound_mode,ambient_sound,sfx,music_cue,audio_bridge,explicit_silence_reason',camera_movement:'camera_movement,camera_movement_notes,transition',prompt_notes:'prompt_notes,keyframe_prompt_override,video_prompt_override,negative_prompt_override'};
 const T={duration:'时长',scene:'场景',visual:'画面描述 / 动作',shot_size:'景别',lighting_mood:'光影氛围',spoken_line:'对白 / 旁白',sound_design:'音效与音乐',camera_movement:'运镜与转场',prompt_notes:'镜头提示词'};

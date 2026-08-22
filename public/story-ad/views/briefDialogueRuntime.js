@@ -1,4 +1,4 @@
-import { request } from '../api.js?v=20260823-user-regenerate-v169';
+import { request } from '../api.js?v=20260823-speaker-recovery-v170';
 
 export function bindBriefViewport(host) {
   host.classList?.add('brief-dialogue-view');

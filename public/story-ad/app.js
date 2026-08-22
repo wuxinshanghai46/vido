@@ -1,7 +1,7 @@
-import { createProjectStore } from './store/projectStore.js?v=20260823-user-regenerate-v169';
-import { bindHoverVideoPreviews, escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, toast } from './components/ui.js?v=20260823-user-regenerate-v169';
-import { assertCurrentRelease, startReleaseHeartbeat } from './api.js?v=20260823-user-regenerate-v169';
-import { confirmDialog } from './components/dialog.js?v=20260823-user-regenerate-v169';
+import { createProjectStore } from './store/projectStore.js?v=20260823-speaker-recovery-v170';
+import { bindHoverVideoPreviews, escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, toast } from './components/ui.js?v=20260823-speaker-recovery-v170';
+import { assertCurrentRelease, startReleaseHeartbeat } from './api.js?v=20260823-speaker-recovery-v170';
+import { confirmDialog } from './components/dialog.js?v=20260823-speaker-recovery-v170';
 
 await assertCurrentRelease();
 startReleaseHeartbeat();
@@ -19,13 +19,13 @@ const VIEW_META = {
   workflow: ['⌘', '工作流画布'],
 };
 const VIEW_MODULES = {
-  brief: () => import('./views/briefView.js?v=20260823-user-regenerate-v169'),
-  assets: () => import('./views/assetCenterView.js?v=20260823-user-regenerate-v169'),
-  scene: () => import('./views/sceneWorldPage.js?v=20260823-user-regenerate-v169'),
-  plot: () => import('./views/plotRoomView.js?v=20260823-user-regenerate-v169'),
-  storyboard: () => import('./views/storyboardView.js?v=20260823-user-regenerate-v169'),
-  final: () => import('./views/finalView.js?v=20260823-user-regenerate-v169'),
-  workflow: () => import('./views/workflowView.js?v=20260823-user-regenerate-v169'),
+  brief: () => import('./views/briefView.js?v=20260823-speaker-recovery-v170'),
+  assets: () => import('./views/assetCenterView.js?v=20260823-speaker-recovery-v170'),
+  scene: () => import('./views/sceneWorldPage.js?v=20260823-speaker-recovery-v170'),
+  plot: () => import('./views/plotRoomView.js?v=20260823-speaker-recovery-v170'),
+  storyboard: () => import('./views/storyboardView.js?v=20260823-speaker-recovery-v170'),
+  final: () => import('./views/finalView.js?v=20260823-speaker-recovery-v170'),
+  workflow: () => import('./views/workflowView.js?v=20260823-speaker-recovery-v170'),
 };
 const VIEW_SECTIONS = Object.freeze({
   brief: 'summary,reference',
@@ -398,7 +398,7 @@ document.addEventListener('input', async ({ target }) => {
   else if (target.matches('[data-project-type-filter]')) centerQuery.taskType = target.value || 'all';
   else if (target.matches('[data-project-stage-filter]')) centerQuery.stage = target.value || 'all';
   else return;
-  const filters = await import('./projectCenterFilters.js?v=20260823-user-regenerate-v169');
+  const filters = await import('./projectCenterFilters.js?v=20260823-speaker-recovery-v170');
   centerVisibleIds = filters.matchingProjectIds(store.state.projects.map(project => ({
     id: project.id, title: project.title, type: project.content_mode, stage: statusView(project).label,
   })), centerQuery);
