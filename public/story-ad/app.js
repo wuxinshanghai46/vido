@@ -1,7 +1,7 @@
-import { createProjectStore } from './store/projectStore.js?v=20260822-reference-extended-analysis-v142';
-import { bindHoverVideoPreviews, escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, toast } from './components/ui.js?v=20260822-reference-extended-analysis-v142';
-import { assertCurrentRelease, startReleaseHeartbeat } from './api.js?v=20260822-reference-extended-analysis-v142';
-import { confirmDialog } from './components/dialog.js?v=20260822-reference-extended-analysis-v142';
+import { createProjectStore } from './store/projectStore.js?v=20260822-reference-extended-analysis-v143';
+import { bindHoverVideoPreviews, escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, toast } from './components/ui.js?v=20260822-reference-extended-analysis-v143';
+import { assertCurrentRelease, startReleaseHeartbeat } from './api.js?v=20260822-reference-extended-analysis-v143';
+import { confirmDialog } from './components/dialog.js?v=20260822-reference-extended-analysis-v143';
 
 await assertCurrentRelease();
 startReleaseHeartbeat();
@@ -19,13 +19,13 @@ const VIEW_META = {
   workflow: ['⌘', '工作流画布'],
 };
 const VIEW_MODULES = {
-  brief: () => import('./views/briefView.js?v=20260822-reference-extended-analysis-v142'),
-  assets: () => import('./views/assetCenterView.js?v=20260822-reference-extended-analysis-v142'),
-  scene: () => import('./views/sceneWorldPage.js?v=20260822-reference-extended-analysis-v142'),
-  plot: () => import('./views/plotRoomView.js?v=20260822-reference-extended-analysis-v142'),
-  storyboard: () => import('./views/storyboardView.js?v=20260822-reference-extended-analysis-v142'),
-  final: () => import('./views/finalView.js?v=20260822-reference-extended-analysis-v142'),
-  workflow: () => import('./views/workflowView.js?v=20260822-reference-extended-analysis-v142'),
+  brief: () => import('./views/briefView.js?v=20260822-reference-extended-analysis-v143'),
+  assets: () => import('./views/assetCenterView.js?v=20260822-reference-extended-analysis-v143'),
+  scene: () => import('./views/sceneWorldPage.js?v=20260822-reference-extended-analysis-v143'),
+  plot: () => import('./views/plotRoomView.js?v=20260822-reference-extended-analysis-v143'),
+  storyboard: () => import('./views/storyboardView.js?v=20260822-reference-extended-analysis-v143'),
+  final: () => import('./views/finalView.js?v=20260822-reference-extended-analysis-v143'),
+  workflow: () => import('./views/workflowView.js?v=20260822-reference-extended-analysis-v143'),
 };
 const VIEW_SECTIONS = Object.freeze({
   brief: 'summary,reference',
@@ -398,7 +398,7 @@ document.addEventListener('input', async ({ target }) => {
   else if (target.matches('[data-project-type-filter]')) centerQuery.taskType = target.value || 'all';
   else if (target.matches('[data-project-stage-filter]')) centerQuery.stage = target.value || 'all';
   else return;
-  const filters = await import('./projectCenterFilters.js?v=20260822-reference-extended-analysis-v142');
+  const filters = await import('./projectCenterFilters.js?v=20260822-reference-extended-analysis-v143');
   centerVisibleIds = filters.matchingProjectIds(store.state.projects.map(project => ({
     id: project.id, title: project.title, type: project.content_mode, stage: statusView(project).label,
   })), centerQuery);

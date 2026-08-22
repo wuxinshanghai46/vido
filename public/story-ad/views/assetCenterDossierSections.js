@@ -1,4 +1,4 @@
-import { escapeHtml, mediaPreview } from '../components/ui.js?v=20260822-reference-extended-analysis-v142';
+import { escapeHtml, mediaPreview } from '../components/ui.js?v=20260822-reference-extended-analysis-v143';
 
 export function mediaSection(title, rows = [], className = '') {
   const items = Array.isArray(rows) ? rows.filter(item => item?.image_url) : [];
