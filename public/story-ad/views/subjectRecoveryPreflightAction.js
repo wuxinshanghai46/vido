@@ -1,4 +1,4 @@
-import { request } from '../api.js?v=20260822-reference-extended-analysis-v139';
+import { request } from '../api.js?v=20260822-reference-extended-analysis-v140';
 
 async function preflight(bundle = {}, generationPayload = {}, apply = false, proofToken = '') {
   const taskId = bundle?.project?.id || '';
