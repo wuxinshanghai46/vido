@@ -68,6 +68,7 @@ function main(argv = process.argv.slice(2)) {
   }
   pm2(['delete', appName]);
   try { pm2(['delete', candidateName]); } catch {}
+  waitForPortFree(4600, 30000);
   start(appName, 4600);
   pm2(['save', '--force']);
   console.log(JSON.stringify({ mode, app_name: appName, release_dir: releaseDir, port: 4600 }));

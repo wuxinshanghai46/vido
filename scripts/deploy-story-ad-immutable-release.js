@@ -290,6 +290,9 @@ async function auditCandidateSystemicState() {
 
 async function restoreSystemicBackup() {
   if (!systemicBackupCreated) return null;
+  if (!systemicMigrationApplied) {
+    return { restored: false, reason: 'systemic_migration_not_applied', backup_dir: systemicBackupDir };
+  }
   await exec(`pm2 stop vido >/dev/null 2>&1 || true; pm2 stop ${quote(candidateName)} >/dev/null 2>&1 || true`);
   const legacyJson = `${previousTarget}/outputs/new_story_ad_db.json`;
   await exec([
@@ -337,7 +340,7 @@ async function rollback() {
       : `cd ${quote(releaseDir)} && node scripts/run-with-pm2-env.js vido node scripts/manage-story-ad-release-control.js --state rollback`);
   }
   if (!restartPreviousRuntime && !releaseControlDrained) return;
-  await exec('curl -fsS http://127.0.0.1:4600/api/health >/dev/null');
+  await exec('for i in $(seq 1 30); do sleep 3; curl -fsS http://127.0.0.1:4600/api/health >/dev/null && exit 0; done; exit 1');
   const restoredVersion = parseJson(await exec('curl -fsS http://127.0.0.1:4600/api/story-ad/version'));
   if ((previousBundleId && restoredVersion.release_bundle_id !== previousBundleId)
     || (!previousBundleId && previousBuildId && restoredVersion.build_id !== previousBuildId)) {
@@ -519,7 +522,7 @@ client.on('ready', async () => {
     cutoverStarted = true;
     await exec(`ln -sfn ${quote(releaseDir)} /opt/vido/.current-next && mv -Tf /opt/vido/.current-next ${quote(currentLink)}`);
     await exec(`node ${quote(`${releaseDir}/scripts/story-ad-pm2-release.js`)} --mode cutover --release ${quote(releaseDir)} --build ${quote(release.build_id)} --candidate ${quote(candidateName)} --node ${quote(nodeRuntimeBin)}`);
-    await exec('for i in 1 2 3 4 5 6 7 8 9 10 11 12; do sleep 3; curl -fsS http://127.0.0.1:4600/api/health >/dev/null && exit 0; done; exit 1');
+    await exec('for i in $(seq 1 30); do sleep 3; curl -fsS http://127.0.0.1:4600/api/health >/dev/null && exit 0; done; exit 1');
     const activeControl = parseJson(await exec(`cd ${quote(releaseDir)} && node scripts/run-with-pm2-env.js vido node scripts/manage-story-ad-release-control.js --state active --bundle ${quote(candidateVersion.release_bundle_id)}`));
     const version = parseJson(await exec('curl -fsS http://127.0.0.1:4600/api/story-ad/version'));
     const health = parseJson(await exec('curl -fsS http://127.0.0.1:4600/api/health'));

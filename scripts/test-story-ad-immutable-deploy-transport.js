@@ -34,6 +34,8 @@ assert(source.includes('const before = await releaseReadiness(releaseDir);'), 'p
 assert(!source.includes('const before = await releaseReadiness(previousTarget);'), 'a defective current reader must not run before its replacement candidate exists');
 assert(pm2ReleaseSource.includes('waitForPortFree(4601);'), 'candidate startup must wait for stale candidate port shutdown');
 assert(pm2ReleaseSource.indexOf('waitForPortFree(4601);') < pm2ReleaseSource.indexOf('start(candidateName, 4601);'), 'port release must complete before candidate start');
+assert(pm2ReleaseSource.includes('waitForPortFree(4600, 30000);'), 'cutover must wait for the prior production listener to release port 4600');
+assert(pm2ReleaseSource.indexOf('waitForPortFree(4600, 30000);') < pm2ReleaseSource.indexOf('start(appName, 4600);'), 'production port release must precede the replacement start');
 assert(source.includes("previousMigrationSetId === targetMigrationSetId"), 'an already-applied migration set must not rescan the full historical database');
 assert(source.includes("reason: 'same_migration_set'"), 'same migration-set skip must remain explicit and auditable');
 assert(source.indexOf('previousMigrationSetId === targetMigrationSetId') < source.indexOf("scripts/migrate-new-story-ad-systemic-state.js`"), 'migration-set compatibility must be checked before the legacy full migration command');
@@ -42,6 +44,8 @@ assert(source.includes('&& !releaseControlDrained && !systemicBackupCreated'), '
 assert.strictEqual((source.match(/cutoverStarted = true/g) || []).length, 1, '切流标志只能在真实切换点设置一次');
 assert(source.indexOf('cutoverStarted = true') > source.indexOf("reportPhase('cutover')"), '切流标志只能在备份和迁移通过后设置');
 assert(source.includes('cutoverStarted || legacyProcessFrozen || restored?.restored === true'), '旧生产进程若在切流前冻结，回滚必须仍可恢复');
+assert(source.includes("reason: 'systemic_migration_not_applied'"), 'rollback must not replace the live database when systemic migration made no writes');
+assert.strictEqual((source.match(/for i in \$\(seq 1 30\)/g) || []).length, 2, 'cutover and rollback must both allow 90 seconds for production health');
 assert(!source.includes('echo PRAGMA quick_check'), 'SQLite quick_check 必须保留分号，禁止 shell echo 截断 SQL');
 assert(source.includes('SYSTEMIC_MIGRATION_AUDIT_FAILED'), 'systemic migration must pass a post-write audit before cutover');
 assert(source.includes('VIDO_IMMUTABLE_BASE_RELEASE') && source.includes('fs.linkSync(source,destination)'), 'immutable deployment must reuse only manifest-listed files from a verified base release');
