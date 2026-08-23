@@ -1,4 +1,4 @@
-import { confirmDialog } from '../components/dialog.js?v=20260823-cast-autosave-v172';
+import { confirmDialog } from '../components/dialog.js?v=20260823-production-audio-v174';
 
 export async function confirmContentModeMigration(savedMode = '', nextMode = '') {
   if (!savedMode || savedMode === nextMode) return { cancelled: false, confirmed: false };

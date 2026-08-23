@@ -1,4 +1,4 @@
-import { renderBriefMaterialRows } from './briefMaterials.js?v=20260823-cast-autosave-v172';
+import { renderBriefMaterialRows } from './briefMaterials.js?v=20260823-production-audio-v174';
 
 function hasMaterials(bundle) {
   const reference = bundle?.reference || {};

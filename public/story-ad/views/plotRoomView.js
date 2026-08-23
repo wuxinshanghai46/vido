@@ -75,7 +75,7 @@ export async function mount(host, context) {
   }
 
   const characterAutosave = characters.length
-    ? (await import('./plotCharacterAutosave.js?v=20260823-cast-autosave-v172'))
+    ? (await import('./plotCharacterAutosave.js?v=20260823-production-audio-v174'))
       .bindCharacterAutosave({ host, blueprint, store, collectBlueprint, toast })
     : null;
 

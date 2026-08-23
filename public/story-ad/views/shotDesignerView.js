@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260823-cast-autosave-v172';
-import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260823-cast-autosave-v172';
-import { bindMediaLightbox } from './mediaLightbox.js?v=20260823-cast-autosave-v172';
+import { request } from '../api.js?v=20260823-production-audio-v174';
+import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260823-production-audio-v174';
+import { bindMediaLightbox } from './mediaLightbox.js?v=20260823-production-audio-v174';
 
 const FIELD_GROUPS = [
   ['场景与机位', [

@@ -1,4 +1,4 @@
-import { request } from '../api.js?v=20260823-cast-autosave-v172';
+import { request } from '../api.js?v=20260823-production-audio-v174';
 
 export function bindBriefViewport(host) {
   host.classList?.add('brief-dialogue-view');
