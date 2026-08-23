@@ -492,6 +492,11 @@ const sceneDossierModule = loadBrowserModule(
   ['assetCardMedia', 'sceneNeedsGeneration', 'normalizeSceneDossier', 'renderSceneDossierCard'],
   { escapeHtml, mediaPreview, setButtonBusy() {}, toast() {} },
 );
+const personVoiceModule = loadBrowserModule(
+  'public/story-ad/views/assetCenterPersonVoice.js',
+  ['renderPersonVoiceBinding'],
+  { escapeHtml },
+);
 const assetModule = loadBrowserModule(
   'public/story-ad/views/assetCenterView.js',
   ['assetCard', 'personAssetState', 'subjectNeedsGeneration', 'sceneNeedsGeneration', 'subjectGenerationPayload', 'profileDetails'],
@@ -500,7 +505,7 @@ const assetModule = loadBrowserModule(
 const personFormModule = loadBrowserModule(
   'public/story-ad/views/assetCenterPersonForm.js',
   ['personEditForm'],
-  { escapeHtml, ...personLookModule, ...assetPersonStateModule, renderPersonEvolutionEditor() { return ''; } },
+  { escapeHtml, ...personLookModule, ...assetPersonStateModule, ...personVoiceModule, renderPersonEvolutionEditor() { return ''; } },
 );
 const uiModule = loadBrowserModule(
   'public/story-ad/components/ui.js',
