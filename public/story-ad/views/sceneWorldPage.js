@@ -1,7 +1,7 @@
-import { renderSceneWorldWorkspace, bindSceneWorldWorkspace } from './sceneWorldView.js?v=20260823-character-library-v183';
-import { escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260823-character-library-v183';
-import { authorizeBillingReviews, confirmBillingAwareAction } from './assetCenterBillingRetry.js?v=20260823-character-library-v183';
-import { bindScenePlanUpdate, scenePlanBlockedView } from './scenePlanStatus.js?v=20260823-character-library-v183';
+import { renderSceneWorldWorkspace, bindSceneWorldWorkspace } from './sceneWorldView.js?v=20260823-character-library-v184';
+import { escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260823-character-library-v184';
+import { authorizeBillingReviews, confirmBillingAwareAction } from './assetCenterBillingRetry.js?v=20260823-character-library-v184';
+import { bindScenePlanUpdate, scenePlanBlockedView } from './scenePlanStatus.js?v=20260823-character-library-v184';
 
 function sceneGenerationQueue(bundle = {}, scenePlanReady = true) {
   const scenes = Array.isArray(bundle.assets?.scenes) ? bundle.assets.scenes : [];

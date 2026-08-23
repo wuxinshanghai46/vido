@@ -1,5 +1,5 @@
-import { request } from '../api.js?v=20260823-character-library-v183';
-import { normalizeSceneDossier, SCENE_VIEW_LABELS, SCENE_VIEW_ORDER } from './sceneDossierCard.js?v=20260823-character-library-v183';
+import { request } from '../api.js?v=20260823-character-library-v184';
+import { normalizeSceneDossier, SCENE_VIEW_LABELS, SCENE_VIEW_ORDER } from './sceneDossierCard.js?v=20260823-character-library-v184';
 
 const WIDTH = 1800;
 const HEIGHT = 2400;

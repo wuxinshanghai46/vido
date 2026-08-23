@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260823-character-library-v183';
-import { escapeHtml } from '../components/ui.js?v=20260823-character-library-v183';
-import { collectBeat } from './plotBeatEditor.js?v=20260823-character-library-v183';
+import { request } from '../api.js?v=20260823-character-library-v184';
+import { escapeHtml } from '../components/ui.js?v=20260823-character-library-v184';
+import { collectBeat } from './plotBeatEditor.js?v=20260823-character-library-v184';
 
 export async function openPromptPreview({ pop, row, host, projectId, place, closeAll }) {
   closeAll();
