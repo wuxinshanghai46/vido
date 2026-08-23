@@ -381,6 +381,30 @@ function resumablePartialCheckpoint(storage, taskId, counts, targets, humans, pe
     }) || null;
 }
 
+function resumeProfileOverlay(storage, taskId, body = {}) {
+  const requested = body.resume_partial_checkpoint === true || body.resumePartialCheckpoint === true;
+  if (!requested || !taskId || typeof storage?.listOutputs !== 'function') return body;
+  const expectedPeople = Math.max(0, Number(body.expected_people ?? body.expectedPeople
+    ?? body.person_spec?.expectedPeople ?? body.person_spec?.expected_people
+    ?? (Array.isArray(body.cast_profiles) ? body.cast_profiles.length : 0)) || 0);
+  const expectedPets = Math.max(0, Number(body.expected_animals ?? body.expectedAnimals
+    ?? (Array.isArray(body.pet_profiles) ? body.pet_profiles.length : 0)) || 0);
+  const candidate = storage.listOutputs(taskId)
+    .filter(row => String(row?.kind || '').startsWith('subject_asset_checkpoint:'))
+    .filter(row => ['running', 'partial', 'failed'].includes(String(row?.payload?.status || '')))
+    .filter(row => Object.keys(row?.payload?.person_dossier_checkpoints || {}).length > 0)
+    .filter(row => Number(row?.payload?.counts?.people || 0) === expectedPeople
+      && Number(row?.payload?.counts?.pets || 0) === expectedPets)
+    .sort((left, right) => Date.parse(right.updated_at || right.payload?.updated_at || '')
+      - Date.parse(left.updated_at || left.payload?.updated_at || ''))[0]?.payload;
+  if (!candidate?.input_profiles) return body;
+  return {
+    ...body,
+    ...(Array.isArray(candidate.input_profiles.humans) ? { cast_profiles: candidate.input_profiles.humans } : {}),
+    ...(Array.isArray(candidate.input_profiles.pets) ? { pet_profiles: candidate.input_profiles.pets } : {}),
+  };
+}
+
 function humanMemberSpecs(spec = {}, body = {}, count = 1) {
   const supplied = Array.isArray(body.cast_profiles) ? body.cast_profiles : [];
   const projectVisualMedium = worldSetting.primaryVisualMedium(body.world_setting);
@@ -945,6 +969,7 @@ async function generateSubjectBundle(options = {}, deps = {}) {
   let body = options.body || {};
   const brief = cleanText(body.brief || body.content || '', 4000);
   const taskId = cleanText(options.taskId || body.task_id || '', 120);
+  body = resumeProfileOverlay(storage, taskId, body);
   const suppliedCast = Array.isArray(body.cast_profiles) ? body.cast_profiles : [];
   const eraSeparatedCast = personLooks.splitCrossEraProfiles(suppliedCast);
   if (eraSeparatedCast.length !== suppliedCast.length) {
@@ -1464,6 +1489,6 @@ module.exports = {
   assertCompleteSubjectProfiles, humanPrompt, petPrompt,
   leakedVisualMembers, visualFieldCopied,
   aggregatePersonContract, aggregatePetContract, reverifyPersonBundle,
-  buildSubjectBoard, hasLocalSubjectBoard, generateSubjectBundle,
+  buildSubjectBoard, hasLocalSubjectBoard, generateSubjectBundle, resumeProfileOverlay,
   PERSON_VISUAL_ASSET_CONTRACT_VERSION,
 };

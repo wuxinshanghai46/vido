@@ -251,6 +251,15 @@ function testPartialResumeSelection() {
     regenerate_selected: true, resume_partial_checkpoint: true, request_key: 'click-b',
   });
   assert.equal(keyA, keyB, 'resume request keys must not invalidate successful checkpoint units');
+  const authoritativeProfiles = [{ id: 'person-1', displayName: '稳定人物', wardrobeText: '锁定服装' }];
+  const overlaid = subjectAssets.resumeProfileOverlay({
+    listOutputs: () => [{ kind: 'subject_asset_checkpoint:latest', updated_at: '2026-08-24T01:00:00.000Z', payload: {
+      ...partial, input_profiles: { humans: authoritativeProfiles, pets: [] },
+    } }],
+  }, 'task-a', { expected_people: 1, expected_animals: 0, resume_partial_checkpoint: true,
+    cast_profiles: [{ id: 'person-1', displayName: '模型再次规划后的漂移文本' }] });
+  assert.deepEqual(overlaid.cast_profiles, authoritativeProfiles,
+    '恢复批次必须复用失败检查点的原始人物输入，不能让再次规划的措辞漂移使图片失效');
 }
 
 async function main() {
@@ -262,7 +271,7 @@ async function main() {
   testPartialResumeSelection();
   console.log(JSON.stringify({
     success: true,
-    checks: 6,
+    checks: 7,
     guarantees: ['same-task-stop-before-submit', 'cross-task-isolation', 'exact-unit-authorization', 'bounded-partial-projection'],
   }));
 }

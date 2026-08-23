@@ -44,9 +44,12 @@ function configure() {
 
   const config = pipeline.loadConfig();
   const textModels = [
-    { provider_id: 'deyunai', model_id: 'gemini-2.5-pro', enabled: true },
-    { provider_id: 'deyunai', model_id: 'gpt-4o', enabled: true },
-    { provider_id: 'deyunai', model_id: 'gemini-2.5-flash', enabled: true },
+    { provider_id: 'apismile', model_id: 'gpt-5.5', enabled: true },
+    { provider_id: 'aiapi', model_id: 'deepseek-chat', enabled: true },
+    { provider_id: 'apismile', model_id: 'gemini-2.5-pro', enabled: true },
+    { provider_id: 'deyunai', model_id: 'gemini-2.5-pro', enabled: false },
+    { provider_id: 'deyunai', model_id: 'gpt-4o', enabled: false },
+    { provider_id: 'deyunai', model_id: 'gemini-2.5-flash', enabled: false },
   ];
   for (const stage of [
     'new_story_ad.scene_config',
