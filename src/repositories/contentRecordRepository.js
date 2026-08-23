@@ -326,36 +326,42 @@ function hasAny(collection) {
 function listActiveTaskStates(collection, limit = 1000) {
   const db = requireDatabase();
   return db.prepare(`
-    SELECT
-      id,
-      COALESCE(json_extract(payload_json, '$.active_generation_id'), '') AS active_generation_id,
-      COALESCE(json_extract(payload_json, '$.active_stage'), json_extract(payload_json, '$.stage'), '') AS stage
+    SELECT id, payload_json
     FROM content_records
     WHERE collection = ?
-      AND COALESCE(json_extract(payload_json, '$.active_generation_id'), '') <> ''
+      AND payload_json LIKE '%"active_generation_id"%'
+      AND payload_json NOT LIKE '%"active_generation_id":""%'
+      AND payload_json NOT LIKE '%"active_generation_id":null%'
     ORDER BY COALESCE(updated_at, created_at) DESC
     LIMIT ?
-  `).all(collection, Math.max(1, Math.min(5000, Number(limit) || 1000)));
+  `).all(collection, Math.max(1, Math.min(5000, Number(limit) || 1000)))
+    .map(row => ({ id: row.id, ...jsonParse(row.payload_json, {}) }))
+    .filter(row => row.active_generation_id)
+    .map(row => ({
+      id: row.id,
+      active_generation_id: row.active_generation_id,
+      stage: row.active_stage || row.stage || '',
+    }));
 }
 
 function listUnknownBillingStates(collection, limit = 2000) {
   const db = requireDatabase();
   return db.prepare(`
-    SELECT
-      id,
-      COALESCE(project_id, json_extract(payload_json, '$.task_id'), '') AS task_id,
-      COALESCE(json_extract(payload_json, '$.stage'), '') AS stage,
-      COALESCE(json_extract(payload_json, '$.provider_task_id'), '') AS provider_task_id,
-      COALESCE(json_extract(payload_json, '$.provider_submission_state'), '') AS provider_submission_state,
-      COALESCE(json_extract(payload_json, '$.billing_state'), '') AS billing_state
+    SELECT id, project_id, payload_json
     FROM content_records
     WHERE collection = ?
-      AND LOWER(COALESCE(json_extract(payload_json, '$.billing_state'), '')) = 'unknown'
-      AND LOWER(COALESCE(json_extract(payload_json, '$.provider_submission_state'), ''))
-        IN ('submitted', 'submitted_unknown', 'accepted', 'polling', 'running')
+      AND payload_json LIKE '%"billing_state":"unknown"%'
+      AND (
+        payload_json LIKE '%"provider_submission_state":"submitted"%'
+        OR payload_json LIKE '%"provider_submission_state":"submitted_unknown"%'
+        OR payload_json LIKE '%"provider_submission_state":"accepted"%'
+        OR payload_json LIKE '%"provider_submission_state":"polling"%'
+        OR payload_json LIKE '%"provider_submission_state":"running"%'
+      )
     ORDER BY COALESCE(updated_at, created_at) DESC
     LIMIT ?
-  `).all(collection, Math.max(1, Math.min(5000, Number(limit) || 2000)));
+  `).all(collection, Math.max(1, Math.min(5000, Number(limit) || 2000)))
+    .map(row => ({ project_id: row.project_id || '', ...jsonParse(row.payload_json, {}), id: row.id }));
 }
 
 function listForUser(collection, userId) {
