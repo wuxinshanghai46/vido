@@ -1,7 +1,7 @@
-import { renderSceneWorldWorkspace, bindSceneWorldWorkspace } from './sceneWorldView.js?v=20260823-independent-person-plan-v198';
-import { escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260823-independent-person-plan-v198';
-import { authorizeBillingReviews, confirmBillingAwareAction } from './assetCenterBillingRetry.js?v=20260823-independent-person-plan-v198';
-import { bindScenePlanUpdate, scenePlanBlockedView } from './scenePlanStatus.js?v=20260823-independent-person-plan-v198';
+import { renderSceneWorldWorkspace, bindSceneWorldWorkspace } from './sceneWorldView.js?v=20260823-independent-person-plan-v199';
+import { escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260823-independent-person-plan-v199';
+import { authorizeBillingReviews, confirmBillingAwareAction } from './assetCenterBillingRetry.js?v=20260823-independent-person-plan-v199';
+import { bindScenePlanUpdate, scenePlanBlockedView } from './scenePlanStatus.js?v=20260823-independent-person-plan-v199';
 
 function sceneGenerationQueue(bundle = {}, scenePlanReady = true) {
   const scenes = Array.isArray(bundle.assets?.scenes) ? bundle.assets.scenes : [];

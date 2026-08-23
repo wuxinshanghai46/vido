@@ -1,5 +1,5 @@
-import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260823-independent-person-plan-v198';
-import { bindMoreMedia, moreMediaButton } from './finalMediaPagination.js?v=20260823-independent-person-plan-v198';
+import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260823-independent-person-plan-v199';
+import { bindMoreMedia, moreMediaButton } from './finalMediaPagination.js?v=20260823-independent-person-plan-v199';
 
 function itemIndex(item = {}, index = 0) {
   const value = Number(item.shot_index ?? item.shotIndex ?? item.index);

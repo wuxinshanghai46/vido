@@ -1,4 +1,4 @@
-import { elapsedTimeTag, escapeHtml } from '../components/ui.js?v=20260823-independent-person-plan-v198';
+import { elapsedTimeTag, escapeHtml } from '../components/ui.js?v=20260823-independent-person-plan-v199';
 
 const CONTRACT_LABELS = Object.freeze({
   story: '内容主线',
