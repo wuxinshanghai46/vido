@@ -57,7 +57,7 @@ for (const registration of registrations) {
   cursor = registration.index;
 }
 routeSignatures.push(...rootRoutes.filter(item => item.index > cursor).map(item => item.signature));
-assert.equal(routeSignatures.length, 84, 'V81 只能新增一个人物恢复安全预检路由，不能丢失或重复其它路由');
+assert.equal(routeSignatures.length, 86, 'V201 只允许新增制作图谱计划与执行两个路由，不能丢失或重复其它路由');
 const singleRetry = 'POST /tasks/:id/visual-assets/retry-authorization';
 const batchRetry = 'POST /tasks/:id/visual-assets/retry-authorizations';
 const billingReviews = 'GET /tasks/:id/visual-assets/billing-reviews';
@@ -70,10 +70,14 @@ assert.equal(routeSignatures.indexOf(billingReviews), routeSignatures.indexOf(ba
   '只读核账查询必须继续位于两个授权路由之后');
 assert.equal(routeSignatures.indexOf(recoveryPreflight), routeSignatures.indexOf(billingReviews) + 1,
   '恢复安全预检必须位于核账查询之后且只能注册一次');
+assert.equal(routeSignatures.filter(value => value === 'POST /tasks/:id/production-assets/plan').length, 1,
+  '统一制作图谱调用计划路由必须且只能注册一次');
+assert.equal(routeSignatures.filter(value => value === 'POST /tasks/:id/production-assets').length, 1,
+  '统一制作图谱执行路由必须且只能注册一次');
 assert.equal(
   crypto.createHash('sha256').update(JSON.stringify(routeSignatures)).digest('hex'),
-  '49391e81ffdbfa63c20760bbd97ef416e9235842f76587f36e2bdfb59bc4a747',
-  'V81 合并路由方法、路径及注册顺序必须与审计签名一致',
+  '55cf682c64e86f79b45774110af752e0d1eedd50bd352ed9bc4296317248f2c5',
+  'V201 合并路由方法、路径及注册顺序必须与审计签名一致',
 );
 
 const batchRouteStart = billingRoutesSource.indexOf("router.post('/tasks/:id/visual-assets/retry-authorizations'");
@@ -115,5 +119,5 @@ console.log(JSON.stringify({
   full_platform_gates: fullPlatformGates,
   route_lines: lines,
   root_route_count: routeSignatures.length,
-  route_signature_sha256: '49391e81ffdbfa63c20760bbd97ef416e9235842f76587f36e2bdfb59bc4a747',
+  route_signature_sha256: '55cf682c64e86f79b45774110af752e0d1eedd50bd352ed9bc4296317248f2c5',
 }));

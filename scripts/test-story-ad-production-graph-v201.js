@@ -100,9 +100,10 @@ ok(assetView.includes('assetCenterUnifiedProductionAction.js'), 'unified action 
 ok(productionAction.includes('/production-assets/plan'), 'UI reads server plan before generation');
 ok(productionAction.includes("store.runStage('production-assets'"), 'UI submits only unified production stage');
 const routeSource = fs.readFileSync(path.join(__dirname, '../src/routes/newStoryAd.js'), 'utf8');
-ok(routeSource.includes('PRODUCTION_GRAPH_IMAGE_PRICE_UNKNOWN'), 'unpriced image routes are blocked before paid generation');
-ok(routeSource.includes('PRODUCTION_GRAPH_COST_LIMIT_EXCEEDED'), 'server enforces the confirmed visual cost limit');
-ok(routeSource.includes('const executionPlan = unifiedProductionPlan'), 'cost plan is recomputed after person and scene planning');
+const orchestratorSource = fs.readFileSync(path.join(__dirname, '../src/services/newStoryAd/productionAssetOrchestratorService.js'), 'utf8');
+ok(orchestratorSource.includes('PRODUCTION_GRAPH_IMAGE_PRICE_UNKNOWN'), 'unpriced image routes are blocked before paid generation');
+ok(orchestratorSource.includes('PRODUCTION_GRAPH_COST_LIMIT_EXCEEDED'), 'server enforces the confirmed visual cost limit');
+ok(orchestratorSource.includes('const executionPlan = plan'), 'cost plan is recomputed after person and scene planning');
 ok(routeSource.includes("assertLegacyMutationAllowed(req.params.id, 'scene_asset_repair')"), 'legacy scene repair is blocked at the server boundary');
 const transition = fs.readFileSync(path.join(__dirname, '../public/story-ad/views/briefAssetPlanTransition.js'), 'utf8');
 ok(!transition.includes("runStage('scene-config'"), 'plot-to-assets transition no longer starts legacy scene generation');
