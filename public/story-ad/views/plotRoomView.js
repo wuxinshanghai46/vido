@@ -130,8 +130,7 @@ export async function mount(host, context) {
   });
 
   const pop = host.querySelector('[data-beat-floating-editor]');
-  let active = null;
-  let cellEditorModule = null;
+  let active = null, cellEditorModule, promptModule;
   const closeAll = () => { host.querySelectorAll(':popover-open').forEach(node => node.hidePopover()); active = null; };
   const refreshState = () => {
     const target = host.querySelector('[data-production-completeness]');
@@ -153,19 +152,8 @@ export async function mount(host, context) {
   };
   const openEditor = async (button, row, group) => {
     if (group === 'prompt_notes') {
-      closeAll(); active = row;
-      pop.innerHTML = '<div class="beat-floating-head"><b>最终提示词</b><button type="button" data-close-beat-floating aria-label="关闭">×</button></div><div class="beat-prompt-loading">正在根据当前剧情合成实际生成提示词…</div>';
-      pop.dataset.group = group; pop.showPopover(); place(button);
-      try {
-        const rows = [...host.querySelectorAll('[data-beat-index]')];
-        const data = await request(`/api/new-story-ad/tasks/${encodeURIComponent(bundle.project.id)}/prompt-preview`, {
-          method: 'POST', body: { shot_index: rows.indexOf(row), shot: collectBeat(row) }, timeoutMs: 60000,
-        });
-        pop.innerHTML = `<div class="beat-floating-head"><b>第 ${Number(data.shot_index || rows.indexOf(row) + 1)} 镜 · 最终提示词</b><button type="button" data-close-beat-floating aria-label="关闭">×</button></div><div class="beat-prompt-preview"><label><span>分镜提示词 · 关键帧实际输入</span><textarea class="textarea" readonly>${escapeHtml(data.keyframe_prompt || '')}</textarea></label><label><span>视频运动提示词 · 视频模型实际输入</span><textarea class="textarea" readonly>${escapeHtml(data.motion_prompt || '')}</textarea></label></div><div class="beat-floating-actions"><small>由当前剧情即时合成；仅查看不会生成媒体或产生模型费用。</small><button class="btn primary small" type="button" data-close-beat-floating>完成</button></div>`;
-        place(button);
-      } catch (error) {
-        pop.innerHTML = `<div class="beat-floating-head"><b>最终提示词</b><button type="button" data-close-beat-floating aria-label="关闭">×</button></div><div class="beat-prompt-loading is-error">${escapeHtml(error.message)}</div>`;
-      }
+      promptModule ||= await import('./plotPromptPreview.js?v=20260823-production-audio-v174');
+      await promptModule.openPromptPreview({ pop, row, host, projectId: bundle.project.id, place: () => place(button), closeAll });
       return;
     }
     cellEditorModule ||= await import('./plotBeatCellPopover.js?v=20260823-production-audio-v174');
@@ -189,12 +177,7 @@ export async function mount(host, context) {
   const syncPop = () => { if (active) { syncFloatingEditor(pop, active); refreshState(); } };
   pop?.addEventListener('input', syncPop); pop?.addEventListener('change', syncPop);
   pop?.addEventListener('click', event => {
-    const cameraPreset = event.target.closest('[data-camera-preset]');
-    if (cameraPreset) {
-      const input = pop.querySelector('[data-floating-field="camera_movement"]');
-      if (input) { input.value = cameraPreset.dataset.cameraPreset || ''; input.dispatchEvent(new Event('input', { bubbles: true })); }
-      return;
-    }
+    if (cellEditorModule?.handleCameraPreset(pop, event.target)) { syncPop(); return; }
     if (cellEditorModule?.handleDialogueAction(pop, event.target, collectBlueprint(host, blueprint).characters)) { syncPop(); return; }
     if (event.target.closest('[data-close-beat-floating]')) closeAll();
     if (event.target.closest('[data-save-beat-floating]')) { syncPop(); closeAll(); }
