@@ -52,6 +52,7 @@ async function main() {
   assert.equal(wearableCalls.length, 2);
   assert.equal(wardrobeCalls.length, 4);
   assert(wearableCalls.every(call => /独立物件/.test(call.prompt) && /不出现人物头像、身体、手、衣服/.test(call.prompt)));
+  assert(wearableCalls.every(call => call.singleAttempt === false && /纯净暖白背景/.test(call.auditSafePrompt)), '配饰审核拒绝必须允许备用图片路由使用安全提示继续生成');
   assert(wardrobeCalls.every(call => /独立白底陈列|白底平铺|材质细节板|分别独立陈列/.test(call.prompt) && /不出现人物/.test(call.prompt)));
   await composites.generateWearableDetails(common, { mediaAdapter: fakeMedia });
   await composites.generateWardrobeDetails(common, { mediaAdapter: fakeMedia });
