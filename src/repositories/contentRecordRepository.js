@@ -313,6 +313,51 @@ function listIds(collection, filters = {}) {
   `).all(params).map(row => String(row.id));
 }
 
+function hasAny(collection) {
+  const db = requireDatabase();
+  return Boolean(db.prepare(`
+    SELECT 1 AS present
+    FROM content_records
+    WHERE collection = ?
+    LIMIT 1
+  `).get(collection));
+}
+
+function listActiveTaskStates(collection, limit = 1000) {
+  const db = requireDatabase();
+  return db.prepare(`
+    SELECT
+      id,
+      COALESCE(json_extract(payload_json, '$.active_generation_id'), '') AS active_generation_id,
+      COALESCE(json_extract(payload_json, '$.active_stage'), json_extract(payload_json, '$.stage'), '') AS stage
+    FROM content_records
+    WHERE collection = ?
+      AND COALESCE(json_extract(payload_json, '$.active_generation_id'), '') <> ''
+    ORDER BY COALESCE(updated_at, created_at) DESC
+    LIMIT ?
+  `).all(collection, Math.max(1, Math.min(5000, Number(limit) || 1000)));
+}
+
+function listUnknownBillingStates(collection, limit = 2000) {
+  const db = requireDatabase();
+  return db.prepare(`
+    SELECT
+      id,
+      COALESCE(project_id, json_extract(payload_json, '$.task_id'), '') AS task_id,
+      COALESCE(json_extract(payload_json, '$.stage'), '') AS stage,
+      COALESCE(json_extract(payload_json, '$.provider_task_id'), '') AS provider_task_id,
+      COALESCE(json_extract(payload_json, '$.provider_submission_state'), '') AS provider_submission_state,
+      COALESCE(json_extract(payload_json, '$.billing_state'), '') AS billing_state
+    FROM content_records
+    WHERE collection = ?
+      AND LOWER(COALESCE(json_extract(payload_json, '$.billing_state'), '')) = 'unknown'
+      AND LOWER(COALESCE(json_extract(payload_json, '$.provider_submission_state'), ''))
+        IN ('submitted', 'submitted_unknown', 'accepted', 'polling', 'running')
+    ORDER BY COALESCE(updated_at, created_at) DESC
+    LIMIT ?
+  `).all(collection, Math.max(1, Math.min(5000, Number(limit) || 2000)));
+}
+
 function listForUser(collection, userId) {
   const owner = String(userId || '');
   if (!owner) return list(collection);
@@ -384,8 +429,11 @@ function pruneBefore(collection, field, ts) {
 module.exports = {
   applyAtomicChanges,
   get,
+  hasAny,
   list,
+  listActiveTaskStates,
   listIds,
+  listUnknownBillingStates,
   listForUser,
   pruneBefore,
   remove,

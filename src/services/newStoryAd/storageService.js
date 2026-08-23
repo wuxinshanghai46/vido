@@ -156,13 +156,34 @@ function useSqlite() {
 
 function ensureDbSeeded() {
   if (!useSqlite() || dbSeedChecked) return;
-  dbSeedChecked = true;
   const legacy = normalizedJsonDb();
   for (const [key, collection] of Object.entries(COLLECTIONS)) {
-    const existing = contentRecords.list(collection);
-    if (existing.length || !legacy[key].length) continue;
+    if (contentRecords.hasAny(collection) || !legacy[key].length) continue;
     contentRecords.upsertMany(collection, legacy[key]);
   }
+  dbSeedChecked = true;
+}
+
+function listActiveTaskStates(limit = 1000) {
+  if (!useSqlite()) {
+    return listTasks({ limit }).filter(task => task.active_generation_id).map(task => ({
+      id: task.id,
+      active_generation_id: task.active_generation_id,
+      stage: task.active_stage || task.stage || '',
+    }));
+  }
+  ensureDbSeeded();
+  return contentRecords.listActiveTaskStates(COLLECTIONS.tasks, limit);
+}
+
+function listUnknownBillingStates(limit = 2000) {
+  if (!useSqlite()) return normalizedJsonDb().model_calls.filter(call => (
+    String(call.billing_state || '').toLowerCase() === 'unknown'
+      && ['submitted', 'submitted_unknown', 'accepted', 'polling', 'running']
+        .includes(String(call.provider_submission_state || '').toLowerCase())
+  )).slice(0, limit);
+  ensureDbSeeded();
+  return contentRecords.listUnknownBillingStates(COLLECTIONS.model_calls, limit);
 }
 
 function listRows(key, filters = {}) {
@@ -963,6 +984,8 @@ module.exports = {
   updateTask,
   getTask,
   listTasks,
+  listActiveTaskStates,
+  listUnknownBillingStates,
   listTaskRows,
   dedupeLatestTasks,
   latestTaskRowsById,

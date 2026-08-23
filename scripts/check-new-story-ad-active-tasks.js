@@ -7,15 +7,13 @@ function isUnknownBilling(call = {}) {
 }
 
 function main() {
-  const activeTasks = storage.listTasks({ limit: 1000 })
-    .filter(task => task.active_generation_id)
+  const activeTasks = storage.listActiveTaskStates(1000);
   const active = activeTasks.map(task => ({
       id: task.id,
       generation_id: task.active_generation_id,
       stage: task.active_stage || task.stage || '',
     }));
-  const unknownBilling = (storage.readDb().model_calls || [])
-    .filter(isUnknownBilling)
+  const unknownBilling = storage.listUnknownBillingStates(2000)
     .map(call => ({ id: call.id, task_id: call.task_id, stage: call.stage, provider_task_id: call.provider_task_id || '' }));
   const activeTaskIds = new Set(activeTasks.map(task => String(task.id || '')));
   const activeUnknownBilling = unknownBilling.filter(call => activeTaskIds.has(String(call.task_id || '')));

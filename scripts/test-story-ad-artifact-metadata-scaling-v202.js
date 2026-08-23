@@ -15,6 +15,10 @@ base.requireDatabase = () => ({
   prepare(sql) {
     selectedSql = String(sql);
     return {
+      get(...args) {
+        selectedParams = args.length === 1 && Array.isArray(args[0]) ? args[0] : args;
+        return { present: 1 };
+      },
       all(...args) {
         selectedParams = args.length === 1 && Array.isArray(args[0]) ? args[0] : args;
         return Array.from({ length: 1200 }, (_, index) => ({ id: `artifact_${index}` }));
@@ -29,12 +33,17 @@ assert.equal(ids.length, 1200);
 assert.match(selectedSql, /SELECT\s+id\s+FROM content_records/i);
 assert.doesNotMatch(selectedSql, /payload_json/i, 'metadata scan must not stream full historical asset plans through the SQLite bridge');
 assert.deepEqual(selectedParams, ['new_story_ad_artifacts', 'large-task']);
+assert.equal(records.hasAny('new_story_ad_artifacts'), true);
+assert.match(selectedSql, /SELECT\s+1\s+AS present/i);
+assert.doesNotMatch(selectedSql, /payload_json/i, 'seed detection must not deserialize an existing collection');
 base.requireDatabase = originalRequireDatabase;
 delete require.cache[repositoryPath];
 
 const storageSource = fs.readFileSync(path.join(root, 'src/services/newStoryAd/storageService.js'), 'utf8');
 const authoritySource = fs.readFileSync(path.join(root, 'src/services/newStoryAd/authorityLifecycleService.js'), 'utf8');
 assert(storageSource.includes('contentRecords.listIds(COLLECTIONS.artifacts'), 'artifact listing must start from projected ids');
+assert(storageSource.includes('contentRecords.hasAny(collection)'), 'SQLite seed detection must use metadata existence checks');
+assert(!storageSource.includes('const existing = contentRecords.list(collection)'), 'seed detection must not load every payload');
 assert(storageSource.includes('listArtifactIds(taskId).map(getArtifact)'), 'large artifact payloads must be loaded one at a time');
 assert(!authoritySource.includes('storage.listArtifacts(taskId).forEach'), 'authority promotion must not aggregate every historical payload');
 
@@ -43,5 +52,11 @@ assert.notEqual(jobs.classifyFailure(new Error('sqlite bridge overflow near reco
   'digits inside storage records must not be misclassified as an HTTP credential failure');
 assert.equal(jobs.classifyFailure(new Error('provider returned HTTP 403 Unauthorized')).code, 'AUTH_CONFIG');
 
+const releaseCheckSource = fs.readFileSync(path.join(root, 'scripts/check-new-story-ad-active-tasks.js'), 'utf8');
+assert(releaseCheckSource.includes('storage.listActiveTaskStates(1000)'), 'release task check must use projected task state');
+assert(releaseCheckSource.includes('storage.listUnknownBillingStates(2000)'), 'release billing check must use projected billing state');
+assert(!releaseCheckSource.includes('storage.readDb()'), 'release checks must not materialize the full database');
+
 console.log(JSON.stringify({ passed: true, projected_artifact_ids: ids.length, full_payload_scan: false,
+  seed_payload_scan: false, release_db_snapshot_scan: false,
   false_auth_classification_blocked: true, model_calls: 0, media_calls: 0 }));
