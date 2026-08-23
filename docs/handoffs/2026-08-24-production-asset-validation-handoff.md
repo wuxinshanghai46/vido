@@ -32,7 +32,7 @@
 ## 5. 代码与提交记录
 
 - 分支：`codex/story-ad-systemic-remediation`
-- 当前提交：`120734a7d1a1737afec8119954e7ba4f29b1f0e8`
+- 运行代码与 V201ae 构建提交：`120734a7d1a1737afec8119954e7ba4f29b1f0e8`；交接文档由其后的 docs-only 提交承载，公司电脑以远端分支最新 HEAD 为准。
 - 关键提交：
   - `61fc5db0`：稳定全景费用计划权威指纹。
   - `af9a8726`：不支持全景能力的模型零付费阻断。
@@ -49,9 +49,9 @@
 
 | 位置 | 核对结果 |
 |---|---|
-| 家庭电脑本地 | HEAD `120734a7`；本轮运行代码均已提交，保留若干与本任务无关的历史未跟踪文档 |
-| Gitee origin/gitee | `120734a7`，与本地 ahead/behind `0/0` |
-| GitHub 镜像 | `120734a7`，已同步 |
+| 家庭电脑本地 | V201ae 运行代码/构建提交 `120734a7`，其后仅追加交接文档；本轮运行代码均已提交，保留若干与本任务无关的历史未跟踪文档 |
+| Gitee origin/gitee | 与本地分支最新 HEAD 一致，ahead/behind `0/0` |
+| GitHub 镜像 | 与本地分支最新 HEAD 一致 |
 | 生产运行 | V201ae；目录 `/opt/vido/releases/8a5d87317119c9c7fbcdc220ca5077598d7e64bd4aa76bab91d0f1db74af5b3c`；发布包 `fb2a4502...` |
 | 运行状态 | PM2 `vido` online；公网健康 `ok`；数据库 `ok`；SQLite quick check `ok`；活动任务 0 |
 
