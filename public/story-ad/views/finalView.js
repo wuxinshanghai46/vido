@@ -1,5 +1,5 @@
-import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260823-person-profile-normalization-v200';
-import { bindMoreMedia, moreMediaButton } from './finalMediaPagination.js?v=20260823-person-profile-normalization-v200';
+import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260823-person-profile-v200b';
+import { bindMoreMedia, moreMediaButton } from './finalMediaPagination.js?v=20260823-person-profile-v200b';
 
 function itemIndex(item = {}, index = 0) {
   const value = Number(item.shot_index ?? item.shotIndex ?? item.index);

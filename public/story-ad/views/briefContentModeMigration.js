@@ -1,4 +1,4 @@
-import { confirmDialog } from '../components/dialog.js?v=20260823-person-profile-normalization-v200';
+import { confirmDialog } from '../components/dialog.js?v=20260823-person-profile-v200b';
 
 export async function confirmContentModeMigration(savedMode = '', nextMode = '') {
   if (!savedMode || savedMode === nextMode) return { cancelled: false, confirmed: false };

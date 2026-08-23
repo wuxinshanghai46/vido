@@ -1,7 +1,7 @@
-import { request } from '../api.js?v=20260823-person-profile-normalization-v200';
-import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260823-person-profile-normalization-v200';
-import { confirmDialog } from '../components/dialog.js?v=20260823-person-profile-normalization-v200';
-import { applyBeat, beatEditor, collectBeat, collectBlueprint, productionIssues, syncFloatingEditor } from './plotBeatEditor.js?v=20260823-person-profile-normalization-v200';
+import { request } from '../api.js?v=20260823-person-profile-v200b';
+import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260823-person-profile-v200b';
+import { confirmDialog } from '../components/dialog.js?v=20260823-person-profile-v200b';
+import { applyBeat, beatEditor, collectBeat, collectBlueprint, productionIssues, syncFloatingEditor } from './plotBeatEditor.js?v=20260823-person-profile-v200b';
 
 function characterEditor(character = {}, index = 0) {
   const gender = String(character.gender || '').toLowerCase();
@@ -76,7 +76,7 @@ export async function mount(host, context) {
   }
 
   const characterAutosave = characters.length
-    ? (await import('./plotCharacterAutosave.js?v=20260823-person-profile-normalization-v200'))
+    ? (await import('./plotCharacterAutosave.js?v=20260823-person-profile-v200b'))
       .bindCharacterAutosave({ host, blueprint, store, collectBlueprint, toast })
     : null;
 
@@ -153,11 +153,11 @@ export async function mount(host, context) {
   };
   const openEditor = async (button, row, group) => {
     if (group === 'prompt_notes') {
-      promptModule ||= await import('./plotPromptPreview.js?v=20260823-person-profile-normalization-v200');
+      promptModule ||= await import('./plotPromptPreview.js?v=20260823-person-profile-v200b');
       await promptModule.openPromptPreview({ pop, row, host, projectId: bundle.project.id, place: () => place(button), closeAll });
       return;
     }
-    cellEditorModule ||= await import('./plotBeatCellPopover.js?v=20260823-person-profile-normalization-v200');
+    cellEditorModule ||= await import('./plotBeatCellPopover.js?v=20260823-person-profile-v200b');
     const currentCharacters = collectBlueprint(host, blueprint).characters;
     closeAll(); active = row; pop.innerHTML = cellEditorModule.beatCellEditor(row, group, currentCharacters); pop.dataset.group = group; pop.dataset.dialogueEditor = group === 'spoken_line' ? 'true' : 'false'; pop.showPopover(); place(button);
     pop.querySelector('[data-floating-field]')?.focus();

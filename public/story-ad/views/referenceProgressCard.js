@@ -1,4 +1,4 @@
-import { elapsedTimeTag, escapeHtml } from '../components/ui.js?v=20260823-person-profile-normalization-v200';
+import { elapsedTimeTag, escapeHtml } from '../components/ui.js?v=20260823-person-profile-v200b';
 
 const CONTRACT_LABELS = Object.freeze({
   story: '内容主线',

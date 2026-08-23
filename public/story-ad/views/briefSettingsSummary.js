@@ -1,4 +1,4 @@
-import { escapeHtml } from '../components/ui.js?v=20260823-person-profile-normalization-v200';
+import { escapeHtml } from '../components/ui.js?v=20260823-person-profile-v200b';
 
 function compactText(value, maxLength = 120) {
   const text = String(value || '').replace(/\s+/g, ' ').trim();

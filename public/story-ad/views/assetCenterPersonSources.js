@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260823-person-profile-normalization-v200';
-import { escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260823-person-profile-normalization-v200';
-import { confirmDialog } from '../components/dialog.js?v=20260823-person-profile-normalization-v200';
+import { request } from '../api.js?v=20260823-person-profile-v200b';
+import { escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260823-person-profile-v200b';
+import { confirmDialog } from '../components/dialog.js?v=20260823-person-profile-v200b';
 
 function assetModal(title = '') {
   const previouslyFocused = document.activeElement;
