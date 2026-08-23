@@ -1,9 +1,9 @@
-import { escapeHtml, mediaPreview } from '../components/ui.js?v=20260824-production-v201ab';
-import { bindMediaLightbox } from './mediaLightbox.js?v=20260824-production-v201ab';
-import { personDossierShowcase } from './personDossierShowcase.js?v=20260824-production-v201ab';
-import { bindSceneDossierCard, renderSceneDossierCard } from './sceneDossierCard.js?v=20260824-production-v201ab';
-import { bindPersonLookForm } from './assetCenterPersonLooks.js?v=20260824-production-v201ab';
-import { bindPersonEvolutionForm } from './assetCenterPersonEvolution.js?v=20260824-production-v201ab';
+import { escapeHtml, mediaPreview } from '../components/ui.js?v=20260824-production-v201ac';
+import { bindMediaLightbox } from './mediaLightbox.js?v=20260824-production-v201ac';
+import { personDossierShowcase } from './personDossierShowcase.js?v=20260824-production-v201ac';
+import { bindSceneDossierCard, renderSceneDossierCard } from './sceneDossierCard.js?v=20260824-production-v201ac';
+import { bindPersonLookForm } from './assetCenterPersonLooks.js?v=20260824-production-v201ac';
+import { bindPersonEvolutionForm } from './assetCenterPersonEvolution.js?v=20260824-production-v201ac';
 
 export function ownedPropDetails(item = {}) {
   const rows = Array.isArray(item.owned_props) ? item.owned_props : [];
