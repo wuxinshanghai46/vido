@@ -109,7 +109,11 @@ const DOMAIN_RULES = [
   {
     domain: 'asset_plan',
     risk: 'asset_plan',
-    patterns: [/(?:assetPlan|PlanningDetails|PlanRelease|PlanMigration|scenePlanStatus|contextBuilder|subjectAssetBundle)/i, /^scripts\/test-story-ad-person-plan/i],
+    patterns: [
+      /(?:assetPlan|PlanningDetails|PlanRelease|PlanMigration|scenePlanStatus|contextBuilder|subjectAssetBundle)/i,
+      /^src\/routes\/assets\.js$/i,
+      /^scripts\/test-story-ad-(?:person-plan|asset-center-person-provider|character-library)/i,
+    ],
   },
   {
     domain: 'workspace_ui',
