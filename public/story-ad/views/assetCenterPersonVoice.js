@@ -1,4 +1,4 @@
-import { escapeHtml } from '../components/ui.js?v=20260823-independent-person-plan-v199';
+import { escapeHtml } from '../components/ui.js?v=20260823-person-profile-normalization-v200';
 
 export function renderPersonVoiceBinding(profile = {}) {
   const bound = Boolean(profile.voice_id);

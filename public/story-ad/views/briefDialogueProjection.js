@@ -1,4 +1,4 @@
-import { escapeHtml } from '../components/ui.js?v=20260823-independent-person-plan-v199';
+import { escapeHtml } from '../components/ui.js?v=20260823-person-profile-normalization-v200';
 
 export function modeLabel(value = '') {
   return value === 'commercial_subject' ? '商业广告' : (value === 'narrative_story' ? '剧情短片' : '待确认');

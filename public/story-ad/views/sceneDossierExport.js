@@ -1,5 +1,5 @@
-import { request } from '../api.js?v=20260823-independent-person-plan-v199';
-import { normalizeSceneDossier, SCENE_VIEW_LABELS, SCENE_VIEW_ORDER } from './sceneDossierCard.js?v=20260823-independent-person-plan-v199';
+import { request } from '../api.js?v=20260823-person-profile-normalization-v200';
+import { normalizeSceneDossier, SCENE_VIEW_LABELS, SCENE_VIEW_ORDER } from './sceneDossierCard.js?v=20260823-person-profile-normalization-v200';
 
 const WIDTH = 1800;
 const HEIGHT = 2400;

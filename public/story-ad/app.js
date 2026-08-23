@@ -1,7 +1,7 @@
-import { createProjectStore } from './store/projectStore.js?v=20260823-independent-person-plan-v199';
-import { bindHoverVideoPreviews, escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, syncInlineGenerationProgress, toast } from './components/ui.js?v=20260823-independent-person-plan-v199';
-import { assertCurrentRelease, startReleaseHeartbeat } from './api.js?v=20260823-independent-person-plan-v199';
-import { confirmDialog } from './components/dialog.js?v=20260823-independent-person-plan-v199';
+import { createProjectStore } from './store/projectStore.js?v=20260823-person-profile-normalization-v200';
+import { bindHoverVideoPreviews, escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, syncInlineGenerationProgress, toast } from './components/ui.js?v=20260823-person-profile-normalization-v200';
+import { assertCurrentRelease, startReleaseHeartbeat } from './api.js?v=20260823-person-profile-normalization-v200';
+import { confirmDialog } from './components/dialog.js?v=20260823-person-profile-normalization-v200';
 
 await assertCurrentRelease();
 startReleaseHeartbeat();
@@ -19,13 +19,13 @@ const VIEW_META = {
   workflow: ['⌘', '工作流画布'],
 };
 const VIEW_MODULES = {
-  brief: () => import('./views/briefView.js?v=20260823-independent-person-plan-v199'),
-  assets: () => import('./views/assetCenterView.js?v=20260823-independent-person-plan-v199'),
-  scene: () => import('./views/sceneWorldPage.js?v=20260823-independent-person-plan-v199'),
-  plot: () => import('./views/plotRoomView.js?v=20260823-independent-person-plan-v199'),
-  storyboard: () => import('./views/storyboardView.js?v=20260823-independent-person-plan-v199'),
-  final: () => import('./views/finalView.js?v=20260823-independent-person-plan-v199'),
-  workflow: () => import('./views/workflowView.js?v=20260823-independent-person-plan-v199'),
+  brief: () => import('./views/briefView.js?v=20260823-person-profile-normalization-v200'),
+  assets: () => import('./views/assetCenterView.js?v=20260823-person-profile-normalization-v200'),
+  scene: () => import('./views/sceneWorldPage.js?v=20260823-person-profile-normalization-v200'),
+  plot: () => import('./views/plotRoomView.js?v=20260823-person-profile-normalization-v200'),
+  storyboard: () => import('./views/storyboardView.js?v=20260823-person-profile-normalization-v200'),
+  final: () => import('./views/finalView.js?v=20260823-person-profile-normalization-v200'),
+  workflow: () => import('./views/workflowView.js?v=20260823-person-profile-normalization-v200'),
 };
 const VIEW_SECTIONS = Object.freeze({
   brief: 'summary,reference',
@@ -398,7 +398,7 @@ document.addEventListener('input', async ({ target }) => {
   else if (target.matches('[data-project-type-filter]')) centerQuery.taskType = target.value || 'all';
   else if (target.matches('[data-project-stage-filter]')) centerQuery.stage = target.value || 'all';
   else return;
-  const filters = await import('./projectCenterFilters.js?v=20260823-independent-person-plan-v199');
+  const filters = await import('./projectCenterFilters.js?v=20260823-person-profile-normalization-v200');
   centerVisibleIds = filters.matchingProjectIds(store.state.projects.map(project => ({
     id: project.id, title: project.title, type: project.content_mode, stage: statusView(project).label,
   })), centerQuery);

@@ -1,4 +1,4 @@
-import { renderBriefMaterialRows } from './briefMaterials.js?v=20260823-independent-person-plan-v199';
+import { renderBriefMaterialRows } from './briefMaterials.js?v=20260823-person-profile-normalization-v200';
 
 function hasMaterials(bundle) {
   const reference = bundle?.reference || {};

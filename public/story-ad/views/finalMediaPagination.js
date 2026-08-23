@@ -1,4 +1,4 @@
-import { setButtonBusy, toast } from '../components/ui.js?v=20260823-independent-person-plan-v199';
+import { setButtonBusy, toast } from '../components/ui.js?v=20260823-person-profile-normalization-v200';
 
 export function moreMediaButton(catalog = {}, kind = 'keyframes', label = '继续加载') {
   return catalog?.has_more

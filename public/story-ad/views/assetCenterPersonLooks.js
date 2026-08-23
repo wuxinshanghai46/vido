@@ -1,4 +1,4 @@
-import { escapeHtml } from '../components/ui.js?v=20260823-independent-person-plan-v199';
+import { escapeHtml } from '../components/ui.js?v=20260823-person-profile-normalization-v200';
 
 function rows(profile = {}) {
   const source = Array.isArray(profile.look_profiles) ? profile.look_profiles : [];

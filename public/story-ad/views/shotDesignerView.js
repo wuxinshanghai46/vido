@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260823-independent-person-plan-v199';
-import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260823-independent-person-plan-v199';
-import { bindMediaLightbox } from './mediaLightbox.js?v=20260823-independent-person-plan-v199';
+import { request } from '../api.js?v=20260823-person-profile-normalization-v200';
+import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260823-person-profile-normalization-v200';
+import { bindMediaLightbox } from './mediaLightbox.js?v=20260823-person-profile-normalization-v200';
 
 const FIELD_GROUPS = [
   ['场景与机位', [
