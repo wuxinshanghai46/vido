@@ -1,4 +1,4 @@
-import { escapeHtml } from '../components/ui.js?v=20260823-voice-outfit-library-v192';
+import { escapeHtml } from '../components/ui.js?v=20260823-role-safe-diagnostics-v193';
 
 export function modeLabel(value = '') {
   return value === 'commercial_subject' ? '商业广告' : (value === 'narrative_story' ? '剧情短片' : '待确认');

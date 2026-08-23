@@ -1,4 +1,4 @@
-import { elapsedTimeTag, escapeHtml } from '../components/ui.js?v=20260823-voice-outfit-library-v192';
+import { elapsedTimeTag, escapeHtml } from '../components/ui.js?v=20260823-role-safe-diagnostics-v193';
 
 const CONTRACT_LABELS = Object.freeze({
   story: '内容主线',

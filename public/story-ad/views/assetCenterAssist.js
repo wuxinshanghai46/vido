@@ -1,7 +1,7 @@
-import { request } from '../api.js?v=20260823-voice-outfit-library-v192';
-import { promptDialog } from '../components/dialog.js?v=20260823-voice-outfit-library-v192';
-import { setButtonBusy, toast } from '../components/ui.js?v=20260823-voice-outfit-library-v192';
-import { applyGeneratedPersonLooks, collectPersonLookValues } from './assetCenterPersonLooks.js?v=20260823-voice-outfit-library-v192';
+import { request } from '../api.js?v=20260823-role-safe-diagnostics-v193';
+import { promptDialog } from '../components/dialog.js?v=20260823-role-safe-diagnostics-v193';
+import { setButtonBusy, toast } from '../components/ui.js?v=20260823-role-safe-diagnostics-v193';
+import { applyGeneratedPersonLooks, collectPersonLookValues } from './assetCenterPersonLooks.js?v=20260823-role-safe-diagnostics-v193';
 
 export function createAssetAssistHandlers(bundle) {
   const assistPerson = async (item, form, button = null) => {
