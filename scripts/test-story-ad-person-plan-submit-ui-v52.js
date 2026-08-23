@@ -12,7 +12,7 @@ assert(source.includes("import('./assetCenterPlanMigrationAction.js"), 'person p
 
 const guardSource = fs.readFileSync(path.join(root, 'public/story-ad/views/assetCenterRequestGuard.js'), 'utf8').replace(/\bexport\s+/g, '');
 const statusSource = fs.readFileSync(path.join(root, 'public/story-ad/views/assetCenterPlanReleaseStatus.js'), 'utf8')
-  .replace(/^(?:import|export\s+\{).*?;\s*$/gm, '').replace(/\bexport\s+/g, '') + '\n;globalThis.__view = personPlanBlockedView;';
+  .replace(/^import\s+.*?;\s*$/gm, '').replace(/\bexport\s+/g, '') + '\n;globalThis.__view = personPlanBlockedView;';
 const guardSandbox = {};
 vm.runInNewContext(`${guardSource}\nglobalThis.__person = createPersonPlanRequestGuard; globalThis.__keyed = createKeyedRequestGuard;`, guardSandbox);
 const sandbox = {};

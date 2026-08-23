@@ -9,7 +9,7 @@ import { legacyDossierBoard, mediaSection } from './assetCenterDossierSections.j
 import { assetCardMedia } from './sceneDossierCard.js?v=20260823-character-library-v187';
 import { assertSavedPerson, personAgeDisplay, personAssetState, personLookSummary } from './assetCenterPersonState.js?v=20260823-character-library-v187';
 import { bindPersonEvolutionForm, collectPersonEvolutionValues, renderPersonEvolutionSummary } from './assetCenterPersonEvolution.js?v=20260823-character-library-v187';
-import { createKeyedRequestGuard, createPersonPlanRequestGuard } from './assetCenterPlanReleaseStatus.js?v=20260823-character-library-v187';
+import { createKeyedRequestGuard, createPersonPlanRequestGuard } from './assetCenterRequestGuard.js?v=20260823-character-library-v187';
 const GROUPS = [['people', '人物'], ['animals', '动物'], ['products', '商品 / 展示主体'], ['logos', 'LOGO']];
 const GENERATABLE = new Set(['people', 'animals']);
 const loadCheckpointRecovery = globalThis.__loadAssetCheckpointRecovery
