@@ -366,8 +366,6 @@ client.on('ready', async () => {
     sftp = await new Promise((resolve, reject) => client.sftp((error, channel) => error ? reject(error) : resolve(channel)));
     reportPhase('audit_upload');
     await new Promise((resolve, reject) => sftp.writeFile(remoteAuditSpecPath, auditSpec, error => error ? reject(error) : resolve()));
-    const before = await releaseReadiness(previousTarget);
-    if (Number(before.active_count) || blockingUnknownBilling(before)) throw new Error(`发布前仍有活动任务或当前生成未知计费：${JSON.stringify(before)}`);
     const quickBefore = await exec("echo UFJBR01BIHF1aWNrX2NoZWNrOw== | base64 -d | sqlite3 /data/vido/db/vido.sqlite");
     if (quickBefore.trim() !== 'ok') throw new Error(`发布前数据库 quick_check 失败：${quickBefore}`);
 
@@ -461,11 +459,11 @@ client.on('ready', async () => {
       || candidateVersion.node_version !== nodeRuntime.version) {
       throw new Error(`候选进程制品、源码或 Node 身份错误：${JSON.stringify(candidateVersion)}`);
     }
+    const before = await releaseReadiness(releaseDir);
+    if (Number(before.active_count) || blockingUnknownBilling(before)) {
+      throw new Error(`发布前仍有活动任务或当前生成未知计费：${JSON.stringify(before)}`);
+    }
     if (candidateOnly) {
-      const candidateReadiness = await releaseReadiness(releaseDir);
-      if (Number(candidateReadiness.active_count) || blockingUnknownBilling(candidateReadiness)) {
-        throw new Error(`候选只读灰度发现活动任务或当前未知计费：${JSON.stringify(candidateReadiness)}`);
-      }
       const candidateSystemicAudit = await auditCandidateSystemicState();
       if (Number(candidateSystemicAudit.unquarantined_unknown_billing_count || 0)
         > Number(candidateSystemicAudit.planned_quarantines || 0)) {
