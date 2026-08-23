@@ -41,6 +41,17 @@ const noCatalog = voiceAssignment.applyAccountVoiceAssignments(input, {}, { voic
 assert.strictEqual(noCatalog.assigned_count, 0);
 assert.strictEqual(noCatalog.context.cast_profiles[0].voice_binding.status, 'authorized_pack_unavailable');
 
+const persisted = [];
+const persistedContext = voiceAssignment.applyAndPersistContext(input, { userId: 'account-a', taskId: 'task-a', contentRevision: 3 }, {
+  voicePacks: { loadCatalog: () => catalog },
+  storage: {
+    saveOutput(taskId, kind, value, metadata) { persisted.push({ taskId, kind, value, metadata }); },
+    updateTask(taskId, patch) { persisted.push({ taskId, patch }); },
+  },
+});
+assert.strictEqual(persisted.length, 2, '生成预检自动补齐必须同时持久化 context 与任务 request');
+assert.strictEqual(persistedContext.voice_assignments.speakers.heroine, 'vp_1111111111111111');
+
 const root = path.resolve(__dirname, '..');
 const form = fs.readFileSync(path.join(root, 'public/story-ad/views/assetCenterPersonForm.js'), 'utf8');
 const drawer = fs.readFileSync(path.join(root, 'public/story-ad/views/assetCenterPlanningDetails.js'), 'utf8');
@@ -54,4 +65,4 @@ assert.match(drawer, /await onGenerate\?\.\(item, group, button\)/, '保存成�
 assert.match(view, /target\.profile\?\.id/, '定向生成必须使用刚保存的人物档案覆盖旧 bundle 人物文本');
 assert.match(view, /item\.profile = \{ \.\.\.\(item\.profile \|\| \{\}\), \.\.\.normalizedValues \}/, '保存成功后必须更新定向生成使用的人物内存状态');
 
-console.log('story-ad account voice and outfit v190: 20 assertions passed');
+console.log('story-ad account voice and outfit v190: 22 assertions passed');

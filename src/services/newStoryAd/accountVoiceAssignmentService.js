@@ -96,4 +96,19 @@ function applyAccountVoiceAssignments(context = {}, options = {}, overrides = {}
   };
 }
 
-module.exports = { applyAccountVoiceAssignments, choosePack, deliveryDirection, normalizedGender };
+function applyAndPersistContext(context = {}, options = {}, overrides = {}) {
+  const projection = applyAccountVoiceAssignments(context, options, overrides);
+  const storage = overrides.storage;
+  if (projection.changed && storage && options.taskId) {
+    storage.saveOutput(options.taskId, 'context', projection.context, {
+      content_revision: options.contentRevision,
+    });
+    storage.updateTask(options.taskId, {
+      request: projection.context,
+      updated_at: new Date().toISOString(),
+    });
+  }
+  return projection.context;
+}
+
+module.exports = { applyAccountVoiceAssignments, applyAndPersistContext, choosePack, deliveryDirection, normalizedGender };

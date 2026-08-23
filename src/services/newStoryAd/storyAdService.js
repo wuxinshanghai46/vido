@@ -231,9 +231,7 @@ function listTaskSummaries({ limit = 50, page = 1, status = '', userId = '' } = 
 }
 function createTask(body = {}, user = {}) {
   const built = withAssetContracts(buildContext(body, user));
-  const ctx = accountVoiceAssignment.applyAccountVoiceAssignments(built, {
-    userId: built.user_id || user.id || user.userId,
-  }).context;
+  const ctx = accountVoiceAssignment.applyAccountVoiceAssignments(built, { userId: built.user_id || user.id || user.userId }).context;
   const id = cleanText(body.task_id || body.taskId || '', 80) || uuidv4();
   const releaseIdentity = releaseBundle.identity();
   const task = storage.createTask({
@@ -462,14 +460,7 @@ function prepareGeneration(taskId, body = {}, user = {}) {
     throw error;
   }
   let ctx = storage.getOutput(taskId, 'context') || task.request || {};
-  const voiceProjection = accountVoiceAssignment.applyAccountVoiceAssignments(ctx, {
-    userId: task.user_id || ctx.user_id || user.id || user.userId,
-  });
-  if (voiceProjection.changed) {
-    ctx = voiceProjection.context;
-    storage.saveOutput(taskId, 'context', ctx, { content_revision: currentRevision });
-    storage.updateTask(taskId, { request: ctx, updated_at: new Date().toISOString() });
-  }
+  ctx = accountVoiceAssignment.applyAndPersistContext(ctx, { userId: task.user_id || ctx.user_id || user.id || user.userId, taskId, contentRevision: currentRevision }, { storage });
   if (!String(ctx.brief || '').trim() && !assetPlan.referenceIsValid(ctx.reference_video_analysis)) {
     const error = new Error('请填写广告目标，或先完成参考视频分析');
     error.code = 'BRIEF_REQUIRED';
