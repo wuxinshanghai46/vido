@@ -23,6 +23,7 @@ const personLooks = require('./personLookProfileService');
 const negativeConstraints = require('./negativeConstraintContractService');
 const personAgeContract = require('./personAgeContractService');
 const worldSetting = require('./worldSettingContractService');
+const generationConcurrency = require('./generationConcurrencyService');
 
 const HUMAN_VIEW_KEYS = ['front', 'side', 'back', 'action'];
 const activeBundleKinds = new Set();
@@ -984,9 +985,11 @@ async function generateSubjectBundle(options = {}, deps = {}) {
   ), 0);
   const totalUnits = Math.max(1, humanLookUnits + pets.length * 2 + 1);
   let processedUnits = 0;
+  const activeHumanIndexes = new Set();
   const report = async (phase, message, detail = {}) => {
     if (!onProgress) return;
-    await onProgress({ phase, message, processed: processedUnits, completed: processedUnits, total: totalUnits, ...detail });
+    await onProgress({ phase, message, processed: processedUnits, completed: processedUnits, total: totalUnits,
+      active_indexes: [...activeHumanIndexes].sort((a, b) => a - b).map(index => index + 1), ...detail });
   };
   await report('preparing', '正在核对人物、动物档案与可复用检查点');
   assertCompleteSubjectProfiles(counts, humans, pets);
@@ -1083,15 +1086,19 @@ async function generateSubjectBundle(options = {}, deps = {}) {
     ? knowledgePolicyRuntime.resolveTaskMany({ storage, taskId, selectors: [{ stage: 'person_dossier', assetType: 'person' }] })
     : knowledgePolicyRuntime.resolveMany([{ stage: 'person_dossier', assetType: 'person' }]);
   const subjectFailures = [];
-  for (let index = 0; index < humans.length; index += 1) {
+  await generationConcurrency.map(
+    `new_story_ad.subject_people:${taskLockKey}`,
+    humans.map((member, index) => ({ member, index })),
+    Math.min(2, Math.max(1, humans.length)),
+    async ({ member, index }) => {
     if (reusableHumanAsset(checkpoint.humans[index])) {
       processedUnits += 5;
       await report('checkpoint_reused', `已复用人物 ${index + 1} 的完整档案`, { subject_index: index + 1, subject_kind: 'human' });
-      continue;
+      return;
     }
+    activeHumanIndexes.add(index);
     try {
     cancellation.throwIfCancelled();
-    const member = humans[index];
     const actorId = `new_story_actor_${crypto.createHash('sha256').update(`${kind}:${member.id}:${index}`).digest('hex').slice(0, 16)}`;
     const compiled = await personDossierCompiler.compilePersonDossier({
       taskId: taskId || options.generationId,
@@ -1308,8 +1315,10 @@ async function generateSubjectBundle(options = {}, deps = {}) {
         subject_kind: 'human',
         error_code: error?.code || 'SUBJECT_ASSET_GENERATION_FAILED',
       });
+    } finally {
+      activeHumanIndexes.delete(index);
     }
-  }
+  });
   for (let index = 0; index < pets.length; index += 1) {
     if (reusablePetAsset(checkpoint.pets[index])) {
       processedUnits += 2;

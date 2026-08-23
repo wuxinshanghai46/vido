@@ -643,7 +643,7 @@ function buildActorSheetPrompt(basePrompt = '') {
 
 router.get('/health', (req, res) => {
   const stages = [
-    'new_story_ad.asset_plan', 'new_story_ad.scene_config',
+    'new_story_ad.asset_plan', 'new_story_ad.person_plan_character', 'new_story_ad.scene_config',
     'new_story_ad.blueprint',
     'new_story_ad.storyboard_table',
     'new_story_ad.storyboard_rewrite',

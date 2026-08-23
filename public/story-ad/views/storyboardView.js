@@ -56,6 +56,37 @@ function shotPromptPreview(shot = {}) {
   ].filter(Boolean).join('；');
 }
 
+function shotSpeechDraft(shot = {}) {
+  const mode = String(shot.speech_mode || 'offscreen_voiceover');
+  const line = mode === 'on_camera_dialogue'
+    ? (shot.dialogue_lines?.[0]?.line || shot.dialogue_lines?.[0]?.text || shot.dialogue || '')
+    : (shot.voiceover || shot.narration || '');
+  return { mode, line, speakerId: shot.dialogue_lines?.[0]?.speaker_id || shot.speaker_id || '',
+    speaker: shot.dialogue_lines?.[0]?.speaker || shot.speaker || '',
+    performance: shot.voice_tone || shot.voice_performance || '', timing: shot.voiceover_timing || '' };
+}
+
+function shotVoiceEditor(shot = {}, bundle = {}, disabled = '') {
+  const draft = shotSpeechDraft(shot);
+  const people = Array.isArray(bundle.assets?.people) ? bundle.assets.people : [];
+  const options = people.map(item => {
+    const profile = item.profile || item;
+    const id = profile.id || item.id || '';
+    const name = profile.displayName || profile.name || item.name || '人物';
+    return `<option value="${escapeHtml(id)}" data-speaker-name="${escapeHtml(name)}" ${String(id) === String(draft.speakerId) || name === draft.speaker ? 'selected' : ''}>${escapeHtml(name)}</option>`;
+  }).join('');
+  return `<section class="shot-voice-editor" data-shot-voice-editor>
+    <div class="shot-voice-editor-head"><div><b>对白与声音表演</b><small>这里的选择会写入配音、口型同步和视频镜头合同，不属于人物外观资产。</small></div><span class="status-tag is-neutral">按镜头设置</span></div>
+    <div class="form-grid two">
+      <label class="field"><span>声音方式</span><select class="select" data-shot-speech-mode ${disabled}><option value="offscreen_voiceover" ${draft.mode === 'offscreen_voiceover' || draft.mode === 'voiceover' ? 'selected' : ''}>画外旁白（不做口型）</option><option value="on_camera_dialogue" ${['on_camera_dialogue','dialogue','lip_sync'].includes(draft.mode) ? 'selected' : ''}>人物出镜对白（同步口型）</option><option value="silent" ${draft.mode === 'silent' ? 'selected' : ''}>无对白</option></select></label>
+      <label class="field"><span>说话人物</span><select class="select" data-shot-speaker ${disabled}><option value="">旁白 / 自动</option>${options}</select></label>
+      <label class="field full"><span>实际说出的内容</span><textarea class="textarea" rows="2" data-shot-spoken-line ${disabled}>${escapeHtml(draft.line)}</textarea></label>
+      <label class="field full"><span>语气、节奏与停连</span><textarea class="textarea" rows="2" data-shot-voice-performance placeholder="如：克制、语速稍慢；关键词前短暂停顿，句尾自然收住。" ${disabled}>${escapeHtml(draft.performance)}</textarea></label>
+      <label class="field full"><span>对白与动作时机</span><input class="input" data-shot-voice-timing value="${escapeHtml(draft.timing)}" placeholder="如：人物抬眼后 0.5 秒开口，最后一个字结束后切镜" ${disabled}></label>
+    </div><div class="shot-inline-actions"><button class="btn" type="button" data-save-shot-voice ${disabled}>保存本镜对白设置</button></div>
+  </section>`;
+}
+
 function shotRow(shot = {}, index = 0, bundle = {}) {
   const shotIndex = Number(shot.shot_index || shot.index || index + 1) || index + 1;
   const bindings = friendlyBindings(bundle, shot);
@@ -84,7 +115,7 @@ function shotRow(shot = {}, index = 0, bundle = {}) {
   </div>`;
 }
 
-function sketchCard(shot, sketch = {}, index = 0, gate = {}) {
+function sketchCard(shot, sketch = {}, index = 0, gate = {}, bundle = {}) {
   const shotIndex = Number(shot.shot_index || shot.index || index + 1) || index + 1;
   const disabled = gate.ready === false ? 'disabled' : '';
   return `<article class="card sketch-card sketch-tile ${gate.ready === false ? 'is-gated' : ''}" data-sketch-shot="${shotIndex}">
@@ -92,6 +123,7 @@ function sketchCard(shot, sketch = {}, index = 0, gate = {}) {
     <div class="sketch-tile-copy"><div><h2>${escapeHtml(shot.title || `镜头 ${shotIndex}`)}</h2><p>${escapeHtml(shot.visual || shot.visual_description || shot.action || '')}</p></div><span class="status-tag is-${sketch.status === 'confirmed' ? 'success' : 'neutral'}">${escapeHtml(sketch.status === 'confirmed' ? '已确认' : (sketch.status === 'skipped' ? '已跳过' : '待确认'))}</span></div>
     <details class="sketch-tile-editor"><summary>构图约束与操作</summary><div class="form-grid">
         <label class="field full"><span>构图约束</span><textarea class="textarea" rows="4" data-sketch-notes placeholder="确认主体数量、站位、景别、视线和运动方向。" ${disabled}>${escapeHtml(sketch.composition_notes || '')}</textarea></label>
+        <div class="field full">${shotVoiceEditor(shot, bundle, disabled)}</div>
         <div class="field full sketch-action-bar">
           <input class="hidden-input" type="file" accept="image/png,image/jpeg,image/webp" data-sketch-file>
           <div class="sketch-actions" role="group" aria-label="镜头 ${shotIndex} 线稿操作">
@@ -197,7 +229,7 @@ export async function mount(host, context) {
     <section data-board-panel="sketches" hidden>
       ${shots.length ? `<div class="storyboard-stage-bar"><div><b>第二步 · 线稿分镜</b><span>${sketchGate.ready ? `文字分镜已审核通过 ${shots.length} 镜；当前线稿 ${generatedSketchCount}/${shots.length}，确认或跳过 ${resolvedSketchCount}/${shots.length}。` : escapeHtml(gateReason)}</span></div>${missingSketchCount ? `<button class="btn primary" type="button" data-generate-sketch-batch ${sketchBatchActive || !sketchGate.ready ? 'disabled' : ''}>${sketchBatchActive ? '线稿批次生成中' : `批量生成全部缺失线稿（${missingSketchCount}）`}</button>` : `<div class="storyboard-stage-actions"><span class="status-tag is-success">线稿已全部生成</span><button class="btn" type="button" data-generate-sketch-batch data-regenerate-all="true" ${sketchBatchActive || !sketchGate.ready ? 'disabled' : ''}>${sketchBatchActive ? '线稿批次生成中' : `批量重生成全部线稿（${shots.length}）`}</button></div>`}</div>` : ''}
       <div data-sketch-batch-host>${sketchBatchMarkup(sketchBatch, missingSketchCount || generatedSketchCount)}</div>
-      ${shots.length ? `<div class="storyboard-sketch-grid">${visibleShots.map((shot, index) => sketchCard(shot, sketchByShot.get(Number(shot.shot_index || shot.index || pageStart + index + 1)) || {}, pageStart + index, sketchGate)).join('')}</div>${pageNav}` : `<div class="card">${emptyState({ title: '没有可确认的镜头', body: '生成文字分镜后再处理线稿。' })}</div>`}
+      ${shots.length ? `<div class="storyboard-sketch-grid">${visibleShots.map((shot, index) => sketchCard(shot, sketchByShot.get(Number(shot.shot_index || shot.index || pageStart + index + 1)) || {}, pageStart + index, sketchGate, bundle)).join('')}</div>${pageNav}` : `<div class="card">${emptyState({ title: '没有可确认的镜头', body: '生成文字分镜后再处理线稿。' })}</div>`}
     </section>`;
 
   bindMediaLightbox(host);
@@ -388,6 +420,34 @@ export async function mount(host, context) {
     await context.refreshShell();
   }
 
+  async function saveShotVoice(card) {
+    const shotIndex = Number(card.dataset.sketchShot);
+    const sourceIndex = shots.findIndex((shot, index) => Number(shot.shot_index || shot.index || index + 1) === shotIndex);
+    if (sourceIndex < 0) return;
+    const mode = card.querySelector('[data-shot-speech-mode]')?.value || 'offscreen_voiceover';
+    const speakerSelect = card.querySelector('[data-shot-speaker]');
+    const speakerId = speakerSelect?.value || '';
+    const speaker = speakerSelect?.selectedOptions?.[0]?.dataset?.speakerName || '';
+    const line = card.querySelector('[data-shot-spoken-line]')?.value?.trim() || '';
+    const performance = card.querySelector('[data-shot-voice-performance]')?.value?.trim() || '';
+    const timing = card.querySelector('[data-shot-voice-timing]')?.value?.trim() || '';
+    if (mode === 'on_camera_dialogue' && (!speakerId || !line)) throw new Error('人物出镜对白必须选择说话人物并填写实际说出的内容。');
+    const next = shots.map((shot, index) => index === sourceIndex ? {
+      ...shot,
+      speech_mode: mode,
+      speaker_id: mode === 'on_camera_dialogue' ? speakerId : '',
+      speaker: mode === 'on_camera_dialogue' ? speaker : '',
+      voiceover: mode === 'offscreen_voiceover' ? line : '',
+      narration: mode === 'offscreen_voiceover' ? line : '',
+      dialogue_lines: mode === 'on_camera_dialogue' ? [{ speech_mode: 'dialogue', speaker_id: speakerId, speaker, line }] : [],
+      voice_tone: performance,
+      voice_performance: performance,
+      voiceover_timing: timing,
+      _nsa_user_edited_fields: { ...(shot._nsa_user_edited_fields || {}), speech_mode: true, dialogue_lines: true, voiceover: true, voice_tone: true, voiceover_timing: true },
+    } : shot);
+    await store.saveStoryboard(next);
+  }
+
   host.querySelectorAll('[data-sketch-shot]').forEach(card => {
     const shotIndex = Number(card.dataset.sketchShot);
     card.querySelector('[data-upload-sketch]').addEventListener('click', () => card.querySelector('[data-sketch-file]').click());
@@ -413,6 +473,7 @@ export async function mount(host, context) {
       const button = event.currentTarget;
       try {
         setButtonBusy(button, true, '确认中…');
+        await saveShotVoice(card);
         await saveSketch(card, { status: 'confirmed' });
         toast(`镜头 ${shotIndex} 构图已确认。`, 'success');
       } catch (error) {
@@ -449,3 +510,12 @@ export async function mount(host, context) {
     if (sketchBatchPollTimer) clearTimeout(sketchBatchPollTimer);
   };
 }
+    card.querySelector('[data-save-shot-voice]')?.addEventListener('click', async event => {
+      const button = event.currentTarget;
+      try {
+        setButtonBusy(button, true, '保存中…');
+        await saveShotVoice(card);
+        toast(`镜头 ${shotIndex} 的对白、声音方式和表演节奏已写入生成合同。`, 'success');
+        await context.refreshShell();
+      } catch (error) { toast(error.message, 'danger'); setButtonBusy(button, false); }
+    });

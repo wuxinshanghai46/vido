@@ -205,7 +205,8 @@ function publish(taskId, rawPlan = {}, { fingerprint = '', source = '', model_me
   if (!task) throw new Error('任务不存在');
   const context = storage.getOutput(taskId, 'context') || task.request || {};
   const candidateId = crypto.randomUUID();
-  const compiledPlan = contentSkill.mode(context.content_mode || context.product_presentation?.mode) === 'narrative_story'
+  const personOnly = scope === 'person';
+  const compiledPlan = !personOnly && contentSkill.mode(context.content_mode || context.product_presentation?.mode) === 'narrative_story'
     ? storySceneCoverage.compileAssetPlan(rawPlan)
     : rawPlan;
   const candidate = {
@@ -223,7 +224,11 @@ function publish(taskId, rawPlan = {}, { fingerprint = '', source = '', model_me
     model_meta,
     validated_at: new Date().toISOString(),
   };
-  const preflightIssues = contentSkill.mode(context.content_mode || context.product_presentation?.mode) === 'narrative_story'
+  // A person-only publication is deliberately allowed before scene topology
+  // exists. Its scene domain remains stale and therefore cannot authorize
+  // storyboard/scene generation, while the current person domain can safely
+  // authorize independent subject-image generation.
+  const preflightIssues = !personOnly && contentSkill.mode(context.content_mode || context.product_presentation?.mode) === 'narrative_story'
     ? storySceneCoverage.coverageIssues(candidate, context)
     : [];
   const validatedCandidate = {

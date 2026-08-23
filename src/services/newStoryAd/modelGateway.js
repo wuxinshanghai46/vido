@@ -16,6 +16,7 @@ const RECENT_TEXT_SUCCESS_WINDOW_MS = 14 * 24 * 60 * 60 * 1000;
 const MANAGED_RECOVERY_FALLBACK_STAGES = new Set([
   REFERENCE_SYNTHESIS_STAGE,
   'new_story_ad.assist',
+  'new_story_ad.person_plan_character',
   'new_story_ad.brief_dialogue',
   'new_story_ad.story_facts',
   'new_story_ad.story_facts_compact_retry',
@@ -37,6 +38,7 @@ const REFERENCE_SYNTHESIS_RECOVERY_FALLBACKS = [
 
 const STAGE_FALLBACKS = {
   'new_story_ad.asset_plan': FALLBACKS,
+  'new_story_ad.person_plan_character': FALLBACKS,
   'new_story_ad.asset_plan_scene_recovery': FALLBACKS,
   'new_story_ad.asset_plan_missing_sections_recovery': FALLBACKS,
   'new_story_ad.asset_plan_section_patch': FALLBACKS,

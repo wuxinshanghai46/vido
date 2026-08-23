@@ -22,12 +22,19 @@ function kindFor(stage = '', idempotencyKey = '') {
   return `generation_permit:${stage}:${digest}`;
 }
 
+function stageEligibility(eligibility = {}, stage = '') {
+  return ['subject_assets', 'person_provider_sync'].includes(String(stage || ''))
+    ? { ...eligibility, ...(eligibility.person || {}) }
+    : eligibility;
+}
+
 function issue(taskId, stage, { idempotencyKey = '' } = {}) {
   if (!protectedStage(stage)) return null;
   const active = publication.activeRecord(taskId);
   const eligibility = publication.eligibility(taskId, { fingerprint: active?.fingerprint || '' });
-  if (!eligibility.eligible) {
-    const error = new Error(`当前任务没有可用于生成的本版本 Active Plan：${eligibility.issues.join('、')}`);
+  const required = stageEligibility(eligibility, stage);
+  if (!required.eligible) {
+    const error = new Error(`当前任务没有可用于生成的本版本 Active Plan：${required.issues.join('、')}`);
     error.code = 'GENERATION_ACTIVE_PLAN_REQUIRED';
     error.status = 409;
     error.retryable = false;
@@ -89,7 +96,8 @@ function consume(taskId, permit = null) {
   authorityLifecycle.assertCurrent(taskId, stored);
   const active = publication.activeRecord(taskId);
   const eligibility = publication.eligibility(taskId, { fingerprint: active?.fingerprint || '' });
-  if (!eligibility.eligible
+  const required = stageEligibility(eligibility, stored.stage);
+  if (!required.eligible
     || eligibility.plan_id !== stored.plan_id
     || eligibility.release_bundle_id !== stored.release_bundle_id
     || eligibility.content_revision !== stored.content_revision) {
@@ -105,4 +113,4 @@ function consume(taskId, permit = null) {
   return consumed;
 }
 
-module.exports = { PROTECTED_STAGES, protectedStage, issue, consume, kindFor };
+module.exports = { PROTECTED_STAGES, protectedStage, issue, consume, kindFor, stageEligibility };

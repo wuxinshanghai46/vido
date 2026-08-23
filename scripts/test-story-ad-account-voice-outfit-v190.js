@@ -54,12 +54,13 @@ assert.strictEqual(persistedContext.voice_assignments.speakers.heroine, 'vp_1111
 
 const root = path.resolve(__dirname, '..');
 const form = fs.readFileSync(path.join(root, 'public/story-ad/views/assetCenterPersonForm.js'), 'utf8');
-const voiceView = fs.readFileSync(path.join(root, 'public/story-ad/views/assetCenterPersonVoice.js'), 'utf8');
+const storyboard = fs.readFileSync(path.join(root, 'public/story-ad/views/storyboardView.js'), 'utf8');
 const drawer = fs.readFileSync(path.join(root, 'public/story-ad/views/assetCenterPlanningDetails.js'), 'utf8');
 const view = fs.readFileSync(path.join(root, 'public/story-ad/views/assetCenterView.js'), 'utf8');
 assert.doesNotMatch(form, /field\('voice_id'/, '用户表单不得继续暴露底层音色 ID 输入框');
-assert.match(form, /renderPersonVoiceBinding/, '人物表单必须挂载独立的系统音色状态模块');
-assert.match(voiceView, /data-system-voice-binding/, '人物编辑必须展示系统自动音色绑定状态');
+assert.doesNotMatch(form, /renderPersonVoiceBinding|声音与对白表演/, '声音与对白不属于人物外观生成表单');
+assert.match(storyboard, /对白与声音表演[\s\S]*data-shot-speaker[\s\S]*data-shot-spoken-line/, '说话人和台词必须在分镜线稿逐镜设置');
+assert.doesNotMatch(storyboard, /name="voice_id"|data-shot-voice-id/, '分镜线稿不得要求普通用户填写底层音色 ID');
 assert.match(form, /data-save-regenerate-person/, '服装修改必须有保存并重生成人物图的明确入口');
 assert.match(form, /data-jump-person-looks/, '人物编辑顶部必须提供直达服装造型的入口');
 assert.match(drawer, /event\.submitter\?\.matches\('\[data-save-regenerate-person\]'/, '保存并重生成必须由实际提交按钮区分');
@@ -67,4 +68,4 @@ assert.match(drawer, /await onGenerate\?\.\(item, group, button\)/, '保存成�
 assert.match(view, /target\.profile\?\.id/, '定向生成必须使用刚保存的人物档案覆盖旧 bundle 人物文本');
 assert.match(view, /item\.profile = \{ \.\.\.\(item\.profile \|\| \{\}\), \.\.\.normalizedValues \}/, '保存成功后必须更新定向生成使用的人物内存状态');
 
-console.log('story-ad account voice and outfit v190: 22 assertions passed');
+console.log('story-ad account voice and outfit v190: 23 assertions passed');

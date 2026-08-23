@@ -76,6 +76,7 @@ const GENERATION_STAGE_LABELS = {
   person_provider_sync: '人物 ID 与 Seedance 同步',
   product_asset: '商品资产',
   prop_asset: '人物随身道具',
+  person_plan: '人物方案与人物图片',
   scene_config: '人物与场景方案',
   scene_asset: '场景视图',
   blueprint: '剧情蓝图',
@@ -89,7 +90,7 @@ const GENERATION_STAGE_LABELS = {
 };
 
 const GENERATION_UNIT_LABELS = {
-  subject_assets: '项资产', visual_assets: '个本批目标', person_provider_sync: '个人物', product_asset: '项商品', prop_asset: '项道具', scene_asset: '张场景图', blueprint: '个步骤', storyboard: '个分镜',
+  person_plan: '个人物', subject_assets: '项资产', visual_assets: '个本批目标', person_provider_sync: '个人物', product_asset: '项商品', prop_asset: '项道具', scene_asset: '张场景图', blueprint: '个步骤', storyboard: '个分镜',
   keyframes: '张关键帧', video: '个视频片段', media: '个视频片段', tts: '段配音', compose: '个步骤', full: '个步骤',
 };
 
@@ -204,7 +205,9 @@ export function generationProgressView(bundle = {}) {
   else if (failed) liveText = checkpointRecovery
     ? `已保留 ${checkpointRecovery.completed}/${checkpointRecovery.total} 项人物图片；${billingUnknown ? '核对计费前不会重复调用' : '仅处理缺失项'}`
     : (billingUnknown ? '已保留成功资产，核对计费前不会重复调用' : '已保留成功资产，可从缺失项继续');
-  else if (activeIndexes.length) liveText = `正在生成第 ${activeIndexes.join('、')} 镜`;
+  else if (activeIndexes.length) liveText = ['person_plan', 'subject_assets', 'person_sheet', 'person_dossier'].includes(stage)
+    ? `正在并行处理第 ${activeIndexes.join('、')} 个人物`
+    : `正在生成第 ${activeIndexes.join('、')} 镜`;
   else if (currentIndex && ['storyboard', 'keyframes', 'video', 'media'].includes(stage)) liveText = `正在生成第 ${currentIndex} 镜`;
   else liveText = progress.phase ? String(progress.phase).replaceAll('_', ' ') : '正在处理';
   return {

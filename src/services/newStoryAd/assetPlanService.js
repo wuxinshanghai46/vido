@@ -661,12 +661,12 @@ function normalizeProfileDemographics(profile = {}, existing = {}, ctx = {}, cas
   };
 }
 
-function normalizePlan(source = {}, ctx = {}) {
+function normalizePlan(source = {}, ctx = {}, options = {}) {
   const rawScenePlan = source.scene_plan || source.scenePlan || source.scene_config || source.sceneConfig || {};
   let scenePlan = normalizeScenePlan(assetPlanSceneContracts.closeAssetPlanSceneContracts(rawScenePlan, {
     content_mode: ctx.content_mode || ctx.product_presentation?.mode,
   }));
-  assertScenePlanContract(scenePlan);
+  if (options.allowPartialScene !== true) assertScenePlanContract(scenePlan);
   const castProfiles = Array.isArray(source.cast_profiles || source.castProfiles)
     ? (source.cast_profiles || source.castProfiles).slice(0, 12)
     : (ctx.cast_profiles || []);
@@ -1642,7 +1642,7 @@ function attachFixedPropsToScenes(plan = {}) {
 }
 
 function persist(taskId, ctx, rawPlan, meta, scope = 'all') {
-  const plan = attachFixedPropsToScenes(normalizePlan(rawPlan, ctx));
+  const plan = attachFixedPropsToScenes(normalizePlan(rawPlan, ctx, { allowPartialScene: scope === 'person' }));
   const props = propDrafts(plan, ctx.prop_assets);
   const castFingerprint = crypto.createHash('sha256')
     .update(JSON.stringify(canonical(plan.cast_profiles || [])))
@@ -1729,6 +1729,42 @@ function persist(taskId, ctx, rawPlan, meta, scope = 'all') {
   storage.saveOutput(taskId, 'context', nextContext);
   storage.updateTask(taskId, checkpointLineage.currentPlanningTaskPatch(), { systemFinalization: true });
   return nextPlan;
+}
+
+function persistIndependentPersonProfiles(taskId, profiles = [], meta = {}) {
+  const task = storage.getTask(taskId);
+  if (!task) throw new Error('任务不存在');
+  const ctx = assertContextConsistent(storage.getOutput(taskId, 'context') || task.request || {});
+  assertDetailedPersonProfiles(profiles);
+  const previous = assetPlanPublication.currentPlan(taskId);
+  const base = previous && typeof previous === 'object' ? previous : {
+    cast_profiles: Array.isArray(ctx.cast_profiles) ? ctx.cast_profiles : [],
+    narrative_cast_profiles: Array.isArray(ctx.narrative_cast_profiles) ? ctx.narrative_cast_profiles : (ctx.cast_profiles || []),
+    pet_profiles: Array.isArray(ctx.pet_profiles) ? ctx.pet_profiles : [],
+    prop_plan: Array.isArray(ctx.prop_plan) ? ctx.prop_plan : [],
+    story_seed: ctx.story_seed && typeof ctx.story_seed === 'object' ? ctx.story_seed : {},
+    scene_plan: storage.getOutput(taskId, 'scene_config') || {
+      cast_mode: ctx.cast_mode || ctx.person_spec?.castMode || (profiles.length > 1 ? 'group' : (profiles.length ? 'single' : 'no_human')),
+      scene_mode: ctx.scene_mode || 'auto',
+      spaces: [],
+    },
+    advertised_subject_contract: ctx.advertised_subject_contract || null,
+  };
+  const candidate = normalizePlan({
+    ...base,
+    cast_profiles: profiles,
+    narrative_cast_profiles: profiles,
+  }, ctx, { allowPartialScene: true });
+  if (previous) {
+    const overrides = storage.getOutput(taskId, 'scene_world_overrides') || {};
+    assertScopedPlanIsolation(normalizePlan(previous, ctx, { allowPartialScene: true }), candidate, 'person', overrides);
+  }
+  return persist(taskId, ctx, candidate, {
+    fingerprint: fingerprint(task, ctx),
+    source: 'independent_person_plan_completion',
+    completed_at: new Date().toISOString(),
+    ...meta,
+  }, 'person');
 }
 
 function ids(items = []) {
@@ -2220,6 +2256,7 @@ module.exports = {
   markSceneConfigDone,
   replanPerson,
   replanScene,
+  persistIndependentPersonProfiles,
   syncPrevious,
   generate,
 };

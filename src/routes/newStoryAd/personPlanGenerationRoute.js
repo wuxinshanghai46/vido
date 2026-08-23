@@ -63,9 +63,13 @@ function updatePersonPlanProgress(storage, taskId, generationId, update = {}) {
   const task = storage.getTask(taskId) || {}, previous = task.generation_progress || {};
   if (String(task.active_generation_id || '') !== String(generationId || '')) return null;
   const now = new Date().toISOString(), percent = Math.max(1, Math.min(99, Number(update.percent || 1) || 1));
+  const total = Math.max(1, Number(update.total || previous.total || 1) || 1);
+  const completed = Math.max(0, Math.min(total, Number(update.completed ?? previous.completed ?? 0) || 0));
   const progress = { schema_version: 1, stage: 'person_plan', generation_id: generationId, status: 'running',
     phase: String(update.phase || previous.phase || 'planning'), message: String(update.message || previous.message || '正在生成人物方案'),
-    total: 100, completed: percent, processed: percent, percent,
+    total, completed, processed: completed, percent,
+    active_indexes: Array.isArray(update.active_indexes) ? update.active_indexes : (previous.active_indexes || []),
+    current_index: Number(update.current_index || 0) || undefined,
     started_at: previous.started_at || task.generation_started_at || task.generation_queued_at || now, updated_at: now };
   storage.updateTask(taskId, { generation_progress: progress });
   return progress;
@@ -76,11 +80,29 @@ function registerPersonPlanGenerationRoute(router, deps = {}) {
   router.post('/tasks/:id/person-plan', asyncRoute(async (req, res) => {
     const user = userFromReq(req), userId = String(user.id || user.userId || user.username || 'anonymous');
     return queueTaskStage(req, res, 'person_plan', async job => {
-      updatePersonPlanProgress(storage, req.params.id, job.generationId, { percent: 5, phase: 'planning', message: '正在整理人物方案' });
-      const personPlan = await service.updatePersonPlan(req.params.id, { generation_id: job.generationId });
-      updatePersonPlanProgress(storage, req.params.id, job.generationId, { percent: 20, phase: 'asset_preflight', message: '人物方案已完成，正在核对缺失图片' });
+      const initial = currentPersonGenerationBody({ taskId: req.params.id, input: req.body || {}, service, storage });
+      const personTotal = Math.max(1, initial.cast_profiles.length);
+      const completedPeople = new Set();
+      updatePersonPlanProgress(storage, req.params.id, job.generationId, { percent: 3, total: personTotal, completed: 0, phase: 'planning', message: '正在并行启动独立人物方案' });
+      const personPlan = await service.updatePersonPlan(req.params.id, {
+        generation_id: job.generationId,
+        user,
+        onProgress: event => {
+          if (event.completed_index) completedPeople.add(event.completed_index);
+          return updatePersonPlanProgress(storage, req.params.id, job.generationId, {
+            percent: Math.min(35, 5 + Math.round((completedPeople.size / personTotal) * 30)),
+            total: personTotal,
+            completed: completedPeople.size,
+            active_indexes: event.active_indexes || [],
+            current_index: event.current_index,
+            phase: event.phase,
+            message: event.message,
+          });
+        },
+      });
+      updatePersonPlanProgress(storage, req.params.id, job.generationId, { percent: 38, total: personTotal, completed: personTotal, phase: 'asset_preflight', message: '完整人物方案已发布，正在核对缺失图片' });
       const subjectBody = currentPersonGenerationBody({ taskId: req.params.id, input: req.body || {}, service, storage });
-      if (!subjectBody.subject_targets.length) { updatePersonPlanProgress(storage, req.params.id, job.generationId, { percent: 99, phase: 'finishing', message: '人物方案和图片已齐全，正在完成任务' }); return { person_plan: personPlan, subject_assets: null, generated_subjects: 0 }; }
+      if (!subjectBody.subject_targets.length) { updatePersonPlanProgress(storage, req.params.id, job.generationId, { percent: 99, total: personTotal, completed: personTotal, phase: 'finishing', message: '人物方案和图片已齐全，正在完成任务' }); return { person_plan: personPlan, subject_assets: null, generated_subjects: 0 }; }
       const visualPermit = generationPermit.issue(req.params.id, 'subject_assets', {
         idempotencyKey: `${req.params.id}:person_plan_assets:${String(req.body?.request_key || job.generationId)}`,
       });
