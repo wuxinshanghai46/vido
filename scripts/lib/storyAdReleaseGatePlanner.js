@@ -88,7 +88,7 @@ const DOMAIN_RULES = [
       /(?:storage|database|sqlite|migration|billing|generation|modelGateway|jobService|concurrency|releaseControl)/i,
       /(?:providerAdapterRegistry|settingsService|configure-story-ad-independent-text-routes|test-story-ad-(?:provider-contract|independent-text-routes))/i,
       /^src\/routes\/newStoryAd\.js$/i,
-      /^src\/services\/(?:pipelineModelService|deyunaiService)\.js$/i,
+      /^src\/services\/(?:pipelineModelService|deyunaiService|videoService)\.js$/i,
       /^src\/services\/newStoryAd\/(?:videoAdapter|lipSyncService|videoArtifactWorkflowService)\.js$/i,
       /^scripts\/(?:migrate|audit)-new-story-ad-systemic/,
     ],
