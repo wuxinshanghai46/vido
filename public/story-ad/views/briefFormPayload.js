@@ -1,4 +1,4 @@
-import { worldSettingPayload } from './briefWorldSettings.js?v=20260823-character-library-v185';
+import { worldSettingPayload } from './briefWorldSettings.js?v=20260823-character-library-v186';
 
 export function formPayload(form) {
   const data = new FormData(form);

@@ -1,21 +1,21 @@
-import { request } from '../api.js?v=20260823-character-library-v185';
-import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260823-character-library-v185';
-import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260823-character-library-v185';
-import { briefSettingsSummary } from './briefSettingsSummary.js?v=20260823-character-library-v185';
-import { worldSettingFields } from './briefWorldSettings.js?v=20260823-character-library-v185';
-import { bindNarrativeRecognitionLayout } from './briefNarrativeRecognition.js?v=20260823-character-library-v185';
-import { referenceProgress as renderReferenceProgress } from './referenceProgressCard.js?v=20260823-character-library-v185';
-import { assertBriefReadback } from './briefTextContract.js?v=20260823-character-library-v185';
-import { confirmContentModeMigration } from './briefContentModeMigration.js?v=20260823-character-library-v185';
-import { BRIEF_MATERIALS } from './briefMaterials.js?v=20260823-character-library-v185';
-import { bindAdvancedReferenceControls, renderAdvancedReferenceControls } from './briefAdvancedConfig.js?v=20260823-character-library-v185';
-import { bindBriefDialogueWorkflow, briefDialogueMarkup, referenceNextStepDescription } from './briefDialoguePanel.js?v=20260823-character-library-v185';
-import { syncReferenceDialogueStatus } from './briefReferenceDialogueState.js?v=20260823-character-library-v185';
-import { referenceActionState, syncReferenceAction } from './briefReferenceActionState.js?v=20260823-character-library-v185';
-import { bindBriefViewport, briefDialogueAssist } from './briefDialogueRuntime.js?v=20260823-character-library-v185';
-import { bindBriefSettingsModal } from './briefSettingsModal.js?v=20260823-character-library-v185';
-import { formPayload } from './briefFormPayload.js?v=20260823-character-library-v185';
-import { bindBriefReferenceRecovery } from './briefReferenceRecovery.js?v=20260823-character-library-v185';
+import { request } from '../api.js?v=20260823-character-library-v186';
+import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260823-character-library-v186';
+import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260823-character-library-v186';
+import { briefSettingsSummary } from './briefSettingsSummary.js?v=20260823-character-library-v186';
+import { worldSettingFields } from './briefWorldSettings.js?v=20260823-character-library-v186';
+import { bindNarrativeRecognitionLayout } from './briefNarrativeRecognition.js?v=20260823-character-library-v186';
+import { referenceProgress as renderReferenceProgress } from './referenceProgressCard.js?v=20260823-character-library-v186';
+import { assertBriefReadback } from './briefTextContract.js?v=20260823-character-library-v186';
+import { confirmContentModeMigration } from './briefContentModeMigration.js?v=20260823-character-library-v186';
+import { BRIEF_MATERIALS } from './briefMaterials.js?v=20260823-character-library-v186';
+import { bindAdvancedReferenceControls, renderAdvancedReferenceControls } from './briefAdvancedConfig.js?v=20260823-character-library-v186';
+import { bindBriefDialogueWorkflow, briefDialogueMarkup, referenceNextStepDescription } from './briefDialoguePanel.js?v=20260823-character-library-v186';
+import { syncReferenceDialogueStatus } from './briefReferenceDialogueState.js?v=20260823-character-library-v186';
+import { referenceActionState, syncReferenceAction } from './briefReferenceActionState.js?v=20260823-character-library-v186';
+import { bindBriefViewport, briefDialogueAssist } from './briefDialogueRuntime.js?v=20260823-character-library-v186';
+import { bindBriefSettingsModal } from './briefSettingsModal.js?v=20260823-character-library-v186';
+import { formPayload } from './briefFormPayload.js?v=20260823-character-library-v186';
+import { bindBriefReferenceRecovery } from './briefReferenceRecovery.js?v=20260823-character-library-v186';
 export function referenceProgress(reference = {}) { return renderReferenceProgress(reference); }
 
 export async function mount(host, context) {
@@ -136,7 +136,7 @@ ${renderAdvancedReferenceControls(bundle, route.isNew)}
       if (understandingHost) understandingHost.innerHTML = '';
       return;
     }
-    const module = await import('./referenceUnderstandingView.js?v=20260823-character-library-v185');
+    const module = await import('./referenceUnderstandingView.js?v=20260823-character-library-v186');
     if (disposed || sequence !== understandingLoadSequence || !understandingHost) return;
     if (understandingController) understandingController.update(reference);
     else understandingController = module.mountReferenceUnderstanding(understandingHost, {
