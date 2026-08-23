@@ -11,9 +11,9 @@ const recoverySource = `${read('public/story-ad/views/billingRecoveryBanner.js')
   .replace(/^import\s+.*?;\s*$/gm, '').replace(/\bexport\s+/g, '');
 const recoverySandbox = { escapeHtml: value => String(value || '') };
 vm.runInNewContext(`${recoverySource}\nglobalThis.__summary=checkpointRecoverySummary;globalThis.__banner=checkpointRecoveryBanner;`, recoverySandbox);
-const planSource = `${read('public/story-ad/views/assetCenterPlanReleaseStatus.js')}\n${read('public/story-ad/views/assetCenterStageView.js')}`
+const planSource = `${read('public/story-ad/views/assetCenterInlineProgress.js')}\n${read('public/story-ad/views/assetCenterTechnicalDetails.js')}\n${read('public/story-ad/views/assetCenterPlanReleaseStatus.js')}\n${read('public/story-ad/views/assetCenterStageView.js')}`
   .replace(/^import\s+.*?;\s*$/gm, '').replace(/^export\s+\{.*$/gm, '').replace(/\bexport\s+/g, '');
-const planSandbox = { makePersonGuard: () => ({}), makeGuardMap: () => ({}) };
+const planSandbox = { makePersonGuard: () => ({}), makeGuardMap: () => ({}), escapeHtml: value => String(value) };
 vm.runInNewContext(`${planSource}\nglobalThis.__stage=assetPlanStageView;`, planSandbox);
 
 function people(state, missing = 3) {

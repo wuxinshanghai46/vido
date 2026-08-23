@@ -28,6 +28,7 @@ const recoveryUi = loadBrowserModule(
 const planStatusUi = loadBrowserModule(
   'public/story-ad/views/assetCenterPlanReleaseStatus.js',
   ['personPlanBlockedView'],
+  { personPlanProgressMarkup: () => '', personPlanTechnicalDetails: () => '' },
 );
 
 function person(index, completed, label, reason, errorCode) {
