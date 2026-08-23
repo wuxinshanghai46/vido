@@ -1,6 +1,6 @@
-import * as THREE from '../vendor/three.module.min.js?v=20260823-person-plan-assets-v182';
-import { request, uploadAsset } from '../api.js?v=20260823-person-plan-assets-v182';
-import { escapeHtml, toast } from '../components/ui.js?v=20260823-person-plan-assets-v182';
+import * as THREE from '../vendor/three.module.min.js?v=20260823-character-library-v183';
+import { request, uploadAsset } from '../api.js?v=20260823-character-library-v183';
+import { escapeHtml, toast } from '../components/ui.js?v=20260823-character-library-v183';
 
 const VERSION = '20260803-photoreal-director-v8';
 
