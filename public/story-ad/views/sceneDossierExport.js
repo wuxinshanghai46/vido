@@ -1,5 +1,5 @@
-import { request } from '../api.js?v=20260823-person-plan-assets-v180';
-import { normalizeSceneDossier, SCENE_VIEW_LABELS, SCENE_VIEW_ORDER } from './sceneDossierCard.js?v=20260823-person-plan-assets-v180';
+import { request } from '../api.js?v=20260823-person-plan-assets-v181';
+import { normalizeSceneDossier, SCENE_VIEW_LABELS, SCENE_VIEW_ORDER } from './sceneDossierCard.js?v=20260823-person-plan-assets-v181';
 
 const WIDTH = 1800;
 const HEIGHT = 2400;

@@ -1,4 +1,4 @@
-import { request } from '../api.js?v=20260823-person-plan-assets-v180';
+import { request } from '../api.js?v=20260823-person-plan-assets-v181';
 
 async function preflight(bundle = {}, generationPayload = {}, apply = false, proofToken = '') {
   const taskId = bundle?.project?.id || '';

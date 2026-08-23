@@ -1,4 +1,4 @@
-import { worldSettingPayload } from './briefWorldSettings.js?v=20260823-person-plan-assets-v180';
+import { worldSettingPayload } from './briefWorldSettings.js?v=20260823-person-plan-assets-v181';
 
 export function formPayload(form) {
   const data = new FormData(form);

@@ -1,4 +1,4 @@
-import { confirmDialog } from '../components/dialog.js?v=20260823-person-plan-assets-v180';
+import { confirmDialog } from '../components/dialog.js?v=20260823-person-plan-assets-v181';
 
 export async function confirmContentModeMigration(savedMode = '', nextMode = '') {
   if (!savedMode || savedMode === nextMode) return { cancelled: false, confirmed: false };
