@@ -31,6 +31,7 @@ const projectBundles = require('../src/services/storyAdWorkspace/projectBundleSe
 const shotReferencePacks = require('../src/services/newStoryAd/shotReferencePackService');
 const storyAd = require('../src/services/newStoryAd/storyAdService');
 const jobService = require('../src/services/newStoryAd/jobService');
+const pipelineModels = require('../src/services/pipelineModelService');
 
 const TASK_ID = 'panorama-contract-regression';
 const JOB_TASK_ID = 'panorama-job-concurrency-regression';
@@ -613,6 +614,11 @@ function testBatchUiContract() {
 }
 
 async function main() {
+  const originalPickAllEnabledWithDefault = pipelineModels.pickAllEnabledWithDefault;
+  pipelineModels.pickAllEnabledWithDefault = stage => stage === 'new_story_ad.scene_panorama'
+    ? [{ provider_id: 'test-panorama', model_id: 'test-equirectangular', capabilities: Object.fromEntries(
+      pipelineModels.NEW_STORY_AD_PANORAMA_REQUIRED_CAPABILITIES.map(key => [key, true])) }]
+    : originalPickAllEnabledWithDefault(stage);
   testStablePanoramaPlanAuthority();
   const candidate = await createSyntheticGrid('panorama-contract-grid.png');
   const brokenCandidate = await createSyntheticGrid('panorama-broken-seam-grid.png', 512, 256, { brokenSeam: true });

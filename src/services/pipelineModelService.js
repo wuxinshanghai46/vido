@@ -216,6 +216,14 @@ const NEW_STORY_AD_IMAGE_STAGE_IDS = new Set([
   'new_story_ad.storyboard_sketch',
 ]);
 const NEW_STORY_AD_REQUIRED_IMAGE_MODEL = 'gpt-image-2';
+const NEW_STORY_AD_PANORAMA_REQUIRED_CAPABILITIES = Object.freeze([
+  'image_generation',
+  'reference_preserving',
+  'panorama_outpaint',
+  'equirectangular_2to1',
+  'wraparound_consistency',
+  'source_view_preserving',
+]);
 const NEW_STORY_AD_IMAGE_DEFAULTS = [
   { provider_id: 'smscrw', model_id: 'gpt-image-2', priority: 1, enabled: true },
   { provider_id: 'deyunai', model_id: 'gpt-image-2', priority: 2, enabled: true },
@@ -560,6 +568,10 @@ function isNewStoryAdImageStage(stageId = '') {
 
 function isStageModelAllowed(stageId = '', model = {}) {
   if (!isNewStoryAdImageStage(stageId)) return true;
+  if (String(stageId || '').trim() === 'new_story_ad.scene_panorama') {
+    const capabilityService = require('./modelCapabilityService');
+    return capabilityService.modelCapabilityReport(model, NEW_STORY_AD_PANORAMA_REQUIRED_CAPABILITIES).supported;
+  }
   return String(model.model_id || model.model || '').trim().toLowerCase() === NEW_STORY_AD_REQUIRED_IMAGE_MODEL;
 }
 
@@ -1063,6 +1075,7 @@ module.exports = {
   STAGE_DEFAULTS,
   NEW_STORY_AD_IMAGE_STAGE_IDS,
   NEW_STORY_AD_REQUIRED_IMAGE_MODEL,
+  NEW_STORY_AD_PANORAMA_REQUIRED_CAPABILITIES,
   listSchema,
   listDefaults,
   getStageDefaults,

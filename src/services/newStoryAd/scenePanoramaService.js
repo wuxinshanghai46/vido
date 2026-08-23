@@ -7,6 +7,8 @@ const sceneAssets = require('./sceneAssetService');
 const projection = require('./panoramaProjectionService');
 const sceneCheckpointProjection = require('./sceneCheckpointProjectionService');
 const { sceneProjectionRows } = require('./taskViewService');
+const pipelineModels = require('../pipelineModelService');
+const modelCapabilities = require('../modelCapabilityService');
 
 const PANORAMA_CONTRACT_VERSION = 1;
 const CHECKPOINT_OUTPUT_KIND = 'scene_panorama_checkpoints';
@@ -242,6 +244,18 @@ function modelCallPlan(overrides = {}) {
   };
 }
 
+function panoramaModelRoutePlan() {
+  const required = pipelineModels.NEW_STORY_AD_PANORAMA_REQUIRED_CAPABILITIES || [];
+  const configured = pipelineModels.pickAllEnabledWithDefault(PANORAMA_STAGE);
+  const models = configured.map(model => modelCapabilities.modelCapabilityReport(model, required));
+  return {
+    required_capabilities: required,
+    configured_model_count: configured.length,
+    supported_model_count: models.filter(model => model.supported).length,
+    models,
+  };
+}
+
 function planForScene(taskId, sceneId) {
   const { scene } = findScene(taskId, sceneId);
   const source = sourceView(scene);
@@ -259,14 +273,15 @@ function planForScene(taskId, sceneId) {
   const blockedStatus = sameSource && ['provider_submitting', 'provider_submitted', 'qa_running'].includes(checkpoint.status)
     ? checkpoint.status
     : '';
+  const routePlan = panoramaModelRoutePlan();
   const operation = existing
     ? 'reuse'
     : blockedStatus
       ? 'billing_review_required'
       : sameSource && checkpoint.status === 'qa_failed' && checkpoint.generated?.image_url
         ? 'reverify'
-        : 'generate';
-  const calls = operation === 'reuse' || operation === 'billing_review_required'
+        : (routePlan.supported_model_count ? 'generate' : 'model_capability_required');
+  const calls = operation === 'reuse' || operation === 'billing_review_required' || operation === 'model_capability_required'
     ? modelCallPlan({ panorama_generation: 0, panorama_qa: 0 })
     : operation === 'reverify'
       ? modelCallPlan({ panorama_generation: 0, panorama_qa: 1 })
@@ -283,8 +298,9 @@ function planForScene(taskId, sceneId) {
   return {
     ...basis,
     plan_fingerprint: fingerprint(basis),
-    blocked: !!blockedStatus,
-    blocking_status: blockedStatus,
+    blocked: !!blockedStatus || operation === 'model_capability_required',
+    blocking_status: blockedStatus || (operation === 'model_capability_required' ? 'model_capability_required' : ''),
+    model_route_plan: routePlan,
     paid_call_count: calls.panorama_generation + calls.panorama_qa,
     existing_panorama_id: clean(existing?.id, 160),
     checkpoint_updated_at: clean(checkpoint.updated_at, 80),
@@ -420,8 +436,11 @@ async function generateScenePanorama(taskId, sceneId, body = {}, runOptions = {}
     throw error;
   }
   if (currentPlan.blocked) {
-    const error = new Error('上次全景调用仍处于供应商提交或 QA 未决状态，已阻止重复付费；请先完成计费状态核对');
-    error.code = 'PANORAMA_BILLING_REVIEW_REQUIRED';
+    const capabilityMissing = currentPlan.blocking_status === 'model_capability_required';
+    const error = new Error(capabilityMissing
+      ? '模型调用管理尚未配置同时支持原图保真、2:1经纬全景和环形接缝一致性的全景模型，已在付费调用前停止'
+      : '上次全景调用仍处于供应商提交或 QA 未决状态，已阻止重复付费；请先完成计费状态核对');
+    error.code = capabilityMissing ? 'PANORAMA_MODEL_CAPABILITY_REQUIRED' : 'PANORAMA_BILLING_REVIEW_REQUIRED';
     error.status = 409;
     error.retryable = false;
     error.billing_review_required = true;
@@ -460,7 +479,7 @@ async function generateScenePanorama(taskId, sceneId, body = {}, runOptions = {}
     const requestId = fingerprint({ taskId, sceneId, sourceKey, contract: PANORAMA_CONTRACT_VERSION }).slice(0, 48);
     attemptedCalls.panorama_generation += 1;
     attemptedCalls.total += 1;
-    generated = await generator({
+    try { generated = await generator({
       taskId,
       stage: PANORAMA_STAGE,
       prompt: generationPrompt(scene, source, body),
@@ -480,16 +499,33 @@ async function generateScenePanorama(taskId, sceneId, body = {}, runOptions = {}
       onSubmitted: event => {
         checkpoint = saveCheckpoint(taskId, sceneId, { status: 'provider_submitted', provider_submission: event || {} });
       },
-    });
+    }); } catch (error) {
+      const billing = clean(error?.billingState || error?.billing_state, 40);
+      const submission = clean(error?.providerSubmissionState || error?.provider_submission_state, 60);
+      checkpoint = saveCheckpoint(taskId, sceneId, {
+        status: billing === 'not_billed' || submission === 'submission_rejected' ? 'provider_rejected' : 'provider_submitted',
+        error_code: clean(error?.code || 'PANORAMA_PROVIDER_FAILED', 120),
+        billing_state: billing,
+        provider_submission_state: submission,
+      });
+      throw error;
+    }
     checkpoint = saveCheckpoint(taskId, sceneId, { status: 'provider_completed', generated });
   }
   cancellation.throwIfCancelled(taskId);
 
   const candidateRevision = Math.max(1, Number(scene.scene_revision || 1) + 1);
   updateProgress(taskId, { generation_id: generationId, scene_id: sceneId, phase: 'projection', status: 'running', progress: 52, message: '正在本地修复环形接缝并派生镜头视角', paid_stage: '' });
-  const normalized = checkpoint.normalized?.image_url
-    ? checkpoint.normalized
-    : await (deps.normalizeEquirectangular || projection.normalizeEquirectangular)(generated, { taskId, sceneId, revision: candidateRevision });
+  let normalized;
+  try {
+    normalized = checkpoint.normalized?.image_url
+      ? checkpoint.normalized
+      : await (deps.normalizeEquirectangular || projection.normalizeEquirectangular)(generated, { taskId, sceneId, revision: candidateRevision });
+  } catch (error) {
+    checkpoint = saveCheckpoint(taskId, sceneId, { status: 'candidate_invalid',
+      error_code: clean(error?.code || 'PANORAMA_CANDIDATE_INVALID', 120), billing_state: 'confirmed' });
+    throw error;
+  }
   const derivedViews = list(checkpoint.derived_views).length
     ? checkpoint.derived_views
     : await (deps.deriveCardinalViews || projection.deriveCardinalViews)(normalized);
@@ -571,6 +607,7 @@ module.exports = {
   authoritativePanorama,
   sourceView,
   sourceFingerprint,
+  panoramaModelRoutePlan,
   modelCallPlan,
   planForScene,
   planForTask,

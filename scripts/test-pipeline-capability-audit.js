@@ -11,12 +11,20 @@ function main() {
   const enrollment = report.stages.find(stage => stage.stage_id === 'voice.enrollment');
   assert.ok(enrollment, '授权声音素材自动注册必须进入平台能力审计');
   assert.ok(enrollment.enabled_model_count > 0, '授权声音素材自动注册必须有启用模型');
-  assert.strictEqual(report.summary.stages_without_enabled_model, 3);
+  assert.strictEqual(report.summary.stages_without_enabled_model, 4);
   assert.deepStrictEqual(report.stages.filter(stage => !stage.enabled_model_count).map(stage => stage.stage_id).sort(), [
     'new_story_ad.asset_plan_scene_coverage_recovery',
     'new_story_ad.scene_depth',
+    'new_story_ad.scene_panorama',
     'new_story_ad.scene_spatial_reconstruction',
-  ], 'only optional 6DoF stages may remain fail-closed until a verified provider is configured');
+  ], 'optional 6DoF and true panorama stages must remain fail-closed until a verified provider is configured');
+  assert.equal(pipeline.isStageModelAllowed('new_story_ad.scene_panorama', {
+    provider_id: 'smscrw', model_id: 'gpt-image-2',
+  }), false, 'ordinary 3:2 image models must not be routed into the paid panorama stage');
+  assert.equal(pipeline.isStageModelAllowed('new_story_ad.scene_panorama', {
+    provider_id: 'verified-panorama', model_id: 'equirectangular-v1',
+    capabilities: Object.fromEntries(pipeline.NEW_STORY_AD_PANORAMA_REQUIRED_CAPABILITIES.map(key => [key, true])),
+  }), true, 'model management may enable a panorama route only with the complete explicit capability contract');
   for (const stageId of [
     'imggen.i2v',
     'drama.scene_image',
