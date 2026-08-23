@@ -799,12 +799,29 @@ function extractImageUrlsFromStreamText(text = '') {
   return Array.from(urls);
 }
 
-function buildProviderImageError(message, payload) {
+function buildProviderImageError(message, payload, options = {}) {
   const err = new Error(message);
   const urls = extractImageUrlsFromAnyPayload(payload);
   if (urls.length) err.generatedUrls = urls;
   err.providerPayload = payload;
+  const httpStatus = Number(options.httpStatus || 0);
+  if (httpStatus) {
+    err.httpStatus = httpStatus;
+    err.status = httpStatus;
+  }
   return err;
+}
+
+function classifyImageSubmissionFailure({ submissionStarted = false, taskId = '', status = 0, error = null } = {}) {
+  const httpStatus = Number(status || error?.httpStatus || error?.status || error?.response?.status || 0);
+  const ambiguous = !!(submissionStarted && !!taskId
+    || (submissionStarted && (!httpStatus || httpStatus >= 500
+      || /timeout|timed\s*out|ECONNRESET|socket hang up/i.test(`${error?.code || ''} ${error?.message || ''}`))));
+  return {
+    ambiguous,
+    providerSubmissionState: ambiguous ? 'submitted_unknown' : (submissionStarted ? 'rejected' : 'not_submitted'),
+    billingState: ambiguous ? 'unknown' : (submissionStarted ? 'not_billed' : 'not_submitted'),
+  };
 }
 
 function extractProviderBusinessError(payload) {
@@ -1003,7 +1020,7 @@ async function chat({ model, messages, maxTokens = 4096, userId = null, agentId 
  */
 async function generateImage({ model, prompt, n = 1, size = '1024x1024', aspectRatio = '', referenceImages = [], inputFidelity = 'high', timeoutMs = MODEL_PROVIDER_TIMEOUT_MS, userId = null, agentId = null, signal = null, clientRequestId = '', onSubmitting = null, onSubmitted = null, onProgress = null }) {
   const _started = Date.now();
-  let _ok = false; let _err = null; let _taskId = null; let _providerRequestId = ''; let _submissionStarted = false;
+  let _ok = false; let _err = null; let _taskId = null; let _providerRequestId = ''; let _submissionStarted = false; let _failureBillingState = 'not_submitted';
   try {
     if (isGptImage2Model(model)) {
       const body = buildGptImage2RequestBody({ prompt, n, size, referenceImages, inputFidelity });
@@ -1033,7 +1050,7 @@ async function generateImage({ model, prompt, n = 1, size = '1024x1024', aspectR
         : '';
       if (streamText) submitRes.data = parseStreamResponsePayload(streamText);
       if (submitRes.status >= 400) {
-        const err = buildProviderImageError(`漫路 GPT Image 2 ${isEdit ? 'edits' : 'generations'} HTTP ${submitRes.status}: ${JSON.stringify(submitRes.data).slice(0, 300)}`, submitRes.data);
+        const err = buildProviderImageError(`漫路 GPT Image 2 ${isEdit ? 'edits' : 'generations'} HTTP ${submitRes.status}: ${JSON.stringify(submitRes.data).slice(0, 300)}`, submitRes.data, { httpStatus: submitRes.status });
         err.providerRequest = requestSummary;
         throw err;
       }
@@ -1085,7 +1102,7 @@ async function generateImage({ model, prompt, n = 1, size = '1024x1024', aspectR
     );
     _providerRequestId = providerRequestIdFromHeaders(submitRes.headers);
     if (submitRes.status >= 400) {
-      throw buildProviderImageError(`漫路 images 提交 HTTP ${submitRes.status}: ${JSON.stringify(submitRes.data).slice(0, 300)}`, submitRes.data);
+      throw buildProviderImageError(`漫路 images 提交 HTTP ${submitRes.status}: ${JSON.stringify(submitRes.data).slice(0, 300)}`, submitRes.data, { httpStatus: submitRes.status });
     }
     _taskId = submitRes.data?.data?.task_id || submitRes.data?.task_id;
     await notifyGenerationObserver(onSubmitted, {
@@ -1137,14 +1154,15 @@ async function generateImage({ model, prompt, n = 1, size = '1024x1024', aspectR
     }
     throw new Error(`漫路图像生成超时（${timeoutMs}ms）`);
   } catch (e) {
-    const status = Number(e?.response?.status || 0);
-    const ambiguous = _submissionStarted && (!status || status >= 500
-      || /timeout|timed\s*out|ECONNRESET|socket hang up/i.test(`${e?.code || ''} ${e?.message || ''}`));
+    const status = Number(e?.httpStatus || e?.status || e?.response?.status || 0);
+    const failureState = classifyImageSubmissionFailure({ submissionStarted: _submissionStarted, taskId: _taskId, status, error: e });
+    const ambiguous = failureState.ambiguous;
     if (_submissionStarted) {
       e.providerRequestId = e.providerRequestId || _providerRequestId || providerRequestIdFromHeaders(e?.response?.headers);
       e.providerTaskId = e.providerTaskId || _taskId || '';
-      e.providerSubmissionState = e.providerSubmissionState || (ambiguous ? 'submitted_unknown' : 'rejected');
-      if (ambiguous) e.billingState = 'unknown';
+      e.providerSubmissionState = e.providerSubmissionState || failureState.providerSubmissionState;
+      e.billingState = e.billingState || failureState.billingState;
+      _failureBillingState = e.billingState;
     }
     _err = e.message; throw e;
   } finally {
@@ -1155,7 +1173,7 @@ async function generateImage({ model, prompt, n = 1, size = '1024x1024', aspectR
         durationMs: Date.now() - _started,
         status: _ok ? 'success' : 'fail', errorMsg: _err,
         userId, agentId, requestId: _taskId || _providerRequestId || clientRequestId,
-        billingState: _ok ? 'confirmed' : (_submissionStarted ? 'unknown' : 'not_submitted'),
+        billingState: _ok ? 'confirmed' : _failureBillingState,
       });
     } catch {}
   }
@@ -1278,6 +1296,7 @@ module.exports = {
   assertGptImage2BodyContract,
   buildGptImage2RequestBody,
   summarizeGptImage2Request,
+  classifyImageSubmissionFailure,
   chat,
   generateImage,
   generateVideo,

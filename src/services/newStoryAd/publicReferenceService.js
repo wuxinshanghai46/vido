@@ -1,6 +1,7 @@
 require('dotenv').config();
 
-const DEFAULT_PUBLIC_BASE_URL = 'https://www.vidoai.cn';
+// 生产反向代理与素材下载入口。第三方模型必须能直接访问这里生成的绝对 URL。
+const DEFAULT_PUBLIC_BASE_URL = 'https://vido.smsend.cn';
 
 function publicBaseUrl(env = process.env) {
   return String(

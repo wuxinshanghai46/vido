@@ -3,9 +3,10 @@ const storage = require('./storageService');
 const cancellation = require('./cancellationContext');
 const deyunaiService = require('../deyunaiService');
 const boundaryRepair = require('./videoBoundaryRepairService');
+const publicReferences = require('./publicReferenceService');
 
 function publicBaseUrl(options = {}) {
-  return String(options.public_base_url || options.publicBaseUrl || process.env.NEW_STORY_AD_PUBLIC_BASE_URL || process.env.PUBLIC_BASE_URL || 'https://www.vidoai.cn').replace(/\/+$/, '');
+  return String(options.public_base_url || options.publicBaseUrl || publicReferences.publicBaseUrl()).replace(/\/+$/, '');
 }
 
 function absoluteAssetUrl(url = '', options = {}) {

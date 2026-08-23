@@ -23,6 +23,7 @@ const boundaryRepair = require('./videoBoundaryRepairService'), boundaryGenerati
 const knowledgePolicyRuntime = require('./knowledgePolicyRuntimeService');
 const productionPromptCompiler = require('./productionPromptCompilerService');
 const lipSync = require('./lipSyncService');
+const publicReferences = require('./publicReferenceService');
 const OUTPUT_DIR = path.resolve(process.env.OUTPUT_DIR || path.join(__dirname, '../../../outputs')), VIDEO_DIR = path.join(OUTPUT_DIR, 'new-story-ad-videos');
 const VIDEO_STAGE = 'new_story_ad.video';
 const VIDEO_MAX_CANDIDATES = Math.max(1, Math.min(5, Number(process.env.NEW_STORY_AD_VIDEO_MAX_CANDIDATES) || 4));
@@ -519,9 +520,7 @@ function publicBaseUrl(options = {}) {
   return String(
     options.public_base_url
       || options.publicBaseUrl
-      || process.env.NEW_STORY_AD_PUBLIC_BASE_URL
-      || process.env.PUBLIC_BASE_URL
-      || 'https://www.vidoai.cn',
+      || publicReferences.publicBaseUrl(),
   ).replace(/\/+$/, '');
 }
 

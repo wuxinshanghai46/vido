@@ -12,6 +12,11 @@ const viewImages = ['front', 'side', 'back', 'action'].map(key => ({ key, url: `
 const personAsset = { id: 'person-any-task', actor_id: 'person-any-task', view_images: viewImages };
 
 (async () => {
+  assert.strictEqual(publicReferences.publicBaseUrl({}), 'https://vido.smsend.cn');
+  assert.strictEqual(
+    publicReferences.absolutePublicUrl('/api/new-story-ad/assets/default.png', { env: {} }),
+    'https://vido.smsend.cn/api/new-story-ad/assets/default.png',
+  );
   const referenceSet = publicReferences.normalizeVisionReferences([
     '/api/new-story-ad/assets/reference.png',
     'https://cdn.example/reference.png',
