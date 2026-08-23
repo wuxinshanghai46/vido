@@ -170,18 +170,18 @@ function applyRevisions(previous = {}, next = {}, scope = 'none') {
 function invalidateOutputs(storage, taskId, scope = 'none', options = {}) {
   const scopes = Array.isArray(scope) ? scope : (scope && scope !== 'none' ? [scope] : []);
   const graph = {
-    source: ['asset_plan', 'scene_config', 'scene_assets', 'blueprint_draft_checkpoint', 'blueprint', 'storyboard_table', 'storyboard_meta', 'storyboard_sketches', 'storyboard_sketch_batch', 'keyframe_contracts', 'keyframes', 'quality_review', 'tts_audio', 'video_clips', 'video_scene_blocks', 'final_video'],
-    product: ['scene_config', 'scene_assets', 'blueprint_draft_checkpoint', 'blueprint', 'storyboard_table', 'storyboard_meta', 'storyboard_sketches', 'storyboard_sketch_batch', 'keyframe_contracts', 'keyframes', 'quality_review', 'tts_audio', 'video_clips', 'video_scene_blocks', 'final_video'],
-    scene: ['scene_config', 'scene_assets', 'blueprint_draft_checkpoint', 'blueprint', 'storyboard_table', 'storyboard_sketches', 'storyboard_sketch_batch', 'keyframe_contracts', 'keyframes', 'tts_audio', 'video_clips', 'final_video'],
-    person: ['blueprint_draft_checkpoint', 'blueprint', 'storyboard_table', 'storyboard_meta', 'storyboard_sketches', 'storyboard_sketch_batch', 'keyframe_contracts', 'keyframes', 'quality_review', 'tts_audio', 'video_clips', 'video_scene_blocks', 'final_video'],
+    source: ['production_graph_v1', 'asset_plan', 'scene_config', 'scene_assets', 'blueprint_draft_checkpoint', 'blueprint', 'storyboard_table', 'storyboard_meta', 'storyboard_sketches', 'storyboard_sketch_batch', 'keyframe_contracts', 'keyframes', 'quality_review', 'tts_audio', 'video_clips', 'video_scene_blocks', 'final_video'],
+    product: ['production_graph_v1', 'scene_config', 'scene_assets', 'blueprint_draft_checkpoint', 'blueprint', 'storyboard_table', 'storyboard_meta', 'storyboard_sketches', 'storyboard_sketch_batch', 'keyframe_contracts', 'keyframes', 'quality_review', 'tts_audio', 'video_clips', 'video_scene_blocks', 'final_video'],
+    scene: ['production_graph_v1', 'scene_config', 'scene_assets', 'blueprint_draft_checkpoint', 'blueprint', 'storyboard_table', 'storyboard_sketches', 'storyboard_sketch_batch', 'keyframe_contracts', 'keyframes', 'tts_audio', 'video_clips', 'final_video'],
+    person: ['production_graph_v1', 'blueprint_draft_checkpoint', 'blueprint', 'storyboard_table', 'storyboard_meta', 'storyboard_sketches', 'storyboard_sketch_batch', 'keyframe_contracts', 'keyframes', 'quality_review', 'tts_audio', 'video_clips', 'video_scene_blocks', 'final_video'],
     // A dossier/image refresh does not change the story meaning. Keep the
     // approved blueprint, text storyboard, scene bindings and voice, then
     // refresh only outputs that contain the previous visual identity.
-    person_visual: ['storyboard_sketches', 'storyboard_sketch_batch', 'keyframe_contracts', 'keyframes', 'quality_review', 'video_clips', 'video_scene_blocks', 'final_video'],
-    creative: ['blueprint_draft_checkpoint', 'blueprint', 'storyboard_table', 'storyboard_meta', 'storyboard_sketches', 'storyboard_sketch_batch', 'keyframe_contracts', 'keyframes', 'quality_review', 'tts_audio', 'video_clips', 'video_scene_blocks', 'final_video'],
-    blueprint: ['storyboard_table', 'storyboard_meta', 'storyboard_sketches', 'storyboard_sketch_batch', 'keyframe_contracts', 'keyframes', 'quality_review', 'tts_audio', 'video_clips', 'video_scene_blocks', 'final_video'],
-    storyboard: ['storyboard_sketches', 'storyboard_sketch_batch', 'keyframe_contracts', 'keyframes', 'quality_review', 'tts_audio', 'video_clips', 'video_scene_blocks', 'final_video'],
-    voice: ['tts_audio', 'final_video'],
+    person_visual: ['production_graph_v1', 'storyboard_sketches', 'storyboard_sketch_batch', 'keyframe_contracts', 'keyframes', 'quality_review', 'video_clips', 'video_scene_blocks', 'final_video'],
+    creative: ['production_graph_v1', 'blueprint_draft_checkpoint', 'blueprint', 'storyboard_table', 'storyboard_meta', 'storyboard_sketches', 'storyboard_sketch_batch', 'keyframe_contracts', 'keyframes', 'quality_review', 'tts_audio', 'video_clips', 'video_scene_blocks', 'final_video'],
+    blueprint: ['production_graph_v1', 'storyboard_table', 'storyboard_meta', 'storyboard_sketches', 'storyboard_sketch_batch', 'keyframe_contracts', 'keyframes', 'quality_review', 'tts_audio', 'video_clips', 'video_scene_blocks', 'final_video'],
+    storyboard: ['production_graph_v1', 'storyboard_sketches', 'storyboard_sketch_batch', 'keyframe_contracts', 'keyframes', 'quality_review', 'tts_audio', 'video_clips', 'video_scene_blocks', 'final_video'],
+    voice: ['production_graph_v1', 'tts_audio', 'final_video'],
     compose: ['final_video'],
   };
   const preserveKinds = new Set(Array.isArray(options.preserveKinds) ? options.preserveKinds : []);

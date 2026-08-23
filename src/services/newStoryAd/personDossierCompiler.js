@@ -185,7 +185,9 @@ async function generateCategory({
     execute: async controls => {
       const atlas = controls.providerResult || await mediaAdapter.generateActorReference({
         taskId,
-        stage: 'new_story_ad.person_dossier_atlas',
+        stage: spec.kind === 'expression'
+          ? 'new_story_ad.person_dossier_expression'
+          : (spec.kind === 'action' ? 'new_story_ad.person_dossier_action' : 'new_story_ad.person_dossier_atlas'),
         prompt: categoryPrompt(spec, personPrompt, knowledgePolicy.prompt_block, visualMedium),
         filename: personAtlasFilename({ taskId, assetId, kind: spec.kind, revision }),
         aspectRatio: spec.aspectRatio,

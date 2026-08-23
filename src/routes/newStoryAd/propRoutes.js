@@ -4,6 +4,7 @@ function registerPropRoutes(router, {
   queueTaskStage,
   propAssetService,
 }) {
+  const productionGraph = require('../../services/newStoryAd/productionGraphService');
   router.get('/tasks/:id/prop-assets', asyncRoute(async (req, res) => {
     taskForReq(req);
     res.json({
@@ -15,6 +16,7 @@ function registerPropRoutes(router, {
 
   router.post('/tasks/:id/prop-assets', asyncRoute(async (req, res) => {
     taskForReq(req);
+    productionGraph.assertLegacyMutationAllowed(req.params.id, 'prop_asset');
     const body = req.body || {};
     const propId = String(body.id || body.prop_id || body.propId || body.name || 'prop')
       .replace(/[^a-z0-9._-]/ig, '_')
@@ -34,6 +36,7 @@ function registerPropRoutes(router, {
 
   router.post('/tasks/:id/prop-assets/refresh-timeline', asyncRoute(async (req, res) => {
     taskForReq(req);
+    productionGraph.assertLegacyMutationAllowed(req.params.id, 'prop_timeline');
     res.json({
       success: true,
       task_id: req.params.id,

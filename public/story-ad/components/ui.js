@@ -72,7 +72,7 @@ export function refreshElapsedLabels(scope = document, nowMs = Date.now()) {
 
 const GENERATION_STAGE_LABELS = {
   subject_assets: '人物与动物资产',
-  visual_assets: '人物与场景视觉资产',
+  production_assets: '全部制作资产', visual_assets: '人物与场景视觉资产',
   person_provider_sync: '人物 ID 与 Seedance 同步',
   product_asset: '商品资产',
   prop_asset: '人物随身道具',
@@ -90,13 +90,13 @@ const GENERATION_STAGE_LABELS = {
 };
 
 const GENERATION_UNIT_LABELS = {
-  person_plan: '个人物', subject_assets: '项资产', visual_assets: '个本批目标', person_provider_sync: '个人物', product_asset: '项商品', prop_asset: '项道具', scene_asset: '张场景图', blueprint: '个步骤', storyboard: '个分镜',
+  person_plan: '个人物', subject_assets: '项资产', production_assets: '个制作单元', visual_assets: '个本批目标', person_provider_sync: '个人物', product_asset: '项商品', prop_asset: '项道具', scene_asset: '张场景图', blueprint: '个步骤', storyboard: '个分镜',
   keyframes: '张关键帧', video: '个视频片段', media: '个视频片段', tts: '段配音', compose: '个步骤', full: '个步骤',
 };
 
 const GENERATION_STAGE_OWNING_VIEW = Object.freeze({
   subject_assets: 'assets',
-  visual_assets: 'assets',
+  production_assets: 'assets', visual_assets: 'assets',
   person_provider_sync: 'assets',
   product_asset: 'assets',
   prop_asset: 'assets',

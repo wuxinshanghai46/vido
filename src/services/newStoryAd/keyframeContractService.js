@@ -50,6 +50,7 @@ function contractFingerprint(contract = {}) {
     continuity_lock: contract.continuity_lock,
     temporal_evidence_lock: contract.temporal_evidence_lock,
     brand_ending_lock: contract.brand_ending_lock,
+    production_graph_lock: contract.production_graph_lock,
     cast_lock: {
       cast_mode: contract.cast_lock?.cast_mode,
       shot_characters: contract.cast_lock?.shot_characters,
@@ -85,6 +86,8 @@ function buildKeyframeContracts(ctx, shots) {
   ], ctx);
   const videoPolicy = knowledgePolicyRuntime.resolveMany([{ stage: 'video', assetType: 'shot' }], ctx);
   return (Array.isArray(shots) ? shots : []).map((shot, idx) => {
+    const productionGraphShot = (ctx.production_graph?.shots || []).find(item => Number(item.index || 0) === idx + 1)
+      || (ctx.production_graph?.shots || [])[idx] || null;
     const sceneLock = sceneContractForShot(ctx, shot, idx);
     const productPresence = productIdentity.shotProductPresence(ctx, shot, {});
     const compiledShotDesign = shotDesign.compileShotDesign({
@@ -105,6 +108,7 @@ function buildKeyframeContracts(ctx, shots) {
       : (idx === shots.length - 1 ? brandEnding.contract(ctx) : { enabled: false });
     const contract = {
       shot_index: idx + 1,
+      production_graph_lock: productionGraphShot,
       title: shot.title || `镜头 ${idx + 1}`,
       role: shot.role || shot.purpose || '',
       output_ratio: ctx.output_ratio,

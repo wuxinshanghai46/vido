@@ -90,7 +90,7 @@ function worldCards(bundle = {}) {
       <button class="btn small primary" type="button" data-enter-scene-world="${escapeHtml(world.id)}">进入场景</button>
       <button class="btn small" type="button" data-edit-scene-world="${escapeHtml(world.id)}">编辑场景设定</button>
       <button class="btn small" type="button" data-plan-scene-experience="${escapeHtml(world.id)}">选择360 / 3D模式</button><button class="btn small" type="button" data-enter-scene-world="${escapeHtml(world.id)}">打开3D导演预演（免供应商）</button>
-      <button class="btn small ${panoramaReady ? '' : 'primary'}" type="button" data-generate-panorama="${escapeHtml(world.id)}">${panoramaReady ? '重新生成360全景' : '生成360全景'}</button>
+      <span class="status-tag ${panoramaReady ? 'is-ready' : 'is-neutral'}">${panoramaReady ? '360°全景已纳入制作图谱' : '返回资产中心统一补齐360°全景'}</span>
       <button class="btn small" type="button" data-scene-world-tab-target="matrix">人物×场景</button>
       <button class="btn small" type="button" data-scene-world-tab-target="transitions">查看衔接</button>
     </div>
@@ -136,7 +136,7 @@ export function renderSceneWorldWorkspace(bundle = {}) {
   return `<section class="scene-world-workspace" data-scene-world-workspace>
     <header>
       <div><small>SCENEWORLD · 通用场景生产</small><h2>生产清单与场景世界</h2><p>人物档案保持独立；这里负责人物与场景分配、动态观察点、机位以及跨场景衔接。</p></div>
-      <div><button class="btn primary" type="button" data-generate-all-panoramas>统一生成全部360全景</button><button class="btn" type="button" data-scene-world-tab-target="matrix">人物×场景</button><button class="btn" type="button" data-scene-world-tab-target="transitions">场景衔接</button></div>
+      <div><button class="btn" type="button" data-scene-world-tab-target="matrix">人物×场景</button><button class="btn" type="button" data-scene-world-tab-target="transitions">场景衔接</button></div>
     </header>
     ${partial}<div class="scene-world-tabs">
       <button class="active" type="button" data-scene-world-tab="overview">生产清单</button>
@@ -485,15 +485,6 @@ export function bindSceneWorldWorkspace(host, bundle = {}, store = null) {
   root.querySelectorAll('[data-plan-scene-experience]').forEach(button => button.addEventListener('click', () => {
     const world = worldById(bundle, button.dataset.planSceneExperience);
     if (world) openSceneExperiencePlanner(bundle, world);
-  }));
-  let panoramaActionModule;
-  root.querySelectorAll('[data-generate-panorama], [data-generate-all-panoramas]').forEach(button => button.addEventListener('click', async () => {
-    try {
-      panoramaActionModule ||= import('./panoramaGeneration.js?v=20260823-person-profile-v200b');
-      const module = await panoramaActionModule;
-      if (button.matches('[data-generate-all-panoramas]')) await module.runPanoramaBatchGeneration({ root, bundle, store, button });
-      else await module.runPanoramaGeneration({ root, bundle, store, worldId: button.dataset.generatePanorama });
-    } catch (error) { toast(error.message || '全景生成操作没有加载完成', 'danger'); }
   }));
   root.querySelector('[data-save-world-assignments]')?.addEventListener('click', async event => {
     const button = event.currentTarget;

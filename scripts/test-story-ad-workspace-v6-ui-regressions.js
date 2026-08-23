@@ -137,11 +137,11 @@ assert.match(referenceProgressSource, /elapsedTimeTag\(\{ startedAt: reference\.
 assert.match(referenceActionStateSource, /contentMode === 'commercial_subject' \? '广告脚本' : '剧情与对白'/, '第一步完成后的主操作必须按广告或剧情内容域进入对应脚本');
 assert.match(briefView, /data-ai-brief>AI 帮写/, '未添加参考视频时必须提供广告目标 AI 帮写入口');
 assert.match(briefFormPayload, /brief_source:\s*'user'/, '正式表单载荷必须把手填或 AI 帮写后的内容目标标记为用户权威，参考材料不得覆盖');
-assert.match(assets, /assetPlanStageView/, '资产中心必须通过统一阶段视图渲染人物生成入口');
-assert.match(assetPlanStageStatus, /data-generate-missing-subjects[\s\S]*生成人物方案/, '主体批量入口必须使用统一的人物方案生成动作');
+assert.match(assets, /assetPlanStageView/, '资产中心必须通过统一阶段视图渲染制作资产入口');
+assert.match(assetPlanStageStatus, /data-generate-production-assets[\s\S]*生成全部制作资产/, '人物、场景和镜头必须使用唯一制作图谱生成动作');
 assert.doesNotMatch(assetPlanStageStatus, /文字方案已建立|图片未生成|进入资产中心不会自动生成图片/, '资产中心不得继续暴露旧两步式人物方案流程');
 assert.match(projectStoreSource, /terminalProgress[\s\S]*!project\.active_generation_id && \(terminalProgress \|\|/, '方案内部完成且活动任务清空时必须刷新资产页，不得被旧 running 状态卡住');
-assert.match(assetPlanStageStatus, /确认人物资产，进入场景世界/, '人物图片已经齐全时，页面顶部必须提供可见的确认入口');
+assert.match(assetPlanStageStatus, /确认制作资产，进入场景世界/, '制作图谱已经齐全时，页面顶部必须提供可见的确认入口');
 assert.doesNotMatch(assetPlanStageStatus, /data-confirm-assets[^>]*disabled/, '人物已经齐全时，确认入口不得被无关的后台生成任务错误禁用');
 assert.match(assets, /querySelectorAll\('\[data-confirm-assets\]'\)/, '顶部人物确认入口必须绑定真实点击事件');
 assert.doesNotMatch(assets, /step-completion-card[\s\S]*data-confirm-assets/, '资产列表底部不得重复放置用户难以发现的人物确认入口');
@@ -583,10 +583,12 @@ assert.doesNotMatch(assets, /当前没有通过本版本合同的 Active Plan/, 
 assert.match(assets, /asset_setup_confirmed:\s*true/);
 assert.match(assets, /view=scene/, '人物资产确认后必须进入独立场景流程');
 assert.match(assetPlanStageStatus, /asset-visual-next-step/, '进入人物资产步骤后必须明确展示人物视觉生成的下一步');
-assert.match(assetPlanStageStatus, /系统将使用完整人物资产生成当前缺失的/, '必须明确人物图片使用完整资产并只生成缺失项');
-assert.match(assetPlanStageStatus, /data-generate-missing-subjects/, '必须提供通用的缺失人物和动物生成入口');
+assert.match(assetPlanStageStatus, /完整人物、穿搭配饰、随身物、动作表情、场景母图、360°全景、机位与逐镜绑定/, '必须明确完整制作资产由同一个动作生成');
+assert.match(assetPlanStageStatus, /data-generate-production-assets/, '必须只提供统一制作图谱生成入口');
+assert.doesNotMatch(assetPlanStageStatus, /data-generate-missing-subjects/, '不得继续暴露旧的缺失人物单项生成入口');
 assert.doesNotMatch(assets, /data-show-pending-scenes/, '人物资产步骤不得继续混入待生成场景入口');
-assert.match(sceneWorldPage, /data-generate-base-scene/, '独立场景步骤必须提供逐场景生成入口');
+assert.doesNotMatch(sceneWorldPage, /data-generate-base-scene|data-generate-all-panoramas|data-generate-panorama=/, '场景世界不得继续暴露旧的单场景或独立全景生成入口');
+assert.match(sceneWorldPage, /统一制作图谱尚未完整/, '场景世界必须引导用户回到统一制作图谱补齐资产');
 assert.equal(assetModule.sceneNeedsGeneration({ id: 'scene-missing' }), true);
 assert.equal(assetModule.sceneNeedsGeneration({ id: 'scene-ready', layout: { image_url: '/scene.png' } }), false);
 const legacyPerson = {
@@ -693,7 +695,8 @@ const resumePayload = assetModule.subjectGenerationPayload({
 assert.equal(resumePayload.resume_partial_checkpoint, true, '批量入口遇到部分成功检查点时必须进入只补缺失项模式');
 assert.equal(resumePayload.regenerate_selected, false, '恢复部分检查点不得误标为重新生成并重复付费');
 const sceneWorldPageSource = fs.readFileSync(path.join(__dirname, '../public/story-ad/views/sceneWorldPage.js'), 'utf8');
-assert.match(sceneWorldPageSource, /request_key:\s*requestKey/, '单场景生成必须每次提交独立请求键，不得把同版本的不同场景误判为重复任务');
+assert.doesNotMatch(sceneWorldPageSource, /runStage\(['"]scene-assets|request_key:\s*requestKey/, '场景世界不得再提交旧的单场景生成任务');
+assert.match(sceneWorldPageSource, /production_graph_v1/, '场景世界放行线稿前必须读取统一制作图谱状态');
 const newStoryAdRouteSource = fs.readFileSync(path.join(__dirname, '../src/routes/newStoryAd.js'), 'utf8');
 assert.match(newStoryAdRouteSource, /body\.request_key\s*\|\|\s*body\.requestKey/, '排队幂等键必须承接界面 request_key');
 assert.match(newStoryAdRouteSource, /body\.scene_id\s*\|\|\s*body\.sceneId\s*\|\|\s*body\.space_id/, '没有 request_key 时也必须把场景身份纳入幂等键');

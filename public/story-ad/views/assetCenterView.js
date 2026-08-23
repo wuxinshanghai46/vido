@@ -9,7 +9,7 @@ import { legacyDossierBoard, mediaSection } from './assetCenterDossierSections.j
 import { assetCardMedia } from './sceneDossierCard.js?v=20260823-person-profile-v200b';
 import { assertSavedPerson, personAgeDisplay, personAssetState, personLookSummary } from './assetCenterPersonState.js?v=20260823-person-profile-v200b';
 import { bindPersonEvolutionForm, collectPersonEvolutionValues, renderPersonEvolutionSummary } from './assetCenterPersonEvolution.js?v=20260823-person-profile-v200b';
-import { createKeyedRequestGuard, createPersonPlanRequestGuard } from './assetCenterRequestGuard.js?v=20260823-person-profile-v200b';
+import { createKeyedRequestGuard } from './assetCenterRequestGuard.js?v=20260823-person-profile-v200b';
 const GROUPS = [['people', '人物'], ['animals', '动物'], ['products', '商品 / 展示主体'], ['logos', 'LOGO']];
 const GENERATABLE = new Set(['people', 'animals']);
 const loadCheckpointRecovery = globalThis.__loadAssetCheckpointRecovery
@@ -33,11 +33,9 @@ function subjectNeedsGeneration(item = {}, kind = '') {
     ? personAssetState(item) !== 'complete_dossier'
     : !hasGeneratedMedia(item);
 }
-
 function profileList(bundle = {}, key = '') {
   return (bundle.assets?.[key] || []).map(item => item.profile).filter(profile => profile?.id);
 }
-
 export function subjectGenerationPayload(bundle = {}, target = null, requestKey = '') {
   const people = bundle.assets?.people || [];
   const animals = bundle.assets?.animals || [];
@@ -94,7 +92,6 @@ export function subjectGenerationPayload(bundle = {}, target = null, requestKey 
   }
   return payload;
 }
-
 function generationValidation(payload = {}) {
   if (!payload.brief) return '请先在“目标与材料”填写广告目标。';
   if (!payload.expected_people && !payload.expected_animals) return '当前项目还没有人物或动物档案，请先完善主体资料。';
@@ -166,10 +163,9 @@ function assetCard(item, group) {
     </div>
     <div class="asset-card-actions">
       <button class="btn small" type="button" data-history-safe data-asset-group="${group}" data-asset-id="${escapeHtml(item.id)}">${group === 'people' ? '查看完整视图' : `查看${group === 'scenes' ? '完整场景档案' : '完整视图'}`}</button>
-      ${needsGeneration && group !== 'people' ? `<button class="btn small primary" type="button" data-history-safe data-generate-asset="${escapeHtml(item.id)}" data-generate-group="${group}">生成该动物资产</button>` : ''}
       ${group === 'people' && item.status === 'verified' && !item.provider_asset_id ? `<button class="btn small" type="button" data-history-safe data-sync-person-provider="${escapeHtml(item.id)}">同步 / 重试 Seedance 人物 ID</button>` : ''}
-      ${group === 'products' ? `<button class="btn small" type="button" data-upload-product="${escapeHtml(item.id)}">${item.image_url ? '更换主体图片' : '上传主体图片'}</button><button class="btn small primary" type="button" data-history-safe data-generate-product="${escapeHtml(item.id)}">${item.presentation?.standalone_generation_supported ? 'AI 生成商品多视图' : 'AI 生成主体参考图'}</button>` : ''}
-      ${group === 'scenes' ? `<button class="btn small ${sceneGenerated ? '' : 'primary'}" type="button" data-edit-scene-world="${escapeHtml(item.id)}">${sceneGenerated ? '编辑 / 补齐场景世界' : '完善并生成场景世界'}</button>` : ''}
+      ${group === 'products' ? `<button class="btn small" type="button" data-upload-product="${escapeHtml(item.id)}">${item.image_url ? '更换主体图片' : '上传主体图片'}</button>` : ''}
+      ${group === 'scenes' ? `<button class="btn small" type="button" data-edit-scene-world="${escapeHtml(item.id)}">查看 / 修改场景设定</button>` : ''}
       ${needsProductVerification ? `<button class="btn small primary" type="button" data-history-safe data-verify-product="${escapeHtml(item.id)}">验证商品素材</button>` : ''}
     </div>
   </article>`;
@@ -227,7 +223,7 @@ function renderSections(assets = {}, total = 0, contentMode = '', groups = GROUP
   return allEmpty + groups.map(([key, label]) => {
       const rows = assets[key] || [];
       return `<section class="asset-section" id="asset-section-${key}" data-asset-section="${key}" ${rows.length ? '' : 'hidden'}>
-        <div class="section-title"><h2>${escapeHtml(label)}</h2><span>${rows.length}</span>${key === 'products' ? `<button class="btn small" type="button" data-history-safe data-generate-product-main ${productDisabled}>添加商品/展示主体</button>` : ''}<button class="btn small" type="button" data-add-asset="${key}">+ ${key === 'products' ? '上传商品/展示主体素材' : `添加${escapeHtml(label)}`}</button></div>
+        <div class="section-title"><h2>${escapeHtml(label)}</h2><span>${rows.length}</span><button class="btn small" type="button" data-add-asset="${key}">+ ${key === 'products' ? '上传商品/展示主体素材' : `添加${escapeHtml(label)}`}</button></div>
         <div data-section-body>${rows.length ? `<div class="asset-grid">${rows.map(item => assetCard(item, key)).join('')}</div>` : emptyState({ title: `尚未建立${label}`, body: '可以上传已有参考，或先完善该主体档案。', action: `添加${label}`, actionId: key })}</div>
       </section>`;
     }).join('');
@@ -253,9 +249,8 @@ export async function mount(host, context) {
     : planEligibility;
   const assetPlanReady = personPlanEligibility.eligible === true;
   const generationActive = !!bundle?.project?.active_generation_id;
+  const productionGraph = bundle?.outputs?.production_graph_v1 || bundle?.production_graph || null;
   const generationDisabled = generationActive ? 'disabled' : '';
-  const personPlanRequestKey = `person-plan:${bundle.project.id}:${bundle.revisions?.content || 1}:${globalThis.crypto?.randomUUID?.() || Date.now()}`;
-  const personPlanRequestGuard = createPersonPlanRequestGuard(personPlanRequestKey);
   const contractDisabled = assetPlanReady ? '' : 'disabled title="请先更新当前人物方案"';
   const missingSubjectCount = (assets.people || []).filter(item => subjectNeedsGeneration(item, 'human')).length
     + (assets.animals || []).filter(item => subjectNeedsGeneration(item, 'animal')).length;
@@ -265,10 +260,10 @@ export async function mount(host, context) {
   host.innerHTML = `
     <section class="view-head">
       <div><h1>资产中心</h1><p>${narrative ? '人物、动物、场景与机位独立建档。' : '人物、动物、商品/展示主体、LOGO、场景与机位独立建档。'}</p></div>
-      <div class="view-actions asset-primary-actions"><button class="btn" type="button" data-select-person ${generationDisabled}>选择已有人物素材</button><button class="btn" type="button" data-upload-real-person ${generationDisabled}>上传真人素材</button><button class="btn" type="button" data-history-safe data-generate-subjects ${generationActive ? generationDisabled : contractDisabled}>AI 生成人物 / 动物</button></div>
+      <div class="view-actions asset-primary-actions"><button class="btn" type="button" data-select-person ${generationDisabled}>选择已有人物素材</button><button class="btn" type="button" data-upload-real-person ${generationDisabled}>上传真人素材</button></div>
     </section>
     ${checkpointRecoveryBanner(checkpointRecovery)}
-    ${assetPlanStageView({ assetPlanReady, recoveryActive: recoveryOwnsStage, eligibility: personPlanEligibility, generationActive, missingSubjectCount, counts: { people: assets.people?.length, animals: assets.animals?.length, scenes: assets.scenes?.length }, project: bundle.project || {}, isAdmin: bundle.permissions?.is_admin === true })}
+    ${assetPlanStageView({ assetPlanReady, recoveryActive: recoveryOwnsStage, eligibility: personPlanEligibility, generationActive, missingSubjectCount, productionGraph, counts: { people: assets.people?.length, animals: assets.animals?.length, scenes: assets.scenes?.length }, project: bundle.project || {}, isAdmin: bundle.permissions?.is_admin === true })}
     <div class="tabs"><button class="tab active" type="button" data-history-safe data-asset-filter="all">全部 ${total}</button>${assetGroups.map(([key, label]) => `<button class="tab" type="button" data-history-safe data-asset-filter="${key}">${label} ${assets[key]?.length || 0}</button>`).join('')}</div>
     <input class="hidden-input" hidden type="file" accept="image/png,image/jpeg,image/webp" data-asset-upload-file>
     <div data-asset-sections>${renderSections(assets, total, contentMode, assetGroups, generationActive ? generationDisabled : contractDisabled)}</div>`;
@@ -575,14 +570,9 @@ export async function mount(host, context) {
     }
     generateProduct(item, event.currentTarget);
   });
-  host.querySelector('[data-update-person-plan]')?.addEventListener('click', async event => {
-    const button = event.currentTarget;
-    await personPlanRequestGuard.run(async (requestKey) => {
-      const { submitPersonPlanUpdate } = await import('./assetCenterPlanMigrationAction.js?v=20260823-person-profile-v200b');
-      return submitPersonPlanUpdate({ button, requestKey, confirmDialog, store, setButtonBusy, toast,
-        bundle,
-        migrationOnly: button.dataset.releaseMigrationOnly === 'true', refresh: context.refreshShell });
-    });
+  host.querySelector('[data-generate-production-assets]')?.addEventListener('click', async event => {
+    const { submitUnifiedProductionAssets } = await import('./assetCenterUnifiedProductionAction.js?v=20260823-person-profile-v200b');
+    await submitUnifiedProductionAssets({ button: event.currentTarget, bundle, request, confirmDialog, store, setButtonBusy, toast });
   });
   host.querySelectorAll('[data-confirm-assets]').forEach(confirmButton => confirmButton.addEventListener('click', async event => {
     const button = event.currentTarget;

@@ -44,7 +44,7 @@ const shotDesign = require('./shotDesignService');
 const sceneAssistCompleteness = require('./sceneAssistCompletenessService'), assistScenePlan = require('./assistScenePlanService'), assistTextFormatter = require('./assistTextFormatterService'), assistCreativeDirection = require('./assistCreativeDirectionService'), storySetup = require('./storySetupService');
 const storyBeatAssist = require('./storyBeatAssistService'), briefGoalAssist = require('./briefGoalAssistService'), briefGoalPrompt = require('./briefGoalPromptService'), briefDialogueAssist = require('./briefDialogueAssistService');
 const productionBoard = require('./productionBoardContractService');
-const productionPromptCompiler = require('./productionPromptCompilerService');
+const productionPromptCompiler = require('./productionPromptCompilerService'), productionGraph = require('./productionGraphService');
 const blueprintCharacterProjection = require('./blueprintCharacterProjectionService');
 const { normalizeAssistedStoryBeat } = storyBeatAssist, visualRealismPolicy = require('./visualRealismPolicyService'), sceneAssetLifecycle = require('./sceneAssetService');
 const sceneCheckpointProjection = require('./sceneCheckpointProjectionService');
@@ -1011,7 +1011,7 @@ async function buildKeyframeContractStage(taskId) {
   if (!task) throw new Error('任务不存在');
   const baseCtx = storage.getOutput(taskId, 'context') || task.request || {};
   const sceneAssets = storage.getOutput(taskId, 'scene_assets') || baseCtx.scene_assets || [];
-  let ctx = { ...baseCtx, scene_assets: Array.isArray(sceneAssets) ? sceneAssets : [], knowledge_policy_snapshot: knowledgePolicyRuntime.pinTaskPolicy(storage, taskId) };
+  let ctx = { ...baseCtx, scene_assets: Array.isArray(sceneAssets) ? sceneAssets : [], production_graph: storage.getOutput(taskId, 'production_graph_v1') || null, knowledge_policy_snapshot: knowledgePolicyRuntime.pinTaskPolicy(storage, taskId) };
   let shots = storage.getOutput(taskId, 'storyboard_table');
   if (!Array.isArray(shots) || !shots.length) throw new Error('请先生成分镜表');
   shots = bindShotsToScenes(shots, ctx.scene_assets);
@@ -1196,6 +1196,8 @@ function sceneAssetPrompt(asset = {}, options = {}) {
 }
 
 function buildKeyframePrompt(ctx = {}, shot = {}, contract = {}, index = 0, options = {}) {
+  const productionGraphShot = (ctx.production_graph?.shots || []).find(item => Number(item.index || 0) === index + 1)
+    || (ctx.production_graph?.shots || [])[index] || contract.production_graph_lock || null;
   const visualContract = contract.visual_contract || {};
   const sceneLock = contract.scene_lock || null;
   const continuityLock = contract.continuity_lock || shot.continuity || {};
@@ -1284,7 +1286,7 @@ function buildKeyframePrompt(ctx = {}, shot = {}, contract = {}, index = 0, opti
   const visualMedium = worldSetting.primaryVisualMedium(ctx.world_setting);
   const liveActionMedium = visualMedium === 'live_action';
   const parts = [
-    `镜头制作设计（剧情字段真实生成输入）：\n${productionPromptCompiler.compileKeyframeDirection(shot, { sceneName: sceneLock?.scene_name })}`,
+    `镜头制作设计（剧情字段真实生成输入）：\n${productionPromptCompiler.compileKeyframeDirection(shot, { sceneName: sceneLock?.scene_name, productionGraphShot })}`,
     worldSetting.visualMediumPrompt(visualMedium, 'storyboard keyframe'),
     liveActionMedium ? `Scene photorealism lock: ${visualRealismPolicy.compactSceneRealismPrompt()}` : '',
     liveActionMedium && shotNeedsPerson ? `Actor photorealism lock: ${visualRealismPolicy.compactPersonRealismPrompt()}` : '',
@@ -1355,6 +1357,7 @@ function buildKeyframePrompt(ctx = {}, shot = {}, contract = {}, index = 0, opti
 }
 
 function keyframeSubmissionPreflight(taskId, options = {}, actor = {}) {
+  productionGraph.assertExecutable(taskId);
   const shots = storage.getOutput(taskId, 'storyboard_table');
   const existing = storage.getOutput(taskId, 'keyframes');
   const shotList = Array.isArray(shots) ? shots : [];
@@ -1373,7 +1376,7 @@ function previewShotPrompts(taskId, options = {}) {
   if (!task) throw new Error('没有找到对应项目。');
   const baseCtx = storage.getOutput(taskId, 'context') || task.request || {};
   const sceneAssets = storage.getOutput(taskId, 'scene_assets') || baseCtx.scene_assets || [];
-  let ctx = { ...baseCtx, scene_assets: Array.isArray(sceneAssets) ? sceneAssets : [], knowledge_policy_snapshot: knowledgePolicyRuntime.pinTaskPolicy(storage, taskId) };
+  let ctx = { ...baseCtx, scene_assets: Array.isArray(sceneAssets) ? sceneAssets : [], production_graph: storage.getOutput(taskId, 'production_graph_v1') || null, knowledge_policy_snapshot: knowledgePolicyRuntime.pinTaskPolicy(storage, taskId) };
   const blueprint = storage.getOutput(taskId, 'blueprint') || {};
   const storedStoryboard = storage.getOutput(taskId, 'storyboard_table');
   const stored = Array.isArray(storedStoryboard) && storedStoryboard.length ? storedStoryboard : (blueprint.beats || []);
@@ -1413,7 +1416,7 @@ async function generateKeyframesStage(taskId, options = {}) {
   if (!task) throw new Error('没有找到对应项目。');
   const baseCtx = storage.getOutput(taskId, 'context') || task.request || {};
   const sceneAssets = storage.getOutput(taskId, 'scene_assets') || baseCtx.scene_assets || [];
-  const ctx = { ...baseCtx, scene_assets: Array.isArray(sceneAssets) ? sceneAssets : [], knowledge_policy_snapshot: knowledgePolicyRuntime.pinTaskPolicy(storage, taskId) };
+  const ctx = { ...baseCtx, scene_assets: Array.isArray(sceneAssets) ? sceneAssets : [], production_graph: storage.getOutput(taskId, 'production_graph_v1') || null, knowledge_policy_snapshot: knowledgePolicyRuntime.pinTaskPolicy(storage, taskId) };
   assertVerifiedSceneAssets(ctx.scene_assets);
   personIdentity.assertVerifiedPerson(ctx);
   productIdentity.assertVerifiedProduct(ctx);
@@ -2423,7 +2426,8 @@ function assertVideoPreflightConfirmation(taskId, options = {}) {
 async function generateVideoStage(taskId, options = {}) { options = paidExecutionPolicy.canonicalize(options);
   const task = storage.getTask(taskId);
   if (!task) throw new videoCore.chineseError.VideoGenerationError('TASK_NOT_FOUND', '', { status: 404 });
-  let ctx = storage.getOutput(taskId, 'context') || task.request || {};
+  productionGraph.assertExecutable(taskId);
+  let ctx = { ...(storage.getOutput(taskId, 'context') || task.request || {}), production_graph: storage.getOutput(taskId, 'production_graph_v1') || null };
   const shots = await ensureStoryboardForMedia(taskId);
   const contracts = await ensureContractsForMedia(taskId, ctx, shots);
   const keyframes = Array.isArray(storage.getOutput(taskId, 'keyframes')) ? storage.getOutput(taskId, 'keyframes') : [];

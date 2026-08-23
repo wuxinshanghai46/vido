@@ -1,10 +1,7 @@
-import { personPlanBlockedView } from './assetCenterPlanReleaseStatus.js?v=20260823-person-profile-v200b';
-export function assetPlanStageView({ assetPlanReady = false, recoveryActive = false, eligibility = {}, generationActive = false, missingSubjectCount = 0, counts = {}, project = {}, isAdmin = false } = {}) {
-  if (recoveryActive) return '';
-  if (!assetPlanReady) return personPlanBlockedView(eligibility, generationActive, {
-    isAdmin, diagnostics: project.technical_diagnostics || null,
-  });
-  const generationDisabled = generationActive ? 'disabled' : '';
-  const action = missingSubjectCount ? `<button class="btn primary" type="button" data-generate-missing-subjects data-history-safe ${generationDisabled}>${generationActive ? '正在生成人物方案…' : '生成人物方案'}</button>` : '<button class="btn primary" type="button" data-confirm-assets data-history-safe>确认人物资产，进入场景世界</button>';
-  return `<section class="card asset-visual-next-step"><div><h2>${missingSubjectCount ? '生成人物方案' : '人物方案已完成'}</h2><p>${missingSubjectCount ? `系统将使用完整人物资产生成当前缺失的 ${Number(missingSubjectCount)} 个人物图片；生成前会先独立并行补齐每个人物方案，图片也会同步生成，完整进度显示在页面顶部。` : `${Number(counts.people || 0)} 个人物与 ${Number(counts.animals || 0)} 个动物资产已经齐全。`}</p></div><div class="asset-visual-next-actions">${action}</div></section>`;
+export function assetPlanStageView({ generationActive = false, counts = {}, productionGraph = null } = {}) {
+  const ready = productionGraph?.validation?.status === 'ready';
+  const action = ready
+    ? '<button class="btn primary" type="button" data-confirm-assets data-history-safe>确认制作资产，进入场景世界</button>'
+    : `<button class="btn primary" type="button" data-generate-production-assets data-history-safe ${generationActive ? 'disabled' : ''}>${generationActive ? '正在生成全部制作资产…' : '生成全部制作资产'}</button>`;
+  return `<section class="card asset-visual-next-step"><div><h2>${ready ? '全部制作资产已完成' : '一键生成完整制作资产'}</h2><p>${ready ? `${Number(counts.people || 0)} 个人物、${Number(counts.scenes || 0)} 个场景及逐镜执行合同已进入同一制作图谱。` : '系统会从已确认剧情一次补齐完整人物、穿搭配饰、随身物、动作表情、场景母图、360°全景、机位与逐镜绑定；页面顶部显示统一进度，失败时只补缺失单元。'}</p></div><div class="asset-visual-next-actions">${action}</div></section>`;
 }

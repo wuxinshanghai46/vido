@@ -25,7 +25,25 @@ function soundSummary(shot = {}) {
   ].filter(Boolean).join('；') || '保留与场景一致的自然底噪，不添加无关音乐或音效';
 }
 
+function graphShotProjection(graphShot = {}) {
+  if (!graphShot || typeof graphShot !== 'object' || !graphShot.id) return null;
+  return {
+    id: graphShot.id, title: graphShot.title, duration: graphShot.duration_sec,
+    scene: graphShot.scene_binding?.scene_id || '', shot_size: graphShot.camera_binding?.shot_size || '',
+    composition: graphShot.camera_binding?.composition || '', camera_movement: graphShot.camera_binding?.movement || '',
+    visual: graphShot.performance?.visual || '', action: graphShot.performance?.action || '',
+    action_start: graphShot.character_bindings?.map(item => item.action_start).filter(Boolean).join('；'),
+    action_end: graphShot.character_bindings?.map(item => item.action_end).filter(Boolean).join('；'),
+    lighting_mood: graphShot.lighting_mood || '', transition: graphShot.transition || '',
+    speech_mode: graphShot.audio?.speech_mode || '', speaker_id: graphShot.audio?.speaker_id || '',
+    dialogue_lines: graphShot.audio?.dialogue_lines || [], ambient_sound: graphShot.audio?.ambient_sound || '',
+    sfx: graphShot.audio?.sfx || [], music_cue: graphShot.audio?.music_cue || '', audio_bridge: graphShot.audio?.audio_bridge || '',
+    production_graph_binding: graphShot,
+  };
+}
+
 function compileKeyframeDirection(shot = {}, options = {}) {
+  shot = graphShotProjection(options.productionGraphShot) || shot;
   const override = text(shot.keyframe_prompt_override, 2400);
   const lines = [
     `主体：${text(shot.visual || shot.visual_description || shot.content_prompt, 1400) || '严格呈现本镜头已确认的主体与可见事件'}`,
@@ -35,6 +53,7 @@ function compileKeyframeDirection(shot = {}, options = {}) {
     `光影与氛围：${text(shot.lighting_mood, 500) || '延续场景既有光向、色温、曝光与情绪基调'}`,
     `对白与表演依据：${speechSummary(shot)}`,
     `制作重点：${text(shot.prompt_notes, 1200) || '忠实执行剧情，不自行增加人物、物体、文字、品牌或地点'}`,
+    shot.production_graph_binding && `统一制作图谱绑定（唯一权威）：${text(JSON.stringify(shot.production_graph_binding), 3600)}`,
     text(shot.negative_prompt_override, 1200) && `禁止：${text(shot.negative_prompt_override, 1200)}`,
     override && `用户确认的关键帧最终提示词（最高优先级）：${override}`,
     '输出约束：单张电影级关键帧；人物、服装、产品、道具、场景结构、材质、光向和空间关系与项目权威资产保持一致；不生成水印、说明文字、分屏或参考图拼贴。',
@@ -43,6 +62,7 @@ function compileKeyframeDirection(shot = {}, options = {}) {
 }
 
 function compileVideoDirection(shot = {}, options = {}) {
+  shot = graphShotProjection(options.productionGraphShot) || shot;
   const duration = Math.max(1, Math.min(15, Number(shot.duration || shot.duration_sec) || 3));
   const split = Number(Math.max(0.5, duration / 2).toFixed(1));
   const end = Number(duration.toFixed(1));
@@ -57,9 +77,10 @@ function compileVideoDirection(shot = {}, options = {}) {
     `声音设计：${soundSummary(shot)}。该内容进入视频生成和声音执行清单；只有已绑定的真实音频素材才允许进入最终混音。`,
     `禁止：不得改变主体身份、服装、产品、道具、场景几何、材质纹理和光影方向；不得新增无关人物、物体、文字、Logo、地点；不得抖动、变形、闪烁、穿模或瞬移。${text(shot.negative_prompt_override, 1200) ? ` ${text(shot.negative_prompt_override, 1200)}` : ''}`,
     `制作重点：${text(shot.prompt_notes, 1200) || '严格执行当前剧情和分镜，不自行扩写事件'}`,
+    shot.production_graph_binding && `统一制作图谱绑定（唯一权威）：${text(JSON.stringify(shot.production_graph_binding), 3600)}`,
     override && `用户确认的视频最终提示词（最高优先级）：${override}`,
     `输出约束：时长 ${end} 秒；保持首帧构图与项目连续性合同；动作因果完整；尾帧可与下一镜头无缝剪辑。`,
   ].filter(Boolean).join('\n');
 }
 
-module.exports = { compileKeyframeDirection, compileVideoDirection, soundSummary, speechSummary };
+module.exports = { compileKeyframeDirection, compileVideoDirection, graphShotProjection, soundSummary, speechSummary };

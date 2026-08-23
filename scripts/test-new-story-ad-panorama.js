@@ -576,11 +576,16 @@ async function testProjectedBatchContinuation(candidate) {
 function testBatchUiContract() {
   const worldView = fs.readFileSync(path.join(root, 'public/story-ad/views/sceneWorldView.js'), 'utf8');
   const action = fs.readFileSync(path.join(root, 'public/story-ad/views/panoramaGeneration.js'), 'utf8');
-  assert(worldView.includes('data-generate-all-panoramas'));
-  assert(worldView.includes('runPanoramaBatchGeneration'));
+  const unifiedStage = fs.readFileSync(path.join(root, 'public/story-ad/views/assetCenterStageView.js'), 'utf8');
+  const route = fs.readFileSync(path.join(root, 'src/routes/newStoryAd.js'), 'utf8');
+  assert(!worldView.includes('data-generate-all-panoramas'));
+  assert(!worldView.includes('runPanoramaBatchGeneration'));
   assert(action.includes('/scene-assets/panoramas/plan'));
   assert(action.includes('/scene-assets/panoramas'));
-  assert(action.includes('单个场景失败不会中断其他场景'));
+  assert(unifiedStage.includes('360°全景'));
+  assert(unifiedStage.includes('data-generate-production-assets'));
+  assert(route.includes('scenePanoramaService.generateTaskPanoramas'));
+  assert(route.includes('panoramas.failed_count'));
 }
 
 async function main() {

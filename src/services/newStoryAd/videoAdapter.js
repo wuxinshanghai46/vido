@@ -308,7 +308,7 @@ function clipPrompt(shot = {}, ctx = {}, contract = {}, previousShot = null, key
     && keyframe.qa?.pass === true
     && (!contract.contract_fingerprint || contractFreshness.artifactMatchesContract(keyframe, contract));
   return [
-    `镜头运动与声音执行设计（剧情字段真实生成输入）：\n${productionPromptCompiler.compileVideoDirection(shot)}`,
+    `镜头运动与声音执行设计（剧情字段真实生成输入）：\n${productionPromptCompiler.compileVideoDirection(shot, { productionGraphShot: contract.production_graph_lock || null })}`,
     `Advertised subject: ${ctx.product_subject || ''}`,
     `Shot purpose: ${shot.purpose || shot.role || ''}`,
     `Visible frame: ${shot.visual || shot.visual_description || shot.content_prompt || ''}`,

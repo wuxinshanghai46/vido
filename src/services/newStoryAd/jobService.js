@@ -8,12 +8,13 @@ const generationUnits = require('./generationUnitService');
 const authorityLifecycle = require('./authorityLifecycleService');
 
 const runningJobs = new Map();
-const EXECUTING_STAGES = new Set(['full', 'script_package', 'scene_config', 'visual_assets', 'blueprint', 'storyboard', 'scene_asset', 'scene_panorama', 'keyframes', 'tts', 'video', 'compose', 'media']);
+const EXECUTING_STAGES = new Set(['full', 'script_package', 'scene_config', 'production_assets', 'visual_assets', 'blueprint', 'storyboard', 'scene_asset', 'scene_panorama', 'keyframes', 'tts', 'video', 'compose', 'media']);
 const ORPHAN_GRACE_MS = Math.max(30000, Number(process.env.NEW_STORY_AD_ORPHAN_GRACE_MS) || 120000);
 const ORPHAN_RECONCILE_INTERVAL_MS = Math.max(30000, Math.min(60000, ORPHAN_GRACE_MS));
 const DEFAULT_STAGE_BUDGETS = Object.freeze({
   scene_config: 120000,
   visual_assets: 2700000,
+  production_assets: 3600000,
   blueprint: 480000,
   script_package: 900000,
   storyboard: 480000,
@@ -201,7 +202,7 @@ function failJobUnit(job = {}, error = null, failure = {}) {
   const billingState = String(error?.billingState || error?.billing_state || '').trim().toLowerCase();
   const submitted = !!(error?.providerTaskId || error?.provider_task_id
     || ['submitted', 'submitted_unknown', 'running'].includes(String(error?.providerSubmissionState || error?.provider_submission_state || '').toLowerCase()));
-  const nestedCheckpointRisk = ['subject_assets', 'visual_assets', 'scene_asset'].includes(String(job.stage || ''))
+  const nestedCheckpointRisk = ['subject_assets', 'production_assets', 'visual_assets', 'scene_asset'].includes(String(job.stage || ''))
     && (error?.partial_subject_checkpoint === true || error?.partial_scene_checkpoint === true
       || error?.details?.subject_checkpoint || error?.details?.scene_checkpoint || Array.isArray(error?.subject_failures));
   if (billingState === 'unknown' && nestedCheckpointRisk) {
