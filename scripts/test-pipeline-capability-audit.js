@@ -4,10 +4,13 @@ const pipeline = require('../src/services/pipelineModelService');
 
 function main() {
   const report = auditPipelineCapabilities();
-  assert.strictEqual(report.summary.group_count, 9);
+  assert.strictEqual(report.summary.group_count, Object.keys(pipeline.listSchema()).length);
   const registeredStageCount = Object.values(pipeline.listSchema()).reduce((total, stages) => total + stages.length, 0);
   assert.strictEqual(report.summary.stage_count, registeredStageCount, '能力审计汇总必须覆盖权威注册表中的全部阶段');
   assert.ok(report.stages.some(stage => stage.stage_id === 'new_story_ad.brief_dialogue'), '导演对话阶段必须进入平台能力审计');
+  const enrollment = report.stages.find(stage => stage.stage_id === 'voice.enrollment');
+  assert.ok(enrollment, '授权声音素材自动注册必须进入平台能力审计');
+  assert.ok(enrollment.enabled_model_count > 0, '授权声音素材自动注册必须有启用模型');
   assert.strictEqual(report.summary.stages_without_enabled_model, 3);
   assert.deepStrictEqual(report.stages.filter(stage => !stage.enabled_model_count).map(stage => stage.stage_id).sort(), [
     'new_story_ad.asset_plan_scene_coverage_recovery',

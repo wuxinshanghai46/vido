@@ -2024,7 +2024,10 @@ router.post('/tasks/:id/keyframes/:index/candidates/:candidateId/review', asyncR
 }));
 
 router.post('/tasks/:id/tts', asyncRoute(async (req, res) => {
-  const body = req.body || {};
+  const body = {
+    ...(req.body || {}),
+    request_base_url: (process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, ''),
+  };
   return queueTaskStage(
     req,
     res,

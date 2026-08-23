@@ -32,6 +32,9 @@ const CONFIG_FILE = path.join(OUTPUT_DIR, 'pipeline_model_config.json');
 
 // ─── Stage 元数据 ───
 const PIPELINE_SCHEMA = {
+  '声音资产': [
+    { id: 'voice.enrollment', name: '授权素材自动注册', type: 'tts', desc: '用户首次使用授权声音素材时，按账号注册为永久可复用音色；后续生成自动复用并防止重复计费' },
+  ],
   '数字人': [
     { id: 'avatar.describe',     name: 'Step1 形象描述 AI 扩写',  type: 'story', desc: '把用户简单描述扩写成 200 字详细形象 brief' },
     { id: 'avatar.image_gen',    name: 'Step1 形象图生成',         type: 'image', desc: '基于描述生成数字人形象图（Seedream/SD/DALL-E）' },
@@ -216,6 +219,7 @@ const NEW_STORY_AD_IMAGE_DEFAULTS = [
 ];
 
 const STAGE_DEFAULTS = {
+  'voice.enrollment':    [{ provider_id: 'aliyun-tts', model_id: 'cosyvoice-v3.5-plus', priority: 1, enabled: true }],
   // 数字人
   'avatar.describe':     [{ provider_id: 'deyunai', model_id: 'gpt-4o-mini', priority: 1, enabled: false }],
   'avatar.image_gen':    [
@@ -437,6 +441,9 @@ const STAGE_DEFAULTS = {
     { provider_id: 'local', model_id: 'ffmpeg-effects', priority: 1, enabled: true },
   ],
   // 新剧情广告
+  'new_story_ad.reference_video_transcript': [
+    { provider_id: 'openai', model_id: 'whisper-1', priority: 1, enabled: true },
+  ],
   'new_story_ad.reference_video_vision': NEW_STORY_AD_REFERENCE_VISION_DEFAULTS,
   'new_story_ad.reference_video_synthesis': NEW_STORY_AD_TEXT_DEFAULTS,
   'new_story_ad.story_facts': NEW_STORY_AD_TEXT_DEFAULTS,

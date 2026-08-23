@@ -220,6 +220,8 @@ async function generateShotAudio({
   index = 0,
   voiceId = '',
   voiceAssignments = {},
+  userId = '',
+  requestBaseUrl = '',
   speed = 1,
   allowSilentFallback = false,
 } = {}) {
@@ -276,6 +278,8 @@ async function generateShotAudio({
         speed: clamp(speed, 0.5, 1.8, 1),
         voiceId: unit.voice_id,
         signal: cancellation.signal(),
+        userId,
+        requestBaseUrl,
       });
       if (!actualUnit || !fs.existsSync(actualUnit)) throw new Error(`说话人 ${unit.speaker || unitIndex + 1} 的音色 ${unit.voice_id} 未生成有效文件`);
       generatedUnits.push({ ...unit, file_path: actualUnit });
@@ -324,6 +328,8 @@ async function generateVoiceover({
   shots = [],
   voiceId = '',
   voiceAssignments = {},
+  userId = '',
+  requestBaseUrl = '',
   speed = 1,
   allowSilentFallback = false,
   existingTracks = [],
@@ -351,6 +357,8 @@ async function generateVoiceover({
       index,
       voiceId,
       voiceAssignments,
+      userId,
+      requestBaseUrl,
       speed,
       allowSilentFallback,
     })));

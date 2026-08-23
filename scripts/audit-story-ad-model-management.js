@@ -14,6 +14,7 @@ const nonModelLabels = new Set([
   'new_story_ad.subject_assets', // generated_by audit label
   'new_story_ad.image_provider', // concurrency bucket, actual model uses the caller stage
   'new_story_ad.person_dossier', // concurrency bucket, actual model uses each dossier stage
+  'new_story_ad.blueprint.semantic-input-v3', // deterministic fingerprint contract version, not a provider call
 ]);
 const files = [];
 function walk(directory) {

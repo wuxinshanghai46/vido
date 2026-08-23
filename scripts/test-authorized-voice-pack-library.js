@@ -43,10 +43,13 @@ assert.ok(service.resolveVoicePackAudio(listed.voices[0].id)?.file);
 assert.strictEqual(service.resolveVoicePackAudio('../../etc/passwd'), null);
 
 const workbench = fs.readFileSync(path.join(__dirname, '../src/routes/workbench.js'), 'utf8');
-assert.match(workbench, /confirm_authorized_use/);
-assert.match(workbench, /confirm_provider_charge/);
-assert.match(workbench, /source_voice_pack_id/);
-assert.match(workbench, /为避免重复计费不能再次提交/);
+const enrollment = fs.readFileSync(path.join(__dirname, '../src/services/voicePackEnrollmentService.js'), 'utf8');
+assert.match(workbench, /voice-packs\/:id\/use/);
+assert.doesNotMatch(workbench, /confirm_authorized_use/);
+assert.doesNotMatch(workbench, /confirm_provider_charge/);
+assert.match(enrollment, /source_voice_pack_id/);
+assert.match(workbench, /ensureRegisteredVoicePack/);
+assert.match(enrollment, /voice\.enrollment/);
 
 const tts = fs.readFileSync(path.join(__dirname, '../src/services/ttsService.js'), 'utf8');
 assert.match(tts, /if \(!v\.aliyun_voice_id \|\| v\.status !== 'ready'\) continue/);
@@ -54,9 +57,9 @@ assert.match(tts, /if \(!v\.aliyun_voice_id \|\| v\.status !== 'ready'\) continu
 const html = fs.readFileSync(path.join(__dirname, '../public/digital-human.html'), 'utf8');
 const ui = fs.readFileSync(path.join(__dirname, '../public/js/digital-human.js'), 'utf8');
 assert.match(html, /授权音色库/);
-assert.match(html, /先试听，再克隆，最后用于 TTS/);
+assert.match(html, /选择音色即可使用，系统按账号自动准备/);
 assert.match(ui, /cloneVoicePack/);
-assert.match(ui, /剧情旁白、角色对白和数字人口播/);
+assert.match(ui, /使用此音色/);
 
 fs.rmSync(root, { recursive: true, force: true });
-console.log('authorized voice pack library: 18 assertions passed');
+console.log('authorized voice pack library: 19 assertions passed');

@@ -13,6 +13,7 @@ const jsonRepair = require('./jsonRepairService');
 const mediaAdapter = require('./mediaAdapter');
 const referenceVideoLinks = require('./referenceVideoLinkService');
 const { getApiKey } = require('../settingsService');
+const pipelineModels = require('../pipelineModelService');
 const generationConcurrency = require('./generationConcurrencyService');
 const evidenceText = require('./referenceEvidenceTextService');
 const referenceUnderstanding = require('./referenceUnderstandingService');
@@ -1031,7 +1032,11 @@ async function transcribeAudio(record) {
       }],
     };
   }
-  const apiKey = getApiKey('openai') || process.env.OPENAI_API_KEY;
+  const transcriptRoute = pipelineModels.pickModelWithDefault('new_story_ad.reference_video_transcript');
+  if (!transcriptRoute || transcriptRoute.provider_id !== 'openai') {
+    return { status: 'provider_not_configured', text: '', segments: [] };
+  }
+  const apiKey = getApiKey(transcriptRoute.provider_id) || process.env.OPENAI_API_KEY;
   if (!apiKey) return { status: 'provider_not_configured', text: '', segments: [] };
   const audioPath = path.join(analysisDir(record.user_id, record.id), 'transcript-audio.mp3');
   const callStartedAt = Date.now();
@@ -1045,7 +1050,7 @@ async function transcribeAudio(record) {
     throwIfCancelled(record);
     const form = new FormData();
     form.append('file', fs.createReadStream(audioPath));
-    form.append('model', 'whisper-1');
+    form.append('model', transcriptRoute.model_id);
     form.append('response_format', 'verbose_json');
     form.append('timestamp_granularities[]', 'segment');
     const response = await axios.post('https://api.openai.com/v1/audio/transcriptions', form, {
@@ -1057,8 +1062,8 @@ async function transcribeAudio(record) {
     storage.saveModelCall({
       task_id: record.task_id || record.id,
       stage: 'new_story_ad.reference_video_transcript',
-      provider_id: 'openai',
-      model_id: 'whisper-1',
+      provider_id: transcriptRoute.provider_id,
+      model_id: transcriptRoute.model_id,
       status: 'success',
       provider_request_id: String(response.headers?.['x-request-id'] || ''),
       provider_submission_state: 'completed',
@@ -1083,8 +1088,8 @@ async function transcribeAudio(record) {
     storage.saveModelCall({
       task_id: record.task_id || record.id,
       stage: 'new_story_ad.reference_video_transcript',
-      provider_id: 'openai',
-      model_id: 'whisper-1',
+      provider_id: transcriptRoute.provider_id,
+      model_id: transcriptRoute.model_id,
       status: 'failed',
       error_code: classified.code || error.code || 'ASR_FAILED',
       error_message: String(error.message || error).slice(0, 500),

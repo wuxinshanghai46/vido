@@ -40,9 +40,11 @@ function isTtsBillingError(error) {
  * @param {object} options - { gender: 'female'|'male', speed: 1.0, voiceId: null }
  * @returns {string|null} 生成的音频文件路径，失败返回 null
  */
-async function generateSpeech(text, outputPath, { gender = 'female', speed = 1.0, pitch = 1.0, voiceId = null, instruction = '', signal = null } = {}) {
+async function generateSpeech(text, outputPath, { gender = 'female', speed = 1.0, pitch = 1.0, voiceId = null, instruction = '', signal = null, userId = '', requestBaseUrl = '' } = {}) {
   if (!text || !text.trim()) return null;
   if (signal?.aborted) throw signal.reason || Object.assign(new Error('TTS request aborted'), { code: 'ABORT_ERR' });
+
+  voiceId = await require('./voicePackEnrollmentService').resolveVoiceForAccount(voiceId, { userId, requestBaseUrl });
 
   if (voiceId && String(voiceId).startsWith('hifly:')) {
     const result = await generateWithHiflyTTS(text, outputPath, { voiceId, speed, pitch });
@@ -55,7 +57,7 @@ async function generateSpeech(text, outputPath, { gender = 'female', speed = 1.0
 
   // 自定义声音：如果选择了用户上传的声音，用声音克隆
   if (voiceId && (voiceId.startsWith('custom_') || voiceId.startsWith('custom:'))) {
-    const result = await _generateWithCustomVoice(text, outputPath, { voiceId, speed, pitch, instruction, signal });
+    const result = await _generateWithCustomVoice(text, outputPath, { voiceId, speed, pitch, instruction, signal, userId });
     if (result) {
       console.log(`[TTS] 使用自定义声音 ${voiceId} 生成成功`);
       return _postProcessAudio(result);
@@ -251,9 +253,15 @@ async function uploadVoiceToFishAudio(voiceFilePath, voiceName, apiKey) {
   });
 }
 
-async function _generateWithCustomVoice(text, outputPath, { voiceId, speed = 1.0, pitch = 1.0, instruction = '', signal = null }) {
+async function _generateWithCustomVoice(text, outputPath, { voiceId, speed = 1.0, pitch = 1.0, instruction = '', signal = null, userId = '' }) {
   const db = require('../models/database');
   const voice = db.getVoice(voiceId);
+  if (userId && (!voice || String(voice.user_id || '') !== String(userId))) {
+    const error = new Error('所选声音不属于当前账号');
+    error.code = 'VOICE_ACCOUNT_MISMATCH';
+    error.status = 403;
+    throw error;
+  }
   if (!voice?.file_path || !fs.existsSync(voice.file_path)) {
     throw new Error(`自定义声音 ${voiceId} 文件不存在`);
   }

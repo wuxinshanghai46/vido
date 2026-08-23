@@ -2223,6 +2223,8 @@ async function generateTtsStage(taskId, options = {}) {
   const reusedTts = ttsReuse.reuseExistingVoiceover({ storage, taskId, ttsAudio: existingTtsAudio, shots, voiceId, voiceAssignments, force: options.force_regenerate_tts === true || options.forceRegenerateTts === true }); if (reusedTts) return reusedTts;
   const tts_audio = await ttsAdapter.generateVoiceover({
     taskId, shots, voiceId, voiceAssignments,
+    userId: task.user_id || task.request?.user_id || task.request?.userId || '',
+    requestBaseUrl: options.request_base_url || options.requestBaseUrl || '',
     speed: options.speed || ctx.tts_speed || 1,
     allowSilentFallback: options.allow_silent_fallback === true || options.allowSilentFallback === true,
     existingTracks: (options.force_regenerate_tts === true || options.forceRegenerateTts === true) ? [] : (existingTtsAudio?.tracks || []),

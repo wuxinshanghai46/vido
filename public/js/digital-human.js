@@ -17828,11 +17828,11 @@
       host.innerHTML = list.map(v => {
         const gender = v.gender === 'male' ? '男声' : v.gender === 'female' ? '女声' : v.gender === 'child' ? '童声' : '未标注';
         return `<div class="dh-vc-card" data-voice-pack-card="${v.id}">
-          <div class="dh-vc-head"><div class="dh-vc-name">🎧 ${escapeHtml(v.name)}</div><div class="dh-vc-status ${v.clonable ? 'ok' : 'pending'}">${v.clonable ? '可克隆' : '仅试听'}</div></div>
+          <div class="dh-vc-head"><div class="dh-vc-name">🎧 ${escapeHtml(v.name)}</div><div class="dh-vc-status ${v.clonable ? 'ok' : 'pending'}">${v.clonable ? '可使用' : '仅原音'}</div></div>
           <div class="dh-vc-provider">${escapeHtml(gender)} · ${escapeHtml(v.category || '未分类')} · ${Number(v.duration || 0).toFixed(1)} 秒</div>
           <audio controls preload="none" src="/api/workbench/voice-packs/${encodeURIComponent(v.id)}/audio?token=${encodeURIComponent(state.token || '')}" style="width:100%;margin-top:10px"></audio>
           <div class="dh-vc-actions" style="margin-top:10px">
-            <button data-voice-pack-clone="${v.id}" ${v.clonable ? '' : 'disabled title="样本短于 10 秒，不能提交克隆"'} style="${v.clonable ? 'background:var(--dh-gradient);color:#0D0E12;border:0;font-weight:700' : ''}">${v.clonable ? '克隆并加入我的声音' : '时长不足，仅可试听'}</button>
+            <button data-voice-pack-clone="${v.id}" ${v.clonable ? '' : 'disabled title="样本不满足生成新对白的注册条件"'} style="${v.clonable ? 'background:var(--dh-gradient);color:#0D0E12;border:0;font-weight:700' : ''}">${v.clonable ? '使用此音色' : '可用原音，不可生成新对白'}</button>
           </div>
         </div>`;
       }).join('');
@@ -17848,30 +17848,22 @@
   async function cloneVoicePack(id) {
     const voice = state.voiceClone.library.find(v => v.id === id);
     if (!voice) return toast('找不到该参考音色', 'error');
-    const ok = await DhConfirm({
-      title: '克隆并加入我的声音',
-      message: `将「${escapeHtml(voice.name)}」克隆为可生成 TTS 的音色？`,
-      detail: '你已确认该素材具有合法授权。本操作会执行一次真实 CosyVoice 克隆调用；成功后可用于剧情旁白、角色对白和数字人口播。同一音色不会重复提交。',
-      confirmText: '确认克隆一次',
-      type: 'primary',
-    });
-    if (!ok) return;
     const button = document.querySelector(`[data-voice-pack-clone="${id}"]`);
-    if (button) { button.disabled = true; button.textContent = '正在克隆…'; }
+    if (button) { button.disabled = true; button.textContent = '正在准备音色…'; }
     try {
-      const r = await fetch(`/api/workbench/voice-packs/${encodeURIComponent(id)}/clone`, {
+      const r = await fetch(`/api/workbench/voice-packs/${encodeURIComponent(id)}/use`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + state.token },
-        body: JSON.stringify({ confirm_authorized_use: true, confirm_provider_charge: true }),
+        body: JSON.stringify({}),
       });
       const data = await r.json();
-      if (!data?.success) throw new Error(data?.error || '克隆失败');
-      toast(`✅「${voice.name}」已加入我的声音，可用于 TTS`, 'success');
+      if (!data?.success) throw new Error(data?.error || '音色准备失败');
+      toast(data.reused ? `✅「${voice.name}」已绑定当前账号` : `✅「${voice.name}」已自动准备完成，可直接使用`, 'success');
       await loadVoiceClones();
       window._dhSwitchVcTab('list');
     } catch (err) {
-      toast('克隆失败：' + err.message, 'error');
-      if (button) { button.disabled = false; button.textContent = '克隆并加入我的声音'; }
+      toast('音色准备失败：' + err.message, 'error');
+      if (button) { button.disabled = false; button.textContent = '使用此音色'; }
     }
   }
 

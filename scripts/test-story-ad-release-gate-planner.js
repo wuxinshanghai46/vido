@@ -44,6 +44,18 @@ assert.equal(plan(['src/services/newStoryAd/briefDialogueHistoryService.js', 'sc
 assert.equal(plan(['src/services/newStoryAd/contextBuilder.js']).profile, 'asset_plan');
 assert.equal(plan(['AGENTS.md']).profile, 'ui');
 assert.equal(plan(['src/services/newStoryAd/storageService.js']).profile, 'systemic');
+assert.equal(plan(['src/services/voicePackEnrollmentService.js']).profile, 'systemic');
+assert.equal(plan(['src/routes/workbench.js']).profile, 'systemic');
+assert.equal(plan(['public/js/digital-human.js']).profile, 'ui');
+assert.deepEqual(
+  planner.createPlan({
+    root: process.cwd(), baseRevision: 'a'.repeat(40), targetRevision: 'b'.repeat(40), sourceTree: 'c'.repeat(40),
+    files: ['src/services/voicePackEnrollmentService.js', 'src/routes/workbench.js', 'public/js/digital-human.js'],
+    reliable: true, targetedHome: true,
+  }).gates.map(row => row.id),
+  ['systemic', 'workspace_ui', 'release_core'],
+  '按账号自动注册音色必须执行系统性、UI 与发布门禁，但家庭电脑不得触发跨版本完整回归',
+);
 assert.equal(plan(['src/services/newStoryAd/unclassifiedAuthority.js']).profile, 'full');
 assert(plan(['src/services/newStoryAd/unclassifiedAuthority.js']).gates.some(row => row.id === 'systemic'),
   '未知运行文件回退full时必须执行systemic结构与权威门禁');
