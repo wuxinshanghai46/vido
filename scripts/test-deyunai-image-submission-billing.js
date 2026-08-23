@@ -1,5 +1,6 @@
 const assert = require('assert');
 const deyunai = require('../src/services/deyunaiService');
+const mediaAdapter = require('../src/services/newStoryAd/mediaAdapter');
 
 const rejected = deyunai.classifyImageSubmissionFailure({
   submissionStarted: true,
@@ -38,5 +39,18 @@ const acceptedThenFailed = deyunai.classifyImageSubmissionFailure({
 });
 assert.strictEqual(acceptedThenFailed.ambiguous, true);
 assert.strictEqual(acceptedThenFailed.providerSubmissionState, 'submitted_unknown');
+
+assert.strictEqual(mediaAdapter.shouldStopImageFallback({
+  billingUnknown: false,
+  classified: { code: 'PROVIDER_CONTENT_AUDIT', terminal: true },
+}), false, '明确未计费的内容审核拒绝应继续下一条已配置图片路由');
+assert.strictEqual(mediaAdapter.shouldStopImageFallback({
+  billingUnknown: true,
+  classified: { code: 'PROVIDER_CONTENT_AUDIT', terminal: true },
+}), true, '计费未知时必须停止所有备用路由');
+assert.strictEqual(mediaAdapter.shouldStopImageFallback({
+  billingUnknown: false,
+  classified: { code: 'PROVIDER_RIGHTS_AUDIT', terminal: true },
+}), true, '版权审核拒绝不得切换供应商绕过');
 
 console.log('deyunai image submission billing: ok');

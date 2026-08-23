@@ -445,6 +445,13 @@ function promptForImageCandidate(prompt = '', config = {}, auditSafePrompt = '',
   return compactImagePrompt(governed, limit);
 }
 
+function shouldStopImageFallback({ billingUnknown = false, classified = {} } = {}) {
+  if (billingUnknown) return true;
+  // 明确未计费的内容审核拒绝允许切换到下一条已配置图片路由；
+  // 版权审核及其它终止错误仍然立即停止。
+  return classified?.terminal === true && classified?.code !== 'PROVIDER_CONTENT_AUDIT';
+}
+
 async function invokeWithAuditSafeRetry(invoke, candidatePrompt = '', retryPrompt = '', onAudit = null) {
   try {
     return await invoke(candidatePrompt);
@@ -947,7 +954,7 @@ async function generateImage({
         provider_submission_state: evidenceSubmission,
         billing_state: evidenceBilling,
       });
-      if (billingUnknown || classified.terminal === true) break;
+      if (shouldStopImageFallback({ billingUnknown, classified })) break;
     }
   }
   const ignoredPreferred = preferred && preferred !== 'auto' && !preferredCandidates.length
@@ -1034,6 +1041,7 @@ module.exports = {
   applyImageModelPolicy,
   selectImageCandidates,
   invokeWithAuditSafeRetry,
+  shouldStopImageFallback,
   availableImageCandidates,
   imageCandidateAvailability,
   generateImage,
