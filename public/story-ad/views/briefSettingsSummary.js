@@ -1,4 +1,4 @@
-import { escapeHtml } from '../components/ui.js?v=20260823-character-library-v186';
+import { escapeHtml } from '../components/ui.js?v=20260823-character-library-v187';
 
 function compactText(value, maxLength = 120) {
   const text = String(value || '').replace(/\s+/g, ' ').trim();

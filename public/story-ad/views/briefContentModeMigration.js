@@ -1,4 +1,4 @@
-import { confirmDialog } from '../components/dialog.js?v=20260823-character-library-v186';
+import { confirmDialog } from '../components/dialog.js?v=20260823-character-library-v187';
 
 export async function confirmContentModeMigration(savedMode = '', nextMode = '') {
   if (!savedMode || savedMode === nextMode) return { cancelled: false, confirmed: false };

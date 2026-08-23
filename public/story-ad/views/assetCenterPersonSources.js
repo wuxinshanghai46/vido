@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260823-character-library-v186';
-import { escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260823-character-library-v186';
-import { confirmDialog } from '../components/dialog.js?v=20260823-character-library-v186';
+import { request } from '../api.js?v=20260823-character-library-v187';
+import { escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260823-character-library-v187';
+import { confirmDialog } from '../components/dialog.js?v=20260823-character-library-v187';
 
 function assetModal(title = '') {
   const previouslyFocused = document.activeElement;
