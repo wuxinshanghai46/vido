@@ -59,7 +59,7 @@ function classifyFailure(error) {
   if (error?.code) {
     return { code: String(error.code), retryable: error.retryable === true, message };
   }
-  if (/token not valid|invalid.*token|api key|unauthorized|401|403/i.test(rawMessage)) {
+  if (/token not valid|invalid.*token|api key|unauthorized|\b(?:401|403)\b/i.test(rawMessage)) {
     return { code: 'AUTH_CONFIG', retryable: false, message: '模型访问凭证无效，请联系管理员检查模型配置。' };
   }
   if (/timeout|timed out|ETIMEDOUT|ECONNRESET|socket hang up|upstream connect error|disconnect\/reset|reset before headers|connection termination/i.test(rawMessage)) {

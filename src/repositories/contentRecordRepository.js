@@ -296,6 +296,23 @@ function list(collection, filters = {}) {
   return cacheSet(key, rows);
 }
 
+function listIds(collection, filters = {}) {
+  const entries = normaliseFilters(filters);
+  const db = requireDatabase();
+  const where = ['collection = ?'];
+  const params = [collection];
+  for (const [field, value] of entries) {
+    where.push(`${field} = ?`);
+    params.push(String(value));
+  }
+  return db.prepare(`
+    SELECT id
+    FROM content_records
+    WHERE ${where.join(' AND ')}
+    ORDER BY COALESCE(updated_at, created_at) DESC
+  `).all(params).map(row => String(row.id));
+}
+
 function listForUser(collection, userId) {
   const owner = String(userId || '');
   if (!owner) return list(collection);
@@ -368,6 +385,7 @@ module.exports = {
   applyAtomicChanges,
   get,
   list,
+  listIds,
   listForUser,
   pruneBefore,
   remove,

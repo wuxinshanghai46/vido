@@ -524,11 +524,20 @@ function updateArtifact(artifactId, patch = {}) {
 }
 
 function listArtifacts(taskId, kind = '') {
-  return listRows('artifacts', { project_id: String(taskId) })
+  return listArtifactIds(taskId).map(getArtifact).filter(Boolean)
     .filter(row => String(row.task_id) === String(taskId)
       && (!kind || String(row.kind) === String(kind)))
     .sort((left, right) => Date.parse(right.updated_at || right.created_at || 0)
       - Date.parse(left.updated_at || left.created_at || 0));
+}
+
+function listArtifactIds(taskId) {
+  const owner = String(taskId || '');
+  if (!owner || sqliteBatchDb || !useSqlite()) {
+    return listRows('artifacts', { project_id: owner }).map(row => String(row.id));
+  }
+  ensureDbSeeded();
+  return contentRecords.listIds(COLLECTIONS.artifacts, { project_id: owner });
 }
 
 function enableLineage(taskId) {
@@ -987,6 +996,7 @@ module.exports = {
   getArtifact,
   updateArtifact,
   listArtifacts,
+  listArtifactIds,
   enableLineage,
   publishArtifact,
   carryManifestRevision,

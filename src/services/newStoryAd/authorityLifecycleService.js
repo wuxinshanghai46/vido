@@ -162,7 +162,9 @@ function disablePrevious(taskId, nextAuthority, at, options = {}) {
     }, { expected_version: run.unit_version });
   });
 
-  storage.listArtifacts(taskId).forEach(artifact => {
+  storage.listArtifactIds(taskId).forEach(artifactId => {
+    const artifact = storage.getArtifact(artifactId);
+    if (!artifact) return;
     if (artifact.authority_id === nextAuthority.authority_id) return;
     storage.updateArtifact(artifact.id, {
       execution_disabled: true,
@@ -246,7 +248,7 @@ function ensureCurrent(taskId, activePlanRecord = null) {
       superseded_by: authority.authority_id,
       superseded_at: authority.activated_at,
     }, { expected_version: run.unit_version }));
-    storage.listArtifacts(taskId).forEach(artifact => storage.updateArtifact(artifact.id, {
+    storage.listArtifactIds(taskId).forEach(artifactId => storage.updateArtifact(artifactId, {
       authority_id: authority.authority_id,
       execution_identity: authority.execution_identity,
       execution_disabled: false,
