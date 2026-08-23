@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260823-character-library-v187';
-import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260823-character-library-v187';
-import { bindMediaLightbox } from './mediaLightbox.js?v=20260823-character-library-v187';
+import { request } from '../api.js?v=20260823-character-library-v188';
+import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260823-character-library-v188';
+import { bindMediaLightbox } from './mediaLightbox.js?v=20260823-character-library-v188';
 
 const FIELD_GROUPS = [
   ['场景与机位', [
