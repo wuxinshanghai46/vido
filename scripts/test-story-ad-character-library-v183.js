@@ -51,10 +51,14 @@ const subjectBody = personPlanRoute.currentPersonGenerationBody({
 assert.deepStrictEqual(subjectBody.subject_targets.map(row => row.id), ['character_1', 'character_2'], '缺图目标必须继续绑定原人物稳定 ID，不能按相同人物或索引合并');
 
 const sources = fs.readFileSync(path.join(root, 'public/story-ad/views/assetCenterPersonSources.js'), 'utf8');
+const page = fs.readFileSync(path.join(root, 'public/story-ad/index.html'), 'utf8');
+const styles = fs.readFileSync(path.join(root, 'public/story-ad/character-library.css'), 'utf8');
 assert.match(sources, /character_library=1/, '选择已有素材必须读取正式角色库投影');
 assert.match(sources, /actor-library-featured/, '角色库必须有顶部选中人物制作档案');
 assert.match(sources, /actor-library-carousel/, '角色库必须有底部头像横向列表');
 assert.match(sources, /角色筛选/, '角色库必须提供人物筛选入口');
+assert.match(page, /character-library\.css/, '角色库独立样式必须由剧情广告页面加载');
+assert.match(styles, /\.actor-library-featured-grid/, '角色库独立样式必须包含顶部人物档案布局');
 
 const assetView = fs.readFileSync(path.join(root, 'public/story-ad/views/assetCenterView.js'), 'utf8');
 assert.match(assetView, /asset-card-person-entry/, '人物头像必须成为打开完整档案的主入口');

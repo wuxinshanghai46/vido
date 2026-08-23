@@ -12,11 +12,12 @@ assert(source.includes("import('./assetCenterPlanMigrationAction.js"), 'person p
 
 const guardSource = fs.readFileSync(path.join(root, 'public/story-ad/views/assetCenterRequestGuard.js'), 'utf8').replace(/\bexport\s+/g, '');
 const statusSource = fs.readFileSync(path.join(root, 'public/story-ad/views/assetCenterPlanReleaseStatus.js'), 'utf8')
-  .replace(/^import\s+.*?;\s*$/gm, '').replace(/\bexport\s+/g, '') + '\n;globalThis.__view = personPlanBlockedView; globalThis.__guard = createPersonPlanRequestGuard;';
+  .replace(/^(?:import|export\s+\{).*?;\s*$/gm, '').replace(/\bexport\s+/g, '') + '\n;globalThis.__view = personPlanBlockedView;';
 const guardSandbox = {};
 vm.runInNewContext(`${guardSource}\nglobalThis.__person = createPersonPlanRequestGuard; globalThis.__keyed = createKeyedRequestGuard;`, guardSandbox);
-const sandbox = { makePersonGuard: guardSandbox.__person, makeGuardMap: guardSandbox.__keyed };
+const sandbox = {};
 vm.runInNewContext(statusSource, sandbox, { filename: 'asset-center-plan-status-v52.js' });
+sandbox.__guard = guardSandbox.__person;
 const compatible = sandbox.__view({
   issues: ['active_plan_bundle_mismatch'],
   release_migration: { compatible: true, migration_required: true },
@@ -37,7 +38,7 @@ assert.doesNotMatch(incompatible, /方案可安全升级/);
 const actionSource = fs.readFileSync(path.join(root, 'public/story-ad/views/assetCenterPlanMigrationAction.js'), 'utf8');
 assert(actionSource.includes("store.runStage('person-plan', { request_key: requestKey })"), 'person plan and subject image submission must send the guard request key');
 assert.match(actionSource, /人物方案和缺失图片已进入同一个生成任务/);
-assert(actionSource.includes('result?.job?.support_id || result?.job?.id'), 'accepted job must expose a support id to the user');
+assert.match(actionSource, /result\?\.job\?\.support_id\s*\|\|\s*result\?\.job\?\.id/, 'accepted job must expose a support id to the user');
 
 // Exercise the exact guard used by the event handler with a real store-shaped
 // runStage stub: two simultaneous events share one request and one key.
