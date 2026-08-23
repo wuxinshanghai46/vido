@@ -12,6 +12,7 @@ const routeFile = path.join(root, 'src/routes/newStoryAd.js');
 const source = fs.readFileSync(routeFile, 'utf8');
 const taskUpdateSource = fs.readFileSync(path.join(root, 'src/routes/newStoryAd/taskUpdateRoute.js'), 'utf8');
 const billingRoutesSource = fs.readFileSync(path.join(root, 'src/routes/newStoryAd/visualAssetBillingRoutes.js'), 'utf8');
+const personPlanRoutesSource = fs.readFileSync(path.join(root, 'src/routes/newStoryAd/personPlanGenerationRoute.js'), 'utf8');
 const lines = source.replace(/\r?\n$/, '').split(/\r?\n/).length;
 
 const fullGates = planner.gateIdsForProfile('full');
@@ -31,6 +32,7 @@ function routeMatches(value) {
 const rootRoutes = routeMatches(source);
 const taskUpdateRoutes = routeMatches(taskUpdateSource);
 const billingRoutes = routeMatches(billingRoutesSource);
+const personPlanRoutes = routeMatches(personPlanRoutesSource);
 assert.deepEqual(taskUpdateRoutes.map(item => item.signature), ['PUT /tasks/:id'],
   '独立任务更新模块必须且只能注册一次 PUT /tasks/:id');
 assert.equal(rootRoutes.some(item => item.signature === 'PUT /tasks/:id'), false,
@@ -44,6 +46,7 @@ assert.deepEqual(billingRoutes.map(item => item.signature), [
 const registrations = [
   { index: source.indexOf('registerTaskUpdateRoute(router'), routes: taskUpdateRoutes },
   { index: source.indexOf('registerVisualAssetBillingRoutes(router'), routes: billingRoutes },
+  { index: source.indexOf('registerPersonPlanGenerationRoute(router'), routes: personPlanRoutes },
 ].sort((a, b) => a.index - b.index);
 assert(registrations.every(item => item.index >= 0), '根路由必须在原顺序位置注册独立路由模块');
 const routeSignatures = [];
