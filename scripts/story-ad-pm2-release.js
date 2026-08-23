@@ -17,6 +17,25 @@ function pm2(args, options = {}) {
   return String(result.stdout || '').trim();
 }
 
+function waitForPortFree(port, timeoutMs = 15000) {
+  const probe = `
+    const net = require('net');
+    const port = Number(process.argv[1]);
+    const deadline = Date.now() + Number(process.argv[2]);
+    const check = () => {
+      const socket = net.createConnection({ host: '127.0.0.1', port });
+      socket.once('connect', () => { socket.destroy(); if (Date.now() >= deadline) process.exit(1); setTimeout(check, 100); });
+      socket.once('error', () => process.exit(0));
+      socket.setTimeout(500, () => { socket.destroy(); if (Date.now() >= deadline) process.exit(1); setTimeout(check, 100); });
+    };
+    check();
+  `;
+  const result = childProcess.spawnSync(process.execPath, ['-e', probe, String(port), String(timeoutMs)], {
+    encoding: 'utf8', timeout: timeoutMs + 2000,
+  });
+  if (result.status !== 0) throw new Error(`候选端口 ${port} 未在 ${timeoutMs}ms 内释放`);
+}
+
 function main(argv = process.argv.slice(2)) {
   const mode = value(argv, 'mode');
   const releaseDir = path.resolve(value(argv, 'release'));
@@ -40,6 +59,7 @@ function main(argv = process.argv.slice(2)) {
   ], { env: { ...inherited, PORT: String(port), STORY_AD_BUILD_ID: buildId, STORY_AD_VERIFY_RELEASE: '1', STORY_AD_ALLOW_LEGACY_CLIENT: '0', STORY_AD_ENFORCE_NODE_RUNTIME: '1' } });
   if (mode === 'candidate') {
     staleCandidateNames.forEach((name) => { try { pm2(['delete', name]); } catch {} });
+    waitForPortFree(4601);
     start(candidateName, 4601);
     console.log(JSON.stringify({ mode, candidate_name: candidateName, release_dir: releaseDir, port: 4601 }));
     return;
@@ -55,4 +75,4 @@ if (require.main === module) {
   try { main(); } catch (error) { console.error(error.message || error); process.exitCode = 1; }
 }
 
-module.exports = { main };
+module.exports = { main, waitForPortFree };

@@ -8,6 +8,7 @@ const vm = require('vm');
 
 const source = fs.readFileSync(path.resolve(__dirname, 'deploy-story-ad-immutable-release.js'), 'utf8');
 const recoverySource = fs.readFileSync(path.resolve(__dirname, 'lib/immutableDeployRecovery.js'), 'utf8');
+const pm2ReleaseSource = fs.readFileSync(path.resolve(__dirname, 'story-ad-pm2-release.js'), 'utf8');
 
 assert(source.includes("const port = Number(process.env.VIDO_DEPLOY_PORT || 2222)"), 'immutable deploy must default to the production SSH port');
 assert(source.includes('connectionOptions({ host, port, username })'), 'immutable deploy must pass the resolved SSH port');
@@ -31,6 +32,8 @@ assert(source.includes('const drained = await releaseReadiness(releaseDir);'), '
 assert(!source.includes('const drained = await releaseReadiness(previousTarget);'), 'a historical reader defect must not permanently block its own replacement');
 assert(source.includes('const before = await releaseReadiness(releaseDir);'), 'pre-cutover task state must be inspected by verified candidate code');
 assert(!source.includes('const before = await releaseReadiness(previousTarget);'), 'a defective current reader must not run before its replacement candidate exists');
+assert(pm2ReleaseSource.includes('waitForPortFree(4601);'), 'candidate startup must wait for stale candidate port shutdown');
+assert(pm2ReleaseSource.indexOf('waitForPortFree(4601);') < pm2ReleaseSource.indexOf('start(candidateName, 4601);'), 'port release must complete before candidate start');
 assert(source.includes('releaseControlDrained = true'), '发布器必须单独记录停写状态');
 assert(source.includes('&& !releaseControlDrained && !systemicBackupCreated'), 'rollback must not early-return after draining or systemic backup creation');
 assert.strictEqual((source.match(/cutoverStarted = true/g) || []).length, 1, '切流标志只能在真实切换点设置一次');
