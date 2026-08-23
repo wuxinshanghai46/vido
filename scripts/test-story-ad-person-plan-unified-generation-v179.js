@@ -41,12 +41,14 @@ assert.equal(body.request_key, 'one-click');
 
 const routeSource = read('src/routes/newStoryAd/personPlanGenerationRoute.js');
 const serviceSource = read('src/services/newStoryAd/storyAdService.js');
+const independentPlanSource = read('src/services/newStoryAd/independentPersonPlanService.js');
 const promptSource = read('src/services/newStoryAd/subjectAssetBundleService.js');
 const statusSource = read('public/story-ad/views/assetCenterPlanReleaseStatus.js');
-assert.match(serviceSource, /generationConcurrency\.schedule\([\s\S]*new_story_ad\.person_plan_character[\s\S]*persistIndependentPersonProfiles/, '人物方案必须按人物独立并发补齐并发布人物域方案');
+assert.match(serviceSource, /independentPersonPlan\.complete\(taskId, options, \{ assistBrief \}\)/, '人物入口必须委托独立人物编排模块');
+assert.match(independentPlanSource, /generationConcurrency\.schedule\([\s\S]*new_story_ad\.person_plan_character[\s\S]*persistIndependentPersonProfiles/, '人物方案必须按人物独立并发补齐并发布人物域方案');
 assert.doesNotMatch(serviceSource, /if \(!assetPlan\.complete\(current, ctx\)\)[\s\S]*assetPlan\.generate/, '人物按钮不得再回退到人物、场景、道具共用的整套资产规划');
 assert.match(routeSource, /updatePersonPlan[\s\S]*generationPermit\.issue\(req\.params\.id, 'subject_assets'/, '一个任务内必须先发布人物方案，再签发图片生成许可');
 assert.match(promptSource, /Structured wardrobe asset contract[\s\S]*Performance and body-language direction[\s\S]*Cross-shot identity continuity lock/, '图片模型提示必须编译结构化服装、表演与跨镜一致性资产');
 assert.doesNotMatch(statusSource, /status-tag|人物方案需要更新|文字方案确认后，再单独生成图片/, '旧状态标签和两步式提示必须彻底删除');
 
-console.log(JSON.stringify({ passed: true, checks: 16, paid_model_calls: 0, media_calls: 0 }));
+console.log(JSON.stringify({ passed: true, checks: 17, paid_model_calls: 0, media_calls: 0 }));
