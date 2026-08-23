@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260824-production-v201t';
-import { confirmDialog } from '../components/dialog.js?v=20260824-production-v201t';
-export { ensureSubjectRecoveryReady } from './subjectRecoveryPreflightAction.js?v=20260824-production-v201t';
+import { request } from '../api.js?v=20260824-production-v201u';
+import { confirmDialog } from '../components/dialog.js?v=20260824-production-v201u';
+export { ensureSubjectRecoveryReady } from './subjectRecoveryPreflightAction.js?v=20260824-production-v201u';
 
 function reviewLabel(review = {}) {
   if (review.kind === 'scene') return `场景“${review.scene_id || '未命名场景'}”的${review.unit || '视图'}`;
