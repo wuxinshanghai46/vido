@@ -158,6 +158,10 @@ export function openAssetDrawer(item, group, handlers = {}, renderers = {}) {
     event.preventDefault();
     const button = event.submitter || event.currentTarget.querySelector('button[type="submit"]');
     const saved = await callback?.(item, Object.fromEntries(new FormData(event.currentTarget).entries()), button);
+    if (saved === true && event.submitter?.matches('[data-save-regenerate-person]')) {
+      if (await onGenerate?.(item, group, button) === true) close();
+      return;
+    }
     if (saved === true) close();
   });
   drawer.querySelector('[data-drawer-generate]')?.addEventListener('click', async event => { if (await onGenerate?.(item, group, event.currentTarget) === true) close(); });
@@ -165,6 +169,11 @@ export function openAssetDrawer(item, group, handlers = {}, renderers = {}) {
   bindSubmit('[data-person-edit]', onSavePerson);
   bindPersonLookForm(drawer.querySelector('[data-person-edit]'));
   bindPersonEvolutionForm(drawer.querySelector('[data-person-edit]'));
+  drawer.querySelector('[data-jump-person-looks]')?.addEventListener('click', () => {
+    const editor = drawer.querySelector('[data-person-look-editor]');
+    editor?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+    editor?.querySelector('[name$="_wardrobeText"]')?.focus?.({ preventScroll: true });
+  });
   bindSubmit('[data-product-edit]', onSaveProduct);
   bindSubmit('[data-scene-edit]', onSaveScene);
   drawer.querySelector('[data-ai-assist-person]')?.addEventListener('click', event => onAssistPerson?.(item, drawer.querySelector('[data-person-edit]'), event.currentTarget));

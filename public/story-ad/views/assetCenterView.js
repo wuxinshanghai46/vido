@@ -70,6 +70,11 @@ export function subjectGenerationPayload(bundle = {}, target = null, requestKey 
     payload.regenerate_selected = true;
     payload.resume_partial_checkpoint = target.partial_checkpoint === true;
     payload.person_change_kind = target.kind === 'animal' ? 'semantic' : 'visual_dossier';
+    if (group === 'people' && target.profile?.id) {
+      payload.cast_profiles = payload.cast_profiles.map(profile => String(profile.id || '') === String(target.profile.id)
+        ? { ...profile, ...target.profile }
+        : profile);
+    }
   } else {
     const pending = [
       ...people.map((item, index) => ({ item, kind: 'human', index })),
@@ -378,6 +383,7 @@ export async function mount(host, context) {
       setButtonBusy(button, true, '正在保存…', { elapsed: true });
       const savedBundle = await store.updateRequest({ cast_profiles: profiles }, { refreshSections: 'summary,assets' });
       assertSavedPerson(savedBundle, item, normalizedValues);
+      item.profile = { ...(item.profile || {}), ...normalizedValues };
       await context.refreshCurrentView?.();
       toast('人物信息已保存；下次生成会使用最新设定。', 'success');
       return true;

@@ -68,9 +68,9 @@ function actorLibraryFilters(actor = {}) {
   };
 }
 
-function actorLibraryImage(url = '', label = '', className = '') {
+function actorLibraryImage(url = '', label = '', className = '', options = {}) {
   return `<div class="${className}">${url
-    ? mediaPreview({ image_url: url }, { label, width: 900, symbol: '人物素材' })
+    ? mediaPreview({ image_url: url }, { label, width: options.width || 520, symbol: '人物素材', loading: options.loading, fetchPriority: options.fetchPriority })
     : '<div class="media-placeholder"><span>该项待补充</span></div>'}</div>`;
 }
 
@@ -84,15 +84,18 @@ function actorLibraryFeatured(actor = {}) {
   const dossier = library.dossier_image_url || actor.dossier_sheet?.image_url || '';
   const tags = [profile.roleName, actorLibraryFilters(actor).gender, actorLibraryFilters(actor).age, actorLibraryFilters(actor).era]
     .filter(Boolean);
+  if (library.summary_only === true) {
+    return `<section class="actor-library-featured is-loading" data-library-featured><header><div><h3>${escapeHtml(actor.name || profile.displayName || '人物角色')}</h3><div class="actor-library-tags">${tags.map(tag => `<span>${escapeHtml(tag)}</span>`).join('')}</div></div></header><div class="actor-library-summary-loading">${actorLibraryImage(portrait, `${actor.name || '人物'}头像`, 'is-portrait', { loading: 'eager', fetchPriority: 'high', width: 420 })}<div><b>人物头像已就绪</b><span>正在按需读取该人物的完整视角和表情档案…</span></div></div></section>`;
+  }
   return `<section class="actor-library-featured" data-library-featured>
     <header><div><h3>${escapeHtml(actor.name || profile.displayName || '人物角色')}</h3><div class="actor-library-tags">${tags.map(tag => `<span>${escapeHtml(tag)}</span>`).join('')}</div></div></header>
     <div class="actor-library-featured-grid">
-      ${actorLibraryImage(fullBody, `${actor.name || '人物'}全身标准图`, 'is-full-body')}
-      ${actorLibraryImage(portrait, `${actor.name || '人物'}面部身份图`, 'is-portrait')}
+      ${actorLibraryImage(fullBody, `${actor.name || '人物'}全身标准图`, 'is-full-body', { loading: 'eager', fetchPriority: 'high', width: 620 })}
+      ${actorLibraryImage(portrait, `${actor.name || '人物'}面部身份图`, 'is-portrait', { loading: 'eager', fetchPriority: 'high', width: 520 })}
       <div class="actor-library-expression-board">${expressionRows.length
         ? expressionRows.map((row, index) => actorLibraryImage(row.image_url, `${actor.name || '人物'}表情${index + 1}`, '')).join('')
         : bodyRows.map((row, index) => actorLibraryImage(row.image_url, `${actor.name || '人物'}视角${index + 1}`, '')).join('')}</div>
-      ${actorLibraryImage(dossier || bodyRows[1]?.image_url || fullBody, `${actor.name || '人物'}完整制作档案`, 'is-dossier')}
+      ${actorLibraryImage(dossier || bodyRows[1]?.image_url || fullBody, `${actor.name || '人物'}完整制作档案`, 'is-dossier', { width: 900 })}
     </div>
     <footer><p>${escapeHtml(profile.appearanceText || actor.description || '已通过人物身份与跨视角一致性验证，可作为后续分镜和视频的人物参考。')}</p><button class="btn primary" type="button" data-apply-selected-actor>应用到当前项目</button></footer>
   </section>`;
@@ -111,13 +114,25 @@ export async function openActorLibrary({ store, context }) {
   const modal = assetModal('选择已有人物素材');
   modal.body.innerHTML = '<div class="loading-state">正在读取人物素材库…</div>';
   try {
-    const data = await request('/api/assets?type=character&character_library=1&limit=120');
+    const data = await request('/api/assets?type=character&character_library=1&view=summary&fast=1&limit=60');
     const rows = Array.isArray(data.data) ? data.data : [];
-    const state = { selectedId: rows[0]?.id || '', filters: {} };
+    const state = { selectedId: rows[0]?.id || '', filters: {}, details: new Map(), detailRequest: 0 };
+    const loadSelectedDetail = async id => {
+      if (!id || state.details.has(id)) return;
+      const requestNo = ++state.detailRequest;
+      try {
+        const detail = await request(`/api/assets/${encodeURIComponent(id)}`);
+        state.details.set(id, detail.data);
+        if (state.selectedId === id && requestNo === state.detailRequest) render();
+      } catch (error) {
+        if (state.selectedId === id) toast(`人物完整档案读取失败：${error.message}`, 'danger');
+      }
+    };
     const render = () => {
       const visible = rows.filter(actor => Object.entries(state.filters).every(([key, value]) => !value || actorLibraryFilters(actor)[key] === value));
       if (!visible.some(actor => actor.id === state.selectedId)) state.selectedId = visible[0]?.id || '';
-      const selected = rows.find(actor => actor.id === state.selectedId) || visible[0];
+      const selectedSummary = rows.find(actor => actor.id === state.selectedId) || visible[0];
+      const selected = state.details.get(selectedSummary?.id) || selectedSummary;
       modal.body.innerHTML = rows.length ? `<div class="actor-library-shell">
         ${selected ? actorLibraryFeatured(selected) : '<div class="mini-empty">当前筛选下没有人物。</div>'}
         <div class="actor-library-toolbar"><button class="btn" type="button" data-toggle-library-filters>角色筛选</button><span>只展示已通过人物身份与跨视角一致性验证的资产</span></div>
@@ -140,9 +155,9 @@ export async function openActorLibrary({ store, context }) {
         button.addEventListener('click', () => { state.filters[key] = state.filters[key] === button.dataset.filterValue ? '' : button.dataset.filterValue; render(); });
       });
       modal.body.querySelector('[data-clear-library-filters]')?.addEventListener('click', () => { state.filters = {}; render(); });
-      modal.body.querySelectorAll('[data-actor-id]').forEach(button => button.addEventListener('click', () => { state.selectedId = button.dataset.actorId; render(); }));
+      modal.body.querySelectorAll('[data-actor-id]').forEach(button => button.addEventListener('click', () => { state.selectedId = button.dataset.actorId; render(); loadSelectedDetail(state.selectedId); }));
       modal.body.querySelector('[data-apply-selected-actor]')?.addEventListener('click', async event => {
-        const actor = rows.find(row => row.id === state.selectedId); if (!actor) return;
+        const actor = state.details.get(state.selectedId) || rows.find(row => row.id === state.selectedId); if (!actor) return;
         const button = event.currentTarget; setButtonBusy(button, true, '正在写入项目…', { elapsed: true });
         try {
           await store.attachMaterial('person', actor);
@@ -153,6 +168,7 @@ export async function openActorLibrary({ store, context }) {
       });
     };
     render();
+    loadSelectedDetail(state.selectedId);
   } catch (error) {
     modal.body.innerHTML = `<div class="error-text">${escapeHtml(error.message)}</div>`;
   }

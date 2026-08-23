@@ -317,7 +317,9 @@ export function mediaPreview(item = {}, options = {}) {
   }
   if (url) {
     const previewUrl = `${url}${url.includes('?') ? '&' : '?'}thumb=${options.width || 480}`;
-    const image = `<img class="media" src="${escapeHtml(previewUrl)}" loading="lazy" alt="${escapeHtml(label)}">`;
+    const loading = options.loading === 'eager' ? 'eager' : 'lazy';
+    const priority = options.fetchPriority === 'high' ? ' fetchpriority="high"' : '';
+    const image = `<img class="media" src="${escapeHtml(previewUrl)}" loading="${loading}" decoding="async"${priority} alt="${escapeHtml(label)}">`;
     if (options.zoomable === true) {
       return `<button class="media-zoom-trigger" type="button" data-media-zoom-url="${escapeHtml(sourceImageUrl || url)}" data-media-preview-url="${escapeHtml(previewUrl)}" data-media-zoom-label="${escapeHtml(label)}" data-media-zoom-group="${escapeHtml(options.zoomGroup || 'media')}">${image}<span aria-hidden="true">⌕</span></button>`;
     }

@@ -59,6 +59,7 @@ const assetPlanCheckpointLineage = require('./assetPlanCheckpointLineageService'
 const productionLimits = require('./productionLimitsService');
 const storySceneCoverage = require('./storySceneCoverageService');
 const voicePlan = require('./voicePlanService');
+const accountVoiceAssignment = require('./accountVoiceAssignmentService');
 const contentSkill = require('./contentSkillService'), contentDomainArtifacts = require('./contentDomainArtifactService');
 const workAggregate = require('./workAggregateService');
 const { alignPersonAgeDescription, enforceAssistedPersonSpec } = require('./assistedPersonSpecService');
@@ -229,7 +230,10 @@ function listTaskSummaries({ limit = 50, page = 1, status = '', userId = '' } = 
   };
 }
 function createTask(body = {}, user = {}) {
-  const ctx = withAssetContracts(buildContext(body, user));
+  const built = withAssetContracts(buildContext(body, user));
+  const ctx = accountVoiceAssignment.applyAccountVoiceAssignments(built, {
+    userId: built.user_id || user.id || user.userId,
+  }).context;
   const id = cleanText(body.task_id || body.taskId || '', 80) || uuidv4();
   const releaseIdentity = releaseBundle.identity();
   const task = storage.createTask({
@@ -305,6 +309,7 @@ function updateTaskRequest(taskId, body = {}, user = {}, options = {}) {
     { ...(previousCtx || {}), ...(normalizedBody || {}), task_id: taskId },
     { ...user, id: ownerId, userId: ownerId },
   );
+  builtCtx = accountVoiceAssignment.applyAccountVoiceAssignments(builtCtx, { userId: ownerId }).context;
   // Active scene_spec is UI state; an explicit scene_plan owns only the scene domain.
   if (taskProgressSave.preservesAuthoritativeContext(body, { savingProgress, requestedScope, explicitScenePlan: explicitScenePlanInput })) builtCtx = previousCtx;
   else if (savingProgress && requestedScope === 'person') builtCtx = taskProgressSave.preserveProductDomain(previousCtx, builtCtx);
@@ -456,7 +461,15 @@ function prepareGeneration(taskId, body = {}, user = {}) {
     error.acknowledged_client_edit_seq = acknowledgedEditSeq;
     throw error;
   }
-  const ctx = storage.getOutput(taskId, 'context') || task.request || {};
+  let ctx = storage.getOutput(taskId, 'context') || task.request || {};
+  const voiceProjection = accountVoiceAssignment.applyAccountVoiceAssignments(ctx, {
+    userId: task.user_id || ctx.user_id || user.id || user.userId,
+  });
+  if (voiceProjection.changed) {
+    ctx = voiceProjection.context;
+    storage.saveOutput(taskId, 'context', ctx, { content_revision: currentRevision });
+    storage.updateTask(taskId, { request: ctx, updated_at: new Date().toISOString() });
+  }
   if (!String(ctx.brief || '').trim() && !assetPlan.referenceIsValid(ctx.reference_video_analysis)) {
     const error = new Error('请填写广告目标，或先完成参考视频分析');
     error.code = 'BRIEF_REQUIRED';

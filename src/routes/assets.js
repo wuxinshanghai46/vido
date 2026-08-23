@@ -111,7 +111,23 @@ function findDuplicateCharacterAsset(userId, asset) {
   return candidates.find(existing => sameActorAsset(existing, asset)) || null;
 }
 
-function serializeAsset(asset) {
+function verifiedCharacterLibraryEvidence(personContract = {}) {
+  const qa = personContract.cross_view_qa || {};
+  const verification = personContract.verification || {};
+  const score = key => Number(qa[key]);
+  const realism = Number(qa.photographic_realism_score);
+  return personContract.status === 'verified'
+    && qa.pass === true
+    && verification.state === 'verified'
+    && Boolean(String(qa.used_model || verification.used_model || '').trim())
+    && score('identity_score') >= 0.82
+    && score('age_score') >= 0.75
+    && score('wardrobe_score') >= 0.75
+    && score('body_score') >= 0.72
+    && (!Number.isFinite(realism) || realism >= 0.72);
+}
+
+function serializeAsset(asset, options = {}) {
   if (!asset) return asset;
   const imageUrl = publicAssetUrl(asset);
   const extraImages = normalizeAssetImageList(asset.extra_image_urls || asset.extra_images || []);
@@ -144,10 +160,9 @@ function serializeAsset(asset) {
   const fullBody = nativeMasters.body?.image_url
     || bodyViews.find(view => ['front', 'body_front'].includes(String(view.key || view.id || '').toLowerCase()))?.image_url
     || imageUrl;
-  const personVerified = String(personContract.status || '').toLowerCase() === 'verified';
-  const crossViewPass = personContract.cross_view_qa?.pass === true
-    || personContract.verification?.state === 'verified';
-  const libraryReady = personVerified && crossViewPass && bodyViews.length >= 4
+  const libraryReady = verifiedCharacterLibraryEvidence(personContract)
+    && bodyViews.length >= 4 && identityViews.length >= 1 && expressions.length >= 6
+    && Boolean(String(dossierSheet?.image_url || '').trim())
     && asset.production_usable_actor !== false && metadata.production_usable_actor !== false;
   const profileText = [profile.roleName, profile.appearanceText, profile.wardrobeText, profile.hairMakeupText]
     .filter(Boolean).join(' ');
@@ -158,7 +173,7 @@ function serializeAsset(asset) {
     : '';
   const era = /古代|古装|汉服|唐制|宋制|明制|武侠|仙侠/.test(profileText) ? '古代'
     : (/民国/.test(profileText) ? '近代' : (/未来|赛博|科幻/.test(profileText) ? '未来' : '现代'));
-  return {
+  const serialized = {
     ...asset,
     category: asset.category || asset.type,
     image_url: asset.image_url || imageUrl,
@@ -207,6 +222,29 @@ function serializeAsset(asset) {
       },
     },
   };
+  if (options.summary === true) {
+    return {
+      id: serialized.id,
+      type: serialized.type,
+      name: serialized.name,
+      description: serialized.description,
+      source: serialized.source,
+      library_ready: serialized.library_ready,
+      cover_image_url: serialized.cover_image_url,
+      image_url: serialized.cover_image_url,
+      subject_profile: serialized.subject_profile,
+      person_contract: {
+        status: serialized.person_contract?.status,
+        verification: serialized.person_contract?.verification,
+      },
+      character_library: {
+        portrait_image_url: serialized.character_library.portrait_image_url,
+        filters: serialized.character_library.filters,
+        summary_only: true,
+      },
+    };
+  }
+  return serialized;
 }
 
 function isCharacterAssetType(type) {
@@ -320,7 +358,8 @@ router.get('/', (req, res) => {
     syncGeneratedActorLibraryAssets(PUBLIC_ACTOR_USER_ID);
   }
   const limit = Math.max(1, Math.min(300, Number(req.query.limit) || 0));
-  let assets = listAssetsForRequest(req.user.id, type || 'all').map(serializeAsset);
+  const summary = /^(summary|compact)$/i.test(String(req.query.view || req.query.fields || ''));
+  let assets = listAssetsForRequest(req.user.id, type || 'all').map(asset => serializeAsset(asset, { summary }));
   if (/^(1|true|yes)$/i.test(String(req.query.character_library || ''))) {
     assets = assets.filter(asset => asset.type === 'character' && asset.library_ready === true);
   }
@@ -332,6 +371,9 @@ router.get('/', (req, res) => {
 router.get('/:id', (req, res) => {
   const asset = db.getAsset(req.params.id);
   if (!asset) return res.status(404).json({ success: false, error: '素材不存在' });
+  if (String(asset.user_id || '') !== String(req.user.id || '') && String(asset.user_id || '') !== PUBLIC_ACTOR_USER_ID) {
+    return res.status(403).json({ success: false, error: '无权读取该人物素材' });
+  }
   res.json({ success: true, data: serializeAsset(asset) });
 });
 
@@ -552,3 +594,4 @@ router.delete('/:id', (req, res) => {
 
 module.exports = router;
 module.exports.serializeAsset = serializeAsset;
+module.exports.verifiedCharacterLibraryEvidence = verifiedCharacterLibraryEvidence;

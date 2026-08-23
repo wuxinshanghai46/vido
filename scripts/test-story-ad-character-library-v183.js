@@ -20,9 +20,14 @@ const verified = assetsRoute.serializeAsset({
   id: 'actor-suwan', type: 'character', name: '苏晚', image_url: '/body-front.png', production_usable_actor: true,
   metadata: {
     subject_profile: { id: 'su-wan', displayName: '苏晚', roleName: '美学策展人', age: '28岁', gender: 'female', appearanceText: '现代女性' },
-    person_contract: { status: 'verified', cross_view_qa: { pass: true }, identity: { gender: 'female' } },
+    person_contract: {
+      status: 'verified',
+      verification: { state: 'verified', used_model: 'vision/strict-person-qa' },
+      cross_view_qa: { pass: true, used_model: 'vision/strict-person-qa', identity_score: 0.94, age_score: 0.9, wardrobe_score: 0.91, body_score: 0.88, photographic_realism_score: 0.9 },
+      identity: { gender: 'female' },
+    },
     body_views: [image('front'), image('side'), image('back'), image('action')],
-    identity_views: [image('face_front')], expressions: [image('neutral'), image('smile')],
+    identity_views: [image('face_front')], expressions: ['neutral', 'smile', 'concern', 'surprise', 'focus', 'relief'].map(image),
     dossier_sheet: { image_url: '/dossier.png' },
   },
 });
@@ -31,6 +36,36 @@ assert.strictEqual(verified.cover_image_url, '/api/new-story-ad/assets/face_fron
 assert.strictEqual(verified.character_library.full_body_image_url, '/api/new-story-ad/assets/front.png');
 assert.strictEqual(verified.character_library.dossier_image_url, '/dossier.png');
 assert.strictEqual(verified.character_library.filters.age_band, '青年');
+const summary = assetsRoute.serializeAsset({
+  ...verified,
+  metadata: {
+    ...verified.metadata,
+    person_contract: verified.person_contract,
+    body_views: verified.body_views,
+    identity_views: verified.identity_views,
+  },
+}, { summary: true });
+assert.strictEqual(summary.character_library.summary_only, true, '角色库列表必须只返回轻量摘要');
+assert.strictEqual(summary.body_views, undefined, '轻量摘要不得携带完整四视图和表情大图');
+
+const weakQa = assetsRoute.serializeAsset({
+  ...verified,
+  id: 'weak-qa-actor',
+  person_contract: { status: 'verified', verification: { state: 'verified' }, cross_view_qa: { pass: true } },
+  metadata: {
+    ...verified.metadata,
+    person_contract: { status: 'verified', verification: { state: 'verified' }, cross_view_qa: { pass: true } },
+  },
+});
+assert.strictEqual(weakQa.library_ready, false, '只有 verified 标记、没有视觉模型分数的历史空图不得进入正式角色库');
+
+const legacyFourViews = assetsRoute.serializeAsset({
+  ...verified,
+  id: 'legacy-four-view-only',
+  identity_views: [], expressions: [], dossier_sheet: null,
+  metadata: { ...verified.metadata, identity_views: [], expressions: [], dossier_sheet: null },
+});
+assert.strictEqual(legacyFourViews.library_ready, false, '只有旧四视图、没有身份图表情图和档案大版的演员不得冒充完整角色库');
 
 const context = {
   brief: '双人广告', cast_profiles: [
@@ -53,7 +88,8 @@ assert.deepStrictEqual(subjectBody.subject_targets.map(row => row.id), ['charact
 const sources = fs.readFileSync(path.join(root, 'public/story-ad/views/assetCenterPersonSources.js'), 'utf8');
 const page = fs.readFileSync(path.join(root, 'public/story-ad/index.html'), 'utf8');
 const styles = fs.readFileSync(path.join(root, 'public/story-ad/character-library.css'), 'utf8');
-assert.match(sources, /character_library=1/, '选择已有素材必须读取正式角色库投影');
+assert.match(sources, /character_library=1&view=summary&fast=1/, '选择已有素材必须先读取免目录扫描的轻量角色摘要');
+assert.match(sources, /\/api\/assets\/\$\{encodeURIComponent\(id\)\}/, '完整人物档案必须按选中人物再读取');
 assert.match(sources, /actor-library-featured/, '角色库必须有顶部选中人物制作档案');
 assert.match(sources, /actor-library-carousel/, '角色库必须有底部头像横向列表');
 assert.match(sources, /角色筛选/, '角色库必须提供人物筛选入口');
