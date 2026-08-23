@@ -69,6 +69,29 @@ function sourceView(scene = {}) {
 }
 
 function sourceFingerprint(scene = {}, source = {}) {
+  const contract = scene.scene_contract && typeof scene.scene_contract === 'object'
+    ? scene.scene_contract
+    : {};
+  const semanticContractFingerprint = clean(contract.reference_fingerprint, 100) || fingerprint({
+    schema_version: contract.schema_version,
+    scene_id: contract.scene_id,
+    scene_revision: contract.scene_revision,
+    requested_layout: contract.requested_layout,
+    requested_material_light: contract.requested_material_light,
+    requested_interaction: contract.requested_interaction,
+    requested_style: contract.requested_style,
+    requested_negative: contract.requested_negative,
+    requested_surface_topology: contract.requested_surface_topology,
+    requested_material_contract: contract.requested_material_contract,
+    requested_interaction_contract: contract.requested_interaction_contract,
+    anchors: contract.anchors,
+    zones: contract.zones,
+    geometry_facts: contract.geometry_facts,
+    materials: contract.materials,
+    lighting: contract.lighting,
+    cameras: contract.cameras,
+    status: contract.status,
+  });
   return fingerprint({
     contract_version: PANORAMA_CONTRACT_VERSION,
     scene_id: clean(scene.scene_id || scene.id, 120),
@@ -79,7 +102,7 @@ function sourceFingerprint(scene = {}, source = {}) {
     material_summary: clean(scene.material_summary, 1200),
     interaction_summary: clean(scene.interaction_summary, 1000),
     style_summary: clean(scene.style_summary, 800),
-    scene_contract_hash: fingerprint(scene.scene_contract || {}),
+    scene_contract_hash: semanticContractFingerprint,
   });
 }
 

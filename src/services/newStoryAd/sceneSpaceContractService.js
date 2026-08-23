@@ -496,7 +496,7 @@ function normalizeContract(input = {}, options = {}) {
         }
         : normalizeRequirementQa(sourceRequirementQa)),
     photographic_realism_qa: normalizePhotographicRealismQa(input.photographic_realism_qa),
-    verified_at: new Date().toISOString(),
+    verified_at: cleanText(input.verified_at || input.verification?.checked_at || new Date().toISOString(), 80),
   };
   const qa = contract.cross_view_qa;
   qa.pass = sourceQa.pass === true && qa.scene_consistency_score >= 0.72
@@ -625,8 +625,11 @@ function normalizeContract(input = {}, options = {}) {
     layout_reference_image_url: contract.layout_contract.reference_image_url,
     spatial_coverage_schema: contract.schema_version,
   })).digest('hex');
-  contract.verification = unavailable
-    ? (input.verification || verification.unavailable({ code: contract.qa_error_code, message: contract.qa_error }))
+  const storedVerification = input.verification && typeof input.verification === 'object'
+    ? { ...input.verification }
+    : null;
+  contract.verification = storedVerification || (unavailable
+    ? verification.unavailable({ code: contract.qa_error_code, message: contract.qa_error })
     : (qa.pass && contract.requirement_qa.pass && contract.photographic_realism_qa.pass
       && contract.camera_design_qa.pass && contract.spatial_coverage_qa.pass
       ? verification.verified(input.vision_model || '')
@@ -639,7 +642,7 @@ function normalizeContract(input = {}, options = {}) {
           : (contract.requirement_qa.pass
             ? '场景空间、摄影真实性、逐机位设计、结构或材质一致性未通过'
             : '场景未满足当前任务的布局、材质、表面结构或禁止项要求'),
-      ));
+      )));
   return contract;
 }
 

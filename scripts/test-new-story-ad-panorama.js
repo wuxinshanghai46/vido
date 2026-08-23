@@ -25,6 +25,7 @@ const storage = require('../src/services/newStoryAd/storageService');
 const panoramaProjection = require('../src/services/newStoryAd/panoramaProjectionService');
 const scenePanorama = require('../src/services/newStoryAd/scenePanoramaService');
 const sceneAssets = require('../src/services/newStoryAd/sceneAssetService');
+const sceneSpace = require('../src/services/newStoryAd/sceneSpaceContractService');
 const sceneWorlds = require('../src/services/storyAdWorkspace/sceneWorldService');
 const projectBundles = require('../src/services/storyAdWorkspace/projectBundleService');
 const shotReferencePacks = require('../src/services/newStoryAd/shotReferencePackService');
@@ -162,6 +163,26 @@ function neutralScene(sceneId, source, extra = {}) {
     scene_revision: 1,
     ...extra,
   };
+}
+
+function testStablePanoramaPlanAuthority() {
+  const verifiedAt = '2026-08-23T20:00:00.000Z';
+  const checkedAt = '2026-08-23T20:00:01.000Z';
+  const first = sceneSpace.normalizeContract({
+    status: 'verified',
+    verified_at: verifiedAt,
+    verification: { state: 'verified', code: '', message: '视觉一致性验证已通过', retryable: false, checked_at: checkedAt },
+  }, { sceneId: 'stable-plan-scene', revision: 1, views: [] });
+  const second = sceneSpace.normalizeContract(first, { sceneId: 'stable-plan-scene', revision: 1, views: [] });
+  assert.equal(second.verified_at, verifiedAt, 'read-time normalization must preserve the original verification timestamp');
+  assert.equal(second.verification.checked_at, checkedAt, 'read-time normalization must preserve the original verification receipt');
+  const source = { key: 'master', image_url: '/stable-plan-source.png', file_sha256: 'a'.repeat(64) };
+  assert.equal(
+    scenePanorama.sourceFingerprint({ scene_id: 'stable-plan-scene', scene_revision: 1, scene_contract: second }, source),
+    scenePanorama.sourceFingerprint({ scene_id: 'stable-plan-scene', scene_revision: 1,
+      scene_contract: { ...second, verified_at: '2099-01-01T00:00:00.000Z', verification: { ...second.verification, checked_at: '2099-01-01T00:00:00.000Z' } } }, source),
+    'panorama plan authority must ignore volatile audit timestamps when the scene contract is semantically unchanged',
+  );
 }
 
 async function testProviderCandidateValidation(validCandidate, brokenCandidate, invalidRatioCandidate) {
@@ -592,6 +613,7 @@ function testBatchUiContract() {
 }
 
 async function main() {
+  testStablePanoramaPlanAuthority();
   const candidate = await createSyntheticGrid('panorama-contract-grid.png');
   const brokenCandidate = await createSyntheticGrid('panorama-broken-seam-grid.png', 512, 256, { brokenSeam: true });
   const invalidRatioCandidate = await createSyntheticGrid('panorama-invalid-ratio-grid.png', 480, 320);
