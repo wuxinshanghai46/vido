@@ -1,4 +1,4 @@
-import { escapeHtml } from '../components/ui.js?v=20260823-person-plan-flow-v196';
+import { escapeHtml } from '../components/ui.js?v=20260823-independent-person-plan-v197';
 
 function compactText(value, maxLength = 120) {
   const text = String(value || '').replace(/\s+/g, ' ').trim();

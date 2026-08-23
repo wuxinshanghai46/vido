@@ -1,4 +1,4 @@
-import { personPlanBlockedView } from './assetCenterPlanReleaseStatus.js?v=20260823-person-plan-flow-v196';
+import { personPlanBlockedView } from './assetCenterPlanReleaseStatus.js?v=20260823-independent-person-plan-v197';
 export function assetPlanStageView({ assetPlanReady = false, recoveryActive = false, eligibility = {}, generationActive = false, missingSubjectCount = 0, counts = {}, project = {}, isAdmin = false } = {}) {
   if (recoveryActive) return '';
   if (!assetPlanReady) return personPlanBlockedView(eligibility, generationActive, {

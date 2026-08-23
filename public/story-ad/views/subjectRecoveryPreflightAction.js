@@ -1,4 +1,4 @@
-import { request } from '../api.js?v=20260823-person-plan-flow-v196';
+import { request } from '../api.js?v=20260823-independent-person-plan-v197';
 
 async function preflight(bundle = {}, generationPayload = {}, apply = false, proofToken = '') {
   const taskId = bundle?.project?.id || '';
