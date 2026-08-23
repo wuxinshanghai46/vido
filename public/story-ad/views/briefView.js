@@ -1,21 +1,21 @@
-import { request } from '../api.js?v=20260824-production-v201l';
-import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260824-production-v201l';
-import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260824-production-v201l';
-import { briefSettingsSummary } from './briefSettingsSummary.js?v=20260824-production-v201l';
-import { worldSettingFields } from './briefWorldSettings.js?v=20260824-production-v201l';
-import { bindNarrativeRecognitionLayout } from './briefNarrativeRecognition.js?v=20260824-production-v201l';
-import { referenceProgress as renderReferenceProgress } from './referenceProgressCard.js?v=20260824-production-v201l';
-import { assertBriefReadback } from './briefTextContract.js?v=20260824-production-v201l';
-import { confirmContentModeMigration } from './briefContentModeMigration.js?v=20260824-production-v201l';
-import { BRIEF_MATERIALS } from './briefMaterials.js?v=20260824-production-v201l';
-import { bindAdvancedReferenceControls, renderAdvancedReferenceControls } from './briefAdvancedConfig.js?v=20260824-production-v201l';
-import { bindBriefDialogueWorkflow, briefDialogueMarkup, referenceNextStepDescription } from './briefDialoguePanel.js?v=20260824-production-v201l';
-import { syncReferenceDialogueStatus } from './briefReferenceDialogueState.js?v=20260824-production-v201l';
-import { referenceActionState, syncReferenceAction } from './briefReferenceActionState.js?v=20260824-production-v201l';
-import { bindBriefViewport, briefDialogueAssist } from './briefDialogueRuntime.js?v=20260824-production-v201l';
-import { bindBriefSettingsModal } from './briefSettingsModal.js?v=20260824-production-v201l';
-import { formPayload } from './briefFormPayload.js?v=20260824-production-v201l';
-import { bindBriefReferenceRecovery } from './briefReferenceRecovery.js?v=20260824-production-v201l';
+import { request } from '../api.js?v=20260824-production-v201m';
+import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260824-production-v201m';
+import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260824-production-v201m';
+import { briefSettingsSummary } from './briefSettingsSummary.js?v=20260824-production-v201m';
+import { worldSettingFields } from './briefWorldSettings.js?v=20260824-production-v201m';
+import { bindNarrativeRecognitionLayout } from './briefNarrativeRecognition.js?v=20260824-production-v201m';
+import { referenceProgress as renderReferenceProgress } from './referenceProgressCard.js?v=20260824-production-v201m';
+import { assertBriefReadback } from './briefTextContract.js?v=20260824-production-v201m';
+import { confirmContentModeMigration } from './briefContentModeMigration.js?v=20260824-production-v201m';
+import { BRIEF_MATERIALS } from './briefMaterials.js?v=20260824-production-v201m';
+import { bindAdvancedReferenceControls, renderAdvancedReferenceControls } from './briefAdvancedConfig.js?v=20260824-production-v201m';
+import { bindBriefDialogueWorkflow, briefDialogueMarkup, referenceNextStepDescription } from './briefDialoguePanel.js?v=20260824-production-v201m';
+import { syncReferenceDialogueStatus } from './briefReferenceDialogueState.js?v=20260824-production-v201m';
+import { referenceActionState, syncReferenceAction } from './briefReferenceActionState.js?v=20260824-production-v201m';
+import { bindBriefViewport, briefDialogueAssist } from './briefDialogueRuntime.js?v=20260824-production-v201m';
+import { bindBriefSettingsModal } from './briefSettingsModal.js?v=20260824-production-v201m';
+import { formPayload } from './briefFormPayload.js?v=20260824-production-v201m';
+import { bindBriefReferenceRecovery } from './briefReferenceRecovery.js?v=20260824-production-v201m';
 export function referenceProgress(reference = {}) { return renderReferenceProgress(reference); }
 
 export async function mount(host, context) {
@@ -136,7 +136,7 @@ ${renderAdvancedReferenceControls(bundle, route.isNew)}
       if (understandingHost) understandingHost.innerHTML = '';
       return;
     }
-    const module = await import('./referenceUnderstandingView.js?v=20260824-production-v201l');
+    const module = await import('./referenceUnderstandingView.js?v=20260824-production-v201m');
     if (disposed || sequence !== understandingLoadSequence || !understandingHost) return;
     if (understandingController) understandingController.update(reference);
     else understandingController = module.mountReferenceUnderstanding(understandingHost, {
