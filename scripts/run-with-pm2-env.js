@@ -7,6 +7,8 @@ const PM2_CONTROL_ENV_KEYS = new Set([
   'exec_interpreter',
   'node_args',
   'pm_id',
+  'name',
+  'namespace',
 ]);
 
 function scalarEnv(source = {}, excludedKeys = new Set()) {
