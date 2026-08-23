@@ -75,7 +75,13 @@ async function main() {
       mediaAdapter: {
         ...mediaAdapter,
         async generateImage() {
-          throw Object.assign(new Error('provider content audit'), { code: 'PROVIDER_CONTENT_AUDIT' });
+          throw Object.assign(new Error('provider attempts exhausted after timeout and audit'), {
+            code: 'IMAGE_ATTEMPTS_EXHAUSTED',
+            attempts: [
+              { code: 'TIMEOUT_OR_NETWORK', billing_state: 'not_billed', provider_task_id: '' },
+              { code: 'PROVIDER_CONTENT_AUDIT', billing_state: 'not_billed', provider_task_id: '' },
+            ],
+          });
         },
       },
     });

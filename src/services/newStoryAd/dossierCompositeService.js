@@ -98,6 +98,15 @@ function desiredWearableUnits(profile = {}) {
   return new Set(explicitAccessoryDefinitions(profile).map(item => `wearable_accessory:${item.key}`));
 }
 
+function isSafeProviderAuditRecovery(error = {}) {
+  if (String(error?.code || '') === 'PROVIDER_CONTENT_AUDIT') return true;
+  const attempts = Array.isArray(error?.attempts) ? error.attempts : [];
+  return attempts.length > 0
+    && attempts.some(item => String(item?.code || '') === 'PROVIDER_CONTENT_AUDIT')
+    && attempts.every(item => ['not_billed', 'not_submitted'].includes(String(item?.billing_state || ''))
+      && !String(item?.provider_task_id || '').trim());
+}
+
 async function generateDetailRows({
   taskId,
   assetId = 'primary',
@@ -191,7 +200,7 @@ async function generateDetailRows({
         recovery_reason: 'PROVIDER_CONTENT_AUDIT',
       };
     };
-    if (cached?.error?.code === 'PROVIDER_CONTENT_AUDIT') {
+    if (isSafeProviderAuditRecovery(cached?.error)) {
       const recovered = await localDetailFallback(0);
       if (recovered) {
         await saveCheckpoint(checkpointKey, checkpointService.normalizeCheckpoint({
@@ -260,7 +269,7 @@ async function generateDetailRows({
               onSubmitted: controls.onSubmitted,
             });
           } catch (error) {
-            if (error?.code === 'PROVIDER_CONTENT_AUDIT') {
+            if (isSafeProviderAuditRecovery(error)) {
               const recovered = await localDetailFallback(1);
               if (recovered) return recovered;
             }
@@ -690,6 +699,7 @@ module.exports = {
   generateWardrobeDetails,
   explicitAccessoryDefinitions,
   desiredWearableUnits,
+  isSafeProviderAuditRecovery,
   accessoryEvidence,
   minorProfile,
   composePersonDossier,
