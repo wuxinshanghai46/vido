@@ -10,6 +10,8 @@ const app = read('public/story-ad/app.js');
 const assets = read('public/story-ad/views/assetCenterView.js');
 const stageSource = read('public/story-ad/views/assetCenterStageView.js');
 const planStatusSource = read('public/story-ad/views/assetCenterPlanReleaseStatus.js');
+const inlineProgressSource = read('public/story-ad/views/assetCenterInlineProgress.js');
+const technicalDetailsSource = read('public/story-ad/views/assetCenterTechnicalDetails.js');
 const planningDetails = read('public/story-ad/views/assetCenterPlanningDetails.js');
 const requestGuards = read('public/story-ad/views/assetCenterRequestGuard.js');
 const newStoryAdRoute = read('src/routes/newStoryAd.js');
@@ -64,8 +66,8 @@ const browserSource = source => source
   .replace(/^import\s+.*?;\s*$/gm, '')
   .replace(/^export\s+\{.*$/gm, '')
   .replace(/\bexport\s+/g, '');
-const stageSandbox = { makeGuardMap: () => ({}), makePersonGuard: () => ({}) };
-vm.runInNewContext(`${browserSource(planStatusSource)}\n${browserSource(stageSource)}\nglobalThis.__stage=assetPlanStageView;`, stageSandbox);
+const stageSandbox = { makeGuardMap: () => ({}), makePersonGuard: () => ({}), escapeHtml: value => String(value) };
+vm.runInNewContext(`${browserSource(inlineProgressSource)}\n${browserSource(technicalDetailsSource)}\n${browserSource(planStatusSource)}\n${browserSource(stageSource)}\nglobalThis.__stage=assetPlanStageView;`, stageSandbox);
 const historicalGenerateDom = stageSandbox.__stage({ assetPlanReady: true, missingSubjectCount: 2, counts: { people: 2 } });
 const historicalContinueDom = stageSandbox.__stage({ assetPlanReady: true, missingSubjectCount: 0, counts: { people: 2 } });
 const historicalEditDom = stageSandbox.__stage({ assetPlanReady: false, eligibility: { issues: ['person_plan_stale'] } });

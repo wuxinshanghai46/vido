@@ -15,8 +15,9 @@ vm.runInNewContext(`${executable('public/story-ad/views/billingRecoveryBanner.js
 const planSandbox = {
   makeGuardMap: () => guard(),
   makePersonGuard: () => guard(),
+  escapeHtml,
 };
-vm.runInNewContext(`${executable('public/story-ad/views/assetCenterPlanReleaseStatus.js')}\n${executable('public/story-ad/views/assetCenterStageView.js')}\nglobalThis.__plan={personPlanBlockedView,assetPlanStageView};`, planSandbox);
+vm.runInNewContext(`${executable('public/story-ad/views/assetCenterInlineProgress.js')}\n${executable('public/story-ad/views/assetCenterTechnicalDetails.js')}\n${executable('public/story-ad/views/assetCenterPlanReleaseStatus.js')}\n${executable('public/story-ad/views/assetCenterStageView.js')}\nglobalThis.__plan={personPlanBlockedView,assetPlanStageView};`, planSandbox);
 
 function guard() {
   return { active: false, run: async (...args) => {
