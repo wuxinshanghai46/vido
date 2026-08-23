@@ -160,7 +160,7 @@ function viewHead(html) {
   assert.doesNotMatch(narrative, /data-asset-filter="logos"|data-asset-section="logos"|data-add-asset="logos"/, '剧情项目不得显示广告专用LOGO分类或添加入口');
   assert.match(narrative, /data-select-person/, '剧情项目必须保留选择已有人物素材');
   assert.match(narrative, /data-upload-real-person/, '剧情项目必须保留上传真人素材');
-  assert.match(narrative, /data-generate-subjects/, '剧情项目必须保留人物/动物生成入口');
+  assert.doesNotMatch(narrative, /data-generate-subjects/, '剧情项目不得继续暴露旧人物/动物单项生成入口');
 
   const narrativeNoAssets = (await render('narrative_story', [], { includePerson: false })).html;
   assert.match(narrativeNoAssets, /当前项目还没有可用资产/, '剧情总资产为0时必须保留正常空状态');
@@ -174,15 +174,13 @@ function viewHead(html) {
   assert.doesNotMatch(viewHead(commercialEmpty.html), /data-generate-product-main/, '广告项目顶栏人物动作组不得混入展示主体入口');
   assert.match(commercialEmpty.html, /data-select-person/);
   assert.match(commercialEmpty.html, /data-upload-real-person/);
-  assert.match(commercialEmpty.html, /data-generate-subjects/);
+  assert.doesNotMatch(commercialEmpty.html, /data-generate-subjects/);
   assert.match(commercialEmpty.html, /data-asset-filter="products"/, '广告项目必须保留商品/展示主体分类');
   const productTab = commercialEmpty.filters.find(item => item.dataset.assetFilter === 'products');
   assert(productTab, '广告商品分类必须可点击');
   await productTab.click();
   assert.equal(commercialEmpty.sections.find(item => item.dataset.assetSection === 'products')?.hidden, false, '点击空商品分类后必须显示分类内添加入口');
-  const createProduct = buttonTag(commercialEmpty.html, 'data-generate-product-main');
-  assert.match(createProduct, /data-history-safe/, '分类内添加/生成展示主体属于二次确认后的安全执行动作，历史步骤不得误锁');
-  assert.doesNotMatch(createProduct, /\sdisabled(?:\s|>|=)/, '分类内添加/生成展示主体必须可操作');
+  assert.doesNotMatch(commercialEmpty.html, /data-generate-product-main/, '商品分类不得继续暴露独立生成入口');
   const addProduct = buttonTag(commercialEmpty.html, 'data-add-asset="products"');
   assert.doesNotMatch(addProduct, /\sdisabled(?:\s|>|=)/, '广告商品分类内的添加入口必须可操作');
 
@@ -196,15 +194,9 @@ function viewHead(html) {
   assert.equal(noAssetsProductSection.hidden, true, '从空商品分类返回All后应再次隐藏0项分类');
 
   const commercialExisting = (await render('commercial_subject', [product()])).html;
-  const generateProduct = buttonTag(commercialExisting, 'data-generate-product="product-1"');
-  assert.match(generateProduct, /data-history-safe/, '商品生成属于有二次确认的历史安全执行动作');
-  assert.doesNotMatch(generateProduct, /\sdisabled(?:\s|>|=)/, '已有商品的分类内生成入口必须可操作');
+  assert.doesNotMatch(commercialExisting, /data-generate-product=/, '已有商品也必须进入统一制作图谱，不得单独生成');
 
-  assert.equal(billingRecoveryBindings.length, 5, '每次资产中心 mount 都必须绑定一次计费恢复状态机');
-  billingRecoveryBindings.forEach(binding => {
-    assert(binding.host && binding.bundle && binding.store, '计费恢复绑定必须取得真实 mount 上下文');
-    assert.equal(typeof binding.generate, 'function', '计费恢复绑定必须复用当前人物精确生成入口');
-  });
+  assert.equal(billingRecoveryBindings.length, 0, '统一制作图谱不得绑定旧视觉资产计费恢复入口');
 
   console.log('story-ad product entry taxonomy v64 passed');
 })().catch(error => {
