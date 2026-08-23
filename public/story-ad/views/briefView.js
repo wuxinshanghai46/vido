@@ -1,21 +1,21 @@
-import { request } from '../api.js?v=20260823-person-plan-assets-v181';
-import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260823-person-plan-assets-v181';
-import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260823-person-plan-assets-v181';
-import { briefSettingsSummary } from './briefSettingsSummary.js?v=20260823-person-plan-assets-v181';
-import { worldSettingFields } from './briefWorldSettings.js?v=20260823-person-plan-assets-v181';
-import { bindNarrativeRecognitionLayout } from './briefNarrativeRecognition.js?v=20260823-person-plan-assets-v181';
-import { referenceProgress as renderReferenceProgress } from './referenceProgressCard.js?v=20260823-person-plan-assets-v181';
-import { assertBriefReadback } from './briefTextContract.js?v=20260823-person-plan-assets-v181';
-import { confirmContentModeMigration } from './briefContentModeMigration.js?v=20260823-person-plan-assets-v181';
-import { BRIEF_MATERIALS } from './briefMaterials.js?v=20260823-person-plan-assets-v181';
-import { bindAdvancedReferenceControls, renderAdvancedReferenceControls } from './briefAdvancedConfig.js?v=20260823-person-plan-assets-v181';
-import { bindBriefDialogueWorkflow, briefDialogueMarkup, referenceNextStepDescription } from './briefDialoguePanel.js?v=20260823-person-plan-assets-v181';
-import { syncReferenceDialogueStatus } from './briefReferenceDialogueState.js?v=20260823-person-plan-assets-v181';
-import { referenceActionState, syncReferenceAction } from './briefReferenceActionState.js?v=20260823-person-plan-assets-v181';
-import { bindBriefViewport, briefDialogueAssist } from './briefDialogueRuntime.js?v=20260823-person-plan-assets-v181';
-import { bindBriefSettingsModal } from './briefSettingsModal.js?v=20260823-person-plan-assets-v181';
-import { formPayload } from './briefFormPayload.js?v=20260823-person-plan-assets-v181';
-import { bindBriefReferenceRecovery } from './briefReferenceRecovery.js?v=20260823-person-plan-assets-v181';
+import { request } from '../api.js?v=20260823-person-plan-assets-v182';
+import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260823-person-plan-assets-v182';
+import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260823-person-plan-assets-v182';
+import { briefSettingsSummary } from './briefSettingsSummary.js?v=20260823-person-plan-assets-v182';
+import { worldSettingFields } from './briefWorldSettings.js?v=20260823-person-plan-assets-v182';
+import { bindNarrativeRecognitionLayout } from './briefNarrativeRecognition.js?v=20260823-person-plan-assets-v182';
+import { referenceProgress as renderReferenceProgress } from './referenceProgressCard.js?v=20260823-person-plan-assets-v182';
+import { assertBriefReadback } from './briefTextContract.js?v=20260823-person-plan-assets-v182';
+import { confirmContentModeMigration } from './briefContentModeMigration.js?v=20260823-person-plan-assets-v182';
+import { BRIEF_MATERIALS } from './briefMaterials.js?v=20260823-person-plan-assets-v182';
+import { bindAdvancedReferenceControls, renderAdvancedReferenceControls } from './briefAdvancedConfig.js?v=20260823-person-plan-assets-v182';
+import { bindBriefDialogueWorkflow, briefDialogueMarkup, referenceNextStepDescription } from './briefDialoguePanel.js?v=20260823-person-plan-assets-v182';
+import { syncReferenceDialogueStatus } from './briefReferenceDialogueState.js?v=20260823-person-plan-assets-v182';
+import { referenceActionState, syncReferenceAction } from './briefReferenceActionState.js?v=20260823-person-plan-assets-v182';
+import { bindBriefViewport, briefDialogueAssist } from './briefDialogueRuntime.js?v=20260823-person-plan-assets-v182';
+import { bindBriefSettingsModal } from './briefSettingsModal.js?v=20260823-person-plan-assets-v182';
+import { formPayload } from './briefFormPayload.js?v=20260823-person-plan-assets-v182';
+import { bindBriefReferenceRecovery } from './briefReferenceRecovery.js?v=20260823-person-plan-assets-v182';
 export function referenceProgress(reference = {}) { return renderReferenceProgress(reference); }
 
 export async function mount(host, context) {
@@ -136,7 +136,7 @@ ${renderAdvancedReferenceControls(bundle, route.isNew)}
       if (understandingHost) understandingHost.innerHTML = '';
       return;
     }
-    const module = await import('./referenceUnderstandingView.js?v=20260823-person-plan-assets-v181');
+    const module = await import('./referenceUnderstandingView.js?v=20260823-person-plan-assets-v182');
     if (disposed || sequence !== understandingLoadSequence || !understandingHost) return;
     if (understandingController) understandingController.update(reference);
     else understandingController = module.mountReferenceUnderstanding(understandingHost, {
