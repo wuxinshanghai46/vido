@@ -1963,6 +1963,8 @@ async function generate(taskId, options = {}) {
       source: previous.source,
       model_meta: previous.model_meta,
       completed_at: previous.completed_at,
+      generation_id: generationId,
+      production_graph_authority: options.production_graph_authority === true,
     });
     storage.saveStage(taskId, 'scene_config', {
       status: 'done',
@@ -2210,6 +2212,8 @@ async function generate(taskId, options = {}) {
     source: modelMeta.source,
     model_meta: modelMeta,
     completed_at: new Date().toISOString(),
+    generation_id: generationId,
+    production_graph_authority: options.production_graph_authority === true,
   });
   storage.saveStage(taskId, 'scene_config', {
     status: 'done',

@@ -88,6 +88,7 @@ async function complete(taskId, options = {}, deps = {}) {
   const completedProfiles = settled.map(item => item.value);
   const saved = assetPlan.persistIndependentPersonProfiles(taskId, completedProfiles, {
     generation_id: options.generation_id || options.generationId || '',
+    production_graph_authority: options.production_graph_authority === true,
     model_meta: { model_call_count: completedProfiles.length, concurrency: Math.min(2, profiles.length), stage: 'new_story_ad.person_plan_character' },
   });
   storage.deleteOutput(taskId, checkpointKind);

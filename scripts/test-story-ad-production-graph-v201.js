@@ -8,6 +8,7 @@ const graphService = require('../src/services/newStoryAd/productionGraphService'
 const prompts = require('../src/services/newStoryAd/productionPromptCompilerService');
 const revisions = require('../src/services/newStoryAd/revisionService');
 const pipelineModels = require('../src/services/pipelineModelService');
+const authorityLifecycle = require('../src/services/newStoryAd/authorityLifecycleService');
 
 let checks = 0;
 const ok = (value, message) => { assert(value, message); checks += 1; };
@@ -85,6 +86,26 @@ try {
   Object.entries(originals).forEach(([key, value]) => { storage[key] = value; });
 }
 
+const originalListGenerationRuns = storage.listGenerationRuns;
+try {
+  storage.listGenerationRuns = () => [
+    { id: 'owned-production-run', domain: 'production_assets', state: 'running', billing_state: 'not_submitted', orchestration_job_id: 'generation-v201' },
+    { id: 'old-unknown', domain: 'person_plan', state: 'billing_unknown', billing_state: 'unknown', retry_blocked: true, automatic_retry_allowed: false },
+    { id: 'unrelated-running', domain: 'video', state: 'running', billing_state: 'not_submitted', orchestration_job_id: 'other-generation' },
+  ];
+  equal(authorityLifecycle.promotionBlockers(taskId).length, 3, 'ordinary authority promotion remains blocked by active or unknown runs');
+  const graphBlockers = authorityLifecycle.promotionBlockers(taskId, { production_graph_authority: true, generation_id: 'generation-v201' });
+  equal(graphBlockers.map(item => item.id), ['unrelated-running'], 'graph promotion ignores only its owned run and quarantined historical unknown billing');
+  storage.listGenerationRuns = () => [
+    { id: 'owned-production-run', domain: 'production_assets', state: 'running', billing_state: 'not_submitted', orchestration_job_id: 'generation-v201' },
+    { id: 'old-unknown', domain: 'person_plan', state: 'billing_unknown', billing_state: 'unknown', retry_blocked: true, automatic_retry_allowed: false },
+  ];
+  equal(authorityLifecycle.assertPromotionAllowed(taskId, { production_graph_authority: true, generation_id: 'generation-v201' }), true,
+    'explicit graph authority can advance without resubmitting quarantined historical calls');
+} finally {
+  storage.listGenerationRuns = originalListGenerationRuns;
+}
+
 const deleted = [];
 revisions.invalidateOutputs({ deleteOutputs: (_taskId, kinds) => deleted.push(...kinds) }, taskId, 'person_visual');
 ok(deleted.includes('production_graph_v1'), 'person visual edits invalidate the graph before downstream generation');
@@ -104,6 +125,7 @@ const orchestratorSource = fs.readFileSync(path.join(__dirname, '../src/services
 ok(orchestratorSource.includes('PRODUCTION_GRAPH_IMAGE_PRICE_UNKNOWN'), 'unpriced image routes are blocked before paid generation');
 ok(orchestratorSource.includes('PRODUCTION_GRAPH_COST_LIMIT_EXCEEDED'), 'server enforces the confirmed visual cost limit');
 ok(orchestratorSource.includes('const executionPlan = plan'), 'cost plan is recomputed after person and scene planning');
+ok(orchestratorSource.includes('production_graph_authority: true'), 'person and scene planning are published under the owned graph generation');
 ok(routeSource.includes("assertLegacyMutationAllowed(req.params.id, 'scene_asset_repair')"), 'legacy scene repair is blocked at the server boundary');
 const transition = fs.readFileSync(path.join(__dirname, '../public/story-ad/views/briefAssetPlanTransition.js'), 'utf8');
 ok(!transition.includes("runStage('scene-config'"), 'plot-to-assets transition no longer starts legacy scene generation');

@@ -34,17 +34,34 @@ function candidateHistoryKind(candidateId) {
   return `${CANDIDATE_HISTORY_PREFIX}${clean(candidateId, 160)}`;
 }
 
-function promotionBlockers(taskId) {
-  const runs = storage.listGenerationRuns({ work_id: taskId });
-  return runs.filter(run => (
-    ACTIVE_RUN_STATES.has(clean(run.state, 40).toLowerCase())
-    || clean(run.state, 40).toLowerCase() === 'billing_unknown'
-    || clean(run.billing_state, 40).toLowerCase() === 'unknown'
-  ));
+function quarantinedBillingUnknown(run = {}) {
+  return clean(run.state, 40).toLowerCase() === 'billing_unknown'
+    && clean(run.billing_state, 40).toLowerCase() === 'unknown'
+    && run.retry_blocked === true
+    && run.automatic_retry_allowed !== true;
 }
 
-function assertPromotionAllowed(taskId) {
-  const blockers = promotionBlockers(taskId);
+function ownedProductionGraphRun(run = {}, options = {}) {
+  const generationId = clean(options.generation_id || options.generationId, 160);
+  return options.production_graph_authority === true
+    && generationId
+    && clean(run.domain, 80) === 'production_assets'
+    && clean(run.orchestration_job_id, 160) === generationId;
+}
+
+function promotionBlockers(taskId, options = {}) {
+  const runs = storage.listGenerationRuns({ work_id: taskId });
+  return runs.filter(run => {
+    if (ownedProductionGraphRun(run, options)) return false;
+    const state = clean(run.state, 40).toLowerCase();
+    const billingUnknown = state === 'billing_unknown' || clean(run.billing_state, 40).toLowerCase() === 'unknown';
+    if (billingUnknown && options.production_graph_authority === true && quarantinedBillingUnknown(run)) return false;
+    return ACTIVE_RUN_STATES.has(state) || billingUnknown;
+  });
+}
+
+function assertPromotionAllowed(taskId, options = {}) {
+  const blockers = promotionBlockers(taskId, options);
   if (!blockers.length) return true;
   throw fail(
     '当前方案仍有运行中或计费未核清的生成记录，禁止切换新 Active',
@@ -144,8 +161,8 @@ function disablePrevious(taskId, nextAuthority, at) {
   });
 }
 
-function activate(taskId, activePlan = {}, activeRecord = {}, candidate = null) {
-  assertPromotionAllowed(taskId);
+function activate(taskId, activePlan = {}, activeRecord = {}, candidate = null, options = {}) {
+  assertPromotionAllowed(taskId, options);
   const authority = createAuthority(taskId, activePlan, activeRecord);
   const at = authority.activated_at;
   disablePrevious(taskId, authority, at);

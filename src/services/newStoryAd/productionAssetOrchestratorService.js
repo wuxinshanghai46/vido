@@ -174,8 +174,8 @@ function create({ service, storage, generateAndCommitSubjectAssets, persistProvi
   async function run({ taskId, body, job, userId, user }) {
     let graph = productionGraph.publish(taskId, { compiled_by: 'unified_orchestrator:cutover' });
     try {
-      await service.updatePersonPlan(taskId, { generation_id: job.generationId, user });
-      await service.generateSceneConfig(taskId, { generation_id: job.generationId });
+      await service.updatePersonPlan(taskId, { generation_id: job.generationId, user, production_graph_authority: true });
+      await service.generateSceneConfig(taskId, { generation_id: job.generationId, production_graph_authority: true });
       const executionPlan = plan(taskId, body);
       assertConfirmation({ ...body, plan_fingerprint: executionPlan.plan_fingerprint }, executionPlan);
       storage.saveOutput(taskId, 'production_asset_cost_plan', { ...executionPlan, confirmed_at: new Date().toISOString(),
