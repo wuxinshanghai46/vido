@@ -796,6 +796,13 @@ async function generateSceneConfig(taskId, options = {}) {
 }
 
 async function updatePersonPlan(taskId, options = {}) {
+  const task = storage.getTask(taskId);
+  const ctx = storage.getOutput(taskId, 'context') || task?.request || {};
+  const current = assetPlanPublication.currentPlan(taskId);
+  if (!assetPlan.complete(current, ctx)) {
+    await assetPlan.generate(taskId, options);
+    return assetPlanPublication.currentPlan(taskId)?.cast_profiles || [];
+  }
   return assetPlan.replanPerson(taskId, options);
 }
 

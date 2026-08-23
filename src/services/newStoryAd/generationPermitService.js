@@ -8,7 +8,10 @@ const authorityLifecycle = require('./authorityLifecycleService');
 
 const PROTECTED_STAGES = new Set([
   'subject_assets', 'person_provider_sync', 'scene_asset', 'visual_assets', 'scene_panorama', 'product_asset',
-  'person_plan', 'scene_plan', 'scene_config', 'storyboard', 'line_art',
+  // person_plan / scene_plan / scene_config create or repair the Active Plan.
+  // Requiring an Active Plan before these stages can run creates a bootstrap
+  // deadlock (active_plan_missing -> plan generator is forbidden to run).
+  'storyboard', 'line_art',
   'keyframes', 'tts', 'video', 'media', 'compose', 'final_video', 'full',
 ]);
 

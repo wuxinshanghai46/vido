@@ -252,7 +252,6 @@ export async function mount(host, context) {
   const personPlanRequestKey = `person-plan:${bundle.project.id}:${bundle.revisions?.content || 1}:${globalThis.crypto?.randomUUID?.() || Date.now()}`;
   const personPlanRequestGuard = createPersonPlanRequestGuard(personPlanRequestKey);
   const contractDisabled = assetPlanReady ? '' : 'disabled title="请先更新当前人物方案"';
-  const assetScopeLabel = narrative ? '人物与动物' : '人物、动物与商品主体';
   const missingSubjectCount = (assets.people || []).filter(item => subjectNeedsGeneration(item, 'human')).length
     + (assets.animals || []).filter(item => subjectNeedsGeneration(item, 'animal')).length;
   const checkpointRecovery = { ...checkpointRecoverySummary(assets.people || []), plan_eligible: assetPlanReady };
@@ -267,11 +266,7 @@ export async function mount(host, context) {
     ${assetPlanStageView({ assetPlanReady, recoveryActive: recoveryOwnsStage, eligibility: personPlanEligibility, generationActive, missingSubjectCount, counts: { people: assets.people?.length, animals: assets.animals?.length, scenes: assets.scenes?.length } })}
     <div class="tabs"><button class="tab active" type="button" data-history-safe data-asset-filter="all">全部 ${total}</button>${assetGroups.map(([key, label]) => `<button class="tab" type="button" data-history-safe data-asset-filter="${key}">${label} ${assets[key]?.length || 0}</button>`).join('')}</div>
     <input class="hidden-input" hidden type="file" accept="image/png,image/jpeg,image/webp" data-asset-upload-file>
-    <div data-asset-sections>${renderSections(assets, total, contentMode, assetGroups, generationActive ? generationDisabled : contractDisabled)}</div>
-    <section class="step-completion-card ${assetPlanReady ? 'is-ready' : ''}">
-      <div><b>${assetPlanReady ? '资产方案已建立' : '正在根据剧情提取资产方案'}</b><span>${assetPlanReady ? `请核对${assetScopeLabel}是否符合已确认剧情；确认后，当前方案会成为场景与分镜的权威输入。` : '资产规划完成前不会开放场景世界，页面会在后台任务完成后自动更新。'}</span></div>
-      <button class="btn primary" type="button" data-confirm-assets data-history-safe ${assetPlanReady ? '' : 'disabled'}>确认人物资产，进入场景世界</button>
-    </section>`;
+    <div data-asset-sections>${renderSections(assets, total, contentMode, assetGroups, generationActive ? generationDisabled : contractDisabled)}</div>`;
 
   bindMediaLightbox(host);
 
@@ -579,6 +574,7 @@ export async function mount(host, context) {
     await personPlanRequestGuard.run(async (requestKey) => {
       const { submitPersonPlanUpdate } = await import('./assetCenterPlanMigrationAction.js?v=20260823-account-voice-v178');
       return submitPersonPlanUpdate({ button, requestKey, confirmDialog, store, setButtonBusy, toast,
+        bundle,
         migrationOnly: button.dataset.releaseMigrationOnly === 'true', refresh: context.refreshShell });
     });
   });

@@ -71,8 +71,9 @@ assert.match(plotRoom, /plotPromptPreview/, '镜头提示必须按需加载实�
 assert.match(promptPreview, /prompt-preview/, '镜头提示必须读取后端实际编译结果');
 assert.match(promptPreview, /关键帧实际输入/, '界面必须标明关键帧真实输入');
 assert.match(promptPreview, /视频模型实际输入/, '界面必须标明视频模型真实输入');
-assert.match(status, />\$\{migrationOnly \? button : '生成人物方案'\}</, '过期人物方案只能呈现真实的生成动作');
+assert.match(status, />\$\{button\}<\/button>/, '过期人物方案只能呈现真实的生成动作');
 assert.doesNotMatch(status, /<button class="btn" type="button" disabled>\$\{migrationOnly/, '人物方案提示不得伪装成禁用按钮');
+assert.doesNotMatch(status, /status-tag|人物方案需要更新|文字方案确认后，再单独生成图片/, '人物方案入口不得保留旧状态标签或两步式提示');
 assert.match(pipelineSource, /new_story_ad\.lip_sync/, '逐字口型必须登记到模型调用管理');
 assert.match(pipelineSource, /new_story_ad\.sound_generation/, '环境声、音效、音乐生成必须登记到模型调用管理');
 assert.match(videoSource, /SOUND_GENERATION_MODEL_NOT_ALIGNED/, '视频模型和声音模型配置不一致时必须停止，不能文本假生效');

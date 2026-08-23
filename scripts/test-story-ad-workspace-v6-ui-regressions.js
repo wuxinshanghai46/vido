@@ -138,11 +138,13 @@ assert.match(referenceActionStateSource, /contentMode === 'commercial_subject' \
 assert.match(briefView, /data-ai-brief>AI 帮写/, '未添加参考视频时必须提供广告目标 AI 帮写入口');
 assert.match(briefFormPayload, /brief_source:\s*'user'/, '正式表单载荷必须把手填或 AI 帮写后的内容目标标记为用户权威，参考材料不得覆盖');
 assert.match(assets, /assetPlanStageView/, '资产中心必须通过统一阶段视图渲染人物生成入口');
-assert.match(assetPlanStageStatus, /确认并生成全部缺失人物图片/, '主体批量入口必须明确点击确认后才会提交真实人物图片生成');
-assert.match(assetPlanStageStatus, /进入资产中心不会自动生成图片/, '资产中心必须明确区分文字方案与付费图片生成');
+assert.match(assetPlanStageStatus, /data-generate-missing-subjects[\s\S]*生成人物方案/, '主体批量入口必须使用统一的人物方案生成动作');
+assert.doesNotMatch(assetPlanStageStatus, /文字方案已建立|图片未生成|进入资产中心不会自动生成图片/, '资产中心不得继续暴露旧两步式人物方案流程');
 assert.match(projectStoreSource, /terminalProgress[\s\S]*!project\.active_generation_id && \(terminalProgress \|\|/, '方案内部完成且活动任务清空时必须刷新资产页，不得被旧 running 状态卡住');
-assert.match(assetPlanStageStatus, /人物资产已齐全，进入场景世界/, '人物图片已经齐全时，页面顶部必须提供可见的下一步入口');
-assert.match(assets, /querySelectorAll\('\[data-confirm-assets\]'\)/, '顶部与底部的人物确认入口都必须绑定真实点击事件');
+assert.match(assetPlanStageStatus, /确认人物资产，进入场景世界/, '人物图片已经齐全时，页面顶部必须提供可见的确认入口');
+assert.doesNotMatch(assetPlanStageStatus, /data-confirm-assets[^>]*disabled/, '人物已经齐全时，确认入口不得被无关的后台生成任务错误禁用');
+assert.match(assets, /querySelectorAll\('\[data-confirm-assets\]'\)/, '顶部人物确认入口必须绑定真实点击事件');
+assert.doesNotMatch(assets, /step-completion-card[\s\S]*data-confirm-assets/, '资产列表底部不得重复放置用户难以发现的人物确认入口');
 assert.match(briefView, /mode:\s*'brief_goal'/, '剧情与广告剧本帮写必须使用独立模式，不能提前生成分镜或调用视觉模型');
 assert.match(briefView, /剧情和广告都会整理成正常剧本式结构；保留你写明的人物、场景、故事、商品与业务事实，不提前生成分镜/, '目标页必须解释 AI 帮写的结构与职责边界');
 assert.match(briefView, /brief-config-section full/, '基础信息必须使用独立设置分区，不能继续平铺在旧表单网格');
@@ -527,20 +529,20 @@ const dossierModule = loadBrowserModule(
 assert.match(assets, /data-confirm-assets/);
 assert.doesNotMatch(assets, /asset-missing-strip/, '空分类不能被前端猜测为合同缺失；必需项只由版本合同判定');
 assert.match(assets, /先完善剧情所需的人物、动物或场景/, '纯剧情空状态不得提示商品或 LOGO');
-assert.match(assets, /const assetScopeLabel = narrative \? '人物与动物'/, '纯剧情人物步骤不得要求核对商品或混入场景流程');
+assert.doesNotMatch(assetPlanStageStatus, /商品|场景方案/, '纯剧情人物步骤不得要求核对商品或混入场景流程');
 assert.doesNotMatch(assets, /版本合同未通过|Active Plan|合同通过后/, '普通用户界面不得暴露内部版本合同术语');
 assert.match(planningStatusSource, /人物方案/, '人物页必须显示独立的人物方案状态');
 assert.match(scenePlanningStatusSource, /场景方案/, '场景页必须显示独立的场景方案状态');
-assert.match(planningStatusSource, /不修改场景方案、场景图片和人物在场景中的站位绑定/, '人物方案更新必须明确保护场景与站位绑定');
+assert.match(planningStatusSource, /已确认剧情和现有人物资产补全详细人物方案/, '人物方案必须明确使用已确认剧情和现有人物资产');
 assert.match(scenePlanningStatusSource, /不修改人物身份、人物图片和人物造型/, '场景方案更新必须明确保护人物资产');
-assert.match(planningStatusSource, /不会生成图片/, '分域方案更新必须明确不产生图片生成');
+assert.match(planningStatusSource, /继续生成缺失的人物图片/, '人物方案动作必须真实串联缺失人物图片生成');
 assert.match(assets, /generationActive/, '资产中心必须统一读取当前生成状态');
-assert.match(planningStatusSource, /正在更新人物方案/, '人物方案运行中必须显示准确名称和进行中状态');
+assert.match(planningStatusSource, /正在生成人物方案/, '人物方案运行中必须显示准确名称和进行中状态');
 assert.match(scenePlanningStatusSource, /正在更新场景方案/, '场景方案运行中必须显示准确名称和进行中状态');
 assert.match(planningStatusSource, /data-update-person-plan/, '人物方案必须使用独立提交入口');
 assert.match(scenePlanningStatusSource, /data-update-scene-plan/, '场景方案必须使用独立提交入口');
 assert.match(assets, /data-select-person \$\{generationDisabled\}/, '后台生成运行中不得继续选择或替换人物素材');
-assert.match(planningStatusSource, /文字方案确认后，再单独生成图片/, '必须明确文字方案更新与后续图片生成的顺序');
+assert.doesNotMatch(planningStatusSource, /文字方案确认后，再单独生成图片|人物方案需要更新|status-tag/, '人物方案不得保留旧两步式提示或冗余状态标签');
 const blockedVisualFailure = {
   project: { status: 'failed', error_code: 'GENERATION_BILLING_STATE_UNKNOWN', error: '计费状态尚未确认' },
   navigation: { asset_plan_eligibility: { eligible: false } },
@@ -575,7 +577,7 @@ assert.doesNotMatch(assets, /当前没有通过本版本合同的 Active Plan/, 
 assert.match(assets, /asset_setup_confirmed:\s*true/);
 assert.match(assets, /view=scene/, '人物资产确认后必须进入独立场景流程');
 assert.match(assetPlanStageStatus, /asset-visual-next-step/, '进入人物资产步骤后必须明确展示人物视觉生成的下一步');
-assert.match(assetPlanStageStatus, /进入资产中心不会自动生成图片/, '必须明确区分零调用方案创建与付费视觉生成');
+assert.match(assetPlanStageStatus, /系统将使用完整人物资产生成当前缺失的/, '必须明确人物图片使用完整资产并只生成缺失项');
 assert.match(assetPlanStageStatus, /data-generate-missing-subjects/, '必须提供通用的缺失人物和动物生成入口');
 assert.doesNotMatch(assets, /data-show-pending-scenes/, '人物资产步骤不得继续混入待生成场景入口');
 assert.match(sceneWorldPage, /data-generate-base-scene/, '独立场景步骤必须提供逐场景生成入口');
@@ -796,8 +798,14 @@ assert.match(workspaceCss, /\.drawer\s*\{[^}]*grid-template-rows:\s*auto minmax\
 assert.match(workspaceCss, /\.drawer-content\s*\{[^}]*overflow-y:\s*auto;/s);
 const referenceProgressCss = read('public/story-ad/reference-progress.css');
 const platformCss = read('public/story-ad/styles.css');
+const dialogueThemeCss = read('public/story-ad/dialogue-theme.css');
 const storyAdPage = read('public/story-ad/index.html');
 assert.match(storyAdPage, /\/story-ad\/reference-progress\.css/, '合同级参考分析状态样式必须由页面入口加载');
+assert.ok(storyAdPage.indexOf('/story-ad/dialogue-theme.css') > storyAdPage.indexOf('/story-ad/workspace.css'), '剧情广告主题交互层必须在所有工作区样式之后加载');
+assert.match(platformCss, /\.btn:not\(:disabled\):hover, \.icon-btn:not\(:disabled\):hover/, '全模块普通按钮悬停不得命中禁用按钮');
+assert.match(platformCss, /\.btn:disabled:not\(\[aria-busy="true"\]\):hover[^}]*background: var\(--surface-2\)/, '禁用按钮悬停时必须保持禁用外观，不能反向变成可点击态');
+assert.match(dialogueThemeCss, /\.btn\.primary\{[^}]*linear-gradient[^}]*color:#fff/, '全模块主按钮默认态必须保持紫色主操作外观');
+assert.match(dialogueThemeCss, /\.btn\.primary:not\(:disabled\):hover\{[^}]*linear-gradient[^}]*color:#fff/, '全模块主按钮悬停态必须是同色系增强，不能反向变暗');
 assert.match(referenceProgressCss, /\.reference-contract-state\.is-missing/);
 assert.match(referenceProgressCss, /var\(--amber\)/, '缺失合同必须使用平台已定义的警告主题色');
 assert.doesNotMatch(referenceProgressCss, /var\(--warning\)/, '不得引用未定义的主题变量');

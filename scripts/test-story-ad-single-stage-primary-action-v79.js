@@ -44,11 +44,18 @@ assert.match(pending, /data-generate-recovery disabled[^>]*>生成剩余 3 项/)
 const completedButStale = page('completed', { missing: 0, eligible: false });
 assert.doesNotMatch(completedButStale, /data-checkpoint-recovery-banner/);
 assert.match(completedButStale, /data-update-person-plan/);
-assert.match(completedButStale, /人物方案需要更新/);
+assert.match(completedButStale, /生成人物方案/);
+assert.doesNotMatch(completedButStale, /人物方案需要更新/);
 const ordinaryStale = planSandbox.__stage({ assetPlanReady: false, recoveryActive: false, eligibility: { issues: ['person_plan_stale'] } });
 assert.match(ordinaryStale, /data-update-person-plan/);
 const readyRecovery = page('not_billed', { eligible: true });
 assert.doesNotMatch(readyRecovery, /data-generate-missing-subjects|data-confirm-assets|asset-visual-next-step/);
 assert.match(readyRecovery, /data-generate-recovery[^>]*>生成剩余 3 项/);
+const completedWithBackgroundTask = planSandbox.__stage({
+  assetPlanReady: true, recoveryActive: false, generationActive: true, missingSubjectCount: 0,
+  counts: { people: 2, animals: 0, scenes: 1 },
+});
+assert.match(completedWithBackgroundTask, /data-confirm-assets[^>]*>确认人物资产，进入场景世界/);
+assert.doesNotMatch(completedWithBackgroundTask, /data-confirm-assets[^>]*disabled/, '确认人物资产不是生成动作，不得被无关后台任务禁用');
 
 console.log(JSON.stringify({ passed: true, actionable_primary_actions: 1, pending_plan_cards: 0, completed_stale_plan_cards: 1, model_calls: 0 }));

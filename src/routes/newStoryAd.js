@@ -19,7 +19,7 @@ const referenceVideoAnalyses = require('../services/newStoryAd/referenceVideoAna
 const referenceAnalysisTaskSync = require('../services/newStoryAd/referenceAnalysisTaskSyncService');
 const referenceDetach = require('../services/newStoryAd/referenceDetachService');
 const generationPermit = require('../services/newStoryAd/generationPermitService');
-const personDossiers = require('../services/newStoryAd/personDossierService'), propAssetService = require('../services/newStoryAd/propAssetService'), registerPropRoutes = require('./newStoryAd/propRoutes');
+const personDossiers = require('../services/newStoryAd/personDossierService'), propAssetService = require('../services/newStoryAd/propAssetService'), registerPropRoutes = require('./newStoryAd/propRoutes'), registerPersonPlanGenerationRoute = require('./newStoryAd/personPlanGenerationRoute');
 const subjectAssetPersistence = require('./newStoryAd/subjectAssetPersistence');
 const personProviderAssets = require('../services/newStoryAd/personProviderAssetLifecycleService');
 const registerPersonDossierApprovalRoute = require('./newStoryAd/personDossierApprovalRoute');
@@ -1909,11 +1909,7 @@ router.post('/tasks/:id/scene-config', asyncRoute(async (req, res) => {
   }) });
 }));
 
-router.post('/tasks/:id/person-plan', asyncRoute(async (req, res) => {
-  return queueTaskStage(req, res, 'person_plan', job => service.updatePersonPlan(req.params.id, {
-    generation_id: job.generationId,
-  }), { deadlineMs: task => service.sceneConfigStageBudgetMs(task.id, {}) });
-}));
+registerPersonPlanGenerationRoute(router, { asyncRoute, queueTaskStage, userFromReq, service, storage, generationPermit, generateAndCommitSubjectAssets });
 
 router.post('/tasks/:id/scene-plan', asyncRoute(async (req, res) => {
   return queueTaskStage(req, res, 'scene_plan', job => service.updateScenePlan(req.params.id, {

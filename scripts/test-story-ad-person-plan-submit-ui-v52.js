@@ -21,19 +21,22 @@ const compatible = sandbox.__view({
   issues: ['active_plan_bundle_mismatch'],
   release_migration: { compatible: true, migration_required: true },
 });
-assert.match(compatible, /方案可安全升级/);
-assert.match(compatible, /模型调用为 0/);
+assert.match(compatible, /生成人物方案/);
+assert.match(compatible, /复用兼容方案并生成缺失的人物图片/);
+assert.doesNotMatch(compatible, /status-tag|方案可安全升级/);
 assert.match(compatible, /data-release-migration-only="true"/);
 const incompatible = sandbox.__view({
   issues: ['active_plan_input_fingerprint_mismatch'],
   release_migration: { compatible: false, migration_required: false },
 });
-assert.match(incompatible, /人物方案需要更新/);
 assert.match(incompatible, /生成人物方案/);
+assert.match(incompatible, /补全详细人物方案，并继续生成缺失的人物图片/);
+assert.doesNotMatch(incompatible, /人物方案需要更新|文字方案确认后，再单独生成图片/);
 assert.doesNotMatch(incompatible, /<button[^>]+disabled[^>]*>文字方案确认后/);
 assert.doesNotMatch(incompatible, /方案可安全升级/);
 const actionSource = fs.readFileSync(path.join(root, 'public/story-ad/views/assetCenterPlanMigrationAction.js'), 'utf8');
-assert(actionSource.includes("store.runStage('person-plan', { request_key: requestKey })"), 'person plan submission must send the guard request key');
+assert(actionSource.includes("store.runStage('person-plan', { request_key: requestKey })"), 'person plan and subject image submission must send the guard request key');
+assert.match(actionSource, /人物方案和缺失图片已进入同一个生成任务/);
 assert(actionSource.includes('result?.job?.support_id || result?.job?.id'), 'accepted job must expose a support id to the user');
 
 // Exercise the exact guard used by the event handler with a real store-shaped

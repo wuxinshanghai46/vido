@@ -37,11 +37,12 @@ assert(!assetView.includes('data-generate-visual-assets'), 'asset center must no
 assert(sceneWorldPage.includes('data-generate-base-scene'), 'scene workflow must expose one independent generation action per scene');
 assert(billingRetryView.includes("store.runStage('visual-assets'"));
 assert(billingRetryView.includes('同时生成人物与场景'));
-assert(planningStatusView.includes('当前内容的人物方案'), '人物合同失效时必须只给出人物方案第一步');
-assert(planningStatusView.includes('不修改场景方案、场景图片和人物在场景中的站位绑定'), '人物更新提示必须明确保护场景及站位绑定');
+assert(planningStatusView.includes('生成人物方案'), '人物合同失效时必须给出统一的人物生成动作');
+assert(planningStatusView.includes('现有人物资产补全详细人物方案'), '人物生成必须明确使用现有人物资产补全详细方案');
 assert.strictEqual((planningStatusView.match(/data-update-person-plan/g) || []).length, 1, '人物合同失效提示只能提供一个人物方案更新入口');
 assert(planningStatusView.includes('const button = generationActive ?'), '人物规划按钮必须区分运行中与空闲状态');
-assert(planningStatusView.includes("'正在更新人物方案'"), '人物规划按钮运行中必须展示明确状态');
+assert(planningStatusView.includes("'正在生成人物方案…'"), '人物规划按钮运行中必须展示明确状态');
+assert(!planningStatusView.includes('人物方案需要更新') && !planningStatusView.includes('文字方案确认后，再单独生成图片'), '旧状态标签和两步式提示必须删除');
 assert(!planningStatusView.includes('人物与场景方案'), '人物页不得继续显示合并方案提示');
 assert(scenePlanStatus.includes('当前内容的场景方案'), '场景合同失效时必须只给出场景方案第一步');
 assert(scenePlanStatus.includes('不修改人物身份、人物图片和人物造型'), '场景更新提示必须明确保护人物资产');

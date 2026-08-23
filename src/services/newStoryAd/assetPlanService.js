@@ -21,6 +21,7 @@ const storyFactsPrompt = require('./storyFactsPromptService');
 const assetPlanPublication = require('./assetPlanPublicationService');
 const checkpointLineage = require('./assetPlanCheckpointLineageService');
 const sectionRecovery = require('./assetPlanSectionRecoveryContractService');
+const subjectProfileText = require('./subjectProfileTextService');
 
 const ASSET_PLAN_PROJECTION_VERSION = 15;
 const ASSET_PLAN_DRAFT_CHECKPOINT_KIND = 'asset_plan_draft_checkpoint';
@@ -939,6 +940,8 @@ function recoverySectionValidators(ctx = {}) {
       if (!name || /^(?:出镜人物|人物|角色|主角)\s*\d*$/u.test(name)) issues.push(`${prefix}.descriptive_name_missing`);
       if (!/\d{1,3}\s*(?:岁|~|～|-|—|–|至|到)/u.test(age)) issues.push(`${prefix}.concrete_age_missing`);
       if (!ethnicity) issues.push(`${prefix}.ethnicity_design_missing`);
+      const detailQuality = subjectProfileText.assistedProfileQuality(validatedProfile);
+      detailQuality.issues.forEach(field => issues.push(`${prefix}.${field}_detail_incomplete`));
       if (['background', 'ambient', 'incidental', 'scene_extra', 'crowd', 'non_asset'].includes(cleanText(validatedProfile.asset_scope || '', 80).toLowerCase())) {
         issues.push(`${prefix}.incidental_person_must_not_be_asset`);
       }
@@ -1940,6 +1943,7 @@ async function generate(taskId, options = {}) {
       '先识别跨时代人物关系，再建立人物方案：只有原文明确“本人穿越、两人共同穿越、长生者本人活到现代、同一身份来到未来”时，identity_continuity 才能写 same_person，古今姓名保持不变；“转生、转世、轮回、投胎、来生、后世化身”必须写 reincarnation，视为新的独立人物身份，禁止沿用前世姓名。',
       '人物资产只包含需要跨镜保持身份一致的主要剧情人物。人流、路人、群演、商场顾客群、草地远景人群、只露手或局部身体的人、无持续身份的背影剪影、半透明数字人形和背景 AI 代理必须归入场景氛围，不得建立人物资产。',
       '每个主要人物必须提供具体原创名称、数字年龄或年龄区间、原创角色的族裔/地域外貌设计、身份职责和 asset_scope=primary。参考真人未明确的族裔不得冒充事实；应依据已确认地域与剧情设定给出可编辑的原创设计，确实无法确定时明确标记待用户确认。',
+      '人物方案必须按现有人物资产和剧情证据详细展开，不得用一句抽象概括代替：appearanceText 至少覆盖脸型五官、体型体态、肤色肤质、气质神态；wardrobeText 至少覆盖上装、下装、鞋履、颜色、材质、配饰；hairMakeupText 至少覆盖发型发色、妆容肤质、眼镜或首饰；negativeText 至少覆盖身份年龄、发型妆造、服装配饰和常见 AI 瑕疵。已有用户确认字段是事实权威，只能补缺项，禁止改写。',
       '转世人物必须在对应现代 look_profile.character_name 写出自己的正式姓名；原文没有提供时也必须生成一个符合现代背景的正式姓名，并将 name_source 写为 planner_generated，不能写“转世女主、现代女子、云知月（现代）”等占位名或沿用前世姓名。',
       '同一时代内的普通换装可使用多个 look_profiles；古代与现代、前世与今生等跨时代状态不得作为同一人物资产的两套造型交付，必须由平台拆成独立人物档案。',
       `cast_profiles 必须严格输出 ${personCountContract.contract(ctx).planning_cast_count} 个剧情身份，而不是 ${personCountContract.contract(ctx).visual_asset_count} 张分时代素材卡。同一本人跨时代只占一个剧情身份并保留多个 look_profiles；转世必须单列为新身份和新姓名。平台会在规划通过后再投影为分时代素材卡。`,
@@ -1960,7 +1964,7 @@ async function generate(taskId, options = {}) {
   "story_seed":${currentContentMode === 'narrative_story'
     ? '{"logline":"故事梗概","opening":"","development":"","turning_point":"","resolution":"","plot_beats":[{"id":"稳定节拍ID","phase":"opening/development/turning_point/resolution/transition","era":"来自输入的时间层/时期","time_anchor":"明确时间位置","location":"具体地点","production_state":"该节拍可见环境状态","production_relation":{"era":"same/continuous/changed","time":"same/continuous/changed","location":"same/continuous/changed","environment":"same/continuous/changed"},"production_requirements":{"layout":"布局事实","material_light":"材质光线事实","interaction":"动作区和路线事实","negative":"禁止内容"},"scene_change_reason":"关系说明","summary":"可见剧情动作","cause":"发生原因","consequence":"造成结果"}]}'
     : '{"logline":"广告故事梗概","opening":"","development":"","turning_point":"","resolution":""}'},
-  "cast_profiles": [{"id":"稳定人物ID","name":"具体原创人物名称","role":"剧情职责","age_range":"25~35岁","ethnicity":"原创角色的族裔或地域外貌设计","asset_scope":"primary","appearanceText":"原创外貌与气质","wardrobeText":"首个造型的兼容字段","look_profiles":[{"id":"稳定造型ID","name":"造型名称","story_state":"时代或剧情状态","scene_ids":["适用场景ID"],"scene_names":["适用场景名称"],"world_profile_id":"world_setting中的稳定ID","wardrobeText":"该造型固定服装鞋履配饰","hairMakeupText":"该造型固定发型妆容","negativeText":"该造型禁止项","continuityText":"该造型内部一致性","style_family":"知识风格ID或task_defined","wardrobe_contract":{"garment_system":{"mode":"one_piece/top_bottom/layered","items":[{"slot":"upper/lower/one_piece/ensemble/outerwear","type":"具体单品","evidence":"证据"}]},"footwear":{"type":"类型","color":"颜色","material":"材质","evidence":"证据"},"accessories":{"mode":"specified/none","items":[],"evidence":"证据"},"palette":{"colors":["主色","辅色"],"evidence":"证据"},"materials":[{"name":"材质","used_for":"位置","evidence":"证据"}],"negative_constraints":[],"knowledge_doc_ids":[]}}],"performanceText":"表演与动作","continuityText":"人物身份跨镜一致性","negativeText":"全局禁止项"}],
+  "cast_profiles": [{"id":"稳定人物ID","name":"具体原创人物名称","role":"剧情职责","age_range":"25~35岁","ethnicity":"原创角色的族裔或地域外貌设计","asset_scope":"primary","appearanceText":"80-160字；详细描述脸型五官、体型体态、肤色肤质、气质神态与可识别特征","wardrobeText":"60-160字；详细描述上装、下装、鞋履、颜色、材质和配饰","hairMakeupText":"50-120字；详细描述发型发色、妆容肤质、眼镜发饰或首饰","look_profiles":[{"id":"稳定造型ID","name":"造型名称","story_state":"时代或剧情状态","scene_ids":["适用场景ID"],"scene_names":["适用场景名称"],"world_profile_id":"world_setting中的稳定ID","wardrobeText":"该造型固定服装鞋履配饰","hairMakeupText":"该造型固定发型妆容","negativeText":"该造型禁止项","continuityText":"该造型内部一致性","style_family":"知识风格ID或task_defined","wardrobe_contract":{"garment_system":{"mode":"one_piece/top_bottom/layered","items":[{"slot":"upper/lower/one_piece/ensemble/outerwear","type":"具体单品","evidence":"证据"}]},"footwear":{"type":"类型","color":"颜色","material":"材质","evidence":"证据"},"accessories":{"mode":"specified/none","items":[],"evidence":"证据"},"palette":{"colors":["主色","辅色"],"evidence":"证据"},"materials":[{"name":"材质","used_for":"位置","evidence":"证据"}],"negative_constraints":[],"knowledge_doc_ids":[]}}],"performanceText":"表演与动作","continuityText":"人物身份跨镜一致性","negativeText":"至少45字；明确身份年龄、发型妆造、服装配饰和AI瑕疵禁止项"}],
   "prop_plan": [{"id":"稳定道具ID","name":"名称","type":"${currentContentMode === 'narrative_story' ? 'wearable_accessory/story_prop/fixed_scene_object' : 'advertised_product/wearable_accessory/story_prop/fixed_scene_object'}","description":"身份、材质、比例和使用方式","states":[],"owner_id":"","scene_id":""}],
   "scene_plan": {
     "business_boundary":"业务边界","advertised_subject":"${currentContentMode === 'narrative_story' ? '' : '明确广告主体'}","cast_mode":"single/dual/multi/no_human/animal/human_pet/auto","scene_mode":"single/multi",
