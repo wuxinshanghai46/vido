@@ -34,6 +34,9 @@ assert(source.includes('const before = await releaseReadiness(releaseDir);'), 'p
 assert(!source.includes('const before = await releaseReadiness(previousTarget);'), 'a defective current reader must not run before its replacement candidate exists');
 assert(pm2ReleaseSource.includes('waitForPortFree(4601);'), 'candidate startup must wait for stale candidate port shutdown');
 assert(pm2ReleaseSource.indexOf('waitForPortFree(4601);') < pm2ReleaseSource.indexOf('start(candidateName, 4601);'), 'port release must complete before candidate start');
+assert(source.includes("previousMigrationSetId === targetMigrationSetId"), 'an already-applied migration set must not rescan the full historical database');
+assert(source.includes("reason: 'same_migration_set'"), 'same migration-set skip must remain explicit and auditable');
+assert(source.indexOf('previousMigrationSetId === targetMigrationSetId') < source.indexOf("scripts/migrate-new-story-ad-systemic-state.js`"), 'migration-set compatibility must be checked before the legacy full migration command');
 assert(source.includes('releaseControlDrained = true'), '发布器必须单独记录停写状态');
 assert(source.includes('&& !releaseControlDrained && !systemicBackupCreated'), 'rollback must not early-return after draining or systemic backup creation');
 assert.strictEqual((source.match(/cutoverStarted = true/g) || []).length, 1, '切流标志只能在真实切换点设置一次');

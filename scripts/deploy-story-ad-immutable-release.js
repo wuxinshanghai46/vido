@@ -62,6 +62,7 @@ let effectiveBaseReleaseDir = baseReleaseDir;
 let previousBundleId = '';
 let previousBuildId = '';
 let previousContractVersion = '';
+let previousMigrationSetId = '';
 let previousNodeRuntimeBin = '';
 let cutoverStarted = false;
 let releaseControlDrained = false;
@@ -233,6 +234,15 @@ async function createSystemicBackup() {
 }
 
 async function migrateSystemicState() {
+  const targetMigrationSetId = String(releaseBundle.identity().migration_set_id || '');
+  if (previousMigrationSetId && previousMigrationSetId === targetMigrationSetId) {
+    return {
+      skipped: true,
+      reason: 'same_migration_set',
+      migration_set_id: targetMigrationSetId,
+      model_calls_started: 0,
+    };
+  }
   const runner = `${previousTarget}/scripts/run-with-pm2-env.js`;
   const dryRun = parseJson(await exec(`cd ${quote(releaseDir)} && node ${quote(runner)} vido node scripts/migrate-new-story-ad-systemic-state.js`));
   if (dryRun.read_only !== true || Number(dryRun.model_calls_started || 0) !== 0) {
@@ -347,6 +357,7 @@ client.on('ready', async () => {
     previousBundleId = String(preVersion.release_bundle_id || '');
     previousBuildId = String(preVersion.build_id || '');
     previousContractVersion = String(preVersion.contract_version || '');
+    previousMigrationSetId = String(preVersion.release_bundle?.migration_set_id || '');
     const previousRuntimeVersion = String(preVersion.release_bundle?.node_runtime_version || '');
     const previousRuntimePlatform = String(preVersion.release_bundle?.node_runtime_platform || '');
     if (/^v\d+\.\d+\.\d+$/.test(previousRuntimeVersion) && /^[a-z0-9._-]+$/i.test(previousRuntimePlatform)) {
