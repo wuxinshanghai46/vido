@@ -57,12 +57,17 @@ assert.equal(jobs.classifyFailure(new Error('provider returned HTTP 403 Unauthor
 
 const releaseCheckSource = fs.readFileSync(path.join(root, 'scripts/check-new-story-ad-active-tasks.js'), 'utf8');
 const repositorySource = fs.readFileSync(path.join(root, 'src/repositories/contentRecordRepository.js'), 'utf8');
+const sqliteSource = fs.readFileSync(path.join(root, 'src/db/sqlite.js'), 'utf8');
 assert(releaseCheckSource.includes('storage.listActiveTaskStates(1000)'), 'release task check must use projected task state');
 assert(releaseCheckSource.includes('storage.listUnknownBillingStates(2000)'), 'release billing check must use projected billing state');
 assert(!releaseCheckSource.includes('storage.readDb()'), 'release checks must not materialize the full database');
 assert(!repositorySource.includes('json_extract('), 'production Python SQLite does not provide JSON1; projected checks must use baseline SQLite');
 assert(repositorySource.includes(`payload_json LIKE '%"active_generation_id"%'`), 'active task scan must filter candidate rows in SQLite');
 assert(repositorySource.includes(`payload_json LIKE '%"billing_state":"unknown"%'`), 'billing scan must filter candidate rows in SQLite');
+assert(sqliteSource.indexOf('PRAGMA busy_timeout = 5000') < sqliteSource.indexOf('current_journal_mode = conn.execute("PRAGMA journal_mode")'),
+  'Python SQLite bridge must set busy timeout before inspecting journal mode');
+assert(sqliteSource.includes('if str(current_journal_mode).lower() != "wal"'),
+  'Python SQLite bridge must not reassign WAL mode on every short-lived connection');
 
 console.log(JSON.stringify({ passed: true, projected_artifact_ids: ids.length, full_payload_scan: false,
   seed_payload_scan: false, release_db_snapshot_scan: false, write_batch_full_snapshot: false,

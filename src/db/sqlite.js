@@ -129,10 +129,15 @@ def emit(value):
     sys.stdout.buffer.write(json.dumps(value, ensure_ascii=False).encode("utf-8", "surrogatepass"))
 conn = sqlite3.connect(req["dbPath"])
 conn.row_factory = sqlite3.Row
-conn.execute("PRAGMA journal_mode = WAL")
+conn.execute("PRAGMA busy_timeout = 5000")
+# WAL mode persists in the database. Re-applying the assignment on every
+# short-lived bridge process takes a write lock and can make a healthy
+# production database report SQLITE_BUSY while another request is committing.
+current_journal_mode = conn.execute("PRAGMA journal_mode").fetchone()[0]
+if str(current_journal_mode).lower() != "wal":
+    conn.execute("PRAGMA journal_mode = WAL")
 conn.execute("PRAGMA synchronous = NORMAL")
 conn.execute("PRAGMA foreign_keys = ON")
-conn.execute("PRAGMA busy_timeout = 5000")
 try:
     op = req["op"]
     sql = req.get("sql") or ""
