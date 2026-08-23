@@ -115,20 +115,22 @@ async function main() {
 
   const ui = read('public/story-ad/views/assetCenterView.js');
   const planningUi = read('public/story-ad/views/assetCenterPlanningDetails.js');
+  const personFormUi = read('public/story-ad/views/assetCenterPersonForm.js');
   const personSourceUi = read('public/story-ad/views/assetCenterPersonSources.js');
   const dossierShowcase = read('public/story-ad/views/personDossierShowcase.js');
   const sharedUi = read('public/story-ad/components/ui.js');
+  const mediaLightboxUi = read('public/story-ad/views/mediaLightbox.js');
   const workspaceCss = read('public/story-ad/workspace.css');
   ['data-generate-subjects', 'data-select-person', 'data-upload-real-person'].forEach(marker => assert(ui.includes(marker), `缺少人物来源入口 ${marker}`));
   assert(!ui.includes("['props', '道具']"), '道具不得作为顶级资产分组');
   assert(!ui.includes("mediaSection('可复用原子素材'"), '不得展示底层可复用原子素材');
-  assert(ui.includes('data-person-edit') && planningUi.includes('data-owned-prop-form'), '人物编辑和随身道具入口必须存在');
+  assert(personFormUi.includes('data-person-edit') && planningUi.includes('data-owned-prop-form'), '人物编辑和随身道具入口必须存在');
   assert(personSourceUi.includes('rights_confirmed') && personSourceUi.includes('adult_confirmed'), '真人上传必须携带授权与成年确认');
   assert(ui.includes("store.runStage('subject-assets'") && ui.includes("store.runStage('product-assets'") && ui.includes("store.runStage('scene-assets'"), '人物、商品、场景必须走可轮询后台任务');
   ['基本信息', '形象展示', '表情记录', '服装拆解', '配饰与鞋履单品', '人物细节', '动作档案', '角色介绍'].forEach(label => assert(dossierShowcase.includes(label), `参考版人物档案缺少 ${label}`));
   assert(dossierShowcase.includes('2K 独立细节图') && dossierShowcase.includes('历史裁切图 · 建议重生成高清档案'), '人物档案必须区分高清独立细节和历史裁切图');
   assert(planningUi.includes('personDossierShowcase(item)') && planningUi.includes('bindMediaLightbox(drawer)'), '完整档案必须采用参考版布局并绑定图片灯箱');
-  assert(sharedUi.includes('data-media-zoom-url') && sharedUi.includes("keyEvent.key === 'ArrowRight'"), '单图必须支持点击放大和键盘切换');
+  assert(sharedUi.includes('data-media-zoom-url') && mediaLightboxUi.includes("event.key === 'ArrowRight'"), '单图必须支持点击放大和键盘切换');
   assert(workspaceCss.includes('.character-dossier-primary') && workspaceCss.includes('.media-lightbox'), '人物档案和大图灯箱样式必须存在');
 
   console.log(JSON.stringify({ passed: true, real_person_views: approved.view_images.length, action_categories: approved.base_actions.length, provider_assets: uploads.length, product_views: product.product_asset.view_images.length, reference_layout: true, image_lightbox: true }));

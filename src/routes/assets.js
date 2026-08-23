@@ -129,6 +129,35 @@ function serializeAsset(asset) {
       : (/local_actor_library_generated/i.test(source) || /fixed real actor asset|realistic actor|真人感演员|真人演员包/.test(actorText)
         ? 'synthetic_realistic_actor'
         : (/generated|ai/i.test(source) ? 'ai_generated' : '')));
+  const profile = metadata.subject_profile || metadata.profile || asset.subject_profile || {};
+  const personContract = asset.person_contract || metadata.person_contract || {};
+  const identityViews = normalizeAssetViewImages(asset.identity_views || metadata.identity_views || []);
+  const bodyViews = normalizeAssetViewImages(asset.body_views || metadata.body_views || viewImages);
+  const expressions = normalizeAssetViewImages(asset.expressions || metadata.expressions || []);
+  const baseActions = normalizeAssetViewImages(asset.base_actions || metadata.base_actions || []);
+  const dossierSheet = asset.dossier_sheet || metadata.dossier_sheet || null;
+  const nativeMasters = asset.native_masters || metadata.native_masters || {};
+  const portrait = nativeMasters.face?.image_url
+    || identityViews.find(view => ['face_front', 'portrait', 'front'].includes(String(view.key || view.id || '').toLowerCase()))?.image_url
+    || metadata.cover_image_url
+    || imageUrl;
+  const fullBody = nativeMasters.body?.image_url
+    || bodyViews.find(view => ['front', 'body_front'].includes(String(view.key || view.id || '').toLowerCase()))?.image_url
+    || imageUrl;
+  const personVerified = String(personContract.status || '').toLowerCase() === 'verified';
+  const crossViewPass = personContract.cross_view_qa?.pass === true
+    || personContract.verification?.state === 'verified';
+  const libraryReady = personVerified && crossViewPass && bodyViews.length >= 4
+    && asset.production_usable_actor !== false && metadata.production_usable_actor !== false;
+  const profileText = [profile.roleName, profile.appearanceText, profile.wardrobeText, profile.hairMakeupText]
+    .filter(Boolean).join(' ');
+  const ageText = String(profile.age_contract?.display_text || profile.age || profile.age_range || personContract.identity?.age_range || '');
+  const ageNumber = Number((ageText.match(/\d{1,3}/) || [])[0]);
+  const ageBand = Number.isFinite(ageNumber)
+    ? (ageNumber < 13 ? '儿童' : (ageNumber < 18 ? '少年' : (ageNumber < 35 ? '青年' : (ageNumber < 55 ? '中年' : '老年'))))
+    : '';
+  const era = /古代|古装|汉服|唐制|宋制|明制|武侠|仙侠/.test(profileText) ? '古代'
+    : (/民国/.test(profileText) ? '近代' : (/未来|赛博|科幻/.test(profileText) ? '未来' : '现代'));
   return {
     ...asset,
     category: asset.category || asset.type,
@@ -151,6 +180,32 @@ function serializeAsset(asset) {
     production_usable_actor: asset.production_usable_actor === true
       || metadata.production_usable_actor === true
       || referenceKind === 'synthetic_realistic_actor',
+    library_ready: libraryReady,
+    cover_image_url: portrait,
+    subject_profile: profile,
+    person_contract: personContract,
+    dossier_sheet: dossierSheet,
+    native_masters: nativeMasters,
+    body_views: bodyViews,
+    identity_views: identityViews,
+    expressions,
+    base_actions: baseActions,
+    character_library: {
+      portrait_image_url: portrait,
+      full_body_image_url: fullBody,
+      dossier_image_url: dossierSheet?.image_url || '',
+      body_views: bodyViews,
+      identity_views: identityViews,
+      expressions,
+      actions: baseActions,
+      filters: {
+        gender: asset.gender || metadata.gender || profile.gender || personContract.identity?.gender || '',
+        age_band: ageBand,
+        era,
+        role: profile.roleName || asset.cast_role || metadata.cast_role || '',
+        origin: asset.origin || metadata.origin || metadata.region || profile.ethnicity || personContract.identity?.origin || '',
+      },
+    },
   };
 }
 
@@ -266,6 +321,9 @@ router.get('/', (req, res) => {
   }
   const limit = Math.max(1, Math.min(300, Number(req.query.limit) || 0));
   let assets = listAssetsForRequest(req.user.id, type || 'all').map(serializeAsset);
+  if (/^(1|true|yes)$/i.test(String(req.query.character_library || ''))) {
+    assets = assets.filter(asset => asset.type === 'character' && asset.library_ready === true);
+  }
   if (limit) assets = assets.slice(0, limit);
   res.json({ success: true, data: assets });
 });
@@ -493,3 +551,4 @@ router.delete('/:id', (req, res) => {
 });
 
 module.exports = router;
+module.exports.serializeAsset = serializeAsset;

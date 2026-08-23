@@ -12,7 +12,7 @@ export function assetCardMedia(item = {}, group = '') {
     return mediaPreview(portrait, {
       label: `${item.name || '人物'}单人物标准人像`, width: 720,
       symbol: portrait?.image_url ? '人物标准人像' : '人物人像待补齐',
-      zoomable: Boolean(portrait?.image_url), zoomGroup: 'asset-people-portraits',
+      zoomable: false, zoomGroup: 'asset-people-portraits',
     });
   }
   const labels = { animals: '动物', products: '商品 / 展示主体', logos: 'LOGO' };

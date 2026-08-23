@@ -149,9 +149,12 @@ function assetCard(item, group) {
   const sceneGenerated = group === 'scenes' && Boolean(item.layout?.image_url || item.view_images?.length || item.cameras?.some(camera => camera.image_url));
   const recovery = item.checkpoint_recovery_summary || {};
   const retryBlocked = group === 'people' && recovery.retry_blocked === true;
+  const cardMedia = assetCardMedia(item, group);
   return `<article class="asset-card ${GENERATABLE.has(group) ? 'is-subject' : ''} ${group === 'scenes' ? 'is-scene' : ''}">
     <div class="asset-card-preview">
-      <div class="asset-card-media">${assetCardMedia(item, group)}</div>
+      ${group === 'people'
+        ? `<button class="asset-card-media asset-card-person-entry" type="button" data-history-safe data-asset-group="${group}" data-asset-id="${escapeHtml(item.id)}" aria-label="打开${escapeHtml(item.name)}完整人物档案">${cardMedia}</button>`
+        : `<div class="asset-card-media">${cardMedia}</div>`}
       <button class="asset-card-copy" type="button" data-history-safe data-asset-group="${group}" data-asset-id="${escapeHtml(item.id)}" aria-label="查看${escapeHtml(item.name)}完整详情">
         <span>${escapeHtml(item.partial_checkpoint ? '部分资产已保留' : (personState === 'legacy_views' ? '历史四视图' : (personState === 'medium_upgrade_required' ? '画面形态已更新 · 待同步档案' : (personState === 'profile_upgrade_required' ? '人物设定已更新 · 待同步档案' : (personState === 'look_upgrade_required' ? `${personLooks.length}套造型 · 待同步档案` : (personState === 'upgrade_required' ? '旧版档案 · 待升级' : (personState === 'complete_dossier' ? `${Math.max(1, personLooks.length)}套造型 · 完整档案` : (personLooks.length ? `${personLooks.length}套造型` : (item.status || '未确认')))))))))}</span>
         <b>${escapeHtml(item.name)}</b>
@@ -263,7 +266,7 @@ export async function mount(host, context) {
       <div class="view-actions asset-primary-actions"><button class="btn" type="button" data-select-person ${generationDisabled}>选择已有人物素材</button><button class="btn" type="button" data-upload-real-person ${generationDisabled}>上传真人素材</button><button class="btn" type="button" data-history-safe data-generate-subjects ${generationActive ? generationDisabled : contractDisabled}>AI 生成人物 / 动物</button></div>
     </section>
     ${checkpointRecoveryBanner(checkpointRecovery)}
-    ${assetPlanStageView({ assetPlanReady, recoveryActive: recoveryOwnsStage, eligibility: personPlanEligibility, generationActive, missingSubjectCount, counts: { people: assets.people?.length, animals: assets.animals?.length, scenes: assets.scenes?.length } })}
+    ${assetPlanStageView({ assetPlanReady, recoveryActive: recoveryOwnsStage, eligibility: personPlanEligibility, generationActive, missingSubjectCount, counts: { people: assets.people?.length, animals: assets.animals?.length, scenes: assets.scenes?.length }, project: bundle.project || {} })}
     <div class="tabs"><button class="tab active" type="button" data-history-safe data-asset-filter="all">全部 ${total}</button>${assetGroups.map(([key, label]) => `<button class="tab" type="button" data-history-safe data-asset-filter="${key}">${label} ${assets[key]?.length || 0}</button>`).join('')}</div>
     <input class="hidden-input" hidden type="file" accept="image/png,image/jpeg,image/webp" data-asset-upload-file>
     <div data-asset-sections>${renderSections(assets, total, contentMode, assetGroups, generationActive ? generationDisabled : contractDisabled)}</div>`;

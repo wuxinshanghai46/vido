@@ -55,28 +55,104 @@ async function waitForPersonJob(taskId, jobKey, onUpdate) {
   }
 }
 
+function actorLibraryProfile(actor = {}) {
+  return actor.subject_profile || actor.metadata?.subject_profile || {};
+}
+
+function actorLibraryFilters(actor = {}) {
+  const source = actor.character_library?.filters || {};
+  const rawGender = String(source.gender || '').toLowerCase();
+  return {
+    gender: /female|woman|女/.test(rawGender) ? '女' : (/male|man|男/.test(rawGender) ? '男' : ''),
+    age: String(source.age_band || ''), era: String(source.era || ''),
+  };
+}
+
+function actorLibraryImage(url = '', label = '', className = '') {
+  return `<div class="${className}">${url
+    ? mediaPreview({ image_url: url }, { label, width: 900, symbol: '人物素材' })
+    : '<div class="media-placeholder"><span>该项待补充</span></div>'}</div>`;
+}
+
+function actorLibraryFeatured(actor = {}) {
+  const library = actor.character_library || {};
+  const profile = actorLibraryProfile(actor);
+  const expressionRows = Array.isArray(library.expressions) ? library.expressions.slice(0, 6) : [];
+  const bodyRows = Array.isArray(library.body_views) ? library.body_views.slice(0, 4) : [];
+  const portrait = library.portrait_image_url || actor.cover_image_url || actor.image_url || '';
+  const fullBody = library.full_body_image_url || bodyRows[0]?.image_url || actor.image_url || '';
+  const dossier = library.dossier_image_url || actor.dossier_sheet?.image_url || '';
+  const tags = [profile.roleName, actorLibraryFilters(actor).gender, actorLibraryFilters(actor).age, actorLibraryFilters(actor).era]
+    .filter(Boolean);
+  return `<section class="actor-library-featured" data-library-featured>
+    <header><div><h3>${escapeHtml(actor.name || profile.displayName || '人物角色')}</h3><div class="actor-library-tags">${tags.map(tag => `<span>${escapeHtml(tag)}</span>`).join('')}</div></div></header>
+    <div class="actor-library-featured-grid">
+      ${actorLibraryImage(fullBody, `${actor.name || '人物'}全身标准图`, 'is-full-body')}
+      ${actorLibraryImage(portrait, `${actor.name || '人物'}面部身份图`, 'is-portrait')}
+      <div class="actor-library-expression-board">${expressionRows.length
+        ? expressionRows.map((row, index) => actorLibraryImage(row.image_url, `${actor.name || '人物'}表情${index + 1}`, '')).join('')
+        : bodyRows.map((row, index) => actorLibraryImage(row.image_url, `${actor.name || '人物'}视角${index + 1}`, '')).join('')}</div>
+      ${actorLibraryImage(dossier || bodyRows[1]?.image_url || fullBody, `${actor.name || '人物'}完整制作档案`, 'is-dossier')}
+    </div>
+    <footer><p>${escapeHtml(profile.appearanceText || actor.description || '已通过人物身份与跨视角一致性验证，可作为后续分镜和视频的人物参考。')}</p><button class="btn primary" type="button" data-apply-selected-actor>应用到当前项目</button></footer>
+  </section>`;
+}
+
+function actorLibraryFilterPanel() {
+  const rows = [
+    ['gender', '性别', ['男', '女']],
+    ['age', '年龄段', ['儿童', '少年', '青年', '中年', '老年']],
+    ['era', '时代', ['古代', '近代', '现代', '未来']],
+  ];
+  return `<aside class="actor-library-filter-panel" data-library-filter-panel hidden><header><b>角色筛选</b><button type="button" data-clear-library-filters>清空筛选</button></header>${rows.map(([key, label, values]) => `<section><span>${label}</span><div>${values.map(value => `<button type="button" data-library-filter="${key}" data-filter-value="${value}">${value}</button>`).join('')}</div></section>`).join('')}</aside>`;
+}
+
 export async function openActorLibrary({ store, context }) {
   const modal = assetModal('选择已有人物素材');
   modal.body.innerHTML = '<div class="loading-state">正在读取人物素材库…</div>';
   try {
-    const data = await request('/api/assets?type=character&limit=120');
+    const data = await request('/api/assets?type=character&character_library=1&limit=120');
     const rows = Array.isArray(data.data) ? data.data : [];
-    modal.body.innerHTML = rows.length ? `<div class="actor-library-grid">${rows.map((actor, index) => `<button type="button" data-actor-index="${index}">
-      ${mediaPreview(actor, { label: actor.name || '已有人物', width: 420, symbol: '人物' })}
-      <b>${escapeHtml(actor.name || `人物 ${index + 1}`)}</b><span>${escapeHtml(actor.production_usable_actor === false ? '待验证' : '可使用')}</span>
-    </button>`).join('')}</div>` : '<div class="mini-empty">人物素材库中还没有可选人物。</div>';
-    modal.body.querySelectorAll('[data-actor-index]').forEach(button => button.addEventListener('click', async () => {
-      const actor = rows[Number(button.dataset.actorIndex)];
-      if (!actor) return;
-      setButtonBusy(button, true, '正在写入项目…', { elapsed: true });
-      try {
-        await store.attachMaterial('person', actor);
-        if (actor.person_contract?.status === 'verified') await store.runStage('person-provider-sync');
-        toast('已有人物已写入当前项目，Seedance 人物 ID 正在后台核对。', 'success');
-        modal.close();
-        await context.refreshShell();
-      } catch (error) { toast(error.message, 'danger'); setButtonBusy(button, false); }
-    }));
+    const state = { selectedId: rows[0]?.id || '', filters: {} };
+    const render = () => {
+      const visible = rows.filter(actor => Object.entries(state.filters).every(([key, value]) => !value || actorLibraryFilters(actor)[key] === value));
+      if (!visible.some(actor => actor.id === state.selectedId)) state.selectedId = visible[0]?.id || '';
+      const selected = rows.find(actor => actor.id === state.selectedId) || visible[0];
+      modal.body.innerHTML = rows.length ? `<div class="actor-library-shell">
+        ${selected ? actorLibraryFeatured(selected) : '<div class="mini-empty">当前筛选下没有人物。</div>'}
+        <div class="actor-library-toolbar"><button class="btn" type="button" data-toggle-library-filters>角色筛选</button><span>只展示已通过人物身份与跨视角一致性验证的资产</span></div>
+        ${actorLibraryFilterPanel()}
+        <div class="actor-library-carousel">${visible.map((actor, index) => {
+          const profile = actorLibraryProfile(actor); const portrait = actor.character_library?.portrait_image_url || actor.cover_image_url || actor.image_url;
+          return `<button type="button" class="actor-library-card ${actor.id === state.selectedId ? 'is-selected' : ''}" data-actor-id="${escapeHtml(actor.id)}">
+            ${actorLibraryImage(portrait, `${actor.name || '人物'}头像`, 'actor-library-card-image')}
+            <b>${escapeHtml(actor.name || profile.displayName || `人物 ${index + 1}`)}</b><span>${escapeHtml(profile.roleName || '人物资产')}</span>
+          </button>`;
+        }).join('')}</div>
+      </div>` : '<div class="mini-empty">人物素材库中还没有通过身份一致性验证的可用人物；历史测试演员不会再作为正式角色展示。</div>';
+      modal.body.querySelector('[data-toggle-library-filters]')?.addEventListener('click', event => {
+        const panel = modal.body.querySelector('[data-library-filter-panel]'); panel.hidden = !panel.hidden;
+        event.currentTarget.classList.toggle('primary', !panel.hidden);
+      });
+      modal.body.querySelectorAll('[data-library-filter]').forEach(button => {
+        const key = button.dataset.libraryFilter;
+        button.classList.toggle('is-active', state.filters[key] === button.dataset.filterValue);
+        button.addEventListener('click', () => { state.filters[key] = state.filters[key] === button.dataset.filterValue ? '' : button.dataset.filterValue; render(); });
+      });
+      modal.body.querySelector('[data-clear-library-filters]')?.addEventListener('click', () => { state.filters = {}; render(); });
+      modal.body.querySelectorAll('[data-actor-id]').forEach(button => button.addEventListener('click', () => { state.selectedId = button.dataset.actorId; render(); }));
+      modal.body.querySelector('[data-apply-selected-actor]')?.addEventListener('click', async event => {
+        const actor = rows.find(row => row.id === state.selectedId); if (!actor) return;
+        const button = event.currentTarget; setButtonBusy(button, true, '正在写入项目…', { elapsed: true });
+        try {
+          await store.attachMaterial('person', actor);
+          if (actor.person_contract?.status === 'verified') await store.runStage('person-provider-sync');
+          toast('人物资产已写入当前项目，Seedance 人物 ID 正在后台核对。', 'success');
+          modal.close(); await context.refreshShell();
+        } catch (error) { toast(error.message, 'danger'); setButtonBusy(button, false); }
+      });
+    };
+    render();
   } catch (error) {
     modal.body.innerHTML = `<div class="error-text">${escapeHtml(error.message)}</div>`;
   }
