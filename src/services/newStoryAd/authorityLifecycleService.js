@@ -92,7 +92,7 @@ function createAuthority(taskId, activePlan = {}, activeRecord = {}) {
   };
 }
 
-function disablePrevious(taskId, nextAuthority, at) {
+function disablePrevious(taskId, nextAuthority, at, options = {}) {
   const previous = active(taskId);
   if (previous?.authority_id && previous.authority_id !== nextAuthority.authority_id) {
     const disabled = {
@@ -139,6 +139,19 @@ function disablePrevious(taskId, nextAuthority, at) {
 
   storage.listGenerationRuns({ work_id: taskId }).forEach(run => {
     if (run.authority_id === nextAuthority.authority_id) return;
+    if (ownedProductionGraphRun(run, options)) {
+      storage.updateGenerationRun(run.id, {
+        authority_id: nextAuthority.authority_id,
+        execution_identity: nextAuthority.execution_identity,
+        execution_disabled: false,
+        cache_readonly: false,
+        retry_blocked: false,
+        automatic_retry_allowed: false,
+        superseded_by: '',
+        superseded_at: '',
+      }, { expected_version: run.unit_version });
+      return;
+    }
     storage.updateGenerationRun(run.id, {
       execution_disabled: true,
       cache_readonly: true,
@@ -165,7 +178,7 @@ function activate(taskId, activePlan = {}, activeRecord = {}, candidate = null, 
   assertPromotionAllowed(taskId, options);
   const authority = createAuthority(taskId, activePlan, activeRecord);
   const at = authority.activated_at;
-  disablePrevious(taskId, authority, at);
+  disablePrevious(taskId, authority, at, options);
   if (candidate?.candidate_id) {
     const activatedCandidate = {
       ...candidate,

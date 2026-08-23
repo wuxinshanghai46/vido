@@ -87,6 +87,12 @@ try {
 }
 
 const originalListGenerationRuns = storage.listGenerationRuns;
+const originalUpdateGenerationRun = storage.updateGenerationRun;
+const originalListOutputs = storage.listOutputs;
+const originalListArtifacts = storage.listArtifacts;
+const originalGetOutput = storage.getOutput;
+const originalSaveOutput = storage.saveOutput;
+const originalUpdateTask = storage.updateTask;
 try {
   storage.listGenerationRuns = () => [
     { id: 'owned-production-run', domain: 'production_assets', state: 'running', billing_state: 'not_submitted', orchestration_job_id: 'generation-v201' },
@@ -102,8 +108,35 @@ try {
   ];
   equal(authorityLifecycle.assertPromotionAllowed(taskId, { production_graph_authority: true, generation_id: 'generation-v201' }), true,
     'explicit graph authority can advance without resubmitting quarantined historical calls');
+
+  const ownedRun = { id: 'owned-production-run', domain: 'production_assets', state: 'running', unit_version: 3,
+    billing_state: 'not_submitted', orchestration_job_id: 'generation-v201', execution_disabled: false };
+  const historicalRun = { id: 'old-unknown', domain: 'person_plan', state: 'billing_unknown', unit_version: 4,
+    billing_state: 'unknown', retry_blocked: true, automatic_retry_allowed: false };
+  const runUpdates = new Map();
+  storage.listGenerationRuns = () => [ownedRun, historicalRun];
+  storage.updateGenerationRun = (id, patch) => { runUpdates.set(id, patch); return { ...(id === ownedRun.id ? ownedRun : historicalRun), ...patch }; };
+  storage.listOutputs = () => [];
+  storage.listArtifacts = () => [];
+  storage.getOutput = () => null;
+  storage.saveOutput = (_id, kind, value) => { saved[kind] = value; return value; };
+  storage.updateTask = (_id, patch) => { Object.assign(task, patch); return task; };
+  const promoted = authorityLifecycle.activate(taskId,
+    { candidate_id: 'plan-v201', content_revision: 7 },
+    { plan_id: 'plan-v201', content_revision: 7, release_bundle_id: 'bundle-v201' },
+    null,
+    { production_graph_authority: true, generation_id: 'generation-v201' });
+  equal(runUpdates.get(ownedRun.id).execution_disabled, false, 'owned production graph run remains executable after authority promotion');
+  equal(runUpdates.get(ownedRun.id).authority_id, promoted.authority_id, 'owned production graph run is rebound to the promoted authority');
+  equal(runUpdates.get(historicalRun.id).execution_disabled, true, 'quarantined historical run remains disabled after authority promotion');
 } finally {
   storage.listGenerationRuns = originalListGenerationRuns;
+  storage.updateGenerationRun = originalUpdateGenerationRun;
+  storage.listOutputs = originalListOutputs;
+  storage.listArtifacts = originalListArtifacts;
+  storage.getOutput = originalGetOutput;
+  storage.saveOutput = originalSaveOutput;
+  storage.updateTask = originalUpdateTask;
 }
 
 const deleted = [];
