@@ -1,5 +1,5 @@
-import { request } from '../api.js?v=20260823-production-audio-v176';
-import { normalizeSceneDossier, SCENE_VIEW_LABELS, SCENE_VIEW_ORDER } from './sceneDossierCard.js?v=20260823-production-audio-v176';
+import { request } from '../api.js?v=20260823-account-voice-v178';
+import { normalizeSceneDossier, SCENE_VIEW_LABELS, SCENE_VIEW_ORDER } from './sceneDossierCard.js?v=20260823-account-voice-v178';
 
 const WIDTH = 1800;
 const HEIGHT = 2400;
