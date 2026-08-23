@@ -1,4 +1,4 @@
-import { elapsedTimeTag, escapeHtml } from '../components/ui.js?v=20260823-person-profile-v200b';
+import { elapsedTimeTag, escapeHtml } from '../components/ui.js?v=20260823-production-v201f';
 
 const CONTRACT_LABELS = Object.freeze({
   story: '内容主线',
