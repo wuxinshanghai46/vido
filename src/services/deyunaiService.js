@@ -813,7 +813,15 @@ function buildProviderImageError(message, payload, options = {}) {
 }
 
 function classifyImageSubmissionFailure({ submissionStarted = false, taskId = '', status = 0, error = null } = {}) {
-  const httpStatus = Number(status || error?.httpStatus || error?.status || error?.response?.status || 0);
+  const httpStatus = Number(status
+    || error?.httpStatus
+    || error?.status
+    || error?.response?.status
+    || error?.providerPayload?.status
+    || error?.providerPayload?.code
+    || error?.response?.data?.status
+    || error?.response?.data?.code
+    || 0);
   const ambiguous = !!(submissionStarted && !!taskId
     || (submissionStarted && (!httpStatus || httpStatus >= 500
       || /timeout|timed\s*out|ECONNRESET|socket hang up/i.test(`${error?.code || ''} ${error?.message || ''}`))));

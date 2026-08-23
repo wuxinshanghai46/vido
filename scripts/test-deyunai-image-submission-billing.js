@@ -13,6 +13,16 @@ assert.deepStrictEqual(rejected, {
   billingState: 'not_billed',
 });
 
+const rejectedBusinessPayload = deyunai.classifyImageSubmissionFailure({
+  submissionStarted: true,
+  taskId: '',
+  error: Object.assign(new Error('AuditSubmitIllegal'), {
+    providerPayload: { code: 400, reason: 'AuditSubmitIllegal' },
+  }),
+});
+assert.strictEqual(rejectedBusinessPayload.ambiguous, false);
+assert.strictEqual(rejectedBusinessPayload.billingState, 'not_billed');
+
 const timedOut = deyunai.classifyImageSubmissionFailure({
   submissionStarted: true,
   taskId: '',
