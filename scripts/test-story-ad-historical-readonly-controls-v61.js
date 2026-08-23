@@ -41,7 +41,7 @@ function control({ safe = false, disabled = false } = {}) {
     assert.equal(editable.dataset.historicalReadonly, 'true');
   }
 
-  const guardUrl = pathToFileURL(path.resolve(__dirname, '../public/story-ad/views/assetCenterPlanReleaseStatus.js')).href;
+  const guardUrl = pathToFileURL(path.resolve(__dirname, '../public/story-ad/views/assetCenterRequestGuard.js')).href;
   const { createKeyedRequestGuard } = await import(guardUrl);
   const keyedGuard = createKeyedRequestGuard();
   let releaseFirst;
