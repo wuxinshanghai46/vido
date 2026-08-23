@@ -11,6 +11,8 @@ const propAssetService = require('./propAssetService');
 const videoAdapter = require('./videoAdapter');
 const personPlanGeneration = require('../../routes/newStoryAd/personPlanGenerationRoute');
 
+const MAX_CONFIRMED_VISUAL_COST_RMB = 12.38;
+
 function imagePriceUsd(modelId = '') {
   const normalized = String(modelId || '').trim().toLowerCase();
   const rows = Object.entries(tokenTracker.IMAGE_PRICING || {}).sort((a, b) => b[0].length - a[0].length);
@@ -35,6 +37,18 @@ function productionImagePricePlan() {
   const priced = routes.map(item => ({ ...item, unit_price_usd: imagePriceUsd(item.model) }));
   const unknown = priced.filter(item => !Number.isFinite(item.unit_price_usd) || item.unit_price_usd <= 0);
   return { unknown, maximum_unit_usd: priced.length && !unknown.length ? Math.max(...priced.map(item => item.unit_price_usd)) : NaN };
+}
+
+function paidPersonDossierCalls(castProfiles = []) {
+  return (Array.isArray(castProfiles) ? castProfiles : []).reduce((sum, profile) => {
+    const looks = Math.max(1, Array.isArray(profile?.look_profiles) ? profile.look_profiles.length : 1);
+    const isolatedWearables = dossierComposites.explicitAccessoryDefinitions(profile)
+      .filter(item => item.key !== 'hair_makeup').length;
+    // Each look uses four contact sheets plus two native masters. Wardrobe
+    // evidence and hair/makeup evidence are deterministic local crops from
+    // those high-resolution sheets; only isolated wearable objects add calls.
+    return sum + looks * (6 + isolatedWearables);
+  }, 0);
 }
 
 function create({ service, storage, generateAndCommitSubjectAssets, persistProviderPersonIds } = {}) {
@@ -136,13 +150,14 @@ function create({ service, storage, generateAndCommitSubjectAssets, persistProvi
     const panoramaCount = body.generate_panoramas === false ? 0 : sceneCount;
     const graphDraft = productionGraph.compile(taskId, { compiled_by: 'unified_orchestrator:cost_plan' });
     const carriedProps = graphDraft.props.filter(item => item.attachment_mode === 'carried' && !item.image_url);
-    const detailCalls = castProfiles.reduce((sum, profile) => sum + 4 + dossierComposites.explicitAccessoryDefinitions(profile).length, 0);
     const basis = { contract_version: productionGraph.CONTRACT_VERSION, task_id: taskId,
       content_revision: Number(task.content_revision || 1) || 1, people, animals, scene_count: sceneCount, panorama_count: panoramaCount,
-      estimated_model_calls: { text_planning_max: people + 3, person_dossier_max: people * 6 + detailCalls,
+      estimated_model_calls: { text_planning_max: people + 3, person_dossier_max: paidPersonDossierCalls(castProfiles),
         animal_dossier_max: animals, prop_assets_max: carriedProps.reduce((sum, prop) => sum + (Array.isArray(prop.states) && prop.states.length > 1 ? 2 : 1), 0),
         scene_assets_max: sceneCount * 5, panorama_image_max: panoramaCount, panorama_qa_text_max: panoramaCount },
-      confirmed_cost_limit_rmb: Math.max(0, Math.min(10, Number(body.confirmed_cost_limit_rmb || 10) || 10)) };
+      confirmed_cost_limit_rmb: Math.max(0, Math.min(MAX_CONFIRMED_VISUAL_COST_RMB,
+        Number(body.confirmed_cost_limit_rmb || MAX_CONFIRMED_VISUAL_COST_RMB) || MAX_CONFIRMED_VISUAL_COST_RMB)),
+      maximum_confirmable_cost_rmb: MAX_CONFIRMED_VISUAL_COST_RMB };
     basis.estimated_model_calls.total_max = Object.values(basis.estimated_model_calls).reduce((sum, value) => sum + Number(value || 0), 0);
     const pricePlan = productionImagePricePlan();
     const imageCalls = basis.estimated_model_calls.person_dossier_max + basis.estimated_model_calls.animal_dossier_max
@@ -165,9 +180,9 @@ function create({ service, storage, generateAndCommitSubjectAssets, persistProvi
       const error = new Error(`本轮视觉模型保守费用上限约 ${expected.estimated_visual_cost_max_rmb} 元，超过已授权的 ${limit || 0} 元，已在调用模型前停止。`);
       error.code = 'PRODUCTION_GRAPH_COST_LIMIT_EXCEEDED'; error.status = 409; error.retryable = false; error.current_plan = expected; throw error;
     }
-    if (body.cost_confirmation === true && limit > 0 && limit <= 10
+    if (body.cost_confirmation === true && limit > 0 && limit <= MAX_CONFIRMED_VISUAL_COST_RMB
       && String(body.plan_fingerprint || '') === String(expected.plan_fingerprint || '')) return limit;
-    const error = new Error('开始生成全部制作资产前，必须确认服务端最新调用计划和不超过10元的本轮费用上限。');
+    const error = new Error(`开始生成全部制作资产前，必须确认服务端最新调用计划和不超过${MAX_CONFIRMED_VISUAL_COST_RMB}元的本轮费用上限。`);
     error.code = 'PRODUCTION_GRAPH_COST_CONFIRMATION_REQUIRED'; error.status = 400; error.retryable = false; error.current_plan = expected; throw error;
   }
 
@@ -221,4 +236,4 @@ function create({ service, storage, generateAndCommitSubjectAssets, persistProvi
   return { plan, assertConfirmation, run };
 }
 
-module.exports = { create, imagePriceUsd, productionImagePricePlan };
+module.exports = { create, imagePriceUsd, productionImagePricePlan, paidPersonDossierCalls, MAX_CONFIRMED_VISUAL_COST_RMB };

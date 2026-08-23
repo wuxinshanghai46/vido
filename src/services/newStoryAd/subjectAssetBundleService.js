@@ -1162,7 +1162,7 @@ async function generateSubjectBundle(options = {}, deps = {}) {
       saveCheckpoint: saveDetailCheckpoint,
     }, { mediaAdapter });
     const accessoryDetails = accessoryEvidence.items;
-    const wardrobeDetails = await dossierComposites.generateWardrobeDetails({
+    const wardrobeDetails = await dossierComposites.composeWardrobeDetails({
       taskId: taskId || options.generationId,
       assetId: actorId,
       atomicAssets: compiled.atomic_assets,
@@ -1224,7 +1224,7 @@ async function generateSubjectBundle(options = {}, deps = {}) {
         atomicAssets: variantCompiled.atomic_assets, revision: 1, profile: variantProfile,
         loadCheckpoint: detailCheckpoint, saveCheckpoint: saveDetailCheckpoint,
       }, { mediaAdapter });
-      const variantWardrobeDetails = await dossierComposites.generateWardrobeDetails({
+      const variantWardrobeDetails = await dossierComposites.composeWardrobeDetails({
         taskId: taskId || options.generationId, assetId: lookAssetId,
         atomicAssets: variantCompiled.atomic_assets, revision: 1, profile: variantProfile,
         loadCheckpoint: detailCheckpoint, saveCheckpoint: saveDetailCheckpoint,

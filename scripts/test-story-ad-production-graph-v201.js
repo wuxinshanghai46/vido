@@ -9,6 +9,7 @@ const prompts = require('../src/services/newStoryAd/productionPromptCompilerServ
 const revisions = require('../src/services/newStoryAd/revisionService');
 const pipelineModels = require('../src/services/pipelineModelService');
 const authorityLifecycle = require('../src/services/newStoryAd/authorityLifecycleService');
+const productionOrchestrator = require('../src/services/newStoryAd/productionAssetOrchestratorService');
 
 let checks = 0;
 const ok = (value, message) => { assert(value, message); checks += 1; };
@@ -23,6 +24,9 @@ const profile = {
   look_profiles: [{ id: 'look_work', name: '工作造型', scene_ids: ['scene_hall'], wardrobeText: '深色西装、同色长裤、低跟皮鞋，剪裁与面料完整明确。', hairMakeupText: '低马尾，干净自然妆面。', negativeText: '禁止换装、禁止增加首饰。' }],
   owned_props: [{ id: 'prop_bag', name: '设计师文件包', type: 'bag', description: '深棕色硬挺皮革文件包，金属扣，手提使用。', material: '皮革', hand: 'left' }],
 };
+equal(productionOrchestrator.paidPersonDossierCalls([{ ...profile,
+  wardrobeText: '深色西装、同色长裤、黑色皮鞋。', hairMakeupText: '低马尾，干净自然妆面。' }]), 7,
+  'one-look dossier prices six reusable boards plus only the isolated shoe object; wardrobe and hair evidence are local crops');
 const context = {
   cast_profiles: [profile], cast_mode: 'single', brief: '设计师向客户介绍大厅材料方案。',
   person_asset: { cast_assets: [{ id: 'person_asset_1', profile_id: profile.id, cast_member_index: 0,
@@ -153,12 +157,32 @@ const productionAction = fs.readFileSync(path.join(__dirname, '../public/story-a
 ok(assetView.includes('assetCenterUnifiedProductionAction.js'), 'unified action is loaded only when the user clicks');
 ok(productionAction.includes('/production-assets/plan'), 'UI reads server plan before generation');
 ok(productionAction.includes("store.runStage('production-assets'"), 'UI submits only unified production stage');
+ok(productionAction.includes('plan.maximum_confirmable_cost_rmb'), 'UI reads the server-owned cost ceiling instead of duplicating it');
 const routeSource = fs.readFileSync(path.join(__dirname, '../src/routes/newStoryAd.js'), 'utf8');
 const orchestratorSource = fs.readFileSync(path.join(__dirname, '../src/services/newStoryAd/productionAssetOrchestratorService.js'), 'utf8');
+const subjectBundleSource = fs.readFileSync(path.join(__dirname, '../src/services/newStoryAd/subjectAssetBundleService.js'), 'utf8');
 ok(orchestratorSource.includes('PRODUCTION_GRAPH_IMAGE_PRICE_UNKNOWN'), 'unpriced image routes are blocked before paid generation');
 ok(orchestratorSource.includes('PRODUCTION_GRAPH_COST_LIMIT_EXCEEDED'), 'server enforces the confirmed visual cost limit');
+equal(productionOrchestrator.MAX_CONFIRMED_VISUAL_COST_RMB, 12.38, 'server-owned production visual cost ceiling matches the authorized budget');
+const budgetGuard = productionOrchestrator.create({});
+equal(budgetGuard.assertConfirmation({ cost_confirmation: true, confirmed_cost_limit_rmb: 12.38, plan_fingerprint: 'budget-1238' },
+  { pricing_status: 'catalog_priced_hard_visual_limit', estimated_visual_cost_max_rmb: 12.38, plan_fingerprint: 'budget-1238' }), 12.38,
+  'the authorized 12.38 RMB boundary is accepted with the current server plan');
+let overBudgetRejected = false;
+try {
+  budgetGuard.assertConfirmation({ cost_confirmation: true, confirmed_cost_limit_rmb: 12.39, plan_fingerprint: 'budget-over' },
+    { pricing_status: 'catalog_priced_hard_visual_limit', estimated_visual_cost_max_rmb: 12.38, plan_fingerprint: 'budget-over' });
+} catch (error) { overBudgetRejected = error.code === 'PRODUCTION_GRAPH_COST_CONFIRMATION_REQUIRED'; }
+ok(overBudgetRejected, 'a client cannot raise the server-owned ceiling above 12.38 RMB');
+let insufficientBudgetRejected = false;
+try {
+  budgetGuard.assertConfirmation({ cost_confirmation: true, confirmed_cost_limit_rmb: 9.49, plan_fingerprint: 'budget-low' },
+    { pricing_status: 'catalog_priced_hard_visual_limit', estimated_visual_cost_max_rmb: 9.5, plan_fingerprint: 'budget-low' });
+} catch (error) { insufficientBudgetRejected = error.code === 'PRODUCTION_GRAPH_COST_LIMIT_EXCEEDED'; }
+ok(insufficientBudgetRejected, 'generation stops before model calls when the estimated visual cost exceeds confirmation');
 ok(orchestratorSource.includes('const executionPlan = plan'), 'cost plan is recomputed after person and scene planning');
 ok(orchestratorSource.includes('production_graph_authority: true'), 'person and scene planning are published under the owned graph generation');
+ok(subjectBundleSource.includes('dossierComposites.composeWardrobeDetails'), 'unified person dossiers derive wardrobe detail panels locally from paid high-resolution contact sheets');
 ok(routeSource.includes("assertLegacyMutationAllowed(req.params.id, 'scene_asset_repair')"), 'legacy scene repair is blocked at the server boundary');
 const transition = fs.readFileSync(path.join(__dirname, '../public/story-ad/views/briefAssetPlanTransition.js'), 'utf8');
 ok(!transition.includes("runStage('scene-config'"), 'plot-to-assets transition no longer starts legacy scene generation');
