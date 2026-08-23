@@ -1254,7 +1254,7 @@ async function generateSeedanceClip({ prompt, duration = 5, outputDir, filename,
 }
 
 // ——— 火山方舟 Seedance 2.0 直连（content_generation API）———
-async function generateArkSeedanceClip({ prompt, duration = 5, outputDir, filename, image_url, video_model }) {
+async function generateArkSeedanceClip({ prompt, duration = 5, outputDir, filename, image_url, audio_url = '', video_model, generateAudio = false, generate_audio = false }) {
   const { getApiKey, loadSettings } = require('./settingsService');
   // 从 settings 中查找火山方舟供应商（id 含 api-key 或 preset=volcengine/ark）
   let apiKey = '';
@@ -1288,13 +1288,14 @@ async function generateArkSeedanceClip({ prompt, duration = 5, outputDir, filena
     }
     content.push({ type: 'image_url', image_url: { url: imgUrl }, role: 'reference_image' });
   }
+  if (audio_url) content.push({ type: 'audio_url', audio_url: { url: audio_url }, role: 'reference_audio' });
 
   const body = JSON.stringify({
     model,
     content,
     ratio: '16:9',
     duration: Math.min(Math.max(Math.round(duration), 5), 10),
-    generate_audio: false,
+    generate_audio: generateAudio === true || generate_audio === true,
     watermark: false
   });
 
@@ -1681,7 +1682,7 @@ function _deyunaiVideoSize(aspectRatio = '9:16', videoResolution = '720p') {
   return presets[resolution]?.[ratio] || presets['720p']['9:16'];
 }
 
-async function generateWebangSeedanceClip({ prompt, duration = 5, outputDir, filename, aspectRatio = '16:9', image_url, video_model, resolution = '720p', videoResolution = '', userId = null, agentId = null }) {
+async function generateWebangSeedanceClip({ prompt, duration = 5, outputDir, filename, aspectRatio = '16:9', image_url, audio_url = '', video_model, resolution = '720p', videoResolution = '', userId = null, agentId = null, generateAudio = false, generate_audio = false }) {
   const { getApiKey, loadSettings } = require('./settingsService');
   let provider = null;
   try {
@@ -1707,6 +1708,7 @@ async function generateWebangSeedanceClip({ prompt, duration = 5, outputDir, fil
       const imageAsset = await _ensureWebangImageAsset({ provider, apiKey, imageUrl: image_url, filename });
       content.push({ type: 'image_url', image_url: { url: imageAsset.assetUrl } });
     }
+    if (audio_url) content.push({ type: 'audio_url', audio_url: { url: audio_url }, role: 'reference_audio' });
 
   const requestedResolution = _normalizeSeedanceResolution(videoResolution || resolution);
   const body = {
@@ -1715,7 +1717,7 @@ async function generateWebangSeedanceClip({ prompt, duration = 5, outputDir, fil
     ratio: ratioFlag,
     duration: durSec,
     resolution: requestedResolution,
-    generate_audio: false,
+    generate_audio: generateAudio === true || generate_audio === true,
     watermark: false
   };
 
@@ -2284,7 +2286,7 @@ async function generateVideoClip(options) {
 // 漫路（DeyunAI）聚合 — 视频生成
 // 通过 deyunaiService.generateVideo 统一调用 + 自动埋点
 // ════════════════════════════════════════════════
-async function generateDeyunaiClip({ prompt, duration = 5, outputDir, filename, aspectRatio = '16:9', image_url, reference_image_urls = [], video_model, provider_task_id = '', resolution = '720p', videoResolution = '', size: requestedSize = '', userId = null, agentId = null, signal = null, onSubmitted = null, onProgress = null }) {
+async function generateDeyunaiClip({ prompt, duration = 5, outputDir, filename, aspectRatio = '16:9', image_url, audio_url = '', reference_image_urls = [], video_model, provider_task_id = '', resolution = '720p', videoResolution = '', size: requestedSize = '', userId = null, agentId = null, signal = null, onSubmitted = null, onProgress = null, generateAudio = false, generate_audio = false }) {
   const dy = require('./deyunaiService');
   fs.mkdirSync(outputDir, { recursive: true });
   const outputPath = path.join(outputDir, `${filename}.mp4`);
@@ -2326,6 +2328,8 @@ async function generateDeyunaiClip({ prompt, duration = 5, outputDir, filename, 
       size,
       imageUrl: image_url && !image_url.startsWith('data:') ? image_url : undefined,
       referenceAssetUrls: reference_image_urls,
+      audioUrl: audio_url,
+      generateAudio: generateAudio === true || generate_audio === true,
       userId,
       agentId: agentId || 'video_gen',
       onSubmitted,

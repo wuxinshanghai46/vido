@@ -29,6 +29,8 @@ const incompatible = sandbox.__view({
   release_migration: { compatible: false, migration_required: false },
 });
 assert.match(incompatible, /人物方案需要更新/);
+assert.match(incompatible, /生成人物方案/);
+assert.doesNotMatch(incompatible, /<button[^>]+disabled[^>]*>文字方案确认后/);
 assert.doesNotMatch(incompatible, /方案可安全升级/);
 const actionSource = fs.readFileSync(path.join(root, 'public/story-ad/views/assetCenterPlanMigrationAction.js'), 'utf8');
 assert(actionSource.includes("store.runStage('person-plan', { request_key: requestKey })"), 'person plan submission must send the guard request key');

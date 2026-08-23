@@ -56,7 +56,7 @@ function dialogueSegments(shot = {}) {
 
 function speechMode(shot = {}) {
   const mode = String(shot.speech_mode || shot.speechMode || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
-  if (['on_camera', 'on_camera_dialogue', 'visible_dialogue', 'speaking', 'lip_sync'].includes(mode)) return 'on_camera_dialogue';
+  if (['dialogue', 'on_camera', 'on_camera_dialogue', 'visible_dialogue', 'speaking', 'lip_sync'].includes(mode)) return 'on_camera_dialogue';
   if (['silent', 'mute', 'no_speech'].includes(mode)) return 'silent';
   return 'offscreen_voiceover';
 }

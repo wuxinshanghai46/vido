@@ -65,7 +65,7 @@ function buildCompatibilityReport({ clips = [], expectedLineages = [], onlyIndex
 
 function buildExpectedLineages({
   shots = [], contracts = [], keyframes = [], ctx = {}, blueprint = {}, storyboardMeta = {},
-  modelRoute = '', audioTracks = [], sceneBlocks = [], shotPlans = [], speechModeFor = () => '',
+  modelRoute = '', modelRouteFor = null, audioTracks = [], sceneBlocks = [], shotPlans = [], speechModeFor = () => '',
   motionPromptFor = () => '', qaPolicyVersion = '',
 } = {}) {
   const plans = new Map((shotPlans || []).map(item => [item.index, item]));
@@ -73,7 +73,9 @@ function buildExpectedLineages({
     const plan = plans.get(index) || {};
     return videoLineage.buildShotLineage({
       shot, index, contract: contracts[index] || {}, keyframe: keyframes[index] || {}, ctx,
-      blueprint, storyboardMeta, modelRoute,
+      blueprint, storyboardMeta, modelRoute: typeof modelRouteFor === 'function'
+        ? modelRouteFor(shot, contracts[index] || {}, index)
+        : modelRoute,
       speechMode: speechModeFor(shot, contracts[index] || {}, index),
       motionPrompt: motionPromptFor(shot, contracts[index] || {}, index),
       audio: audioTracks[index] || {},

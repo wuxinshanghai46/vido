@@ -29,17 +29,27 @@ function billableSeconds(unit = {}, options = {}) {
 
 /** 生成包含人民币最坏费用、单元明细和零自动重试的成本方案。 */
 function buildCostPlan({ executionPlan = {}, modelId = '', providerId = '', options = {} } = {}) {
-  const price = findVideoPrice(providerId, modelId);
   const rate = cnyRate(options.usd_cny_rate || options.usdCnyRate);
   const safetyFactor = Math.max(1, Math.min(2, Number(options.cost_safety_factor || options.costSafetyFactor || 1.15) || 1.15));
   const paidUnits = (executionPlan.generation_units || []).filter(unit => unit.paid !== false);
   const units = paidUnits.map(unit => {
+    const unitProviderId = domain.text(unit.provider_id || providerId);
+    const unitModelId = domain.text(unit.model_id || modelId);
+    const price = findVideoPrice(unitProviderId, unitModelId);
     const seconds = billableSeconds(unit, options);
     const estimatedRmb = price.currency === 'CNY'
       ? seconds * price.per_second
       : seconds * price.per_second * rate;
     return {
       generation_unit_id: unit.id,
+      provider_id: unitProviderId,
+      model_id: unitModelId,
+      price_known: price.known,
+      price_route: price.route,
+      price_currency: price.currency,
+      price_source: price.source,
+      price_effective_from: price.effective_from,
+      unit_price_cny_per_second: price.currency === 'CNY' ? price.per_second : Number((price.per_second * rate).toFixed(6)),
       edit_shot_indexes: unit.edit_shot_indexes,
       mode: unit.mode,
       billable_seconds: seconds,
@@ -50,19 +60,25 @@ function buildCostPlan({ executionPlan = {}, modelId = '', providerId = '', opti
     };
   });
   const estimatedRmb = units.reduce((sum, unit) => sum + unit.estimated_cost_rmb, 0);
+  const routes = [...new Set(units.map(unit => unit.price_route).filter(Boolean))];
+  const allPricesKnown = units.every(unit => unit.price_known === true);
+  const defaultPrice = findVideoPrice(providerId, modelId);
+  const primaryUnit = units[0] || {};
   const plan = {
     version: COST_POLICY_VERSION,
     execution_plan_fingerprint: executionPlan.fingerprint || '',
     provider_id: domain.text(providerId),
     model_id: domain.text(modelId),
-    price_known: price.known,
-    price_catalog_version: price.catalog_version,
-    price_route: price.route,
-    price_currency: price.currency,
-    price_source: price.source,
-    price_effective_from: price.effective_from,
-    unit_price_cny_per_second: price.currency === 'CNY' ? price.per_second : Number((price.per_second * rate).toFixed(6)),
-    usd_cny_rate: price.currency === 'CNY' ? null : rate,
+    price_known: allPricesKnown,
+    price_catalog_version: defaultPrice.catalog_version,
+    price_route: routes.length === 1 ? routes[0] : 'mixed',
+    price_currency: routes.length === 1 ? primaryUnit.price_currency : 'MIXED',
+    price_source: routes.length === 1 ? primaryUnit.price_source : 'per_generation_unit',
+    price_effective_from: routes.length === 1 ? primaryUnit.price_effective_from : '',
+    unit_price_cny_per_second: routes.length === 1 && primaryUnit.price_known
+      ? Number(primaryUnit.unit_price_cny_per_second || 0)
+      : 0,
+    usd_cny_rate: routes.length === 1 && primaryUnit.price_currency === 'CNY' ? null : rate,
     safety_factor: safetyFactor,
     paid_unit_count: units.length,
     automatic_paid_retry_count: 0,

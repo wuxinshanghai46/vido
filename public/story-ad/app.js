@@ -20,9 +20,9 @@ const VIEW_META = {
 };
 const VIEW_MODULES = {
   brief: () => import('./views/briefView.js?v=20260823-cast-autosave-v172'),
-  assets: () => import('./views/assetCenterView.js?v=20260823-cast-autosave-v172'),
+  assets: () => import('./views/assetCenterView.js?v=20260823-production-audio-v174'),
   scene: () => import('./views/sceneWorldPage.js?v=20260823-cast-autosave-v172'),
-  plot: () => import('./views/plotRoomView.js?v=20260823-cast-autosave-v172'),
+  plot: () => import('./views/plotRoomView.js?v=20260823-production-audio-v174'),
   storyboard: () => import('./views/storyboardView.js?v=20260823-cast-autosave-v172'),
   final: () => import('./views/finalView.js?v=20260823-cast-autosave-v172'),
   workflow: () => import('./views/workflowView.js?v=20260823-cast-autosave-v172'),

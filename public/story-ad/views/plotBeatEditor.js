@@ -1,6 +1,6 @@
-import { escapeHtml } from '../components/ui.js?v=20260823-cast-autosave-v172';
+import { escapeHtml } from '../components/ui.js?v=20260823-production-audio-v174';
 
-const fields='shot_id,title,scene,duration,visual,action,shot_size,lighting_mood,speaker,speaker_id,speech_mode,spoken_line,dialogue_lines_json,sound_mode,ambient_sound,sfx,music_cue,audio_bridge,explicit_silence_reason,camera_movement,camera_movement_notes,transition,visual_proof,prompt_notes,keyframe_prompt_override,video_prompt_override,negative_prompt_override'.split(',');
+const fields='shot_id,title,scene,duration,visual,action,shot_size,lighting_mood,speaker,speaker_id,speech_mode,spoken_line,dialogue_lines_json,sound_design,sound_mode,ambient_sound,sfx,music_cue,audio_bridge,explicit_silence_reason,camera_movement,camera_movement_notes,transition,visual_proof,prompt_notes,keyframe_prompt_override,video_prompt_override,negative_prompt_override'.split(',');
 const normalizedDialogueLines=b=>Array.isArray(b.dialogue_lines)&&b.dialogue_lines.length?b.dialogue_lines:(b.spoken_line||b.voiceover?[{speech_mode:b.speech_mode||'voiceover',speaker:b.speaker||'旁白',speaker_id:b.speaker_id||'',line:b.spoken_line||b.voiceover}]:[]);
 const beatStoreFields=b=>fields.map(n=>{const a={shot_id:b.shot_id||b.id,title:b.title||b.role,duration:b.duration||b.duration_sec,visual:b.visual||b.plot,shot_size:b.shot_size||b.shot_type,spoken_line:b.spoken_line||b.voiceover,dialogue_lines_json:JSON.stringify(normalizedDialogueLines(b))},raw=a[n]??b[n]??'',v=Array.isArray(raw)?raw.join('；'):raw;return `<input type="hidden" data-beat-field="${n}" value="${escapeHtml(v)}">`}).join('');
 
@@ -25,7 +25,7 @@ export function beatEditor(beat = {}, index = 0) {
       ${cell('spoken_line', `<span data-beat-summary="spoken_line">${escapeHtml(dialogueSummary || [beat.speaker, spoken].filter(Boolean).join('：') || '无对白')}</span>`)}
       ${cell('sound_design', `<span data-beat-summary="sound_design">${escapeHtml(sound || '') || empty}</span>`)}
       ${cell('camera_movement', `<span data-beat-summary="camera_movement">${escapeHtml(beat.camera_movement || '') || empty}</span>`)}
-      ${cell('prompt_notes', `<span data-beat-summary="prompt_notes">${escapeHtml(beat.prompt_notes || beat.keyframe_prompt_override || '') || empty}</span>`)}
+      ${cell('prompt_notes', '<span data-beat-summary="prompt_notes">查看完整提示词</span>')}
       <span class="beat-actions"><button class="btn icon compact" type="button" data-ai-beat title="AI 帮写并优化当前镜头">AI</button><button class="btn icon compact" type="button" data-row-menu aria-label="操作">•••</button><span class="beat-row-menu" popover="auto"><button type="button" data-duplicate-beat>复制镜头</button><button type="button" data-remove-beat>删除镜头</button></span></span>
     </div></article>`;
 }
@@ -55,13 +55,13 @@ export function syncBeatPresentation(row) {
   const v = n => row.querySelector(`[data-beat-field="${n}"]`)?.value?.trim() || '';
   const s = (n, text) => { const t = row.querySelector(`[data-beat-summary="${n}"]`); if (t) { t.textContent = text || '＋'; t.classList.toggle('beat-empty-value', !text); } };
   let lines=[];try{lines=JSON.parse(v('dialogue_lines_json')||'[]')}catch{}const dialogue=lines.map(line=>`${line.speaker||'旁白'}：${line.line||''}`).filter(line=>!line.endsWith('：')).join('；');
-  s('title', v('title') || '未命名镜头'); s('duration', `${Math.max(1, Number(v('duration')) || 3)}s`); s('scene', v('scene')); s('visual', v('visual')); s('shot_size', shotSizeLabel(v('shot_size'))); s('lighting_mood', v('lighting_mood')); s('spoken_line', dialogue || [v('speaker'), v('spoken_line')].filter(Boolean).join('：') || (['silent', 'ambient_only'].includes(v('speech_mode')) ? '无对白' : '')); s('sound_design', [v('ambient_sound'), v('sfx'), v('music_cue')].filter(Boolean).join('；') || (v('sound_mode') === 'silent' ? `静默：${v('explicit_silence_reason')}` : '')); s('camera_movement', v('camera_movement')); s('prompt_notes', v('prompt_notes') || v('keyframe_prompt_override'));
+  s('title', v('title') || '未命名镜头'); s('duration', `${Math.max(1, Number(v('duration')) || 3)}s`); s('scene', v('scene')); s('visual', v('visual')); s('shot_size', shotSizeLabel(v('shot_size'))); s('lighting_mood', v('lighting_mood')); s('spoken_line', dialogue || [v('speaker'), v('spoken_line')].filter(Boolean).join('：') || (['silent', 'ambient_only'].includes(v('speech_mode')) ? '无对白' : '')); s('sound_design', v('sound_design') || [v('ambient_sound'), v('sfx'), v('music_cue')].filter(Boolean).join('；') || (v('sound_mode') === 'silent' ? `静默：${v('explicit_silence_reason')}` : '')); s('camera_movement', v('camera_movement')); s('prompt_notes', '查看完整提示词');
 }
 
 export function collectBeat(row) {
   const v = n => row.querySelector(`[data-beat-field="${n}"]`)?.value?.trim() || '', spoken = v('spoken_line'), speaker = v('speaker');
   let dialogueLines=[];try{dialogueLines=JSON.parse(v('dialogue_lines_json')||'[]')}catch{}if(!dialogueLines.length&&spoken)dialogueLines=[{speech_mode:v('speech_mode'),speaker_id:v('speaker_id'),speaker:speaker||'旁白',line:spoken}];
-  return { shot_id: v('shot_id'), title: v('title'), scene: v('scene'), visual: v('visual'), action: v('action'), duration: Math.max(1, Number(v('duration')) || 3), shot_size: v('shot_size'), speaker, speaker_id: v('speaker_id'), spoken_line: spoken, dialogue_lines: dialogueLines, speech_mode: v('speech_mode'), lighting_mood: v('lighting_mood'), sound_mode: v('sound_mode'), ambient_sound: v('ambient_sound'), sfx: v('sfx').split(/[；;\n]/).map(x => x.trim()).filter(Boolean), music_cue: v('music_cue'), audio_bridge: v('audio_bridge'), explicit_silence_reason: v('explicit_silence_reason'), camera_movement: v('camera_movement'), camera_movement_notes: v('camera_movement_notes'), transition: v('transition'), prompt_notes: v('prompt_notes'), keyframe_prompt_override: v('keyframe_prompt_override'), video_prompt_override: v('video_prompt_override'), negative_prompt_override: v('negative_prompt_override'), visual_proof: v('visual_proof') };
+  return { shot_id: v('shot_id'), title: v('title'), scene: v('scene'), visual: v('visual'), action: v('action'), duration: Math.max(1, Number(v('duration')) || 3), shot_size: v('shot_size'), speaker, speaker_id: v('speaker_id'), spoken_line: spoken, dialogue_lines: dialogueLines, speech_mode: v('speech_mode'), lighting_mood: v('lighting_mood'), sound_design: v('sound_design'), sound_mode: v('sound_mode'), ambient_sound: v('ambient_sound'), sfx: v('sfx').split(/[；;\n]/).map(x => x.trim()).filter(Boolean), music_cue: v('music_cue'), audio_bridge: v('audio_bridge'), explicit_silence_reason: v('explicit_silence_reason'), camera_movement: v('camera_movement'), camera_movement_notes: v('camera_movement_notes'), transition: v('transition'), prompt_notes: v('prompt_notes'), keyframe_prompt_override: v('keyframe_prompt_override'), video_prompt_override: v('video_prompt_override'), negative_prompt_override: v('negative_prompt_override'), visual_proof: v('visual_proof') };
 }
 
 export function productionIssues(host) {
@@ -69,7 +69,7 @@ export function productionIssues(host) {
   [...host.querySelectorAll('[data-beat-index]')].forEach((row, index) => {
     const beat = collectBeat(row), missing = [];
     if (!beat.scene) missing.push('scene'); if (!beat.visual) missing.push('visual'); if (!beat.shot_size) missing.push('shot_size'); if (!beat.lighting_mood) missing.push('lighting_mood');
-    if (!(beat.sound_mode === 'silent' ? beat.explicit_silence_reason : (beat.ambient_sound || beat.sfx.length || beat.music_cue || beat.audio_bridge))) missing.push('sound_design');
+    if (!(beat.sound_mode === 'silent' ? beat.explicit_silence_reason : (beat.sound_design || beat.ambient_sound || beat.sfx.length || beat.music_cue || beat.audio_bridge))) missing.push('sound_design');
     if (!beat.camera_movement) missing.push('camera_movement'); if (!(beat.prompt_notes || beat.keyframe_prompt_override)) missing.push('prompt_notes');
     missing.forEach(group => issues.push({ row, group, index }));
   });

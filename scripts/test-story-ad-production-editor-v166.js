@@ -45,7 +45,9 @@ async function main() {
       const nativeFetch = window.fetch.bind(window);
       window.fetch = (input, init) => String(input).includes('/api/avatar/voice-list')
         ? Promise.resolve(new Response(JSON.stringify({ voices: [] }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
-        : nativeFetch(input, init);
+        : String(input).includes('/prompt-preview')
+          ? Promise.resolve(new Response(JSON.stringify({ success: true, shot_index: 1, keyframe_prompt: '主体：人物走入展厅\n光影与氛围：自然侧光', motion_prompt: '时间段 0-3 秒：缓慢推镜\n声音设计：脚步声' }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+          : nativeFetch(input, init);
       const { mount } = await import(`/story-ad/views/plotRoomView.js?qa=${Date.now()}`);
       const blueprint = {
         story_title: '测试剧情', logline: '验证制作表交互', characters: [
@@ -101,6 +103,19 @@ async function main() {
     await page.click('.view-head h1');
     assert.deepEqual(await page.$$eval('.beat-row-menu', menus => menus.map(menu => menu.matches(':popover-open'))), [false, false], '点击外部必须关闭行菜单');
 
+    step = 'simple-cell-editors';
+    await page.click('[data-beat-index="0"] [data-open-beat-cell="camera_movement"]');
+    await page.waitForFunction(() => document.querySelector('[data-beat-floating-editor]')?.dataset.group === 'camera_movement');
+    assert.equal(await page.$$eval('[data-beat-floating-editor] [data-floating-field]', fields => fields.length), 1, '运镜浮层只能显示一个主输入框');
+    await page.click('[data-camera-preset="推镜"]');
+    assert.equal(await page.$eval('[data-floating-field="camera_movement"]', input => input.value), '推镜', '快捷运镜必须写入真实运镜字段');
+    await page.click('[data-save-beat-floating]');
+    await page.click('[data-beat-index="0"] [data-open-beat-cell="prompt_notes"]');
+    await page.waitForFunction(() => document.querySelector('[data-beat-floating-editor]')?.textContent.includes('关键帧实际输入'));
+    const promptPreview = await page.$eval('[data-beat-floating-editor]', node => node.textContent);
+    assert.match(promptPreview, /自然侧光/); assert.match(promptPreview, /脚步声/);
+    await page.click('[data-close-beat-floating]');
+
     step = 'add-beat';
     await page.click('.plot-sequence-actions [data-add-beat]');
     await page.waitForFunction(() => document.querySelectorAll('[data-beat-index]').length === 3 && document.querySelector('[data-beat-floating-editor]')?.matches(':popover-open'));
@@ -121,6 +136,7 @@ async function main() {
     assert.ok(overviewHeight <= 132, `故事设定区过高：${overviewHeight}`);
 
     step = 'dialogue-editor';
+    await page.click('.view-head h1');
     await page.click('[data-beat-index="0"] [data-open-beat-cell="spoken_line"]');
     await page.waitForFunction(() => document.querySelector('[data-beat-floating-editor]')?.dataset.group === 'spoken_line'
       && document.querySelectorAll('[data-dialogue-speaker] option').length === 2);

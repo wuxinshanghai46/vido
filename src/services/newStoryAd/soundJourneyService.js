@@ -8,6 +8,7 @@ function buildSoundJourney(shots = []) {
       shot_index: Number(shot.index || index + 1) || index + 1,
       start_sec: cursor,
       end_sec: cursor + duration,
+      design: cleanText(shot.sound_design || '', 600),
       ambient: cleanText(shot.ambient_sound || '', 180),
       sfx: (Array.isArray(shot.sfx) ? shot.sfx : String(shot.sfx || '').split(/[,，；;]/)).map(value => cleanText(value, 100)).filter(Boolean).slice(0, 12),
       music: cleanText(shot.music_cue || '', 180),

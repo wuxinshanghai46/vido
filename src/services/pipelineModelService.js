@@ -131,6 +131,8 @@ const PIPELINE_SCHEMA = {
     { id: 'new_story_ad.keyframe', name: '4 关键帧图片', type: 'image', desc: '按分镜表和关键帧合同生成画面资产' },
     { id: 'new_story_ad.video', name: '5 图生视频', type: 'video', desc: '后续按关键帧合同生成视频镜头' },
     { id: 'new_story_ad.tts', name: '5 配音 TTS', type: 'tts', desc: '后续按分镜表生成旁白、对白或字幕配音' },
+    { id: 'new_story_ad.lip_sync', name: '5 出镜对白逐字口型', type: 'avatar', desc: '关键帧人物 + 已生成对白音频 → 逐字口型同步视频；出镜对白镜头强制使用' },
+    { id: 'new_story_ad.sound_generation', name: '5 环境声 / 音效 / 音乐生成', type: 'video', desc: '使用支持 generate_audio 的音视频模型生成与镜头同步的真实声音，并与对白音轨混合' },
   ],
   '网剧': [
     { id: 'drama.script',          name: '剧本 / 分镜生成',          type: 'story', desc: '编剧 LLM，输出剧本+分镜 JSON' },
@@ -494,14 +496,26 @@ const STAGE_DEFAULTS = {
   'new_story_ad.keyframe': NEW_STORY_AD_IMAGE_DEFAULTS,
   'new_story_ad.storyboard_sketch': NEW_STORY_AD_IMAGE_DEFAULTS,
   'new_story_ad.video': [
-    { provider_id: 'webang-seedance', model_id: 'doubao-seedance-2-0-260128', priority: 1, enabled: true },
-    { provider_id: 'webang-seedance', model_id: 'doubao-seedance-2-0-fast-260128', priority: 2, enabled: true },
+    { provider_id: 'deyunai', model_id: 'doubao-seedance-2-0-260128', priority: 1, enabled: true },
+    { provider_id: 'deyunai', model_id: 'doubao-seedance-2-0-fast-260128', priority: 2, enabled: true },
     { provider_id: 'topview', model_id: 'topview-image2video-pro', priority: 4, enabled: false },
     { provider_id: 'volcengine', model_id: 'doubao-seedance-2-0-260128', priority: 5, enabled: false },
   ],
   'new_story_ad.tts': [
     { provider_id: 'aliyun-tts', model_id: 'cosyvoice-v3.5-plus', priority: 1, enabled: true },
     { provider_id: 'aliyun-tts', model_id: 'cosyvoice-v3-flash', priority: 2, enabled: true },
+  ],
+  'new_story_ad.lip_sync': [
+    { provider_id: 'deyunai', model_id: 'doubao-seedance-2-0-260128', priority: 1, enabled: true },
+    { provider_id: 'topview', model_id: 'topview-avatar4', priority: 2, enabled: true },
+    { provider_id: 'topview', model_id: 'topview-avatar4-fast', priority: 3, enabled: true },
+    { provider_id: 'hifly', model_id: 'hifly', priority: 4, enabled: true },
+    { provider_id: 'volcengine', model_id: 'jimeng_realman_avatar_picture_omni_v15', priority: 5, enabled: true },
+  ],
+  'new_story_ad.sound_generation': [
+    { provider_id: 'deyunai', model_id: 'doubao-seedance-2-0-260128', priority: 1, enabled: true },
+    { provider_id: 'deyunai', model_id: 'doubao-seedance-2-0-fast-260128', priority: 2, enabled: true },
+    { provider_id: 'volcengine', model_id: 'doubao-seedance-2-0-260128', priority: 3, enabled: false },
   ],
   // 网剧
   'drama.script':        [{ provider_id: 'deepseek', model_id: 'deepseek-chat', priority: 1, enabled: true }],

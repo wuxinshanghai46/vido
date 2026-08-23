@@ -13,7 +13,7 @@ export function personPlanBlockedView(eligibility = {}, generationActive = false
   const description = migrationOnly
     ? '版本兼容；本次只升级合同版本，模型调用为 0，不修改现有方案。'
     : '只更新人物文字方案；不修改场景方案、场景图片和人物在场景中的站位绑定，也不会生成图片。';
-  return `<section class="card asset-visual-next-step is-blocked" role="status"><div><span class="status-tag ${migrationOnly ? 'is-info' : 'is-danger'}">${label}</span><h2>${title}</h2><p>${description}</p></div><div class="asset-visual-next-actions"><button class="btn${generationActive ? '' : ' primary'}" type="button" data-update-person-plan data-release-migration-only="${migrationOnly}" ${generationActive ? 'disabled' : ''}>${button}</button><button class="btn" type="button" disabled>${migrationOnly ? '升级完成后即可继续' : '文字方案确认后，再单独生成图片'}</button></div></section>`;
+  return `<section class="card asset-visual-next-step is-blocked" role="status"><div><span class="status-tag ${migrationOnly ? 'is-info' : 'is-danger'}">${label}</span><h2>${title}</h2><p>${description}</p></div><div class="asset-visual-next-actions"><button class="btn${generationActive ? '' : ' primary'}" type="button" data-update-person-plan data-release-migration-only="${migrationOnly}" ${generationActive ? 'disabled' : ''}>${migrationOnly ? button : '生成人物方案'}</button><small>${migrationOnly ? '升级完成后即可继续' : '文字方案确认后，再单独生成图片。'}</small></div></section>`;
 }
 
 export function assetPlanBlockedView(eligibility = {}, active = false) { return personPlanBlockedView(eligibility.person || eligibility, active); }

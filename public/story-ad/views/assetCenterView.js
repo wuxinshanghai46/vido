@@ -9,12 +9,12 @@ import { legacyDossierBoard, mediaSection } from './assetCenterDossierSections.j
 import { assetCardMedia } from './sceneDossierCard.js?v=20260823-cast-autosave-v172';
 import { assertSavedPerson, personAgeDisplay, personAssetState, personLookSummary } from './assetCenterPersonState.js?v=20260823-cast-autosave-v172';
 import { bindPersonEvolutionForm, collectPersonEvolutionValues, renderPersonEvolutionSummary } from './assetCenterPersonEvolution.js?v=20260823-cast-autosave-v172';
-import { createKeyedRequestGuard, createPersonPlanRequestGuard } from './assetCenterPlanReleaseStatus.js?v=20260823-cast-autosave-v172';
+import { createKeyedRequestGuard, createPersonPlanRequestGuard } from './assetCenterPlanReleaseStatus.js?v=20260823-production-audio-v174';
 const GROUPS = [['people', '人物'], ['animals', '动物'], ['products', '商品 / 展示主体'], ['logos', 'LOGO']];
 const GENERATABLE = new Set(['people', 'animals']);
 const loadCheckpointRecovery = globalThis.__loadAssetCheckpointRecovery
   || (() => import('./assetCheckpointRecovery.js?v=20260823-cast-autosave-v172'));
-const loadAssetCenterStage = globalThis.__loadAssetCenterStage || (() => import('./assetCenterStageView.js?v=20260823-cast-autosave-v172'));
+const loadAssetCenterStage = globalThis.__loadAssetCenterStage || (() => import('./assetCenterStageView.js?v=20260823-production-audio-v174'));
 function groupLabel(group = '') {
   return GROUPS.find(([id]) => id === group)?.[1] || '资产';
 }

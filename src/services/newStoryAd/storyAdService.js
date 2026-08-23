@@ -43,6 +43,7 @@ const shotDesign = require('./shotDesignService');
 const sceneAssistCompleteness = require('./sceneAssistCompletenessService'), assistScenePlan = require('./assistScenePlanService'), assistTextFormatter = require('./assistTextFormatterService'), assistCreativeDirection = require('./assistCreativeDirectionService'), storySetup = require('./storySetupService');
 const storyBeatAssist = require('./storyBeatAssistService'), briefGoalAssist = require('./briefGoalAssistService'), briefGoalPrompt = require('./briefGoalPromptService'), briefDialogueAssist = require('./briefDialogueAssistService');
 const productionBoard = require('./productionBoardContractService');
+const productionPromptCompiler = require('./productionPromptCompilerService');
 const blueprintCharacterProjection = require('./blueprintCharacterProjectionService');
 const { normalizeAssistedStoryBeat } = storyBeatAssist, visualRealismPolicy = require('./visualRealismPolicyService'), sceneAssetLifecycle = require('./sceneAssetService');
 const sceneCheckpointProjection = require('./sceneCheckpointProjectionService');
@@ -1278,6 +1279,7 @@ function buildKeyframePrompt(ctx = {}, shot = {}, contract = {}, index = 0, opti
   const visualMedium = worldSetting.primaryVisualMedium(ctx.world_setting);
   const liveActionMedium = visualMedium === 'live_action';
   const parts = [
+    `镜头制作设计（剧情字段真实生成输入）：\n${productionPromptCompiler.compileKeyframeDirection(shot, { sceneName: sceneLock?.scene_name })}`,
     worldSetting.visualMediumPrompt(visualMedium, 'storyboard keyframe'),
     liveActionMedium ? `Scene photorealism lock: ${visualRealismPolicy.compactSceneRealismPrompt()}` : '',
     liveActionMedium && shotNeedsPerson ? `Actor photorealism lock: ${visualRealismPolicy.compactPersonRealismPrompt()}` : '',
@@ -1367,7 +1369,9 @@ function previewShotPrompts(taskId, options = {}) {
   const baseCtx = storage.getOutput(taskId, 'context') || task.request || {};
   const sceneAssets = storage.getOutput(taskId, 'scene_assets') || baseCtx.scene_assets || [];
   let ctx = { ...baseCtx, scene_assets: Array.isArray(sceneAssets) ? sceneAssets : [], knowledge_policy_snapshot: knowledgePolicyRuntime.pinTaskPolicy(storage, taskId) };
-  const stored = storage.getOutput(taskId, 'storyboard_table') || [];
+  const blueprint = storage.getOutput(taskId, 'blueprint') || {};
+  const storedStoryboard = storage.getOutput(taskId, 'storyboard_table');
+  const stored = Array.isArray(storedStoryboard) && storedStoryboard.length ? storedStoryboard : (blueprint.beats || []);
   if (!Array.isArray(stored) || !stored.length) throw new Error('当前项目没有可用分镜表，请先生成分镜。');
   const rawIndex = Number(options.shot_index ?? options.shotIndex ?? 0);
   const index = Math.max(0, Math.min(stored.length - 1, Number.isFinite(rawIndex) ? rawIndex : 0));
@@ -1375,7 +1379,7 @@ function previewShotPrompts(taskId, options = {}) {
   const merged = normalizeStoryboardShot({ ...stored[index], ...draft }, index, stored[index - 1] || {});
   const shots = stored.map((shot, shotIndex) => shotIndex === index ? merged : shot);
   let boundShots = bindShotsToScenes(shots, ctx.scene_assets);
-  const previewCompiled = temporalEvidenceLifecycle.compileForTask({ storage, taskId, ctx, blueprint: storage.getOutput(taskId, 'blueprint') || {}, shots: boundShots, persist: false });
+  const previewCompiled = temporalEvidenceLifecycle.compileForTask({ storage, taskId, ctx, blueprint, shots: boundShots, persist: false });
   boundShots = previewCompiled.shots; ctx = { ...ctx, temporal_evidence_graph: previewCompiled.graph };
   const contracts = buildKeyframeContracts(ctx, boundShots);
   const shot = boundShots[index];
@@ -2271,6 +2275,12 @@ function buildVideoPreflightPlan(taskId, options = {}) {
     pinnedModel = videoAdapter.videoCandidates(options, { includeCircuitOpen: true })[0] || null;
   }
   const providerRoute = pinnedModel ? `${String(pinnedModel.provider_id || '').toLowerCase()}/${String(pinnedModel.model_id || '').toLowerCase()}` : '';
+  const modelRouteFor = (shot, contract) => {
+    const selected = videoAdapter.expectedModelForShot(shot, contract, pinnedModel || {});
+    return selected?.provider_id && selected?.model_id
+      ? `${String(selected.provider_id).toLowerCase()}/${String(selected.model_id).toLowerCase()}`
+      : providerRoute;
+  };
   const executionPlan = videoCore.planner.compileExecutionPlan({
     shots,
     contracts,
@@ -2286,7 +2296,7 @@ function buildVideoPreflightPlan(taskId, options = {}) {
   for (let pass = 0; pass < 3; pass += 1) {
     appliedCompatibilityFingerprint = compatibilityReport?.fingerprint || '';
     plan = videoPreflight.buildVideoPreflight({ ...baseArgs, compatibilityReport });
-    expectedLineages = videoArtifactWorkflow.buildExpectedLineages({ shots: plan.reconciled_shots || shots, contracts, keyframes, ctx, blueprint, storyboardMeta, modelRoute: providerRoute, audioTracks, sceneBlocks: plan.scene_blocks || [], shotPlans: plan.shots || [], qaPolicyVersion: videoFrameQa.VIDEO_FRAME_QA_POLICY_VERSION, speechModeFor: (shot, contract) => videoAdapter.explicitShotSpeechMode(shot, contract), motionPromptFor: (shot, contract, index) => ((plan.shots || []).find(item => item.index === index)?.action !== 'provider_generate' && clips[index]?.motion_prompt) || videoAdapter.clipPrompt(shot, ctx, contract, index > 0 ? shots[index - 1] : null, keyframes[index] || {}, plan.repair_instructions?.[index] || '') });
+    expectedLineages = videoArtifactWorkflow.buildExpectedLineages({ shots: plan.reconciled_shots || shots, contracts, keyframes, ctx, blueprint, storyboardMeta, modelRoute: providerRoute, modelRouteFor, audioTracks, sceneBlocks: plan.scene_blocks || [], shotPlans: plan.shots || [], qaPolicyVersion: videoFrameQa.VIDEO_FRAME_QA_POLICY_VERSION, speechModeFor: (shot, contract) => videoAdapter.explicitShotSpeechMode(shot, contract), motionPromptFor: (shot, contract, index) => ((plan.shots || []).find(item => item.index === index)?.action !== 'provider_generate' && clips[index]?.motion_prompt) || videoAdapter.clipPrompt(shot, ctx, contract, index > 0 ? shots[index - 1] : null, keyframes[index] || {}, plan.repair_instructions?.[index] || '') });
     const nextReport = videoArtifactWorkflow.buildCompatibilityReport({ clips, expectedLineages, onlyIndexes: requestedOnlyIndexes });
     if (compatibilityReport?.fingerprint === nextReport.fingerprint) { compatibilityReport = nextReport; break; }
     compatibilityReport = nextReport;
@@ -2302,16 +2312,22 @@ function buildVideoPreflightPlan(taskId, options = {}) {
   if (appliedCompatibilityFingerprint !== (compatibilityReport?.fingerprint || '')) { plan.blockers.push({ code: 'VIDEO_ARTIFACT_PLAN_UNSTABLE', message: '视频产物兼容方案未能稳定收敛，已在供应商提交前停止。' }); plan.status = 'blocked'; }
   const authorizedExecutionPlan = {
     ...executionPlan,
-    generation_units: (plan.units || []).filter(unit => unit.paid).map(unit => ({
+    generation_units: (plan.units || []).filter(unit => unit.paid).map(unit => {
+      const firstIndex = (unit.member_indexes || [])[0] ?? 0;
+      const unitModel = videoAdapter.expectedModelForShot((plan.reconciled_shots || shots)[firstIndex] || {}, contracts[firstIndex] || {}, pinnedModel || {});
+      return {
       id: unit.id,
       paid: true,
+      provider_id: unitModel.provider_id || pinnedModel?.provider_id || '',
+      model_id: unitModel.model_id || pinnedModel?.model_id || '',
       mode: unit.continuous ? 'one_take' : 'single_shot',
       edit_shot_indexes: unit.member_indexes || [],
       duration_sec: unit.duration_sec,
       complexity_level: Math.max(0, ...(unit.member_indexes || []).map(index => videoCore.planner.complexityOf(executionPlan.edit_shots[index] || {}))),
       requires_manual_review: (unit.member_indexes || []).some(index => videoCore.planner.complexityOf(executionPlan.edit_shots[index] || {}) >= 3),
       automatic_retry_limit: 0,
-    })),
+    };
+    }),
   };
   const costPlan = videoCore.costGuard.buildCostPlan({
     executionPlan: authorizedExecutionPlan,
@@ -2447,19 +2463,27 @@ async function generateVideoStage(taskId, options = {}) { options = paidExecutio
   const pinnedModel = videoAdapter.resolvePinnedVideoModel(options, previousClips);
   const pinnedRoute = `${String(pinnedModel.provider_id || '').toLowerCase()}/${String(pinnedModel.model_id || '').toLowerCase()}`;
   let sceneBlocks = Array.isArray(preflightPlan.scene_blocks) && preflightPlan.scene_blocks.length ? preflightPlan.scene_blocks : sceneBlockService.buildSceneBlocks(generationShots, contracts, { ...options, preserve_existing_topology: false, continuous_quality_mode: generationMode === 'quality', scene_block_generation: generationMode === 'quality' });
+  const lipSyncIndexes = generationShots.map((shot, index) => videoAdapter.explicitShotSpeechMode(shot, contracts[index] || {}) === 'on_camera_dialogue' ? index : -1).filter(index => index >= 0);
+  sceneBlocks = sceneBlockService.isolateIndexes(sceneBlocks, generationShots, contracts, lipSyncIndexes);
   storage.saveOutput(taskId, 'scene_worlds', preflightPlan.execution_plan?.scene_worlds || []);
   storage.saveOutput(taskId, 'continuity_runs', preflightPlan.execution_plan?.continuity_runs || []);
   storage.saveOutput(taskId, 'generation_units', preflightPlan.execution_plan?.generation_units || []);
   storage.saveOutput(taskId, 'video_scene_blocks', sceneBlocks);
   const audioTracks = Array.isArray(ttsAudio?.tracks) ? ttsAudio.tracks : (Array.isArray(ttsAudio) ? ttsAudio : []);
-  const expectedLineages = Array.isArray(preflightPlan.expected_lineages) && preflightPlan.expected_lineages.length === generationShots.length ? preflightPlan.expected_lineages : generationShots.map((shot, index) => videoLineage.buildShotLineage({
+  const expectedLineages = generationShots.map((shot, index) => {
+    const expectedModel = videoAdapter.expectedModelForShot(shot, contracts[index] || {}, pinnedModel);
+    const expectedRoute = expectedModel?.provider_id && expectedModel?.model_id
+      ? `${String(expectedModel.provider_id).toLowerCase()}/${String(expectedModel.model_id).toLowerCase()}`
+      : pinnedRoute;
+    return videoLineage.buildShotLineage({
     shot, index, contract: contracts[index] || {}, keyframe: keyframes[index] || {}, ctx,
-    blueprint, storyboardMeta, modelRoute: pinnedRoute,
+    blueprint, storyboardMeta, modelRoute: expectedRoute,
     speechMode: videoAdapter.explicitShotSpeechMode(shot, contracts[index] || {}),
     motionPrompt: videoAdapter.clipPrompt(shot, ctx, contracts[index] || {}, index > 0 ? generationShots[index - 1] : null, keyframes[index] || {}, preflightPlan.repair_instructions?.[index] || ''),
     audio: audioTracks[index] || {},
     sceneBlock: sceneBlockService.blockForIndex(sceneBlocks, index),
-  }));
+    });
+  });
   let clips = previousClips.slice();
   async function reviewVideoIndexes(reviewedIndexes = [], repairAttempt = 0, { stopOnFailure = false } = {}) {
     const failures = [];
@@ -2479,7 +2503,9 @@ async function generateVideoStage(taskId, options = {}) { options = paidExecutio
       const localMotionQa = plannedAction === 'local_motion'
         ? await videoFrameQa.verifyDeterministicLocalMotionClip({ taskId, clip, keyframe: keyframes[index] || {}, contract: contracts[index] || {}, index })
         : null;
-      const qa = (continuityReviewOnly || transitionBridge) ? clip.qa : (savedContractQa || localMotionQa || await videoFrameQa.reviewVideoClip({ taskId, clip, shot: preflightPlan.reconciled_shots[index] || shots[index] || {}, keyframe: keyframes[index] || {}, contract: contracts[index] || {}, ctx, index }));
+      const requiresLipSync = videoAdapter.explicitShotSpeechMode(generationShots[index] || shots[index] || {}, contracts[index] || {}) === 'on_camera_dialogue';
+      const lipSyncQa = requiresLipSync && clip.lip_sync_applied !== true ? { pass: false, status: 'failed', problems: ['出镜对白镜头没有经过真实音频驱动口型阶段'], failure_dimensions: ['lip_sync'], failure_labels_zh: ['逐字口型未执行'], retry_instruction: '使用 new_story_ad.lip_sync 中配置的图片+音频口型模型重新生成该镜头。' } : null;
+      const qa = lipSyncQa || ((continuityReviewOnly || transitionBridge) ? clip.qa : (savedContractQa || localMotionQa || await videoFrameQa.reviewVideoClip({ taskId, clip, shot: preflightPlan.reconciled_shots[index] || shots[index] || {}, keyframe: keyframes[index] || {}, contract: contracts[index] || {}, ctx, index })));
       clips[index] = { ...clip, qa, error: qa.pass ? '' : '视频抽帧 QA 未通过', error_code: qa.pass ? '' : 'VIDEO_FRAME_QA_FAILED' };
       videoAdapter.updateVideoShotStatus(taskId, index, {
         lifecycle: qa.pass ? 'qa_passed' : 'qa_failed', qa_status: qa.pass ? 'passed' : 'failed',
@@ -2649,7 +2675,9 @@ async function generateVideoStage(taskId, options = {}) { options = paidExecutio
     await videoSubmissionGate.runUnitsFailFast(generationUnits, async (unit, unitPosition, remainingUnits) => {
       const unitIndexes = unit.member_indexes.filter(index => targetIndexes.includes(index));
       const paidUnit = (preflightPlan.units || []).find(item => item.paid && (item.member_indexes || []).some(index => unitIndexes.includes(index)));
-      const attemptClaims = paidUnit ? videoArtifactWorkflow.claimUnitAttempts({ ledger: videoAttemptLedger, taskId, indexes: unitIndexes, generationId: options.generation_id || options.generationId || task.active_generation_id || preflightPlan.fingerprint, lineages: expectedLineages, providerId: pinnedModel.provider_id, modelId: pinnedModel.model_id, costFingerprint: preflightPlan.cost_plan?.fingerprint || '' }) : [];
+      const claimIndex = unitIndexes[0] ?? 0;
+      const claimModel = videoAdapter.expectedModelForShot(generationShots[claimIndex] || {}, contracts[claimIndex] || {}, pinnedModel);
+      const attemptClaims = paidUnit ? videoArtifactWorkflow.claimUnitAttempts({ ledger: videoAttemptLedger, taskId, indexes: unitIndexes, generationId: options.generation_id || options.generationId || task.active_generation_id || preflightPlan.fingerprint, lineages: expectedLineages, providerId: claimModel.provider_id, modelId: claimModel.model_id, costFingerprint: preflightPlan.cost_plan?.fingerprint || '' }) : [];
       let generationError = null;
       try {
         lastGenerated = await videoAdapter.generateSceneBlockVideos({
@@ -3260,7 +3288,12 @@ async function composeStage(taskId, options = {}) {
   const composeSceneAssets = storage.getOutput(taskId, 'scene_assets') || ctx.scene_assets || [], composeContracts = keyframeContractFreshness.inspect(taskId, { ctx: { ...ctx, scene_assets: composeSceneAssets }, shots }).contracts;
   const composeKeyframes = storage.getOutput(taskId, 'keyframes') || [], composeBlueprint = storage.getOutput(taskId, 'blueprint') || {}, composeStoryboardMeta = storage.getOutput(taskId, 'storyboard_meta') || {}, composeTts = storage.getOutput(taskId, 'tts_audio') || {}, composeAudioTracks = Array.isArray(composeTts?.tracks) ? composeTts.tracks : (Array.isArray(composeTts) ? composeTts : []);
   const composeSceneBlocks = storage.getOutput(taskId, 'video_scene_blocks') || [], composeModelRoute = String(clips.find(clip => clip?.provider_used)?.provider_used || '').toLowerCase();
-  const composeExpectedLineages = videoArtifactWorkflow.buildExpectedLineages({ shots, contracts: composeContracts, keyframes: composeKeyframes, ctx, blueprint: composeBlueprint, storyboardMeta: composeStoryboardMeta, modelRoute: composeModelRoute, audioTracks: composeAudioTracks, sceneBlocks: composeSceneBlocks, shotPlans: clips.map((clip, index) => ({ index, input_strategy: videoArtifactCompatibility.inputStrategy(clip), boundary_repair: { fingerprint: clip?.boundary_repair_fingerprint || clip?.lineage?.boundary_repair_fingerprint || '' }, transition_override: clip?.transition_override || '' })), qaPolicyVersion: videoFrameQa.VIDEO_FRAME_QA_POLICY_VERSION, speechModeFor: (shot, contract) => videoAdapter.explicitShotSpeechMode(shot, contract), motionPromptFor: (shot, contract, index) => clips[index]?.motion_prompt || videoAdapter.clipPrompt(shot, ctx, contract, index > 0 ? shots[index - 1] : null, composeKeyframes[index] || {}, '') });
+  const missingLipSync = shots.map((shot, index) => videoAdapter.explicitShotSpeechMode(shot, composeContracts[index] || {}) === 'on_camera_dialogue' && clips[index]?.lip_sync_applied !== true ? index + 1 : 0).filter(Boolean);
+  if (missingLipSync.length) {
+    const error = new Error(`第 ${missingLipSync.join('、')} 镜包含出镜对白但未完成逐字口型同步，禁止合成成片`);
+    error.code = 'COMPOSE_LIP_SYNC_REQUIRED'; error.retryable = true; throw error;
+  }
+  const composeExpectedLineages = videoArtifactWorkflow.buildExpectedLineages({ shots, contracts: composeContracts, keyframes: composeKeyframes, ctx, blueprint: composeBlueprint, storyboardMeta: composeStoryboardMeta, modelRoute: composeModelRoute, modelRouteFor: (_shot, _contract, index) => String(clips[index]?.provider_used || composeModelRoute).toLowerCase(), audioTracks: composeAudioTracks, sceneBlocks: composeSceneBlocks, shotPlans: clips.map((clip, index) => ({ index, input_strategy: videoArtifactCompatibility.inputStrategy(clip), boundary_repair: { fingerprint: clip?.boundary_repair_fingerprint || clip?.lineage?.boundary_repair_fingerprint || '' }, transition_override: clip?.transition_override || '' })), qaPolicyVersion: videoFrameQa.VIDEO_FRAME_QA_POLICY_VERSION, speechModeFor: (shot, contract) => videoAdapter.explicitShotSpeechMode(shot, contract), motionPromptFor: (shot, contract, index) => clips[index]?.motion_prompt || videoAdapter.clipPrompt(shot, ctx, contract, index > 0 ? shots[index - 1] : null, composeKeyframes[index] || {}, '') });
   const composeCompatibility = videoComposeCompatibility.buildReport({ clips, statuses: composeStatuses, expectedLineages: composeExpectedLineages });
   videoArtifactWorkflow.assertComposeCompatible(composeCompatibility);
   const boundaryAudit = videoBoundaryPolicy.audit(clips, shots.length); if (!boundaryAudit.ready) { const failed = boundaryAudit.failed_indexes.length > 0;

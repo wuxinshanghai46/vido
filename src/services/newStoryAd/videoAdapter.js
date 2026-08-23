@@ -21,6 +21,8 @@ const videoCore = require('../videoGenerationCore'), paidExecutionPolicy = requi
 const contractFreshness = require('./keyframeContractFreshnessService');
 const boundaryRepair = require('./videoBoundaryRepairService'), boundaryGeneration = require('./videoBoundaryGenerationService'), videoAttemptState = require('./videoAttemptStateService');
 const knowledgePolicyRuntime = require('./knowledgePolicyRuntimeService');
+const productionPromptCompiler = require('./productionPromptCompilerService');
+const lipSync = require('./lipSyncService');
 const OUTPUT_DIR = path.resolve(process.env.OUTPUT_DIR || path.join(__dirname, '../../../outputs')), VIDEO_DIR = path.join(OUTPUT_DIR, 'new-story-ad-videos');
 const VIDEO_STAGE = 'new_story_ad.video';
 const VIDEO_MAX_CANDIDATES = Math.max(1, Math.min(5, Number(process.env.NEW_STORY_AD_VIDEO_MAX_CANDIDATES) || 4));
@@ -129,7 +131,7 @@ function explicitShotSpeechMode(shot = {}, contract = {}) {
   const raw = String(
     shot.speech_mode || shot.speechMode || shot.on_screen_speech_mode || contract.speech_mode || contract.speechMode || '',
   ).trim().toLowerCase().replace(/[\s-]+/g, '_');
-  if (['on_camera', 'on_camera_dialogue', 'visible_dialogue', 'speaking', 'lip_sync'].includes(raw)) return 'on_camera_dialogue';
+  if (['dialogue', 'on_camera', 'on_camera_dialogue', 'visible_dialogue', 'speaking', 'lip_sync'].includes(raw)) return 'on_camera_dialogue';
   if (['silent', 'mute', 'no_speech'].includes(raw)) return 'silent';
   return 'offscreen_voiceover';
 }
@@ -233,6 +235,15 @@ function probeDuration(filePath = '') {
   });
 }
 
+function hasAudioStream(filePath = '') {
+  if (!filePath || !fs.existsSync(filePath)) return Promise.resolve(false);
+  return new Promise(resolve => {
+    const child = spawn(ffprobePath, ['-v', 'error', '-select_streams', 'a:0', '-show_entries', 'stream=index', '-of', 'csv=p=0', filePath], { windowsHide: true });
+    let out = ''; child.stdout.on('data', chunk => { out += chunk.toString(); });
+    child.on('error', () => resolve(false)); child.on('close', () => resolve(!!out.trim()));
+  });
+}
+
 function encodingProfile(qualityTier = 'final', resolution = '1080p') {
   const tier = String(qualityTier || 'final').toLowerCase();
   if (tier === 'draft') return { tier: 'draft', preset: 'veryfast', crf: '22', audio_bitrate: '128k' };
@@ -240,7 +251,7 @@ function encodingProfile(qualityTier = 'final', resolution = '1080p') {
   return { tier: 'final', preset: 'fast', crf: '18', audio_bitrate: '160k' };
 }
 
-async function normalizeProviderClip({ inputPath, outputPath, audioPath = '', durationSec = 4, startSec = 0, aspectRatio = '9:16', resolution = '1080p', qualityTier = 'final' } = {}) {
+async function normalizeProviderClip({ inputPath, outputPath, audioPath = '', preserveDrivenAudio = false, durationSec = 4, startSec = 0, aspectRatio = '9:16', resolution = '1080p', qualityTier = 'final' } = {}) {
   ensureDir(path.dirname(outputPath));
   const { width, height } = outputSize(aspectRatio, resolution);
   const profile = encodingProfile(qualityTier, resolution);
@@ -248,13 +259,16 @@ async function normalizeProviderClip({ inputPath, outputPath, audioPath = '', du
   const args = ['-y'];
   if (Number(startSec) > 0) args.push('-ss', String(Math.max(0, Number(startSec) || 0)));
   args.push('-i', inputPath);
-  if (audioPath) args.push('-i', audioPath);
-  else args.push('-f', 'lavfi', '-i', 'anullsrc=channel_layout=stereo:sample_rate=44100');
+  const sourceHasAudio = await hasAudioStream(inputPath);
+  const overlayAudio = audioPath && !(preserveDrivenAudio && sourceHasAudio);
+  if (overlayAudio) args.push('-i', audioPath);
+  else if (!sourceHasAudio) args.push('-f', 'lavfi', '-i', 'anullsrc=channel_layout=stereo:sample_rate=44100');
+  if (sourceHasAudio && overlayAudio) args.push('-filter_complex', `[0:a]aresample=44100,volume=0.38[amb];[1:a]aresample=44100,volume=1.0[voice];[amb][voice]amix=inputs=2:duration=longest:dropout_transition=0,apad,atrim=0:${duration}[aout]`);
   args.push(
     '-t', String(duration),
     '-vf', `scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height},fps=30,setsar=1,format=yuv420p`,
-    '-af', `apad,atrim=0:${duration},aresample=44100`,
-    '-map', '0:v:0', '-map', '1:a:0',
+    ...(sourceHasAudio && overlayAudio ? [] : ['-af', `apad,atrim=0:${duration},aresample=44100`]),
+    '-map', '0:v:0', '-map', sourceHasAudio && overlayAudio ? '[aout]' : (sourceHasAudio ? '0:a:0' : '1:a:0'),
     '-c:v', 'libx264', '-preset', profile.preset, '-crf', profile.crf,
     '-c:a', 'aac', '-b:a', profile.audio_bitrate, '-ar', '44100', '-ac', '2',
     '-movflags', '+faststart', outputPath,
@@ -294,6 +308,7 @@ function clipPrompt(shot = {}, ctx = {}, contract = {}, previousShot = null, key
     && keyframe.qa?.pass === true
     && (!contract.contract_fingerprint || contractFreshness.artifactMatchesContract(keyframe, contract));
   return [
+    `镜头运动与声音执行设计（剧情字段真实生成输入）：\n${productionPromptCompiler.compileVideoDirection(shot)}`,
     `Advertised subject: ${ctx.product_subject || ''}`,
     `Shot purpose: ${shot.purpose || shot.role || ''}`,
     `Visible frame: ${shot.visual || shot.visual_description || shot.content_prompt || ''}`,
@@ -356,6 +371,20 @@ function videoCandidates(options = {}, { includeCircuitOpen = false } = {}) {
 
 function modelRoute(model = {}) {
   return `${String(model.provider_id || '').trim().toLowerCase()}/${String(model.model_id || '').trim().toLowerCase()}`;
+}
+
+function shotNeedsNativeAudio(shot = {}) {
+  return shot.sound_mode !== 'silent' && !!(
+    shot.sound_design
+    || shot.ambient_sound
+    || (Array.isArray(shot.sfx) && shot.sfx.length)
+    || shot.music_cue
+  );
+}
+
+function expectedModelForShot(shot = {}, contract = {}, fallbackModel = {}) {
+  if (explicitShotSpeechMode(shot, contract) !== 'on_camera_dialogue') return fallbackModel;
+  return lipSync.preferredCandidate({ soundRequired: shotNeedsNativeAudio(shot) }) || {};
 }
 
 function clipRoute(clip = {}) {
@@ -591,6 +620,34 @@ function updateGenerationUnitStatus(taskId = '', index = 0, patch = {}, total = 
 
 /** 提交一个已经通过费用授权的供应商生成单元，不执行隐式模型回退。 */
 async function generateProviderClip({ taskId, shot, previousShot, keyframe, audio, contract, ctx, index, duration, options }) {
+  const speechMode = explicitShotSpeechMode(shot, contract);
+  if (speechMode === 'on_camera_dialogue') {
+    const imageUrl = absoluteAssetUrl(keyframe.image_url || keyframe.imageUrl || keyframe.url || '', options);
+    const audioPath = localAudioPath(audio?.audio_url || audio?.audioUrl || audio?.url || '');
+    const audioUrl = absoluteAssetUrl(audio?.audio_url || audio?.audioUrl || audio?.url || '', options);
+    if (!audioPath || !fs.existsSync(audioPath)) {
+      const error = new Error(`第 ${index + 1} 镜是出镜对白，但没有可用的真实配音音轨，已停止视频生成`);
+      error.code = 'LIP_SYNC_AUDIO_REQUIRED'; error.retryable = false; throw error;
+    }
+    const audioDuration = await probeDuration(audioPath);
+    if (audioDuration > duration + 0.35) {
+      const error = new Error(`第 ${index + 1} 镜配音 ${audioDuration.toFixed(2)} 秒超过镜头 ${duration.toFixed(2)} 秒，请缩短台词或增加镜头时长`);
+      error.code = 'AUDIO_DURATION_EXCEEDS_SHOT'; error.retryable = false; throw error;
+    }
+    const filename = safeBase(`nsa_lipsync_${taskId || 'task'}_${String(index + 1).padStart(2, '0')}_${Date.now()}`);
+    const rawPath = path.join(VIDEO_DIR, `${filename}_raw.mp4`);
+    updateGenerationUnitStatus(taskId, index, { lifecycle: 'submitting', total_shots: Number(options._totalShots || 0), title: shot.title || `镜头 ${index + 1}`, speech_mode: speechMode, provider_status: 'lip_sync_submitting', error: '', error_code: '' }, Number(options._totalShots || 0), options);
+    const prompt = String(options._promptOverride || '').trim() || clipPrompt(shot, ctx, contract, previousShot, keyframe, options._repairInstructions?.[index] || '');
+    const startedAt = Date.now();
+    const generated = await lipSync.generate({ taskId, imageUrl, audioUrl, outputPath: rawPath, prompt, duration, aspectRatio: ctx.output_ratio || options.aspectRatio || '9:16', userId: ctx.user_id || '', soundRequired: shotNeedsNativeAudio(shot), onProgress: event => updateGenerationUnitStatus(taskId, index, { lifecycle: 'provider_running', provider_status: event.status || event.stage || 'lip_sync_running', provider_task_id: event.taskId || '', provider_elapsed_ms: Date.now() - startedAt }, Number(options._totalShots || 0), options) });
+    const normalizedPath = path.join(VIDEO_DIR, `${filename}_normalized.mp4`);
+    await normalizeProviderClip({ inputPath: generated.filePath, outputPath: normalizedPath, audioPath, preserveDrivenAudio: true, durationSec: duration, aspectRatio: ctx.output_ratio || options.aspectRatio || '9:16', resolution: options.video_resolution || options.videoResolution || ctx.video_resolution || '1080p', qualityTier: options.video_quality || options.videoQuality || ctx.video_quality || 'final' });
+    const providerTaskId = generated.taskId || generated.task_id || '';
+    const accounting = successfulProviderAccounting(providerTaskId, duration);
+    storage.saveModelCall({ task_id: taskId, stage: lipSync.STAGE, provider_id: generated.provider_id, model_id: generated.model_id, status: 'success', latency_ms: Date.now() - startedAt, ...accounting, generation_id: options._generationId || options.generation_id || '', shot_index: index });
+    updateGenerationUnitStatus(taskId, index, { lifecycle: 'generated', ...accounting, provider_id: generated.provider_id, model_id: generated.model_id, provider_task_id: providerTaskId, provider_status: 'lip_sync_succeeded', file_path: normalizedPath, file_exists: fs.existsSync(normalizedPath), video_url: publicVideoUrl(path.basename(normalizedPath)), lip_sync_applied: true }, Number(options._totalShots || 0), options);
+    return outputPayload(normalizedPath, { shot_index: index, index: index + 1, title: shot.title || `Shot ${index + 1}`, duration_sec: duration, provider_used: `${generated.provider_id}/${generated.model_id}`, ...accounting, image_source: imageUrl, motion_prompt: prompt, mode: 'audio_driven_lip_sync', speech_mode: speechMode, audio_source: audioUrl, audio_muxed: true, lip_sync_applied: true, lip_sync_audio_driven: true, lip_sync_provider_task_id: providerTaskId, normalized: true, attempts: generated.attempts || [] });
+  }
   const pinnedModel = options._pinnedVideoModel;
   if (!pinnedModel) {
     const error = new Error('当前没有可用且状态正常的真实视频模型，已立即停止本阶段。');
@@ -599,6 +656,16 @@ async function generateProviderClip({ taskId, shot, previousShot, keyframe, audi
     throw error;
   }
   const candidates = [pinnedModel];
+  const nativeAudioRequested = shotNeedsNativeAudio(shot);
+  if (nativeAudioRequested) {
+    const audioModels = pipeline.pickAllEnabledWithDefault('new_story_ad.sound_generation');
+    const supported = audioModels.some(model => String(model.provider_id).toLowerCase() === String(pinnedModel.provider_id).toLowerCase()
+      && String(model.model_id).toLowerCase() === String(pinnedModel.model_id).toLowerCase());
+    if (!supported) {
+      const error = new Error(`模型调用管理中的视频模型 ${modelRoute(pinnedModel)} 未同时配置到 new_story_ad.sound_generation，不能把声音说明伪装成已实现音效`);
+      error.code = 'SOUND_GENERATION_MODEL_NOT_ALIGNED'; error.retryable = false; throw error;
+    }
+  }
   const imageUrl = options._boundaryFirstFrameUrl || absoluteAssetUrl(keyframe.image_url || keyframe.imageUrl || keyframe.url || '', options);
   if (!imageUrl) throw new Error(`第 ${index + 1} 镜缺少关键帧，不能提交图生视频`);
   const prompt = String(options._promptOverride || '').trim()
@@ -677,6 +744,7 @@ async function generateProviderClip({ taskId, shot, previousShot, keyframe, audi
         resolution: options.video_resolution || options.videoResolution || ctx.video_resolution || '1080p',
         userId: ctx.user_id || '',
         agentId: VIDEO_STAGE,
+        generateAudio: nativeAudioRequested,
         signal: cancellation.signal(),
         onSubmitted: event => updateGenerationUnitStatus(taskId, index, {
           lifecycle: 'provider_submitted',
@@ -749,6 +817,7 @@ async function generateProviderClip({ taskId, shot, previousShot, keyframe, audi
         scene_block_members: options._sceneBlock?.member_indexes?.map(member => member + 1) || [],
         audio_source: audioPath ? (audio.audio_url || audio.audioUrl || audio.url || '') : '',
         audio_muxed: !!audioPath,
+        native_audio_generated: nativeAudioRequested,
         normalized: true,
         resumed_after_interruption: generated.resumed === true,
         attempts,
@@ -1312,6 +1381,8 @@ module.exports = {
   updateVideoProgress,
   resumableProviderTaskId,
   explicitShotSpeechMode,
+  expectedModelForShot,
+  shotNeedsNativeAudio,
   hardVideoDependency,
   renderLocalClip,
   outputSize,

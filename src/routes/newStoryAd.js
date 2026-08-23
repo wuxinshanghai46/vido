@@ -659,6 +659,7 @@ router.get('/health', (req, res) => {
     'new_story_ad.keyframe',
     'new_story_ad.video',
     'new_story_ad.tts',
+    'new_story_ad.lip_sync', 'new_story_ad.sound_generation',
   ];
   res.json({
     success: true,
@@ -673,6 +674,8 @@ router.get('/health', (req, res) => {
         ? videoAdapter.videoCandidates({})
         : ['new_story_ad.person_sheet', 'new_story_ad.scene_asset', 'new_story_ad.keyframe'].includes(stage)
           ? mediaAdapter.availableImageCandidates(stage)
+          : stage === 'new_story_ad.lip_sync' ? require('../services/newStoryAd/lipSyncService').candidates()
+          : stage === 'new_story_ad.sound_generation' ? require('../services/pipelineModelService').pickAllEnabledWithDefault(stage)
           : stage === 'new_story_ad.tts'
             ? []
             : modelGateway.candidatesForStage(stage);

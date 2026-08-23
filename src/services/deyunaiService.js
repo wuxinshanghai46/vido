@@ -210,7 +210,7 @@ function assertSeedanceStructuredPrompt(prompt = '') {
   return parsed;
 }
 
-function buildSeedanceContentTaskBody({ model, prompt, duration, size, imageUrl, referenceAssetUrls = [] }) {
+function buildSeedanceContentTaskBody({ model, prompt, duration, size, imageUrl, referenceAssetUrls = [], audioUrl = '', generateAudio = false }) {
   const structuredPrompt = buildSeedanceStructuredPrompt(prompt);
   assertSeedanceStructuredPrompt(structuredPrompt);
   const content = [{ type: 'text', text: structuredPrompt }];
@@ -236,13 +236,14 @@ function buildSeedanceContentTaskBody({ model, prompt, duration, size, imageUrl,
       role: 'first_frame',
     });
   }
+  if (audioUrl) content.push({ type: 'audio_url', audio_url: { url: String(audioUrl).trim() }, role: 'reference_audio' });
   return {
     model,
     content,
     ratio: seedanceRatioFromSize(size),
     duration: Math.min(15, Math.max(5, Math.round(Number(duration) || 5))),
     resolution: seedanceResolutionFromSize(size),
-    generate_audio: false,
+    generate_audio: generateAudio === true,
     watermark: false,
   };
 }
@@ -566,9 +567,9 @@ async function resumeVideo({ model, taskId, duration = 5, timeoutMs = 600000, si
   throw attachSubmittedVideoTask(error, providerTaskId, duration);
 }
 
-async function generateSeedanceContentTask({ model, prompt, duration, size, imageUrl, referenceAssetUrls, timeoutMs, signal, onSubmitted = null, onProgress = null }) {
+async function generateSeedanceContentTask({ model, prompt, duration, size, imageUrl, referenceAssetUrls, audioUrl = '', generateAudio = false, timeoutMs, signal, onSubmitted = null, onProgress = null }) {
   const headers = buildHeaders(model, { forceDomestic: true });
-  const body = buildSeedanceContentTaskBody({ model, prompt, duration, size, imageUrl, referenceAssetUrls });
+  const body = buildSeedanceContentTaskBody({ model, prompt, duration, size, imageUrl, referenceAssetUrls, audioUrl, generateAudio });
   let submitRes;
   try {
     submitRes = await axios.post(CONTENT_GENERATION_TASKS_URL, body, { headers, timeout: 30000, signal });
@@ -1175,13 +1176,13 @@ async function generateImage({ model, prompt, n = 1, size = '1024x1024', aspectR
  * @param {string} [opts.agentId]
  * @returns {Promise<{ url:string, taskId:string, durationSec:number }>}
  */
-async function generateVideo({ model, prompt, duration = 5, size = '720x1280', imageUrl, referenceAssetUrls = [], timeoutMs = 600000, userId = null, agentId = null, signal = null, onSubmitted = null, onProgress = null }) {
+async function generateVideo({ model, prompt, duration = 5, size = '720x1280', imageUrl, referenceAssetUrls = [], audioUrl = '', generateAudio = false, timeoutMs = 600000, userId = null, agentId = null, signal = null, onSubmitted = null, onProgress = null }) {
   const _started = Date.now();
   let _ok = false; let _err = null; let _taskId = null;
   let _videoSeconds = duration || 5;
   try {
     if (isSeedanceContentGenerationModel(model)) {
-      const result = await generateSeedanceContentTask({ model, prompt, duration, size, imageUrl, referenceAssetUrls, timeoutMs, signal, onSubmitted, onProgress });
+      const result = await generateSeedanceContentTask({ model, prompt, duration, size, imageUrl, referenceAssetUrls, audioUrl, generateAudio, timeoutMs, signal, onSubmitted, onProgress });
       _taskId = result.taskId;
       _videoSeconds = Number(result.durationSec) || _videoSeconds;
       _ok = true;

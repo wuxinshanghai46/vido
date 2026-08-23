@@ -62,6 +62,8 @@ const DOMAIN_RULES = [
       /^src\/services\/newStoryAd\/(?:blueprint|storyboard)/i,
       /^scripts\/test-(?:new-)?story-ad-(?:blueprint|storyboard|detail-sketch)/i,
       /^src\/services\/newStoryAd\/(?:productionBoardContractService|qualityReviewService|storyAdService|storyBeatAssistService|ttsAdapter)\.js$/i,
+      /^src\/services\/newStoryAd\/(?:productionPromptCompilerService|soundJourneyService)\.js$/i,
+      /^scripts\/test-story-ad-(?:production-prompt-application|audio-realization)/i,
       /^scripts\/test-story-ad-production-board-v158\.js$/i,
       /^scripts\/test-story-ad-production-editor-v166\.js$/i,
     ],
@@ -85,6 +87,9 @@ const DOMAIN_RULES = [
       /^src\/server\.js$/,
       /(?:storage|database|sqlite|migration|billing|generation|modelGateway|jobService|concurrency|releaseControl)/i,
       /(?:providerAdapterRegistry|settingsService|configure-story-ad-independent-text-routes|test-story-ad-(?:provider-contract|independent-text-routes))/i,
+      /^src\/routes\/newStoryAd\.js$/i,
+      /^src\/services\/(?:pipelineModelService|deyunaiService)\.js$/i,
+      /^src\/services\/newStoryAd\/(?:videoAdapter|lipSyncService|videoArtifactWorkflowService)\.js$/i,
       /^scripts\/(?:migrate|audit)-new-story-ad-systemic/,
     ],
   },
@@ -101,7 +106,7 @@ const DOMAIN_RULES = [
   {
     domain: 'asset_plan',
     risk: 'asset_plan',
-    patterns: [/(?:assetPlan|PlanningDetails|PlanRelease|PlanMigration|scenePlanStatus|contextBuilder|subjectAssetBundle)/i],
+    patterns: [/(?:assetPlan|PlanningDetails|PlanRelease|PlanMigration|scenePlanStatus|contextBuilder|subjectAssetBundle)/i, /^scripts\/test-story-ad-person-plan/i],
   },
   {
     domain: 'workspace_ui',
@@ -239,7 +244,7 @@ function classifyFiles(files = [], { reliable = true, scopedDomains = {} } = {})
     if (/^(?:docs\/|README(?:\.|$)|AGENTS\.md$|\.github\/|\.gitee\/)/i.test(file)) continue;
     const matches = DOMAIN_RULES.filter(rule => rule.patterns.some(pattern => pattern.test(file)));
     const scopedDomain = String(scopedDomains[file] || '');
-    if (!matches.length && scopedDomain) {
+    if (scopedDomain) {
       domains.add(scopedDomain);
       risks.add(scopedDomain === 'reference' ? 'reference' : scopedDomain);
       continue;
