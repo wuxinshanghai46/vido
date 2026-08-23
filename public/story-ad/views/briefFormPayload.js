@@ -1,4 +1,4 @@
-import { worldSettingPayload } from './briefWorldSettings.js?v=20260823-independent-person-plan-v197';
+import { worldSettingPayload } from './briefWorldSettings.js?v=20260823-independent-person-plan-v198';
 
 export function formPayload(form) {
   const data = new FormData(form);

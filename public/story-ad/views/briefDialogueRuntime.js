@@ -1,4 +1,4 @@
-import { request } from '../api.js?v=20260823-independent-person-plan-v197';
+import { request } from '../api.js?v=20260823-independent-person-plan-v198';
 
 export function bindBriefViewport(host) {
   host.classList?.add('brief-dialogue-view');

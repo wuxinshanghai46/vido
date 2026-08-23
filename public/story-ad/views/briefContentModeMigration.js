@@ -1,4 +1,4 @@
-import { confirmDialog } from '../components/dialog.js?v=20260823-independent-person-plan-v197';
+import { confirmDialog } from '../components/dialog.js?v=20260823-independent-person-plan-v198';
 
 export async function confirmContentModeMigration(savedMode = '', nextMode = '') {
   if (!savedMode || savedMode === nextMode) return { cancelled: false, confirmed: false };

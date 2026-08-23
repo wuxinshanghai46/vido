@@ -1,5 +1,5 @@
-import { escapeHtml } from '../components/ui.js?v=20260823-independent-person-plan-v197';
-import { renderCheckpointRecoveryBanner } from './billingRecoveryBanner.js?v=20260823-independent-person-plan-v197';
+import { escapeHtml } from '../components/ui.js?v=20260823-independent-person-plan-v198';
+import { renderCheckpointRecoveryBanner } from './billingRecoveryBanner.js?v=20260823-independent-person-plan-v198';
 
 export function checkpointRecoverySummary(people = []) {
   const rows = people.filter(item => item.checkpoint_recovery_summary);
