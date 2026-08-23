@@ -5,9 +5,8 @@ const { projectSceneCamera, projectShootingRules } = require('./sceneCameraProje
 const semantic = require('./productionSemanticLocalizationService');
 const storyboardSketchGate = require('./storyboardSketchGateService'), referenceUnderstandingProjection = require('./referenceUnderstandingProjectionService'), authoritativeReference = require('./authoritativeReferenceProjectionService');
 const multilineTextContract = require('../newStoryAd/multilineTextContractService');
-const briefProjection = require('./briefProjectionService');
-const sceneLineage = require('../newStoryAd/sceneLineageContractService');
-const mediaCatalog = require('../newStoryAd/mediaCatalogService');
+const briefProjection = require('./briefProjectionService'), failureProjection = require('../newStoryAd/publicFailureProjectionService');
+const sceneLineage = require('../newStoryAd/sceneLineageContractService'), mediaCatalog = require('../newStoryAd/mediaCatalogService');
 const { projectedDossierItems } = require('./dossierItemProjectionService'), personLookProjection = require('./personLookProjectionService');
 const { projectSceneWorldAssets } = require('./sceneWorldAssetProjectionService'), { projectSceneDossier } = require('./sceneDossierProjectionService'), subjectCheckpointProjection = require('../newStoryAd/subjectCheckpointProjectionService');
 const MAX_MEDIA_ITEMS = 120;
@@ -94,10 +93,8 @@ function projectSummary(task = {}) {
     thumbnail_url: mediaUrl(task.thumbnail_url),
     final_video_url: mediaUrl(task.final_video_url),
     active_generation_id: clean(task.active_generation_id, 100),
-    error: clean(task.error, 260),
-    error_code: clean(task.error_code, 80),
-    created_at: task.created_at || '',
-    updated_at: task.updated_at || '',
+    error: failureProjection.publicFailureMessage(task.error, clean), error_code: failureProjection.publicErrorCode(task.error_code, task.error),
+    created_at: task.created_at || '', updated_at: task.updated_at || '',
   };
 }
 
@@ -454,6 +451,7 @@ function buildProjectBundle(taskId, { sections = '', user = {} } = {}) {
     ? outputs.context
     : (raw.context && typeof raw.context === 'object' ? raw.context : (raw.task.request || {})), clean);
   const context = referenceSnapshot.context;
+  const isAdmin = clean(user.role).toLowerCase() === 'admin', failure = failureProjection.project(raw.task, { isAdmin, clean });
   const project = {
     ...projectSummary({ ...storyAd.taskSummary(raw.task, { detailed: false, lookupOutputs: false }), ...raw.task }),
     name_source: clean(context.project_name ? 'user' : 'legacy_inferred', 40),
@@ -461,6 +459,8 @@ function buildProjectBundle(taskId, { sections = '', user = {} } = {}) {
     saved_progress: raw.task.saved_progress === true,
     active_stage: clean(raw.task.active_stage, 80),
     ...timingProjection.generationTiming(raw.task, clean),
+    error: failure.public_error, generation_progress: failure.generation_progress,
+    ...(failure.technical_diagnostics ? { technical_diagnostics: failure.technical_diagnostics } : {}),
   };
   const projectedProps = include('assets') ? propAssets(outputs, context) : [];
   const projectedAssets = include('assets') ? {
@@ -486,7 +486,7 @@ function buildProjectBundle(taskId, { sections = '', user = {} } = {}) {
       can_edit: true,
       can_generate: true,
       can_view_workflow: true,
-      is_admin: clean(user.role).toLowerCase() === 'admin',
+      is_admin: isAdmin,
     },
     revisions: {
       content: Math.max(1, Number(raw.task.content_revision || 1) || 1),

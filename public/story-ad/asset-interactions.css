@@ -26,6 +26,10 @@
 .actor-library-summary-loading img { width: 100%; height: 100%; object-fit: cover; }
 .actor-library-summary-loading > div:last-child { display: grid; gap: 6px; }
 .actor-library-summary-loading span { color: var(--muted); font-size: 13px; }
+.asset-plan-admin-diagnostics { max-width: 760px; margin-top: 8px; color: var(--muted); font-size: 11px; }
+.asset-plan-admin-diagnostics summary { width: max-content; cursor: pointer; color: var(--accent); font-weight: 700; }
+.asset-plan-admin-diagnostics > div { max-height: 112px; margin-top: 7px; padding: 8px 10px; overflow: auto; border: 1px solid var(--line); border-radius: 8px; background: rgba(0,0,0,.18); overflow-wrap: anywhere; }
+.asset-plan-admin-diagnostics p { margin: 4px 0; font-size: 11px; line-height: 1.45; }
 @media (max-width: 760px) {
   .person-system-voice { grid-template-columns: 1fr; }
 }

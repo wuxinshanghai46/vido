@@ -1,7 +1,7 @@
-import { request } from '../api.js?v=20260823-character-library-v189';
-import { promptDialog } from '../components/dialog.js?v=20260823-character-library-v189';
-import { setButtonBusy, toast } from '../components/ui.js?v=20260823-character-library-v189';
-import { applyGeneratedPersonLooks, collectPersonLookValues } from './assetCenterPersonLooks.js?v=20260823-character-library-v189';
+import { request } from '../api.js?v=20260823-voice-outfit-library-v192';
+import { promptDialog } from '../components/dialog.js?v=20260823-voice-outfit-library-v192';
+import { setButtonBusy, toast } from '../components/ui.js?v=20260823-voice-outfit-library-v192';
+import { applyGeneratedPersonLooks, collectPersonLookValues } from './assetCenterPersonLooks.js?v=20260823-voice-outfit-library-v192';
 
 export function createAssetAssistHandlers(bundle) {
   const assistPerson = async (item, form, button = null) => {

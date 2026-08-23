@@ -1,20 +1,20 @@
-import { request } from '../api.js?v=20260823-voice-outfit-library-v190';
-import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260823-voice-outfit-library-v190';
-import { bindMediaLightbox } from './mediaLightbox.js?v=20260823-voice-outfit-library-v190';
-import { confirmDialog } from '../components/dialog.js?v=20260823-voice-outfit-library-v190';
-import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260823-voice-outfit-library-v190';
-import { authorizeBillingReviews, bindSubjectBillingRecovery, confirmBillingAwareAction, ensureSubjectRecoveryReady, recoveryRequestKey } from './assetCenterBillingRetry.js?v=20260823-voice-outfit-library-v190';
-import { collectPersonLookValues, renderPersonLookTiles } from './assetCenterPersonLooks.js?v=20260823-voice-outfit-library-v190';
-import { legacyDossierBoard, mediaSection } from './assetCenterDossierSections.js?v=20260823-voice-outfit-library-v190';
-import { assetCardMedia } from './sceneDossierCard.js?v=20260823-voice-outfit-library-v190';
-import { assertSavedPerson, personAgeDisplay, personAssetState, personLookSummary } from './assetCenterPersonState.js?v=20260823-voice-outfit-library-v190';
-import { bindPersonEvolutionForm, collectPersonEvolutionValues, renderPersonEvolutionSummary } from './assetCenterPersonEvolution.js?v=20260823-voice-outfit-library-v190';
-import { createKeyedRequestGuard, createPersonPlanRequestGuard } from './assetCenterRequestGuard.js?v=20260823-voice-outfit-library-v190';
+import { request } from '../api.js?v=20260823-voice-outfit-library-v192';
+import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260823-voice-outfit-library-v192';
+import { bindMediaLightbox } from './mediaLightbox.js?v=20260823-voice-outfit-library-v192';
+import { confirmDialog } from '../components/dialog.js?v=20260823-voice-outfit-library-v192';
+import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260823-voice-outfit-library-v192';
+import { authorizeBillingReviews, bindSubjectBillingRecovery, confirmBillingAwareAction, ensureSubjectRecoveryReady, recoveryRequestKey } from './assetCenterBillingRetry.js?v=20260823-voice-outfit-library-v192';
+import { collectPersonLookValues, renderPersonLookTiles } from './assetCenterPersonLooks.js?v=20260823-voice-outfit-library-v192';
+import { legacyDossierBoard, mediaSection } from './assetCenterDossierSections.js?v=20260823-voice-outfit-library-v192';
+import { assetCardMedia } from './sceneDossierCard.js?v=20260823-voice-outfit-library-v192';
+import { assertSavedPerson, personAgeDisplay, personAssetState, personLookSummary } from './assetCenterPersonState.js?v=20260823-voice-outfit-library-v192';
+import { bindPersonEvolutionForm, collectPersonEvolutionValues, renderPersonEvolutionSummary } from './assetCenterPersonEvolution.js?v=20260823-voice-outfit-library-v192';
+import { createKeyedRequestGuard, createPersonPlanRequestGuard } from './assetCenterRequestGuard.js?v=20260823-voice-outfit-library-v192';
 const GROUPS = [['people', '人物'], ['animals', '动物'], ['products', '商品 / 展示主体'], ['logos', 'LOGO']];
 const GENERATABLE = new Set(['people', 'animals']);
 const loadCheckpointRecovery = globalThis.__loadAssetCheckpointRecovery
-  || (() => import('./assetCheckpointRecovery.js?v=20260823-voice-outfit-library-v190'));
-const loadAssetCenterStage = globalThis.__loadAssetCenterStage || (() => import('./assetCenterStageView.js?v=20260823-voice-outfit-library-v190'));
+  || (() => import('./assetCheckpointRecovery.js?v=20260823-voice-outfit-library-v192'));
+const loadAssetCenterStage = globalThis.__loadAssetCenterStage || (() => import('./assetCenterStageView.js?v=20260823-voice-outfit-library-v192'));
 function groupLabel(group = '') {
   return GROUPS.find(([id]) => id === group)?.[1] || '资产';
 }
@@ -211,8 +211,8 @@ function knowledgePolicyTrace(item = {}) {
   const short = value => value ? `${value.slice(0, 12)}…` : '—'; return `<details class="raw-view-details knowledge-policy-trace"><summary>本资产使用的知识规则</summary><div class="meta-list"><div class="meta-row"><span>匹配规则</span><b>${ruleIds.length}</b></div><div class="meta-row"><span>生成规则指纹</span><b title="${escapeHtml(generation)}">${escapeHtml(short(generation))}</b></div><div class="meta-row"><span>质检规则指纹</span><b title="${escapeHtml(qa)}">${escapeHtml(short(qa))}</b></div></div><p class="drawer-section-note">这里只显示规则追踪信息，不加载知识库正文，也不会增加模型调用。</p></details>`;
 }
 let planningDetailsPromise; let personFormPromise; async function openDrawer(item, group, handlers = {}) {
-  planningDetailsPromise ||= import('./assetCenterPlanningDetails.js?v=20260823-voice-outfit-library-v190');
-  personFormPromise ||= import('./assetCenterPersonForm.js?v=20260823-voice-outfit-library-v190');
+  planningDetailsPromise ||= import('./assetCenterPlanningDetails.js?v=20260823-voice-outfit-library-v192');
+  personFormPromise ||= import('./assetCenterPersonForm.js?v=20260823-voice-outfit-library-v192');
   const [planningDetails, personForm] = await Promise.all([planningDetailsPromise, personFormPromise]);
   return planningDetails.openAssetDrawer(item, group, handlers, {
     groupLabel: groupLabel(group), generatable: GENERATABLE.has(group),
@@ -245,7 +245,7 @@ export async function mount(host, context) {
   const narrative = contentMode === 'narrative_story';
   const assetGroups = narrative ? GROUPS.filter(([key]) => !['products', 'logos'].includes(key)) : GROUPS;
   let assistModulePromise;
-  const runAssist = async (kind, ...args) => (await (assistModulePromise ||= import('./assetCenterAssist.js?v=20260823-voice-outfit-library-v190'))).createAssetAssistHandlers(bundle)[kind](...args);
+  const runAssist = async (kind, ...args) => (await (assistModulePromise ||= import('./assetCenterAssist.js?v=20260823-voice-outfit-library-v192'))).createAssetAssistHandlers(bundle)[kind](...args);
   const assistPerson = (...args) => runAssist('assistPerson', ...args); const assistScene = (...args) => runAssist('assistScene', ...args);
   const total = assetGroups.reduce((sum, [key]) => sum + (assets[key]?.length || 0), 0);
   const planEligibility = bundle?.navigation?.asset_plan_eligibility || {};
@@ -269,7 +269,7 @@ export async function mount(host, context) {
       <div class="view-actions asset-primary-actions"><button class="btn" type="button" data-select-person ${generationDisabled}>选择已有人物素材</button><button class="btn" type="button" data-upload-real-person ${generationDisabled}>上传真人素材</button><button class="btn" type="button" data-history-safe data-generate-subjects ${generationActive ? generationDisabled : contractDisabled}>AI 生成人物 / 动物</button></div>
     </section>
     ${checkpointRecoveryBanner(checkpointRecovery)}
-    ${assetPlanStageView({ assetPlanReady, recoveryActive: recoveryOwnsStage, eligibility: personPlanEligibility, generationActive, missingSubjectCount, counts: { people: assets.people?.length, animals: assets.animals?.length, scenes: assets.scenes?.length }, project: bundle.project || {} })}
+    ${assetPlanStageView({ assetPlanReady, recoveryActive: recoveryOwnsStage, eligibility: personPlanEligibility, generationActive, missingSubjectCount, counts: { people: assets.people?.length, animals: assets.animals?.length, scenes: assets.scenes?.length }, project: bundle.project || {}, isAdmin: bundle.permissions?.is_admin === true })}
     <div class="tabs"><button class="tab active" type="button" data-history-safe data-asset-filter="all">全部 ${total}</button>${assetGroups.map(([key, label]) => `<button class="tab" type="button" data-history-safe data-asset-filter="${key}">${label} ${assets[key]?.length || 0}</button>`).join('')}</div>
     <input class="hidden-input" hidden type="file" accept="image/png,image/jpeg,image/webp" data-asset-upload-file>
     <div data-asset-sections>${renderSections(assets, total, contentMode, assetGroups, generationActive ? generationDisabled : contractDisabled)}</div>`;
@@ -579,7 +579,7 @@ export async function mount(host, context) {
   host.querySelector('[data-update-person-plan]')?.addEventListener('click', async event => {
     const button = event.currentTarget;
     await personPlanRequestGuard.run(async (requestKey) => {
-      const { submitPersonPlanUpdate } = await import('./assetCenterPlanMigrationAction.js?v=20260823-voice-outfit-library-v190');
+      const { submitPersonPlanUpdate } = await import('./assetCenterPlanMigrationAction.js?v=20260823-voice-outfit-library-v192');
       return submitPersonPlanUpdate({ button, requestKey, confirmDialog, store, setButtonBusy, toast,
         bundle,
         migrationOnly: button.dataset.releaseMigrationOnly === 'true', refresh: context.refreshShell });

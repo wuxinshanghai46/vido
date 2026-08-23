@@ -1,4 +1,4 @@
-import { renderBriefMaterialRows } from './briefMaterials.js?v=20260823-character-library-v189';
+import { renderBriefMaterialRows } from './briefMaterials.js?v=20260823-voice-outfit-library-v192';
 
 function hasMaterials(bundle) {
   const reference = bundle?.reference || {};

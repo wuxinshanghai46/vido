@@ -1,4 +1,5 @@
 const crypto = require('crypto');
+const publicFailure = require('./publicFailureProjectionService');
 
 const PROJECTION_VERSION = 'story-ad-progress-projection-v4';
 
@@ -33,6 +34,8 @@ function compactProgress(value = {}) {
     const indexes = compactIndexList(source[key]);
     if (indexes.length) compact[key] = indexes;
   });
+  if (compact.message) compact.message = publicFailure.publicFailureMessage(compact.message, text);
+  if (compact.stage) compact.stage = publicFailure.publicStage(compact.stage);
   return compact;
 }
 
@@ -52,8 +55,8 @@ function projectTaskProgress(task = {}, sinceRevision = '') {
     generation_started_at: text(task.generation_started_at, 48),
     generation_finished_at: text(task.generation_finished_at, 48),
     generation_progress: progress,
-    error: text(task.error, 900),
-    error_code: text(task.error_code, 120),
+    error: publicFailure.publicFailureMessage(task.error, text),
+    error_code: publicFailure.publicErrorCode(task.error_code, task.error),
     retryable: task.retryable === true,
     updated_at: text(task.updated_at, 48),
   };

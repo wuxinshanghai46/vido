@@ -1,8 +1,8 @@
-import { escapeHtml } from '../components/ui.js?v=20260823-voice-outfit-library-v190';
-import { personAgeDisplay } from './assetCenterPersonState.js?v=20260823-voice-outfit-library-v190';
-import { renderPersonLookEditors } from './assetCenterPersonLooks.js?v=20260823-voice-outfit-library-v190';
-import { renderPersonEvolutionEditor } from './assetCenterPersonEvolution.js?v=20260823-voice-outfit-library-v190';
-import { renderPersonVoiceBinding } from './assetCenterPersonVoice.js?v=20260823-voice-outfit-library-v190';
+import { escapeHtml } from '../components/ui.js?v=20260823-voice-outfit-library-v192';
+import { personAgeDisplay } from './assetCenterPersonState.js?v=20260823-voice-outfit-library-v192';
+import { renderPersonLookEditors } from './assetCenterPersonLooks.js?v=20260823-voice-outfit-library-v192';
+import { renderPersonEvolutionEditor } from './assetCenterPersonEvolution.js?v=20260823-voice-outfit-library-v192';
+import { renderPersonVoiceBinding } from './assetCenterPersonVoice.js?v=20260823-voice-outfit-library-v192';
 
 export function personEditForm(item = {}) {
   const profile = item.profile || {};

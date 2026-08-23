@@ -1,7 +1,7 @@
-import { request } from '../api.js?v=20260823-character-library-v189';
-import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260823-character-library-v189';
-import { inlineNodeEditor, saveInlineNode } from './workflowInlineEditor.js?v=20260823-character-library-v189';
-import { bindWorkflowDirectorSync, ensureWorkflowDirectorStyles, openWorkflowDirector, projectWorkflowDirectorNodes, workflowNodePanelMarkup, workflowNodePortMarkup } from './workflowDirectorNodes.js?v=20260823-character-library-v189';
+import { request } from '../api.js?v=20260823-voice-outfit-library-v192';
+import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260823-voice-outfit-library-v192';
+import { inlineNodeEditor, saveInlineNode } from './workflowInlineEditor.js?v=20260823-voice-outfit-library-v192';
+import { bindWorkflowDirectorSync, ensureWorkflowDirectorStyles, openWorkflowDirector, projectWorkflowDirectorNodes, workflowNodePanelMarkup, workflowNodePortMarkup } from './workflowDirectorNodes.js?v=20260823-voice-outfit-library-v192';
 
 const MIN_STAGE_WIDTH = 3400;
 const MIN_STAGE_HEIGHT = 1500;

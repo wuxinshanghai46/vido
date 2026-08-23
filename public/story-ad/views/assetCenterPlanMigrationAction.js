@@ -1,4 +1,4 @@
-import { authorizeBillingReviews, confirmBillingAwareAction } from './assetCenterBillingRetry.js?v=20260823-character-library-v189';
+import { authorizeBillingReviews, confirmBillingAwareAction } from './assetCenterBillingRetry.js?v=20260823-voice-outfit-library-v192';
 export async function submitPersonPlanUpdate({
   button, migrationOnly, requestKey, confirmDialog, confirmGeneration, bundle, store, setButtonBusy, toast, refresh,
 }) {
@@ -13,9 +13,8 @@ export async function submitPersonPlanUpdate({
   if(!confirmed)return false;
   try {
     setButtonBusy(button,true,'正在生成人物方案…',{elapsed:true});
-    const result = await store.runStage('person-plan', { request_key: requestKey });
-    const supportId=result?.job?.support_id||result?.job?.id||'';
-    toast(`人物方案和缺失图片已进入同一个生成任务${supportId?`（支持编号：${supportId}）`:''}；同一次点击不会重复请求。`,'success');
+    await store.runStage('person-plan', { request_key: requestKey });
+    toast('人物方案和缺失图片已进入同一个生成任务；同一次点击不会重复请求。','success');
     await refresh();
     return true;
   } catch(error) {

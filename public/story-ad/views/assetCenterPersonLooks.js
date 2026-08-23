@@ -1,4 +1,4 @@
-import { escapeHtml } from '../components/ui.js?v=20260823-character-library-v189';
+import { escapeHtml } from '../components/ui.js?v=20260823-voice-outfit-library-v192';
 
 function rows(profile = {}) {
   const source = Array.isArray(profile.look_profiles) ? profile.look_profiles : [];

@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260823-character-library-v189';
-import { escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260823-character-library-v189';
-import { confirmDialog } from '../components/dialog.js?v=20260823-character-library-v189';
+import { request } from '../api.js?v=20260823-voice-outfit-library-v192';
+import { escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260823-voice-outfit-library-v192';
+import { confirmDialog } from '../components/dialog.js?v=20260823-voice-outfit-library-v192';
 
 const STYLE_ID = 'story-ad-reference-understanding-style';
 const MAX_ITEMS = 120;
@@ -95,7 +95,7 @@ function ensureStyles() {
   const link = document.createElement('link');
   link.id = STYLE_ID;
   link.rel = 'stylesheet';
-  link.href = '/story-ad/reference-understanding.css?v=20260823-character-library-v189';
+  link.href = '/story-ad/reference-understanding.css?v=20260823-voice-outfit-library-v192';
   document.head.appendChild(link);
 }
 

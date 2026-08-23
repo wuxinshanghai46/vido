@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260823-character-library-v189';
-import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260823-character-library-v189';
-import { bindMediaLightbox } from './mediaLightbox.js?v=20260823-character-library-v189';
+import { request } from '../api.js?v=20260823-voice-outfit-library-v192';
+import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260823-voice-outfit-library-v192';
+import { bindMediaLightbox } from './mediaLightbox.js?v=20260823-voice-outfit-library-v192';
 
 const FIELD_GROUPS = [
   ['场景与机位', [

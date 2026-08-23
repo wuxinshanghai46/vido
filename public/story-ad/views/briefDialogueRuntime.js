@@ -1,4 +1,4 @@
-import { request } from '../api.js?v=20260823-character-library-v189';
+import { request } from '../api.js?v=20260823-voice-outfit-library-v192';
 
 export function bindBriefViewport(host) {
   host.classList?.add('brief-dialogue-view');

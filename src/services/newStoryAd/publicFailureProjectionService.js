@@ -1,0 +1,68 @@
+'use strict';
+
+const INTERNAL_FAILURE = /(?:new_story_ad|\b(?:provider|model|stage|candidate|request|task)[-_ ]?id\b|供应商|模型调用|本阶段候选|全部可用候选|实际尝试|TIMEOUT_OR_NETWORK|PROVIDER_5XX|RATE_LIMIT|apismile|gpt-[\w.-]+|支持编号)/i;
+
+function normalize(value = '', max = 900) {
+  return String(value || '').replace(/\s+/g, ' ').trim().slice(0, max);
+}
+
+function withoutSupportId(value = '') {
+  return String(value || '')
+    .replace(/(?:支持编号|任务编号|请求编号|support(?:\s+|_)?id|request(?:\s+|_)?id|task(?:\s+|_)?id)\s*[:：]\s*[\w-]+[。；;]?/gi, '')
+    .replace(/\s+/g, ' ').trim();
+}
+
+function publicFailureMessage(value = '', clean = normalize) {
+  const stripped = withoutSupportId(value);
+  if (!stripped) return '';
+  if (INTERNAL_FAILURE.test(stripped)) return '本次生成暂时没有完成，已成功保存人物身份和现有资产，请稍后从当前步骤重新生成。';
+  return clean(stripped, 220);
+}
+
+function publicStage(value = '') {
+  const stage = normalize(value, 80).toLowerCase();
+  if (/asset[_\s.-]?plan|person[_\s.-]?plan/.test(stage)) return 'person_plan';
+  if (stage.startsWith('new_story_ad.')) return stage.slice('new_story_ad.'.length).replace(/[^a-z0-9_-]/g, '');
+  return stage;
+}
+
+function publicErrorCode(code = '', message = '') {
+  const normalized = normalize(code, 100).toUpperCase();
+  if (!normalized) return '';
+  if (INTERNAL_FAILURE.test(`${normalized} ${message}`) || /^(?:TIMEOUT_OR_NETWORK|PROVIDER_5XX|RATE_LIMIT|MODEL_ATTEMPTS_EXHAUSTED)$/.test(normalized)) return 'GENERATION_INCOMPLETE';
+  return normalized;
+}
+
+function publicProgress(progress = null, clean = normalize) {
+  if (!progress || typeof progress !== 'object') return null;
+  return {
+    status: clean(progress.status, 40), stage: publicStage(progress.stage),
+    completed: Math.max(0, Number(progress.completed || 0) || 0), total: Math.max(0, Number(progress.total || 0) || 0),
+    failed: Math.max(0, Number(progress.failed || 0) || 0), progress: Math.max(0, Math.min(100, Number(progress.progress || 0) || 0)),
+    message: publicFailureMessage(progress.message, clean), started_at: clean(progress.started_at, 80),
+    updated_at: clean(progress.updated_at, 80), finished_at: clean(progress.finished_at, 80),
+  };
+}
+
+function project(task = {}, { isAdmin = false, clean = normalize } = {}) {
+  const public_error = publicFailureMessage(task.error, clean);
+  const generation_progress = publicProgress(task.generation_progress, clean);
+  const technical_diagnostics = isAdmin ? {
+    error: clean(task.error, 1200), error_code: clean(task.error_code, 100),
+    support_id: clean(task.support_id || task.generation_progress?.support_id, 120),
+    generation_progress: task.generation_progress && typeof task.generation_progress === 'object' ? task.generation_progress : null,
+  } : null;
+  return { public_error, generation_progress, technical_diagnostics };
+}
+
+function publicTask(task = {}, { isAdmin = false } = {}) {
+  if (!task || typeof task !== 'object') return task;
+  if (isAdmin) return { ...task };
+  const projected = project(task);
+  const safe = { ...task, error: projected.public_error, error_code: publicErrorCode(task.error_code, task.error), generation_progress: projected.generation_progress };
+  delete safe.support_id;
+  delete safe.diagnostics;
+  return safe;
+}
+
+module.exports = { project, publicErrorCode, publicFailureMessage, publicProgress, publicStage, publicTask, withoutSupportId };

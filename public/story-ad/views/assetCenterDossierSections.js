@@ -1,4 +1,4 @@
-import { escapeHtml, mediaPreview } from '../components/ui.js?v=20260823-character-library-v189';
+import { escapeHtml, mediaPreview } from '../components/ui.js?v=20260823-voice-outfit-library-v192';
 
 export function mediaSection(title, rows = [], className = '') {
   const items = Array.isArray(rows) ? rows.filter(item => item?.image_url) : [];
