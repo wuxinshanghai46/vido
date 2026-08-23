@@ -27,6 +27,8 @@ assert(source.indexOf('if (candidateOnly)') < source.indexOf("setReleaseControl(
 assert(source.includes('auditCandidateSystemicState()'), 'candidate-only must run the same systemic migration/audit preflight before approval');
 assert(source.indexOf('await auditCandidateSystemicState()') < source.indexOf("reportPhase('candidate_verified'"), 'candidate-only systemic preflight must pass before candidate verification');
 assert(source.includes('candidateSystemicAudit.unquarantined_unknown_billing_count'), 'candidate preflight must prove every unquarantined billing risk has a deterministic quarantine plan');
+assert(source.includes('const drained = await releaseReadiness(releaseDir);'), 'drained production state must be inspected by verified candidate code, not a defective previous release');
+assert(!source.includes('const drained = await releaseReadiness(previousTarget);'), 'a historical reader defect must not permanently block its own replacement');
 assert(source.includes('releaseControlDrained = true'), '发布器必须单独记录停写状态');
 assert(source.includes('&& !releaseControlDrained && !systemicBackupCreated'), 'rollback must not early-return after draining or systemic backup creation');
 assert.strictEqual((source.match(/cutoverStarted = true/g) || []).length, 1, '切流标志只能在真实切换点设置一次');

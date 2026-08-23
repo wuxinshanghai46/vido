@@ -496,7 +496,11 @@ client.on('ready', async () => {
     }
     await setReleaseControl('draining', preVersion.release_bundle_id || '');
     releaseControlDrained = true;
-    const drained = await releaseReadiness(previousTarget);
+    // The current release may contain the very read-path defect this candidate
+    // repairs.  Once writes are drained, inspect the shared production database
+    // with the already verified candidate code so a broken historical reader
+    // cannot permanently prevent its own replacement.
+    const drained = await releaseReadiness(releaseDir);
     if (Number(drained.active_count) || blockingUnknownBilling(drained)) throw new Error(`停写后仍有活动任务或当前生成未知计费：${JSON.stringify(drained)}`);
     const systemicBackup = await createSystemicBackup();
     const migration = await migrateReleaseState();
