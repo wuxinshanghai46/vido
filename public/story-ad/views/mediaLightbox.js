@@ -1,4 +1,4 @@
-import { escapeHtml } from '../components/ui.js?v=20260823-role-safe-diagnostics-v193';
+import { escapeHtml } from '../components/ui.js?v=20260823-person-plan-flow-v196';
 
 export function uniqueLightboxEntries(nodes = [], group = 'media') {
   return [...nodes].filter(node => (node.dataset?.mediaZoomGroup || 'media') === group)

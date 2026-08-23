@@ -1,5 +1,5 @@
-import { personPlanProgressMarkup } from './assetCenterInlineProgress.js?v=20260823-role-safe-diagnostics-v193';
-import { personPlanTechnicalDetails } from './assetCenterTechnicalDetails.js?v=20260823-role-safe-diagnostics-v193';
+import { personPlanProgressMarkup } from './assetCenterInlineProgress.js?v=20260823-person-plan-flow-v196';
+import { personPlanTechnicalDetails } from './assetCenterTechnicalDetails.js?v=20260823-person-plan-flow-v196';
 export function personPlanBlockedView(e={}, active=false, failure={}) {
   const failed=(e.issues||[]).includes('task_current_planning_stage_failed'), migration=e.release_migration?.compatible===true&&e.release_migration?.migration_required===true;
   if (e.visual_recovery_active === true) return '';

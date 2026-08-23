@@ -1,5 +1,5 @@
-import { request } from '../api.js?v=20260823-role-safe-diagnostics-v193';
-import { setButtonBusy, toast } from '../components/ui.js?v=20260823-role-safe-diagnostics-v193';
+import { request } from '../api.js?v=20260823-person-plan-flow-v196';
+import { setButtonBusy, toast } from '../components/ui.js?v=20260823-person-plan-flow-v196';
 
 export function visualGenerationState(bundle, missingSubjectCount, missingSceneCount) {
   const progress = bundle.generation?.progress || {};
@@ -21,7 +21,7 @@ export function visualGenerationState(bundle, missingSubjectCount, missingSceneC
 
 let billingReviewDialogPromise;
 function billingReviewDialog() {
-  billingReviewDialogPromise ||= import('./assetCenterBillingReviewDialog.js?v=20260823-role-safe-diagnostics-v193');
+  billingReviewDialogPromise ||= import('./assetCenterBillingReviewDialog.js?v=20260823-person-plan-flow-v196');
   return billingReviewDialogPromise;
 }
 export async function loadBillingReviews(options = {}) {

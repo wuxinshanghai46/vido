@@ -1,21 +1,21 @@
-import { request } from '../api.js?v=20260823-role-safe-diagnostics-v193';
-import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260823-role-safe-diagnostics-v193';
-import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260823-role-safe-diagnostics-v193';
-import { briefSettingsSummary } from './briefSettingsSummary.js?v=20260823-role-safe-diagnostics-v193';
-import { worldSettingFields } from './briefWorldSettings.js?v=20260823-role-safe-diagnostics-v193';
-import { bindNarrativeRecognitionLayout } from './briefNarrativeRecognition.js?v=20260823-role-safe-diagnostics-v193';
-import { referenceProgress as renderReferenceProgress } from './referenceProgressCard.js?v=20260823-role-safe-diagnostics-v193';
-import { assertBriefReadback } from './briefTextContract.js?v=20260823-role-safe-diagnostics-v193';
-import { confirmContentModeMigration } from './briefContentModeMigration.js?v=20260823-role-safe-diagnostics-v193';
-import { BRIEF_MATERIALS } from './briefMaterials.js?v=20260823-role-safe-diagnostics-v193';
-import { bindAdvancedReferenceControls, renderAdvancedReferenceControls } from './briefAdvancedConfig.js?v=20260823-role-safe-diagnostics-v193';
-import { bindBriefDialogueWorkflow, briefDialogueMarkup, referenceNextStepDescription } from './briefDialoguePanel.js?v=20260823-role-safe-diagnostics-v193';
-import { syncReferenceDialogueStatus } from './briefReferenceDialogueState.js?v=20260823-role-safe-diagnostics-v193';
-import { referenceActionState, syncReferenceAction } from './briefReferenceActionState.js?v=20260823-role-safe-diagnostics-v193';
-import { bindBriefViewport, briefDialogueAssist } from './briefDialogueRuntime.js?v=20260823-role-safe-diagnostics-v193';
-import { bindBriefSettingsModal } from './briefSettingsModal.js?v=20260823-role-safe-diagnostics-v193';
-import { formPayload } from './briefFormPayload.js?v=20260823-role-safe-diagnostics-v193';
-import { bindBriefReferenceRecovery } from './briefReferenceRecovery.js?v=20260823-role-safe-diagnostics-v193';
+import { request } from '../api.js?v=20260823-person-plan-flow-v196';
+import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260823-person-plan-flow-v196';
+import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260823-person-plan-flow-v196';
+import { briefSettingsSummary } from './briefSettingsSummary.js?v=20260823-person-plan-flow-v196';
+import { worldSettingFields } from './briefWorldSettings.js?v=20260823-person-plan-flow-v196';
+import { bindNarrativeRecognitionLayout } from './briefNarrativeRecognition.js?v=20260823-person-plan-flow-v196';
+import { referenceProgress as renderReferenceProgress } from './referenceProgressCard.js?v=20260823-person-plan-flow-v196';
+import { assertBriefReadback } from './briefTextContract.js?v=20260823-person-plan-flow-v196';
+import { confirmContentModeMigration } from './briefContentModeMigration.js?v=20260823-person-plan-flow-v196';
+import { BRIEF_MATERIALS } from './briefMaterials.js?v=20260823-person-plan-flow-v196';
+import { bindAdvancedReferenceControls, renderAdvancedReferenceControls } from './briefAdvancedConfig.js?v=20260823-person-plan-flow-v196';
+import { bindBriefDialogueWorkflow, briefDialogueMarkup, referenceNextStepDescription } from './briefDialoguePanel.js?v=20260823-person-plan-flow-v196';
+import { syncReferenceDialogueStatus } from './briefReferenceDialogueState.js?v=20260823-person-plan-flow-v196';
+import { referenceActionState, syncReferenceAction } from './briefReferenceActionState.js?v=20260823-person-plan-flow-v196';
+import { bindBriefViewport, briefDialogueAssist } from './briefDialogueRuntime.js?v=20260823-person-plan-flow-v196';
+import { bindBriefSettingsModal } from './briefSettingsModal.js?v=20260823-person-plan-flow-v196';
+import { formPayload } from './briefFormPayload.js?v=20260823-person-plan-flow-v196';
+import { bindBriefReferenceRecovery } from './briefReferenceRecovery.js?v=20260823-person-plan-flow-v196';
 export function referenceProgress(reference = {}) { return renderReferenceProgress(reference); }
 
 export async function mount(host, context) {
@@ -136,7 +136,7 @@ ${renderAdvancedReferenceControls(bundle, route.isNew)}
       if (understandingHost) understandingHost.innerHTML = '';
       return;
     }
-    const module = await import('./referenceUnderstandingView.js?v=20260823-role-safe-diagnostics-v193');
+    const module = await import('./referenceUnderstandingView.js?v=20260823-person-plan-flow-v196');
     if (disposed || sequence !== understandingLoadSequence || !understandingHost) return;
     if (understandingController) understandingController.update(reference);
     else understandingController = module.mountReferenceUnderstanding(understandingHost, {

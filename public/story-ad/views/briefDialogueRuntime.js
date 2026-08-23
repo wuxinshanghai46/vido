@@ -1,4 +1,4 @@
-import { request } from '../api.js?v=20260823-role-safe-diagnostics-v193';
+import { request } from '../api.js?v=20260823-person-plan-flow-v196';
 
 export function bindBriefViewport(host) {
   host.classList?.add('brief-dialogue-view');

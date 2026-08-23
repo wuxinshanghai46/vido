@@ -1,4 +1,4 @@
-import { elapsedTimeTag, escapeHtml } from '../components/ui.js?v=20260823-role-safe-diagnostics-v193';
+import { elapsedTimeTag, escapeHtml } from '../components/ui.js?v=20260823-person-plan-flow-v196';
 
 const CONTRACT_LABELS = Object.freeze({
   story: '内容主线',

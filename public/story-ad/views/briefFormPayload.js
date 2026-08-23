@@ -1,4 +1,4 @@
-import { worldSettingPayload } from './briefWorldSettings.js?v=20260823-role-safe-diagnostics-v193';
+import { worldSettingPayload } from './briefWorldSettings.js?v=20260823-person-plan-flow-v196';
 
 export function formPayload(form) {
   const data = new FormData(form);

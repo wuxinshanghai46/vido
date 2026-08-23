@@ -1,4 +1,4 @@
-import { escapeHtml } from '../components/ui.js?v=20260823-role-safe-diagnostics-v193';
+import { escapeHtml } from '../components/ui.js?v=20260823-person-plan-flow-v196';
 
 function rows(profile = {}) {
   const source = Array.isArray(profile.look_profiles) ? profile.look_profiles : [];

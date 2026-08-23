@@ -1,4 +1,4 @@
-import { confirmDialog } from '../components/dialog.js?v=20260823-role-safe-diagnostics-v193';
+import { confirmDialog } from '../components/dialog.js?v=20260823-person-plan-flow-v196';
 
 export async function confirmContentModeMigration(savedMode = '', nextMode = '') {
   if (!savedMode || savedMode === nextMode) return { cancelled: false, confirmed: false };
