@@ -45,6 +45,9 @@ assert(storageSource.includes('contentRecords.listIds(COLLECTIONS.artifacts'), '
 assert(storageSource.includes('contentRecords.hasAny(collection)'), 'SQLite seed detection must use metadata existence checks');
 assert(!storageSource.includes('const existing = contentRecords.list(collection)'), 'seed detection must not load every payload');
 assert(storageSource.includes('listArtifactIds(taskId).map(getArtifact)'), 'large artifact payloads must be loaded one at a time');
+assert(storageSource.includes('sqliteBatchDb = { changes: new Map() }'), 'SQLite write batches must use a touched-row overlay');
+assert(!storageSource.includes('const before = readDb()'), 'SQLite write batches must not snapshot every historical payload');
+assert(storageSource.includes('contentRecords.applyAtomicChanges(changes)'), 'touched rows must still commit atomically');
 assert(!authoritySource.includes('storage.listArtifacts(taskId).forEach'), 'authority promotion must not aggregate every historical payload');
 
 const jobs = require('../src/services/newStoryAd/jobService');
@@ -62,5 +65,5 @@ assert(repositorySource.includes(`payload_json LIKE '%"active_generation_id"%'`)
 assert(repositorySource.includes(`payload_json LIKE '%"billing_state":"unknown"%'`), 'billing scan must filter candidate rows in SQLite');
 
 console.log(JSON.stringify({ passed: true, projected_artifact_ids: ids.length, full_payload_scan: false,
-  seed_payload_scan: false, release_db_snapshot_scan: false,
+  seed_payload_scan: false, release_db_snapshot_scan: false, write_batch_full_snapshot: false,
   false_auth_classification_blocked: true, model_calls: 0, media_calls: 0 }));

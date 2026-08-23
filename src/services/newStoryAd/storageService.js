@@ -33,6 +33,14 @@ let jsonBatchDirty = false;
 let sqliteBatchDepth = 0;
 let sqliteBatchDb = null;
 
+function sqliteBatchChange(key) {
+  if (!sqliteBatchDb) return null;
+  if (!sqliteBatchDb.changes.has(key)) {
+    sqliteBatchDb.changes.set(key, { upserts: new Map(), removeIds: new Set() });
+  }
+  return sqliteBatchDb.changes.get(key);
+}
+
 function ensureDir(filePath) {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
 }
@@ -87,42 +95,43 @@ function normalizedJsonDb() {
   return Object.fromEntries(Object.keys(base).map(key => [key, Array.isArray(db[key]) ? db[key] : []]));
 }
 
-function cloneDb(db = {}) {
-  const base = defaultDb();
-  return Object.fromEntries(Object.keys(base).map(key => [
-    key,
-    JSON.parse(JSON.stringify(Array.isArray(db[key]) ? db[key] : [])),
-  ]));
-}
-
-function atomicSqliteChanges(before = {}, after = {}) {
-  return Object.entries(COLLECTIONS).map(([key, collection]) => {
-    const previous = new Map((before[key] || []).map(row => [String(row.id || ''), row]));
-    const next = new Map((after[key] || []).map(row => [String(row.id || ''), row]));
-    const removeIds = [...previous.keys()].filter(id => id && !next.has(id));
-    const upserts = [...next.entries()].filter(([id, row]) => {
-      if (!id || !previous.has(id)) return true;
-      return JSON.stringify(previous.get(id)) !== JSON.stringify(row);
-    }).map(([, row]) => row);
-    return { collection, removeIds, upserts };
-  }).filter(change => change.removeIds.length || change.upserts.length);
-}
-
 function withWriteBatch(callback) {
   if (jsonBatchDepth > 0 || sqliteBatchDepth > 0) return callback();
   if (useSqlite()) {
     ensureDbSeeded();
-    const before = readDb();
-    sqliteBatchDb = cloneDb(before);
+    // Keep only the rows touched by this synchronous write unit. The former
+    // implementation cloned every payload in every collection before each
+    // saveOutput(), which overflowed the Python SQLite bridge once historical
+    // asset-plan artifacts exceeded its output buffer.
+    sqliteBatchDb = { changes: new Map() };
     sqliteBatchDepth = 1;
     try {
       const result = callback();
       if (result && typeof result.then === 'function') {
         throw new Error('SQLITE_WRITE_BATCH_REQUIRES_SYNCHRONOUS_CALLBACK');
       }
-      const changes = atomicSqliteChanges(before, sqliteBatchDb);
+      const changes = [...sqliteBatchDb.changes.entries()].map(([key, change]) => ({
+        collection: COLLECTIONS[key],
+        removeIds: [...change.removeIds],
+        upserts: [...change.upserts.values()],
+      })).filter(change => change.collection && (change.removeIds.length || change.upserts.length));
       if (changes.length) contentRecords.applyAtomicChanges(changes);
-      if (dbConfig().dualWrite) writeJson(DB_PATH, sqliteBatchDb);
+      if (dbConfig().dualWrite && changes.length) {
+        const legacy = normalizedJsonDb();
+        for (const [key, change] of sqliteBatchDb.changes.entries()) {
+          const rows = legacy[key] || [];
+          change.removeIds.forEach(id => {
+            const index = rows.findIndex(row => String(row.id) === String(id));
+            if (index >= 0) rows.splice(index, 1);
+          });
+          change.upserts.forEach(row => {
+            const index = rows.findIndex(item => String(item.id) === String(row.id));
+            if (index >= 0) rows[index] = row;
+            else rows.push(row);
+          });
+        }
+        writeJson(DB_PATH, legacy);
+      }
       return result;
     } finally {
       sqliteBatchDepth = 0;
@@ -188,7 +197,12 @@ function listUnknownBillingStates(limit = 2000) {
 
 function listRows(key, filters = {}) {
   if (sqliteBatchDb) {
-    const rows = (sqliteBatchDb[key] || []).slice();
+    const change = sqliteBatchChange(key);
+    const persisted = contentRecords.list(COLLECTIONS[key], filters);
+    const rowsById = new Map(persisted.map(row => [String(row.id), row]));
+    change.removeIds.forEach(id => rowsById.delete(String(id)));
+    change.upserts.forEach((row, id) => rowsById.set(String(id), row));
+    const rows = [...rowsById.values()];
     const entries = Object.entries(filters || {}).filter(([, value]) => value !== undefined && value !== null && value !== '' && value !== 'all');
     const fieldValue = (row, field) => {
       if (field === 'project_id') return row?.project_id ?? row?.projectId ?? row?.task_id ?? row?.taskId ?? row?.work_id ?? '';
@@ -208,7 +222,13 @@ function listRows(key, filters = {}) {
 }
 
 function getRow(key, id) {
-  if (sqliteBatchDb) return (sqliteBatchDb[key] || []).find(row => String(row.id) === String(id)) || null;
+  if (sqliteBatchDb) {
+    const change = sqliteBatchChange(key);
+    const normalizedId = String(id);
+    if (change.removeIds.has(normalizedId)) return null;
+    if (change.upserts.has(normalizedId)) return change.upserts.get(normalizedId);
+    return contentRecords.get(COLLECTIONS[key], normalizedId);
+  }
   if (!useSqlite()) return normalizedJsonDb()[key].find(row => String(row.id) === String(id)) || null;
   ensureDbSeeded();
   return contentRecords.get(COLLECTIONS[key], String(id));
@@ -231,10 +251,10 @@ function mutateJson(key, updater) {
 
 function writeRow(key, row) {
   if (sqliteBatchDb) {
-    const list = sqliteBatchDb[key];
-    const idx = list.findIndex(item => String(item.id) === String(row.id));
-    if (idx >= 0) list[idx] = row;
-    else list.push(row);
+    const change = sqliteBatchChange(key);
+    const id = String(row.id);
+    change.removeIds.delete(id);
+    change.upserts.set(id, row);
     return row;
   }
   if (useSqlite()) {
@@ -260,9 +280,10 @@ function writeRow(key, row) {
 
 function removeRow(key, id) {
   if (sqliteBatchDb) {
-    const list = sqliteBatchDb[key];
-    const idx = list.findIndex(item => String(item.id) === String(id));
-    if (idx >= 0) list.splice(idx, 1);
+    const change = sqliteBatchChange(key);
+    const normalizedId = String(id);
+    change.upserts.delete(normalizedId);
+    change.removeIds.add(normalizedId);
     return;
   }
   if (useSqlite()) {
@@ -554,11 +575,18 @@ function listArtifacts(taskId, kind = '') {
 
 function listArtifactIds(taskId) {
   const owner = String(taskId || '');
-  if (!owner || sqliteBatchDb || !useSqlite()) {
+  if (!owner || !useSqlite()) {
     return listRows('artifacts', { project_id: owner }).map(row => String(row.id));
   }
   ensureDbSeeded();
-  return contentRecords.listIds(COLLECTIONS.artifacts, { project_id: owner });
+  const persisted = contentRecords.listIds(COLLECTIONS.artifacts, { project_id: owner });
+  if (!sqliteBatchDb) return persisted;
+  const change = sqliteBatchChange('artifacts');
+  const ids = new Set(persisted.filter(id => !change.removeIds.has(String(id))));
+  change.upserts.forEach((row, id) => {
+    if (String(row.task_id || row.project_id || '') === owner) ids.add(String(id));
+  });
+  return [...ids];
 }
 
 function enableLineage(taskId) {

@@ -15,6 +15,7 @@ process.env.DB_JSON_FALLBACK = '1';
 
 require('./db/run-migrations');
 const storage = require('../src/services/newStoryAd/storageService');
+const contentRecords = require('../src/repositories/contentRecordRepository');
 
 function createTask(id) {
   storage.createTask({
@@ -34,6 +35,20 @@ try {
   storage.saveOutput('batch-main', 'final_video', { value: 2 });
   storage.saveOutput('batch-main', 'context', { value: 3 });
   storage.saveOutput('batch-other', 'blueprint', { value: 4 });
+
+  // Reproduces the production failure boundary: the old SQLite write batch
+  // materialized every historical artifact and overflowed the Python bridge's
+  // 50 MiB stdout buffer before writing one small output.
+  const largePayload = 'x'.repeat(510 * 1024);
+  contentRecords.upsertMany('new_story_ad_artifacts', Array.from({ length: 104 }, (_, index) => ({
+    id: `historical-large-artifact-${index}`,
+    task_id: 'historical-large-task',
+    project_id: 'historical-large-task',
+    kind: 'asset_plan',
+    payload: { text: largePayload, index },
+  })));
+  assert.doesNotThrow(() => storage.saveOutput('batch-main', 'large-regression', { ok: true }));
+  assert.deepEqual(storage.getOutput('batch-main', 'large-regression'), { ok: true });
 
   const deleted = storage.deleteOutputs('batch-main', ['blueprint', 'final_video', 'blueprint']);
   assert.deepEqual(deleted, ['blueprint', 'final_video']);
@@ -55,7 +70,8 @@ try {
   assert.equal(mirrorIds.has('batch-main:context'), true);
   assert.equal(mirrorIds.has('batch-other:blueprint'), true);
 
-  console.log(JSON.stringify({ passed: true, checks: 14, sqlite_driver: 'python', json_mirror: true }));
+  console.log(JSON.stringify({ passed: true, checks: 16, sqlite_driver: 'python', json_mirror: true,
+    historical_artifact_payload_mb: 51.8, write_batch_full_snapshot: false }));
 } finally {
   fs.rmSync(tempRoot, { recursive: true, force: true });
 }
