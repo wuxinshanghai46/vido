@@ -5,12 +5,13 @@ import { applyBeat, beatEditor, collectBeat, collectBlueprint, productionIssues,
 
 function characterEditor(character = {}, index = 0) {
   const gender = String(character.gender || '').toLowerCase();
-  const complete = !!(character.name && character.gender && (character.age_range || character.age) && character.role);
-  return `<details class="story-character-card" data-character-index="${index}"${complete ? '' : ' open'}><summary><span><b>${escapeHtml(character.name || `角色 ${index + 1}`)}</b><small>${escapeHtml([character.gender === 'female' ? '女' : character.gender === 'male' ? '男' : '', character.age_range || character.age, character.role].filter(Boolean).join(' · ') || '基础信息待补充')}</small></span><span>展开详情</span></summary><div class="story-character-fields">
+  const age = character.age_range || character.age;
+  const complete = !!(character.name && character.gender && age && character.role);
+  return `<details class="story-character-card" data-character-index="${index}"${complete ? '' : ' open'}><summary><span><b>${escapeHtml(character.name || `角色 ${index + 1}`)}</b><small>${escapeHtml([character.gender === 'female' ? '女' : character.gender === 'male' ? '男' : '', age, character.role].filter(Boolean).join(' · ') || '基础信息待补充')}</small></span><span>展开详情</span></summary><div class="story-character-fields">
     <input type="hidden" data-character-field="id" value="${escapeHtml(character.id || character.character_id || `character_${index + 1}`)}">
     <label><span>姓名</span><input class="input" data-character-field="name" value="${escapeHtml(character.name || '')}" placeholder="待确认"></label>
     <label><span>性别</span><select class="input" data-character-field="gender"><option value=""${!gender ? ' selected' : ''}>待确认</option><option value="female"${gender === 'female' || gender === '女' ? ' selected' : ''}>女</option><option value="male"${gender === 'male' || gender === '男' ? ' selected' : ''}>男</option><option value="unspecified"${gender === 'unspecified' ? ' selected' : ''}>不限定</option></select></label>
-    <label><span>年龄</span><input class="input" data-character-field="age_range" value="${escapeHtml(character.age_range || character.age || '')}" placeholder="如 28~35 岁"></label>
+    <label><span>年龄</span><input class="input" data-character-field="age_range" value="${escapeHtml(age || '')}" placeholder="如 28~35 岁"></label>
     <label><span>身份 / 职责</span><input class="input" data-character-field="role" value="${escapeHtml(character.role || '')}" placeholder="如 空间设计师"></label>
     <label><span>人物关系</span><input class="input" data-character-field="relationship" value="${escapeHtml(character.relationship || '')}" placeholder="如 向客户介绍方案"></label>
     <label><span>音色</span><select class="input" data-character-field="voice_id" data-current-voice="${escapeHtml(character.voice?.voice_id || character.voice_id || '')}"><option value="">未指定（生成前需确认）</option></select></label>
