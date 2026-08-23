@@ -575,17 +575,20 @@ async function testProjectedBatchContinuation(candidate) {
 
 function testBatchUiContract() {
   const worldView = fs.readFileSync(path.join(root, 'public/story-ad/views/sceneWorldView.js'), 'utf8');
-  const action = fs.readFileSync(path.join(root, 'public/story-ad/views/panoramaGeneration.js'), 'utf8');
+  const unifiedAction = fs.readFileSync(path.join(root, 'public/story-ad/views/assetCenterUnifiedProductionAction.js'), 'utf8');
   const unifiedStage = fs.readFileSync(path.join(root, 'public/story-ad/views/assetCenterStageView.js'), 'utf8');
   const route = fs.readFileSync(path.join(root, 'src/routes/newStoryAd.js'), 'utf8');
+  const orchestrator = fs.readFileSync(path.join(root, 'src/services/newStoryAd/productionAssetOrchestratorService.js'), 'utf8');
   assert(!worldView.includes('data-generate-all-panoramas'));
   assert(!worldView.includes('runPanoramaBatchGeneration'));
-  assert(action.includes('/scene-assets/panoramas/plan'));
-  assert(action.includes('/scene-assets/panoramas'));
+  assert(unifiedAction.includes('/production-assets/plan'));
+  assert(unifiedAction.includes("runStage('production-assets'"));
   assert(unifiedStage.includes('360°全景'));
   assert(unifiedStage.includes('data-generate-production-assets'));
-  assert(route.includes('scenePanoramaService.generateTaskPanoramas'));
-  assert(route.includes('panoramas.failed_count'));
+  assert(route.includes("'/tasks/:id/scene-assets/panoramas'"));
+  assert(route.includes('productionGraph.assertLegacyMutationAllowed'));
+  assert(orchestrator.includes('scenePanoramaService.generateTaskPanoramas'));
+  assert(orchestrator.includes('panoramas.failed_count'));
 }
 
 async function main() {
