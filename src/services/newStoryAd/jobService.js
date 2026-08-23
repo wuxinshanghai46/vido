@@ -105,22 +105,35 @@ function deadlineRecoveryState(taskId = '', stage = '') {
 }
 
 function sanitizedFailureDetails(error = null) {
-  const structured = error?.details && !Array.isArray(error.details) && typeof error.details === 'object'
+  const detailObject = error?.details && !Array.isArray(error.details) && typeof error.details === 'object'
+    ? error.details
+    : null;
+  const isSceneDetail = detailObject && ['incomplete_spaces', 'duplicate_space_ids', 'space_count']
+    .some(key => Object.prototype.hasOwnProperty.call(detailObject, key));
+  const personQualityDetails = String(error?.code || '') === 'ASSIST_PERSON_PROFILE_INCOMPLETE' && detailObject
+    ? Object.entries(detailObject).filter(([, value]) => value && typeof value === 'object').map(([field, value]) => ({
+        code: 'PERSON_PROFILE_FIELD_INCOMPLETE',
+        title: String(field),
+        message: `length=${Number(value.length || 0)},categories=${Number(value.category_count || 0)},required_length=${Number(value.minimum_length || 0)},required_categories=${Number(value.minimum_categories || 0)}`,
+        status: 'invalid',
+      }))
+    : [];
+  const structured = isSceneDetail
     ? [
-        ...(error.details.incomplete_spaces || []).map(item => ({
+        ...(detailObject.incomplete_spaces || []).map(item => ({
           code: 'SCENE_SPEC_INCOMPLETE',
           title: String(item?.space_id || 'unknown_space'),
           message: `missing_fields=${(item?.missing_fields || []).join(',')}`,
           status: 'invalid',
         })),
-        ...(error.details.duplicate_space_ids || []).map(id => ({
+        ...(detailObject.duplicate_space_ids || []).map(id => ({
           code: 'SCENE_SPACE_ID_DUPLICATE', title: String(id), message: 'duplicate_space_id', status: 'invalid',
         })),
-        ...(!Number(error.details.space_count || 0) ? [{
+        ...(!Number(detailObject.space_count || 0) ? [{
           code: 'SCENE_SPACE_MISSING', title: 'scene_plan', message: 'space_count=0', status: 'invalid',
         }] : []),
       ]
-    : [];
+    : personQualityDetails;
   const details = Array.isArray(error?.details) ? error.details : structured;
   return details.slice(0, 50).map(item => ({
     shot_number: Number(item?.shot_number || 0) || 0,

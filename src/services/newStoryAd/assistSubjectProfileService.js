@@ -61,8 +61,8 @@ function outputSchema() {
       appearanceText: '只描述该人物的年龄、脸型、体型、气质和可识别外貌', wardrobeText: '首个造型兼容字段',
       look_profiles: [{
         id: '稳定且唯一的造型ID', name: '用户可理解的造型名称', story_state: '时代或剧情状态',
-        scene_ids: ['适用场景ID'], scene_names: ['适用场景名称'], wardrobeText: '该造型固定服装鞋履配饰',
-        hairMakeupText: '该造型固定发型妆容', negativeText: '该造型禁止项', continuityText: '该造型内部与同状态镜头的一致性',
+        scene_ids: ['适用场景ID'], scene_names: ['适用场景名称'], wardrobeText: '60-160 字；该造型固定上装、下装或连衣裙、鞋履、颜色、材质、配饰及佩戴位置',
+        hairMakeupText: '50-120 字；该造型固定发型发色、分缝或盘发方式、妆面肤质、眼镜、发饰与首饰', negativeText: '至少 45 字；该造型禁止改变身份年龄、发型妆造、服装鞋履配饰及常见 AI 瑕疵', continuityText: '该造型内部与同状态镜头的一致性',
         style_family: 'chinese_historical/xianxia_wuxia/republican_china/modern_contemporary/international_style/task_defined',
         style_richness: 'auto/restrained/refined/ornate_luxurious；选择 ornate_luxurious 时必须具体落实为符合时代和身份的分层服装、面料工艺、鞋履、发饰和首饰，不得只输出抽象的华丽二字',
         wardrobe_contract: {
@@ -78,6 +78,18 @@ function outputSchema() {
     }],
     pet_profiles: [{ id: '稳定且唯一的 pet ID', name: '宠物名字', type: '物种或品种', breed: '细分品种', appearance: '稳定识别特征' }],
   }, null, 2);
+}
+
+function preferDetailedField(field = '', preferred = '', alternative = '') {
+  const preferredText = cleanText(preferred || '', 1200);
+  const alternativeText = cleanText(alternative || '', 1200);
+  const preferredQuality = subjectProfileText.assistedFieldQuality(field, preferredText);
+  const alternativeQuality = subjectProfileText.assistedFieldQuality(field, alternativeText);
+  if (preferredQuality.valid) return preferredText;
+  if (alternativeQuality.valid) return alternativeText;
+  if (alternativeQuality.category_count > preferredQuality.category_count) return alternativeText;
+  if (alternativeQuality.category_count === preferredQuality.category_count && alternativeText.length > preferredText.length) return alternativeText;
+  return preferredText || alternativeText;
 }
 
 function modelDraftQuality(parsed = {}, target = null, replaceableFields = []) {
@@ -118,8 +130,21 @@ function normalizeCastProfiles(parsed = {}, context = {}, target = null) {
     );
     const canonical = subjectProfileText.canonicalProfile(profile || {}, { age: profileAge });
     const withLooks = personLooks.normalizeProfileLooks({ ...profile, ...canonical });
+    const wardrobeText = preferDetailedField('wardrobeText', canonical.wardrobeText, withLooks.wardrobeText);
+    const hairMakeupText = preferDetailedField('hairMakeupText', canonical.hairMakeupText, withLooks.hairMakeupText);
+    const negativeText = preferDetailedField('negativeText', canonical.negativeText, withLooks.negativeText);
+    const lookProfiles = (withLooks.look_profiles || []).map((look, lookIndex) => lookIndex ? look : ({
+      ...look,
+      wardrobeText: preferDetailedField('wardrobeText', look.wardrobeText, wardrobeText),
+      hairMakeupText: preferDetailedField('hairMakeupText', look.hairMakeupText, hairMakeupText),
+      negativeText: preferDetailedField('negativeText', look.negativeText, negativeText),
+    }));
     return {
     ...withLooks,
+    wardrobeText,
+    hairMakeupText,
+    negativeText,
+    look_profiles: lookProfiles,
     id: cleanText(profile?.id || `cast_${index + 1}`, 80),
     displayName: cleanText(profile?.displayName || profile?.name || '', 120),
     name: cleanText(profile?.displayName || profile?.name || '', 120),
@@ -167,6 +192,7 @@ function buildResponse({
     const error = new Error(`人物详细设定未达到可生成标准：${quality.issues.join('、')}`);
     error.code = 'ASSIST_PERSON_PROFILE_INCOMPLETE';
     error.status = 502;
+    error.retryable = true;
     error.details = quality.details;
     throw error;
   }

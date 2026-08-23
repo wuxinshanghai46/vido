@@ -38,7 +38,7 @@ assert.doesNotMatch(incompatible, /<button[^>]+disabled[^>]*>文字方案确认�
 assert.doesNotMatch(incompatible, /方案可安全升级/);
 const actionSource = fs.readFileSync(path.join(root, 'public/story-ad/views/assetCenterPlanMigrationAction.js'), 'utf8');
 assert(actionSource.includes("store.runStage('person-plan', { request_key: requestKey })"), 'person plan and subject image submission must send the guard request key');
-assert.match(actionSource, /人物方案和缺失图片已进入同一个生成任务/);
+assert.doesNotMatch(actionSource, /人物方案和缺失图片已进入同一个生成任务/, '成功提交后页面进度已经提供反馈，不应再显示重复说明弹窗');
 assert.doesNotMatch(actionSource, /support_id|支持编号/, '普通用户提交成功提示不得暴露底层支持编号');
 
 // Exercise the exact guard used by the event handler with a real store-shaped

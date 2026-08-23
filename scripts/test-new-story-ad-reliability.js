@@ -155,6 +155,25 @@ async function main() {
   const structuredStage = storage.readDb().stages.find(item => item.task_id === taskId && item.stage === 'keyframes');
   assert.equal(structuredStage.diagnostics.failure_details[0].shot_number, 2);
   assert.equal(structuredStage.diagnostics.failure_details[0].code, 'PROVIDER_5XX_AMBIGUOUS');
+  const personProfileFailure = jobs.queueStage({
+    taskId,
+    stage: 'person_plan',
+    execute: async () => {
+      const error = new Error('人物详细设定未达到可生成标准：hairMakeupText');
+      error.code = 'ASSIST_PERSON_PROFILE_INCOMPLETE';
+      error.retryable = true;
+      error.details = { hairMakeupText: { length: 18, category_count: 2, minimum_length: 42, minimum_categories: 3 } };
+      throw error;
+    },
+  });
+  await waitUntil(() => storage.getTask(taskId).stage === 'person_plan_failed');
+  const personProfileTask = storage.getTask(taskId);
+  assert.equal(personProfileTask.retryable, true, '人物文字质量不足必须允许安全地从人物方案阶段重试');
+  const personProfileStage = storage.readDb().stages.find(item => item.task_id === taskId && item.stage === 'person_plan');
+  assert.equal(personProfileStage.diagnostics.failure_details[0].code, 'PERSON_PROFILE_FIELD_INCOMPLETE');
+  assert.equal(personProfileStage.diagnostics.failure_details[0].title, 'hairMakeupText');
+  assert(!personProfileStage.diagnostics.failure_details.some(item => item.code === 'SCENE_SPACE_MISSING'), '人物质量错误不得被投影成场景缺失');
+  assert.equal(personProfileFailure.job.id, personProfileTask.support_id);
   const sceneFailure = jobs.queueStage({
     taskId,
     stage: 'scene_asset',

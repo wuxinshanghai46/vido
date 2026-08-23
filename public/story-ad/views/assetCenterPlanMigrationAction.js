@@ -14,7 +14,6 @@ export async function submitPersonPlanUpdate({
   try {
     setButtonBusy(button,true,'正在生成人物方案…',{elapsed:true});
     await store.runStage('person-plan', { request_key: requestKey });
-    toast('人物方案和缺失图片已进入同一个生成任务；同一次点击不会重复请求。','success');
     await refresh();
     return true;
   } catch(error) {

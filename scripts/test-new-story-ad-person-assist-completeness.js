@@ -10,6 +10,7 @@ process.env.DB_ENABLED = '0';
 const service = require('../src/services/newStoryAd/storyAdService');
 const modelGateway = require('../src/services/newStoryAd/modelGateway');
 const subjectProfileText = require('../src/services/newStoryAd/subjectProfileTextService');
+const assistSubjectProfile = require('../src/services/newStoryAd/assistSubjectProfileService');
 const contextBuilder = require('../src/services/newStoryAd/contextBuilder');
 const assistContentRepair = require('./repair-new-story-ad-assist-content');
 
@@ -371,6 +372,24 @@ function testDetailedProfileQualityRejectsReferenceDirections() {
     negativeText: '禁止改变年龄、性别、脸型和五官比例；禁止更换发型、发色、眼镜或妆容；禁止改变服装、鞋和配饰；不要网红脸、塑料皮肤、夸张表情或多余人物。',
   };
   assert.equal(subjectProfileText.assistedProfileQuality(detailed).valid, true);
+}
+
+/** 回归：首个造型的短摘要不得覆盖已经合格的人物总发妆，且需反向补齐造型字段。 */
+function testShortPrimaryLookDoesNotDowngradeDetailedProfile() {
+  const detailedHair = '深棕色齐肩直发保持三七分缝并自然收于耳后；轻薄自然底妆保留真实肤质，眉形柔和、豆沙唇色固定；佩戴银色细框眼镜，不佩戴帽子、发带或夸张首饰。';
+  const normalized = assistSubjectProfile.normalizeCastProfiles({
+    cast_profiles: [{
+      id: 'cast_1', displayName: '林岚', roleName: '空间设计师', age: '25岁',
+      appearanceText: '25岁东亚女性，鹅蛋脸、舒展眉眼与清晰下颌线；身形比例自然、肩背挺直；暖调肤色保留细微纹理，目光专注，神态沉静可信。',
+      wardrobeText: '深炭灰羊毛西装外套搭配象牙白棉质衬衫，下装为同色直筒长裤和黑色低跟皮鞋；固定佩戴银色腕表且无其它配饰，颜色、材质和版型保持一致。',
+      hairMakeupText: detailedHair,
+      negativeText: '禁止改变年龄、性别、脸型、五官和身份；禁止变换发型发色、妆容、服装、鞋履、颜色和配饰；禁止网红脸、塑料皮肤、畸形肢体及多余人物。',
+      look_profiles: [{ id: 'look_1', wardrobeText: '职业西装与长裤', hairMakeupText: '齐肩直发，自然淡妆', negativeText: '禁止换装' }],
+    }],
+  }, {}, { kind: 'human', index: 0, id: 'cast_1' });
+  assert.match(normalized[0].hairMakeupText, /深棕色齐肩直发保持三七分缝/, '人物总发妆不得被短造型摘要覆盖');
+  assert.equal(normalized[0].look_profiles[0].hairMakeupText, normalized[0].hairMakeupText, '短造型发妆必须从合格人物总字段补齐');
+  assert.equal(subjectProfileText.assistedProfileQuality(normalized[0]).valid, true);
 }
 
 /** 回归：字段来源与用户手动编辑标记必须跨越请求标准化，供后端保护用户内容。 */
@@ -787,6 +806,7 @@ async function main() {
   await testSinglePersonAssistHasPersistentFeedback();
   await testReferenceDirectionsAreEnrichedWithoutOverwritingUserFields();
   testDetailedProfileQualityRejectsReferenceDirections();
+  testShortPrimaryLookDoesNotDowngradeDetailedProfile();
   testFieldAuthoritySurvivesContextNormalization();
   testLegacyReferenceAuthorityMigrationUsesLineage();
   await testIndependentAssistChannels();
