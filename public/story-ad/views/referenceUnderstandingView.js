@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260823-production-audio-v175';
-import { escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260823-production-audio-v175';
-import { confirmDialog } from '../components/dialog.js?v=20260823-production-audio-v175';
+import { request } from '../api.js?v=20260823-production-audio-v176';
+import { escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260823-production-audio-v176';
+import { confirmDialog } from '../components/dialog.js?v=20260823-production-audio-v176';
 
 const STYLE_ID = 'story-ad-reference-understanding-style';
 const MAX_ITEMS = 120;
@@ -95,7 +95,7 @@ function ensureStyles() {
   const link = document.createElement('link');
   link.id = STYLE_ID;
   link.rel = 'stylesheet';
-  link.href = '/story-ad/reference-understanding.css?v=20260823-production-audio-v175';
+  link.href = '/story-ad/reference-understanding.css?v=20260823-production-audio-v176';
   document.head.appendChild(link);
 }
 
