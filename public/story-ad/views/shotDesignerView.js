@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260823-account-voice-v178';
-import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260823-account-voice-v178';
-import { bindMediaLightbox } from './mediaLightbox.js?v=20260823-account-voice-v178';
+import { request } from '../api.js?v=20260823-person-plan-assets-v180';
+import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260823-person-plan-assets-v180';
+import { bindMediaLightbox } from './mediaLightbox.js?v=20260823-person-plan-assets-v180';
 
 const FIELD_GROUPS = [
   ['场景与机位', [
