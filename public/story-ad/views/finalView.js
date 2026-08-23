@@ -1,5 +1,5 @@
-import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260823-character-library-v188';
-import { bindMoreMedia, moreMediaButton } from './finalMediaPagination.js?v=20260823-character-library-v188';
+import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260823-character-library-v189';
+import { bindMoreMedia, moreMediaButton } from './finalMediaPagination.js?v=20260823-character-library-v189';
 
 function itemIndex(item = {}, index = 0) {
   const value = Number(item.shot_index ?? item.shotIndex ?? item.index);
