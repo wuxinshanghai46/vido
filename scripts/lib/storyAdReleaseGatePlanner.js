@@ -111,8 +111,7 @@ const DOMAIN_RULES = [
     risk: 'asset_plan',
     patterns: [
       /(?:assetPlan|PlanningDetails|PlanRelease|PlanMigration|scenePlanStatus|contextBuilder|subjectAssetBundle)/i,
-      /^src\/routes\/assets\.js$/i,
-      /^scripts\/test-story-ad-(?:person-plan|asset-center-person-provider|character-library)/i,
+      /^scripts\/test-story-ad-person-plan/i,
     ],
   },
   {
@@ -129,6 +128,8 @@ const DOMAIN_RULES = [
       /^scripts\/check-story-ad-workspace/i,
       /^src\/services\/newStoryAd\/briefDialogueHistoryService\.js$/,
       /^scripts\/test-story-ad-historical-asset-actions-v61\.js$/,
+      /^src\/routes\/assets\.js$/i,
+      /^scripts\/test-story-ad-(?:asset-center-person-provider|character-library)/i,
     ],
   },
 ];

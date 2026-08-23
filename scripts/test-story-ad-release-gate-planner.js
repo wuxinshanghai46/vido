@@ -26,14 +26,14 @@ assert.deepEqual(plan(['scripts/test-story-ad-historical-asset-actions-v61.js'])
 assert.equal(plan(['src/services/storyAdWorkspace/authoritativeReferenceProjectionService.js']).profile, 'reference');
 assert(plan(['src/services/storyAdWorkspace/authoritativeReferenceProjectionService.js']).gates.some(row => row.id === 'reference'));
 assert.equal(plan(['src/services/newStoryAd/assetPlanService.js']).profile, 'asset_plan');
-assert.equal(plan(['src/routes/assets.js', 'scripts/test-story-ad-character-library-v183.js']).profile, 'asset_plan');
+assert.equal(plan(['src/routes/assets.js', 'scripts/test-story-ad-character-library-v183.js']).profile, 'ui');
 assert.deepEqual(
   planner.createPlan({
     root: process.cwd(), baseRevision: 'a'.repeat(40), targetRevision: 'b'.repeat(40), sourceTree: 'c'.repeat(40),
     files: ['src/routes/assets.js', 'scripts/test-story-ad-character-library-v183.js'], reliable: true, targetedHome: true,
   }).gates.map(row => row.id),
-  ['asset_plan', 'workspace_ui', 'release_core'],
-  '家庭电脑的角色库路由和交互测试必须走资产方案定向门禁，不得因未分类升级为完整回归',
+  ['workspace_ui', 'release_core'],
+  '家庭电脑的角色库只读投影和交互测试必须走工作台 UI 定向门禁，不得误触资产方案生成或完整回归',
 );
 assert.equal(plan(['src/services/newStoryAd/referenceVideoUploadService.js']).profile, 'upload_media');
 assert.equal(plan(['src/services/newStoryAd/blueprintQualityService.js']).profile, 'story_content');
