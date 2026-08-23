@@ -59,14 +59,28 @@ function currentPersonGenerationBody({ taskId, input = {}, service, storage }) {
   };
 }
 
+function updatePersonPlanProgress(storage, taskId, generationId, update = {}) {
+  const task = storage.getTask(taskId) || {}, previous = task.generation_progress || {};
+  if (String(task.active_generation_id || '') !== String(generationId || '')) return null;
+  const now = new Date().toISOString(), percent = Math.max(1, Math.min(99, Number(update.percent || 1) || 1));
+  const progress = { schema_version: 1, stage: 'person_plan', generation_id: generationId, status: 'running',
+    phase: String(update.phase || previous.phase || 'planning'), message: String(update.message || previous.message || '正在生成人物方案'),
+    total: 100, completed: percent, processed: percent, percent,
+    started_at: previous.started_at || task.generation_started_at || task.generation_queued_at || now, updated_at: now };
+  storage.updateTask(taskId, { generation_progress: progress });
+  return progress;
+}
+
 function registerPersonPlanGenerationRoute(router, deps = {}) {
   const { asyncRoute, queueTaskStage, userFromReq, service, storage, generationPermit, generateAndCommitSubjectAssets } = deps;
   router.post('/tasks/:id/person-plan', asyncRoute(async (req, res) => {
     const user = userFromReq(req), userId = String(user.id || user.userId || user.username || 'anonymous');
     return queueTaskStage(req, res, 'person_plan', async job => {
+      updatePersonPlanProgress(storage, req.params.id, job.generationId, { percent: 5, phase: 'planning', message: '正在整理人物方案' });
       const personPlan = await service.updatePersonPlan(req.params.id, { generation_id: job.generationId });
+      updatePersonPlanProgress(storage, req.params.id, job.generationId, { percent: 20, phase: 'asset_preflight', message: '人物方案已完成，正在核对缺失图片' });
       const subjectBody = currentPersonGenerationBody({ taskId: req.params.id, input: req.body || {}, service, storage });
-      if (!subjectBody.subject_targets.length) return { person_plan: personPlan, subject_assets: null, generated_subjects: 0 };
+      if (!subjectBody.subject_targets.length) { updatePersonPlanProgress(storage, req.params.id, job.generationId, { percent: 99, phase: 'finishing', message: '人物方案和图片已齐全，正在完成任务' }); return { person_plan: personPlan, subject_assets: null, generated_subjects: 0 }; }
       const visualPermit = generationPermit.issue(req.params.id, 'subject_assets', {
         idempotencyKey: `${req.params.id}:person_plan_assets:${String(req.body?.request_key || job.generationId)}`,
       });
@@ -81,3 +95,4 @@ module.exports = registerPersonPlanGenerationRoute;
 module.exports.currentPersonGenerationBody = currentPersonGenerationBody;
 module.exports.completePerson = completePerson;
 module.exports.profileSnapshot = profileSnapshot;
+module.exports.updatePersonPlanProgress = updatePersonPlanProgress;

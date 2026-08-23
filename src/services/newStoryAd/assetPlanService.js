@@ -671,6 +671,9 @@ function normalizePlan(source = {}, ctx = {}) {
     ? (source.cast_profiles || source.castProfiles).slice(0, 12)
     : (ctx.cast_profiles || []);
   const existingProfiles = Array.isArray(ctx.cast_profiles) ? ctx.cast_profiles : [];
+  const currentCastFingerprint = crypto.createHash('sha256').update(JSON.stringify(canonical(existingProfiles))).digest('hex');
+  const existingProfilesArePlannerOutput = Boolean(ctx.asset_plan_generated_cast_fingerprint)
+    && currentCastFingerprint === ctx.asset_plan_generated_cast_fingerprint;
   const normalizedCastProfiles = castProfiles.map((profile, index) => {
       const existing = existingProfiles.find(item => cleanText(item?.id || '', 100)
         && cleanText(item?.id || '', 100) === cleanText(profile?.id || '', 100))
@@ -681,21 +684,34 @@ function normalizePlan(source = {}, ctx = {}) {
       const preservedLooks = existingLooks.length > generatedLooks.length ? existingLooks : generatedLooks;
       const demographics = normalizeProfileDemographics(profile, existing, ctx, castProfiles.length);
       const withLooks = personLooks.normalizeProfileLooks({ ...profile, ...demographics, look_profiles: preservedLooks });
+      const authority = subjectProfileText.profileFieldAuthority(existing || {});
+      const edited = new Set(subjectProfileText.userEditedFields(existing || {}));
+      const userOwned = field => !existingProfilesArePlannerOutput || authority[field] === 'user' || edited.has(field);
+      const preserveDetail = field => {
+        const before = cleanText(existing?.[field] || '', field === 'appearanceText' ? 800 : 1200);
+        const generated = cleanText(profile?.[field] || profile?.[field.replace('Text', '')] || '', field === 'appearanceText' ? 800 : 1200);
+        if (!before || !userOwned(field)) return generated;
+        if (!generated || generated.includes(before)) return generated || before;
+        return cleanText(`${before}；AI补充：${generated}`, field === 'appearanceText' ? 800 : 1200);
+      };
+      const resolvedWardrobe = preserveDetail('wardrobeText') || cleanText(withLooks.wardrobeText || '', 1200);
+      const resolvedHairMakeup = preserveDetail('hairMakeupText') || '自然真实的发型与妆容，严格匹配人物外貌、年龄和职业气质';
+      const resolvedNegative = preserveDetail('negativeText');
+      const resolvedLooks = withLooks.look_profiles.map((look, lookIndex) => lookIndex ? look : ({ ...look, wardrobeText: resolvedWardrobe, hairMakeupText: resolvedHairMakeup, negativeText: resolvedNegative }));
       return ({
       ...withLooks,
       id: cleanText(profile.id || `cast_${index + 1}`, 100),
-      displayName: cleanText(profile.displayName || profile.name || `人物${index + 1}`, 120),
-      name: cleanText(profile.name || profile.displayName || `人物${index + 1}`, 120),
-      roleName: cleanText(profile.roleName || profile.role || '', 160),
-      appearanceText: cleanText(profile.appearanceText || profile.appearance || '', 800),
-      wardrobeText: cleanText(withLooks.wardrobeText || '', 1200),
-      hairMakeupText: cleanText(
-        profile.hairMakeupText || profile.hair_makeup || '自然真实的发型与妆容，严格匹配人物外貌、年龄和职业气质',
-        400,
-      ),
-      negativeText: cleanText(profile.negativeText || profile.negative || '', 500),
+      displayName: cleanText(userOwned('displayName') && existing?.displayName ? existing.displayName : (profile.displayName || profile.name || `人物${index + 1}`), 120),
+      name: cleanText(userOwned('displayName') && (existing?.name || existing?.displayName) ? (existing.name || existing.displayName) : (profile.name || profile.displayName || `人物${index + 1}`), 120),
+      roleName: cleanText(userOwned('roleName') && existing?.roleName ? existing.roleName : (profile.roleName || profile.role || ''), 160),
+      appearanceText: preserveDetail('appearanceText'),
+      wardrobeText: resolvedWardrobe,
+      hairMakeupText: resolvedHairMakeup,
+      negativeText: resolvedNegative,
+      field_authority: { ...(profile.field_authority || {}), ...authority },
+      user_edited_fields: [...new Set([...(profile.user_edited_fields || []), ...edited])],
       ...demographics,
-      look_profiles: withLooks.look_profiles,
+      look_profiles: resolvedLooks,
     }); });
   const narrativeCastProfiles = personCountContract.narrativeProfiles(normalizedCastProfiles, { brief: ctx.brief || '' });
   const eraSeparatedCastProfiles = personLooks.splitCrossEraProfiles(narrativeCastProfiles, { brief: ctx.brief || '' });
@@ -1093,12 +1109,34 @@ function sectionPatchValidators(ctx = {}, basePayload = {}) {
   };
 }
 
+function detailedPersonProfileIssues(profiles = []) {
+  return (Array.isArray(profiles) ? profiles : []).flatMap((profile, index) => {
+    const quality = subjectProfileText.assistedProfileQuality(profile);
+    return quality.issues.map(field => `cast_profiles[${index}].${field}_not_detailed`);
+  });
+}
+
+function assertDetailedPersonProfiles(profiles = []) {
+  const issues = detailedPersonProfileIssues(profiles);
+  if (!issues.length) return profiles;
+  const error = new Error(`人物方案缺少可生产的外观、服装配饰或妆造细节：${issues.join('、')}`);
+  error.code = 'PERSON_PLAN_DETAIL_INCOMPLETE';
+  error.status = 502;
+  error.retryable = true;
+  error.person_plan_issues = issues;
+  throw error;
+}
+
 function sectionPatchOutput(section = '', contentMode = 'commercial_subject', ctx = {}) {
   if (section === 'cast_profiles') {
     return [{
       id: 'stable_cast_id', name: '具体原创人物名称', role: '剧情或广告职责', age_range: '25~35岁',
-      ethnicity: '依据已确认地域和剧情设定的原创外貌族裔设计；无法确定时标记为待用户确认', asset_scope: 'primary', appearanceText: '外貌',
-      wardrobeText: '服装', look_profiles: [],
+      ethnicity: '依据已确认地域和剧情设定的原创外貌族裔设计；无法确定时标记为待用户确认', asset_scope: 'primary',
+      appearanceText: '80-160字；脸型五官、体型体态、肤色肤质、气质神态、稳定识别特征',
+      wardrobeText: '60-160字；上装、下装或连衣裙、鞋履、颜色、材质、配饰及佩戴位置',
+      hairMakeupText: '50-120字；发型发色、妆面肤质、眼镜、发饰和首饰',
+      negativeText: '至少45字；身份年龄、外貌、发型妆造、服装配饰和常见AI瑕疵禁止项',
+      look_profiles: [{ id: 'stable_look_id', name: '造型名称', wardrobeText: '完整服装鞋履配饰', hairMakeupText: '完整发型妆面', negativeText: '造型禁止项' }],
     }];
   }
   if (section === 'prop_plan') {
@@ -1164,7 +1202,9 @@ async function recoverAssetPlanSectionPatch(taskId, ctx = {}, payload = {}, sect
       '用户原文和 existing_valid_sections 是事实权威，不得新造题材、行业、人物、商品、地点或关系。',
       contentSkill.promptBlock(contentMode),
       section === 'cast_profiles'
-        ? `cast_profiles must contain exactly ${personCountContract.contract(ctx).planning_cast_count} primary narrative identities. Count identities, not era-specific visual asset cards. Never include crowds, passers-by, background people, partial hands/bodies, silhouettes without continuity, holographic agents or other ambient people as assets. Every asset must have a concrete original name, a numeric age or age range, ethnicity as an original character design field, and asset_scope=primary. A reincarnation is a separate named identity; the same living or time-travelling person across eras is one identity with multiple look_profiles.`
+        ? [`cast_profiles must contain exactly ${personCountContract.contract(ctx).planning_cast_count} primary narrative identities. Count identities, not era-specific visual asset cards. Never include crowds, passers-by, background people, partial hands/bodies, silhouettes without continuity, holographic agents or other ambient people as assets. Every asset must have a concrete original name, a numeric age or age range, ethnicity as an original character design field, and asset_scope=primary. A reincarnation is a separate named identity; the same living or time-travelling person across eras is one identity with multiple look_profiles.`,
+          '人物文字方案必须是可直接供图片、完整档案、分镜和视频使用的生产规格，禁止返回一句概括。appearanceText 必须覆盖脸型五官、体型体态、肤色肤质、气质神态和稳定识别特征；wardrobeText 必须覆盖上装、下装或连衣裙、鞋履、颜色、材质、配饰类型与佩戴位置；hairMakeupText 必须覆盖发型发色、妆面肤质、眼镜、发饰或首饰；negativeText 必须覆盖身份年龄、外貌、发型妆造、服装配饰和常见 AI 瑕疵。',
+          'existing_payload 中用户明确填写的文字是权威约束：必须逐字保留其事实，只能在其后补充缺少的生产细节；不得把详细内容缩短为模板句。每个 look_profile 也必须分别给出完整服装鞋履配饰、发型妆面和禁止项。'].join('\n')
         : '',
       section === 'story_seed' || section === 'scene_plan' ? storySceneCoverage.promptBlock(ctx) : '',
       contentMode === 'narrative_story'
@@ -1200,6 +1240,7 @@ async function recoverAssetPlanSectionPatch(taskId, ctx = {}, payload = {}, sect
       const merged = sectionRecovery.mergeSectionPatch(payload, candidate, section, ctx, validators);
       assertGeneratedContentMode(merged, ctx, 'asset_plan_section_patch');
       sectionRecovery.assertRequiredSectionsCandidate(merged, [section], ctx, sectionPatchValidators(ctx, merged));
+      if (section === 'cast_profiles') assertDetailedPersonProfiles(merged.cast_profiles);
       return true;
     },
   });
@@ -1225,6 +1266,7 @@ async function recoverAssetPlanSectionPatch(taskId, ctx = {}, payload = {}, sect
   const merged = sectionRecovery.mergeSectionPatch(payload, repairedPatch, section, ctx, sectionPatchValidators(ctx, payload));
   assertGeneratedContentMode(merged, ctx, 'asset_plan_section_patch_language');
   sectionRecovery.assertRequiredSectionsCandidate(merged, [section], ctx, sectionPatchValidators(ctx, merged));
+  if (section === 'cast_profiles') assertDetailedPersonProfiles(merged.cast_profiles);
   const validAfter = validAssetPlanSections(merged, ctx);
   const lost = validBefore.filter(item => !validAfter.includes(item));
   if (lost.length) {
@@ -1759,7 +1801,7 @@ async function replanScope(taskId, scope, options = {}) {
   const task = storage.getTask(taskId);
   if (!task) throw new Error('任务不存在');
   const ctx = assertContextConsistent(storage.getOutput(taskId, 'context') || task.request || {});
-  const previous = assetPlanPublication.currentPlan(taskId);
+  let previous = assetPlanPublication.currentPlan(taskId);
   if (!complete(previous, ctx)) {
     const error = new Error('当前完整资产方案不存在，不能执行分域更新');
     error.code = 'ASSET_PLAN_SCOPED_SOURCE_REQUIRED';
@@ -1783,20 +1825,10 @@ async function replanScope(taskId, scope, options = {}) {
     throw error;
   }
   if (releaseMigration.migrated) {
-    storage.saveStage(taskId, `${scope}_plan`, {
-      status: 'done',
-      output_summary: '现有方案已通过兼容校验并升级到当前运行版本',
-      diagnostics: {
-        fingerprint: currentFingerprint,
-        scope,
-        model_call_count: 0,
-        release_migration: true,
-        from_bundle_id: releaseMigration.compatibility.from_bundle_id,
-        to_bundle_id: releaseMigration.compatibility.to_bundle_id,
-      },
-    });
-    storage.updateTask(taskId, { status: 'running', stage: `${scope}_plan_done` });
-    return scope === 'person' ? releaseMigration.plan.cast_profiles : releaseMigration.plan.scene_plan;
+    // A release migration only makes the existing plan safe to read. The user
+    // explicitly requested regeneration, so continue into the scoped model
+    // patch instead of returning the old (often sparse) text as if regenerated.
+    previous = releaseMigration.plan;
   }
   sectionRecovery.saveCheckpointAtomic(taskId, ASSET_PLAN_DRAFT_CHECKPOINT_KIND, previous, ctx, {
     ...options,
@@ -2173,6 +2205,8 @@ module.exports = {
   referenceProjectionFingerprint,
   normalizePlan,
   normalizeProfileDemographics,
+  detailedPersonProfileIssues,
+  assertDetailedPersonProfiles,
   complete,
   validAssetPlanSections,
   missingAssetPlanSections,

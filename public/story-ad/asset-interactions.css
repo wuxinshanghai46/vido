@@ -30,6 +30,10 @@
 .asset-plan-admin-diagnostics summary { width: max-content; cursor: pointer; color: var(--accent); font-weight: 700; }
 .asset-plan-admin-diagnostics > div { max-height: 112px; margin-top: 7px; padding: 8px 10px; overflow: auto; border: 1px solid var(--line); border-radius: 8px; background: rgba(0,0,0,.18); overflow-wrap: anywhere; }
 .asset-plan-admin-diagnostics p { margin: 4px 0; font-size: 11px; line-height: 1.45; }
+.person-plan-inline-progress { display: grid; gap: 6px; width: min(620px, 100%); margin-top: 10px; }
+.person-plan-inline-progress > div { height: 8px; overflow: hidden; border-radius: 99px; background: var(--surface-3); }
+.person-plan-inline-progress i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--mint), color-mix(in srgb, var(--mint) 55%, white)); transition: width .28s ease; }
+.person-plan-inline-progress small { color: var(--muted); font-size: 11px; }
 @media (max-width: 760px) {
   .person-system-voice { grid-template-columns: 1fr; }
 }

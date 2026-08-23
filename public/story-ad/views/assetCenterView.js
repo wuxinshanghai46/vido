@@ -165,9 +165,8 @@ function assetCard(item, group) {
       </button>${group === 'people' ? renderPersonEvolutionSummary(item.profile || {}) : ''}${personLookTiles}
     </div>
     <div class="asset-card-actions">
-      <button class="btn small" type="button" data-history-safe data-asset-group="${group}" data-asset-id="${escapeHtml(item.id)}">${personState === 'legacy_views' ? '查看参考档案' : `查看${item.dossier_sheet?.image_url ? '完整档案' : (group === 'scenes' ? '完整场景档案' : '完整视图')}`}</button>
-      ${needsGeneration ? `<button class="btn small primary ${personState === 'legacy_views' || personState === 'upgrade_required' || personState === 'profile_upgrade_required' || personState === 'look_upgrade_required' || personState === 'medium_upgrade_required' ? 'complete-dossier-action' : ''}" type="button" data-history-safe data-generate-asset="${escapeHtml(item.id)}" data-generate-group="${group}" ${retryBlocked ? 'disabled title="计费状态未知，禁止自动重试"' : ''}>${retryBlocked ? '等待计费核对' : (group === 'people' ? (personState === 'medium_upgrade_required' ? '同步最新画面形态' : (personState === 'profile_upgrade_required' ? '同步最新人物设定' : (personState === 'look_upgrade_required' ? '同步最新造型档案' : (personState === 'upgrade_required' ? '升级独立穿搭 / 配饰档案' : '生成完整人物档案')))) : '生成该动物资产')}</button>` : ''}
-      ${group === 'people' && personState === 'complete_dossier' ? `<button class="btn small" type="button" data-history-safe data-generate-asset="${escapeHtml(item.id)}" data-generate-group="${group}">重生成完整人物档案</button>` : ''}
+      <button class="btn small" type="button" data-history-safe data-asset-group="${group}" data-asset-id="${escapeHtml(item.id)}">${group === 'people' ? '查看完整视图' : `查看${group === 'scenes' ? '完整场景档案' : '完整视图'}`}</button>
+      ${needsGeneration && group !== 'people' ? `<button class="btn small primary" type="button" data-history-safe data-generate-asset="${escapeHtml(item.id)}" data-generate-group="${group}">生成该动物资产</button>` : ''}
       ${group === 'people' && item.status === 'verified' && !item.provider_asset_id ? `<button class="btn small" type="button" data-history-safe data-sync-person-provider="${escapeHtml(item.id)}">同步 / 重试 Seedance 人物 ID</button>` : ''}
       ${group === 'products' ? `<button class="btn small" type="button" data-upload-product="${escapeHtml(item.id)}">${item.image_url ? '更换主体图片' : '上传主体图片'}</button><button class="btn small primary" type="button" data-history-safe data-generate-product="${escapeHtml(item.id)}">${item.presentation?.standalone_generation_supported ? 'AI 生成商品多视图' : 'AI 生成主体参考图'}</button>` : ''}
       ${group === 'scenes' ? `<button class="btn small ${sceneGenerated ? '' : 'primary'}" type="button" data-edit-scene-world="${escapeHtml(item.id)}">${sceneGenerated ? '编辑 / 补齐场景世界' : '完善并生成场景世界'}</button>` : ''}
@@ -374,6 +373,7 @@ export async function mount(host, context) {
       ...collectPersonLookValues(values, item.profile || {}),
       ...collectPersonEvolutionValues(values, item.profile || {}),
     };
+    const userFields = ['displayName', 'roleName', 'appearanceText', 'wardrobeText', 'hairMakeupText', 'negativeText']; normalizedValues.field_authority = { ...(item.profile?.field_authority || {}), ...Object.fromEntries(userFields.map(field => [field, 'user'])) }; normalizedValues.user_edited_fields = [...new Set([...(item.profile?.user_edited_fields || []), ...userFields])];
     const profiles = (assets.people || []).map(row => row.profile || {}).map(profile => (
       String(profile.id || '') === String(item.profile?.id || '') ? { ...profile, ...normalizedValues } : profile
     ));
@@ -387,7 +387,6 @@ export async function mount(host, context) {
       return true;
     } catch (error) { toast(error.message, 'danger'); return false; } finally { setButtonBusy(button, false); }
   };
-
   const saveProduct = async (item, values, button = null) => {
     try {
       setButtonBusy(button, true, '正在保存…', { elapsed: true });

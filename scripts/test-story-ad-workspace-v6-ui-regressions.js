@@ -524,7 +524,8 @@ const planningModule = loadBrowserModule(
   },
 );
 const planningStatusSource = read('public/story-ad/views/assetCenterPlanningDetailsStatus.js')
-  + read('public/story-ad/views/assetCenterPlanReleaseStatus.js');
+  + read('public/story-ad/views/assetCenterPlanReleaseStatus.js')
+  + read('public/story-ad/views/assetCenterTechnicalDetails.js');
 const scenePlanningStatusSource = read('public/story-ad/views/scenePlanStatus.js');
 const dossierModule = loadBrowserModule(
   'public/story-ad/views/personDossierShowcase.js',
@@ -597,8 +598,8 @@ assert.equal(assetModule.subjectNeedsGeneration({ ...legacyPerson, kind: '' }, '
 assert.equal(assetModule.subjectNeedsGeneration({ ...legacyPerson, kind: '' }, 'pet'), false, '动物四视图仍属于已生成，不得套用人物 dossier 规则');
 const legacyCard = assetModule.assetCard(legacyPerson, 'people');
 assert.match(legacyCard, /历史四视图/);
-assert.match(legacyCard, /生成完整人物档案/);
-assert.match(legacyCard, /data-generate-asset="legacy-person"/);
+assert.match(legacyCard, /查看完整视图/);
+assert.doesNotMatch(legacyCard, /生成完整人物档案|data-generate-asset="legacy-person"/);
 
 const legacyDossierPerson = { ...legacyPerson, dossier_sheet: { image_url: '/legacy-dossier.png' } };
 assert.equal(assetModule.personAssetState(legacyDossierPerson), 'upgrade_required', '旧档案图没有独立证据合同版本时必须进入升级队列');
@@ -611,9 +612,9 @@ assert.equal(assetModule.personAssetState({ ...completePerson, visual_medium: 'l
 assert.equal(assetModule.personAssetState({ ...completePerson, visual_medium: 'live_action', profile: { ...generatedProfile, visual_medium: 'anime_2d' }, generated_profile: generatedProfile }), 'medium_upgrade_required', '项目画面形态更新后旧真人档案必须失效');
 const completeCard = assetModule.assetCard(completePerson, 'people');
 assert.match(completeCard, /完整档案/);
-assert.match(completeCard, /重生成完整人物档案/);
+assert.match(completeCard, /查看完整视图/);
+assert.doesNotMatch(completeCard, /重生成完整人物档案|data-generate-asset="legacy-person"/);
 assert.doesNotMatch(completeCard, /重生成高清服装与配饰档案/);
-assert.match(completeCard, /data-generate-asset="legacy-person"/);
 const readableProfile = { ...completePerson, profile: { displayName: '苏晚', roleName: '美学策展人', age: 'match_brief', appearanceText: '年龄约28岁，东方古典气质的现代女性' } };
 const personEdit = personFormModule.personEditForm(readableProfile);
 assert.match(personEdit, /name="age"/u, '人物编辑区必须提供确切年龄或区间的独立权威字段');

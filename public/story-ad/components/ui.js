@@ -257,6 +257,17 @@ export function generationProgressPanel(bundle = {}, currentView = '') {
   </section>`;
 }
 
+export function syncInlineGenerationProgress(bundle = {}, scope = document) {
+  const view = generationProgressView(bundle), allowed = ['person_plan', 'subject_assets', 'person_sheet', 'person_dossier'].includes(view?.stage || '');
+  scope.querySelectorAll?.('[data-person-plan-inline-progress]').forEach(host => {
+    const active = Boolean(view?.active && allowed); host.hidden = !active;
+    if (!active) return;
+    const percent = Math.max(2, Math.min(99, Number(view.percent || 0))); host.setAttribute('aria-valuenow', String(percent));
+    const fill = host.querySelector('i'); if (fill) fill.style.width = `${percent}%`;
+    const label = host.querySelector('[data-person-plan-progress-label]'); if (label) label.textContent = `${percent}% · ${view.liveText || '正在处理'}`;
+  });
+}
+
 export function toast(message, tone = 'info') {
   const host = document.querySelector('#storyAdToast');
   if (!host || !message) return;

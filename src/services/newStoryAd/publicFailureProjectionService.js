@@ -38,7 +38,8 @@ function publicProgress(progress = null, clean = normalize) {
   return {
     status: clean(progress.status, 40), stage: publicStage(progress.stage),
     completed: Math.max(0, Number(progress.completed || 0) || 0), total: Math.max(0, Number(progress.total || 0) || 0),
-    failed: Math.max(0, Number(progress.failed || 0) || 0), progress: Math.max(0, Math.min(100, Number(progress.progress || 0) || 0)),
+    processed: Math.max(0, Number(progress.processed || 0) || 0), failed: Math.max(0, Number(progress.failed || 0) || 0),
+    percent: Math.max(0, Math.min(100, Number(progress.percent ?? progress.progress ?? 0) || 0)), phase: clean(progress.phase, 80),
     message: publicFailureMessage(progress.message, clean), started_at: clean(progress.started_at, 80),
     updated_at: clean(progress.updated_at, 80), finished_at: clean(progress.finished_at, 80),
   };

@@ -1,5 +1,5 @@
 import { createProjectStore } from './store/projectStore.js?v=20260823-role-safe-diagnostics-v193';
-import { bindHoverVideoPreviews, escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, toast } from './components/ui.js?v=20260823-role-safe-diagnostics-v193';
+import { bindHoverVideoPreviews, escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, syncInlineGenerationProgress, toast } from './components/ui.js?v=20260823-role-safe-diagnostics-v193';
 import { assertCurrentRelease, startReleaseHeartbeat } from './api.js?v=20260823-role-safe-diagnostics-v193';
 import { confirmDialog } from './components/dialog.js?v=20260823-role-safe-diagnostics-v193';
 
@@ -413,6 +413,7 @@ window.addEventListener('beforeunload', () => {
 store.subscribe(state => {
   const host = document.querySelector('#projectProgressHost');
   if (host) host.innerHTML = generationProgressPanel(state.bundle || {}, currentRoute().view);
+  syncInlineGenerationProgress(state.bundle || {});
   if (state.generationCompletionSeq > observedGenerationCompletionSeq && currentRoute().page === 'project') {
     window.setTimeout(() => mountView(currentRoute()).catch(showFatal), 0);
   }
