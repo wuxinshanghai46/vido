@@ -1,20 +1,18 @@
-import { request } from '../api.js?v=20260823-production-v201c';
-import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260823-production-v201c';
-import { bindMediaLightbox } from './mediaLightbox.js?v=20260823-production-v201c';
-import { confirmDialog } from '../components/dialog.js?v=20260823-production-v201c';
-import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260823-production-v201c';
-import { authorizeBillingReviews, confirmBillingAwareAction, ensureSubjectRecoveryReady, recoveryRequestKey } from './assetCenterBillingRetry.js?v=20260823-production-v201c';
-import { collectPersonLookValues, renderPersonLookTiles } from './assetCenterPersonLooks.js?v=20260823-production-v201c';
-import { legacyDossierBoard, mediaSection } from './assetCenterDossierSections.js?v=20260823-production-v201c';
-import { assetCardMedia } from './sceneDossierCard.js?v=20260823-production-v201c';
-import { assertSavedPerson, personAgeDisplay, personAssetState, personLookSummary } from './assetCenterPersonState.js?v=20260823-production-v201c';
-import { bindPersonEvolutionForm, collectPersonEvolutionValues, renderPersonEvolutionSummary } from './assetCenterPersonEvolution.js?v=20260823-production-v201c';
-import { createKeyedRequestGuard } from './assetCenterRequestGuard.js?v=20260823-production-v201c';
+import { request } from '../api.js?v=20260823-production-v201d';
+import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260823-production-v201d';
+import { bindMediaLightbox } from './mediaLightbox.js?v=20260823-production-v201d';
+import { confirmDialog } from '../components/dialog.js?v=20260823-production-v201d';
+import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260823-production-v201d';
+import { authorizeBillingReviews, confirmBillingAwareAction, ensureSubjectRecoveryReady, recoveryRequestKey } from './assetCenterBillingRetry.js?v=20260823-production-v201d';
+import { collectPersonLookValues, renderPersonLookTiles } from './assetCenterPersonLooks.js?v=20260823-production-v201d';
+import { legacyDossierBoard, mediaSection } from './assetCenterDossierSections.js?v=20260823-production-v201d';
+import { assetCardMedia } from './sceneDossierCard.js?v=20260823-production-v201d';
+import { assertSavedPerson, personAgeDisplay, personAssetState, personLookSummary } from './assetCenterPersonState.js?v=20260823-production-v201d';
+import { bindPersonEvolutionForm, collectPersonEvolutionValues, renderPersonEvolutionSummary } from './assetCenterPersonEvolution.js?v=20260823-production-v201d';
+import { createKeyedRequestGuard } from './assetCenterRequestGuard.js?v=20260823-production-v201d';
 const GROUPS = [['people', '人物'], ['animals', '动物'], ['products', '商品 / 展示主体'], ['logos', 'LOGO']];
 const GENERATABLE = new Set(['people', 'animals']);
-const loadCheckpointRecovery = globalThis.__loadAssetCheckpointRecovery
-  || (() => import('./assetCheckpointRecovery.js?v=20260823-production-v201c'));
-const loadAssetCenterStage = globalThis.__loadAssetCenterStage || (() => import('./assetCenterStageView.js?v=20260823-production-v201c'));
+const loadAssetCenterStage = globalThis.__loadAssetCenterStage || (() => import('./assetCenterStageView.js?v=20260823-production-v201d'));
 function groupLabel(group = '') {
   return GROUPS.find(([id]) => id === group)?.[1] || '资产';
 }
@@ -206,8 +204,8 @@ function knowledgePolicyTrace(item = {}) {
   const short = value => value ? `${value.slice(0, 12)}…` : '—'; return `<details class="raw-view-details knowledge-policy-trace"><summary>本资产使用的知识规则</summary><div class="meta-list"><div class="meta-row"><span>匹配规则</span><b>${ruleIds.length}</b></div><div class="meta-row"><span>生成规则指纹</span><b title="${escapeHtml(generation)}">${escapeHtml(short(generation))}</b></div><div class="meta-row"><span>质检规则指纹</span><b title="${escapeHtml(qa)}">${escapeHtml(short(qa))}</b></div></div><p class="drawer-section-note">这里只显示规则追踪信息，不加载知识库正文，也不会增加模型调用。</p></details>`;
 }
 let planningDetailsPromise; let personFormPromise; async function openDrawer(item, group, handlers = {}) {
-  planningDetailsPromise ||= import('./assetCenterPlanningDetails.js?v=20260823-production-v201c');
-  personFormPromise ||= import('./assetCenterPersonForm.js?v=20260823-production-v201c');
+  planningDetailsPromise ||= import('./assetCenterPlanningDetails.js?v=20260823-production-v201d');
+  personFormPromise ||= import('./assetCenterPersonForm.js?v=20260823-production-v201d');
   const [planningDetails, personForm] = await Promise.all([planningDetailsPromise, personFormPromise]);
   return planningDetails.openAssetDrawer(item, group, handlers, {
     groupLabel: groupLabel(group), generatable: GENERATABLE.has(group),
@@ -231,16 +229,14 @@ function renderSections(assets = {}, total = 0, contentMode = '', groups = GROUP
 
 export async function mount(host, context) {
   const { store, bundle } = context;
-  const [{ checkpointRecoveryBanner, checkpointRecoverySummary }, { assetPlanStageView }] = await Promise.all([
-    loadCheckpointRecovery(), loadAssetCenterStage(),
-  ]);
+  const { assetPlanStageView } = await loadAssetCenterStage();
   const historicalReadOnly = context.historicalReadOnly === true;
   const assets = bundle?.assets || {};
   const contentMode = bundle.project?.content_mode || bundle.brief?.content_mode || '';
   const narrative = contentMode === 'narrative_story';
   const assetGroups = narrative ? GROUPS.filter(([key]) => !['products', 'logos'].includes(key)) : GROUPS;
   let assistModulePromise;
-  const runAssist = async (kind, ...args) => (await (assistModulePromise ||= import('./assetCenterAssist.js?v=20260823-production-v201c'))).createAssetAssistHandlers(bundle)[kind](...args);
+  const runAssist = async (kind, ...args) => (await (assistModulePromise ||= import('./assetCenterAssist.js?v=20260823-production-v201d'))).createAssetAssistHandlers(bundle)[kind](...args);
   const assistPerson = (...args) => runAssist('assistPerson', ...args); const assistScene = (...args) => runAssist('assistScene', ...args);
   const total = assetGroups.reduce((sum, [key]) => sum + (assets[key]?.length || 0), 0);
   const planEligibility = bundle?.navigation?.asset_plan_eligibility || {};
@@ -254,16 +250,12 @@ export async function mount(host, context) {
   const contractDisabled = assetPlanReady ? '' : 'disabled title="请先更新当前人物方案"';
   const missingSubjectCount = (assets.people || []).filter(item => subjectNeedsGeneration(item, 'human')).length
     + (assets.animals || []).filter(item => subjectNeedsGeneration(item, 'animal')).length;
-  const checkpointRecovery = { ...checkpointRecoverySummary(assets.people || []), plan_eligible: assetPlanReady };
-  const recoveryOwnsStage = checkpointRecovery.missing.length > 0
-    && ['pending', 'not_billed', 'unverifiable'].includes(checkpointRecovery.billing_review_state);
   host.innerHTML = `
     <section class="view-head">
       <div><h1>资产中心</h1><p>${narrative ? '人物、动物、场景与机位独立建档。' : '人物、动物、商品/展示主体、LOGO、场景与机位独立建档。'}</p></div>
       <div class="view-actions asset-primary-actions"><button class="btn" type="button" data-select-person ${generationDisabled}>选择已有人物素材</button><button class="btn" type="button" data-upload-real-person ${generationDisabled}>上传真人素材</button></div>
     </section>
-    ${checkpointRecoveryBanner(checkpointRecovery)}
-    ${assetPlanStageView({ assetPlanReady, recoveryActive: recoveryOwnsStage, eligibility: personPlanEligibility, generationActive, missingSubjectCount, productionGraph, counts: { people: assets.people?.length, animals: assets.animals?.length, scenes: assets.scenes?.length }, project: bundle.project || {}, isAdmin: bundle.permissions?.is_admin === true })}
+    ${assetPlanStageView({ assetPlanReady, recoveryActive: false, eligibility: personPlanEligibility, generationActive, missingSubjectCount, productionGraph, counts: { people: assets.people?.length, animals: assets.animals?.length, scenes: assets.scenes?.length }, project: bundle.project || {}, isAdmin: bundle.permissions?.is_admin === true })}
     <div class="tabs"><button class="tab active" type="button" data-history-safe data-asset-filter="all">全部 ${total}</button>${assetGroups.map(([key, label]) => `<button class="tab" type="button" data-history-safe data-asset-filter="${key}">${label} ${assets[key]?.length || 0}</button>`).join('')}</div>
     <input class="hidden-input" hidden type="file" accept="image/png,image/jpeg,image/webp" data-asset-upload-file>
     <div data-asset-sections>${renderSections(assets, total, contentMode, assetGroups, generationActive ? generationDisabled : contractDisabled)}</div>`;
@@ -499,23 +491,13 @@ export async function mount(host, context) {
   const showAsset = button => {
     const group = button.dataset.assetGroup;
     const item = (assets[group] || []).find(asset => String(asset.id) === button.dataset.assetId);
-    if (item) openDrawer(item, group, { readOnly: historicalReadOnly, onGenerate: generate, onVerifyProduct: verifyProduct, onSavePerson: savePerson, onAssistPerson: assistPerson, onSaveProduct: saveProduct, onSaveScene: saveScene, onAssistScene: assistScene, onGenerateScene: generateScene, onGenerateProp: generateProp, onGenerateProduct: generateProduct, onUploadProduct: () => openUpload('products'), returnFocus: button });
+    if (item) openDrawer(item, group, { readOnly: historicalReadOnly, onVerifyProduct: verifyProduct, onSavePerson: savePerson, onAssistPerson: assistPerson, onSaveProduct: saveProduct, onSaveScene: saveScene, onAssistScene: assistScene, onUploadProduct: () => openUpload('products'), returnFocus: button });
   };
   host.querySelectorAll('[data-asset-id]').forEach(button => button.addEventListener('click', () => showAsset(button)));
-  host.querySelectorAll('[data-generate-asset]').forEach(button => button.addEventListener('click', event => {
-    event.stopPropagation();
-    const item = (assets[button.dataset.generateGroup] || []).find(asset => String(asset.id) === button.dataset.generateAsset);
-    if (item) generate(item, button.dataset.generateGroup, button);
-  }));
   host.querySelectorAll('[data-verify-product]').forEach(button => button.addEventListener('click', event => {
     event.stopPropagation();
     const item = (assets.products || []).find(asset => String(asset.id) === button.dataset.verifyProduct);
     if (item) verifyProduct(item, button);
-  }));
-  host.querySelectorAll('[data-generate-product]').forEach(button => button.addEventListener('click', event => {
-    event.stopPropagation();
-    const item = (assets.products || []).find(asset => String(asset.id) === button.dataset.generateProduct);
-    generateProduct(item, button);
   }));
   host.querySelectorAll('[data-upload-product]').forEach(button => button.addEventListener('click', event => {
     event.stopPropagation();
@@ -524,7 +506,7 @@ export async function mount(host, context) {
   host.querySelectorAll('[data-edit-scene-world]').forEach(button => button.addEventListener('click', event => {
     event.stopPropagation();
     const item = (assets.scenes || []).find(asset => String(asset.id) === button.dataset.editSceneWorld);
-    if (item) openDrawer(item, 'scenes', { readOnly: historicalReadOnly, onSaveScene: saveScene, onAssistScene: assistScene, onGenerateScene: generateScene, onGenerateProp: generateProp, returnFocus: button });
+    if (item) openDrawer(item, 'scenes', { readOnly: historicalReadOnly, onSaveScene: saveScene, onAssistScene: assistScene, returnFocus: button });
   }));
   host.querySelectorAll('[data-sync-person-provider]').forEach(button => button.addEventListener('click', async event => {
     event.stopPropagation();
@@ -558,19 +540,10 @@ export async function mount(host, context) {
     } catch (error) { toast(error.message, 'danger'); } finally { uploadInput.value = ''; }
   });
 
-  host.querySelectorAll('[data-generate-subjects], [data-generate-missing-subjects]').forEach(button => button.addEventListener('click', event => generate(null, '', event.currentTarget)));
   host.querySelector('[data-select-person]').addEventListener('click', () => openActorLibrary({ store, context, taskId: bundle.project.id }));
   host.querySelector('[data-upload-real-person]').addEventListener('click', () => openRealPersonFlow({ context, taskId: bundle.project.id }));
-  host.querySelector('[data-generate-product-main]')?.addEventListener('click', event => {
-    const item = (assets.products || [])[0] || null;
-    if (item && !item.presentation?.standalone_generation_supported) {
-      openDrawer(item, 'products', { readOnly: historicalReadOnly, onGenerate: generate, onVerifyProduct: verifyProduct, onSavePerson: savePerson, onAssistPerson: assistPerson, onSaveProduct: saveProduct, onSaveScene: saveScene, onAssistScene: assistScene, onGenerateScene: generateScene, onGenerateProp: generateProp, onGenerateProduct: generateProduct, onUploadProduct: () => openUpload('products'), returnFocus: event.currentTarget });
-      return;
-    }
-    generateProduct(item, event.currentTarget);
-  });
   host.querySelector('[data-generate-production-assets]')?.addEventListener('click', async event => {
-    const { submitUnifiedProductionAssets } = await import('./assetCenterUnifiedProductionAction.js?v=20260823-production-v201c');
+    const { submitUnifiedProductionAssets } = await import('./assetCenterUnifiedProductionAction.js?v=20260823-production-v201d');
     await submitUnifiedProductionAssets({ button: event.currentTarget, bundle, request, confirmDialog, store, setButtonBusy, toast });
   });
   host.querySelectorAll('[data-confirm-assets]').forEach(confirmButton => confirmButton.addEventListener('click', async event => {

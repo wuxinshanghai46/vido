@@ -6,10 +6,8 @@ const path = require('path');
 
 const root = path.resolve(__dirname, '..');
 const view = fs.readFileSync(path.join(root, 'public/story-ad/views/assetCenterView.js'), 'utf8');
-assert.match(view, /import\s*\{[^}]*bindSubjectBillingRecovery[^}]*\}\s*from\s*['"]\.\/assetCenterBillingRetry\.js/,
-  '资产中心必须通过真实模块依赖导入计费恢复绑定器');
-assert.equal((view.match(/bindSubjectBillingRecovery\(\{\s*host,\s*bundle,\s*store,\s*checkpointRecovery,\s*generate\s*\}\)/g) || []).length, 1,
-  '资产中心 mount 必须且只能绑定一次计费恢复状态机');
+assert.doesNotMatch(view, /bindSubjectBillingRecovery/,
+  '统一制作图谱资产中心不得再导入或绑定旧视觉资产计费恢复入口');
 
 const scriptsDir = path.join(root, 'scripts');
 const mountHarnesses = fs.readdirSync(scriptsDir).filter(name => name.endsWith('.js')).filter(name => {
@@ -28,4 +26,4 @@ for (const name of mountHarnesses) {
   assert.equal(observesBilling, true, `${name} 必须注入并观察真实计费恢复绑定器，不能吞掉绑定`);
 }
 
-console.log(JSON.stringify({ passed: true, production_bindings: 1, vm_mount_harnesses: mountHarnesses.length }));
+console.log(JSON.stringify({ passed: true, production_bindings: 0, vm_mount_harnesses: mountHarnesses.length }));

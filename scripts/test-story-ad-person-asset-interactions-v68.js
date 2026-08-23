@@ -8,7 +8,6 @@ const vm = require('vm');
 const root = path.resolve(__dirname, '..');
 const read = file => fs.readFileSync(path.join(root, file), 'utf8');
 const projection = require('../src/services/newStoryAd/subjectCheckpointProjectionService');
-const assetMountHarness = require('./test-story-ad-recovery-plan-action-final-dom-v79');
 
 function loadBrowserModule(file, exposed, globals = {}) {
   const source = read(file)
@@ -308,52 +307,12 @@ async function main() {
   verify('pending review starts the real polling state machine', () => assert.equal(pollTimers.length, 1));
   await pollTimers.shift()();
   verify('polling refreshes summary and assets when review state changes', () => assert.deepEqual(pollRefreshes, ['summary,assets']));
-  const pendingSummary = {
-    completed_units: 25, total_units: 29, retry_blocked: true, billing_review_state: 'pending',
-    missing_units: Array.from({ length: 4 }, (_, index) => ({
-      key: `pending-${index + 1}`, label: index < 2 ? '腰部配饰' : '发饰', reason: '需人工核对后处理',
-      billing_review_state: 'pending', billing_state: 'unknown', provider_submission_state: 'submitted_unknown', retry_blocked: true,
-    })),
-  };
-  let pendingConfirmCalls = 0;
-  const pendingMounted = await assetMountHarness.render({
-    checkpoint: pendingSummary, stale: true,
-    confirmation: async () => { pendingConfirmCalls += 1; return { accepted: true }; },
-  });
-  const pendingButton = pendingMounted.controls.get('[data-generate-recovery], [data-accept-billing-risk]');
-  verify('real pending DOM keeps the only result button disabled', () => {
-    assert.equal(assetMountHarness.withAttr(pendingMounted.buttons, 'data-generate-recovery').length, 1);
-    assert.equal(pendingButton.disabled, true);
-  });
-  await pendingButton.click();
-  verify('a real click attempt on pending recovery performs zero confirmation and provider submissions', () => {
-    assert.equal(pendingConfirmCalls, 0);
-    assert.equal(pendingMounted.runStageCalls.length, 0);
-  });
-  verify('not-billed final DOM enables only the bounded remaining-unit result action', () => {
-    const reviewed = recoveryPeople.map(person => ({ ...person, checkpoint_recovery_summary: {
-      ...person.checkpoint_recovery_summary, retry_blocked: false,
-      missing_units: person.checkpoint_recovery_summary.missing_units.map(unit => ({ ...unit, billing_review_state: 'not_billed' })),
-    } }));
-    const html = recoveryUi.checkpointRecoveryBanner(recoveryUi.checkpointRecoverySummary(reviewed));
-    assert.match(html, /data-generate-recovery[^>]*>生成剩余 4 项/);
-    assert.doesNotMatch(html.match(/<button\b[^>]*data-generate-recovery[^>]*>/)?.[0] || '', /\bdisabled\b/);
-    assert.doesNotMatch(html, /查看核账进度|data-billing-review/);
-  });
-  let safeConfirmCalls = 0, safePreflightCalls = 0;
-  const safeMounted = await assetMountHarness.render({
-    checkpoint: { ...pendingSummary, retry_blocked: false, billing_review_state: 'not_billed',
-      missing_units: pendingSummary.missing_units.map(unit => ({ ...unit, retry_blocked: false,
-        billing_review_state: 'not_billed', billing_state: 'not_billed', provider_submission_state: 'submission_rejected' })) },
-    stale: true,
-    preflight: async () => { safePreflightCalls += 1; return { state: 'ready', safe_to_continue: true, differences: [] }; },
-    confirmation: async () => { safeConfirmCalls += 1; return { accepted: true, reviewBatch: { reviews: [] } }; },
-  });
-  const safeButton = safeMounted.controls.get('[data-generate-recovery], [data-accept-billing-risk]');
-  verify('the same final result button becomes enabled after review and safe preflight', () => assert.equal(safeButton.disabled, false));
-  await safeButton.click();
-  verify('reviewed safe recovery follows one preflight, one confirmation and one targeted submission', () => {
-    assert.equal(safePreflightCalls, 1); assert.equal(safeConfirmCalls, 1); assert.equal(safeMounted.runStageCalls.length, 1);
+  verify('the live asset center no longer mounts legacy checkpoint recovery actions', () => {
+    const source = read('public/story-ad/views/assetCenterView.js');
+    assert.doesNotMatch(source, /checkpointRecoveryBanner\s*\(/);
+    assert.doesNotMatch(source, /data-generate-recovery/);
+    assert.doesNotMatch(source, /querySelectorAll\('\[data-generate-subjects\]/);
+    assert.match(source, /data-generate-production-assets/);
   });
   verify('non-owner views do not expose person asset failures', () => {
     const globalPanel = ui.generationProgressPanel(recoveryBundle, 'brief');

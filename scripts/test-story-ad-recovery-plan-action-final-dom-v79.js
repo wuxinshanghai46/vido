@@ -108,7 +108,7 @@ function primaryStateActions(html) {
   return tags(html).filter(button => /data-(?:generate-recovery|update-person-plan|billing-review|accept-billing-risk|generate-missing-subjects)\b/.test(button.attrs));
 }
 
-async function render({ checkpoint = null, stale = true, active = false, historicalReadOnly = false,
+async function render({ checkpoint = null, stale = true, active = false, ready = false, historicalReadOnly = false,
   preflight = null, confirmation = null } = {}) {
   let html = '';
   const controls = new Map();
@@ -131,6 +131,7 @@ async function render({ checkpoint = null, stale = true, active = false, histori
     revisions: { content: 9 }, brief: { text: '剧情目标', cast_mode: 'single' },
     navigation: { asset_plan_eligibility: { eligible: !stale, person: { eligible: !stale, issues: stale ? ['active_plan_stale'] : [] } } },
     assets: { people: [person(checkpoint)], animals: [], products: [], logos: [], scenes: [] },
+    outputs: ready ? { production_graph_v1: { validation: { status: 'ready' } } } : {},
   };
   const runStageCalls = [];
   preflightRequestImpl = preflight || (async () => ({ state: 'ready', safe_to_continue: true, differences: [] }));
@@ -143,112 +144,20 @@ async function render({ checkpoint = null, stale = true, active = false, histori
 }
 
 async function main() {
-  const staleRecovery = await render({ checkpoint: recovery('not_billed'), stale: true });
-  assert.equal(recoveryCards(staleRecovery.html).length, 1, 'recovery+stale must render one recovery state card');
-  assert.equal(independentPlanCards(staleRecovery.html).length, 0, 'recovery card must own the stage instead of duplicating the plan card');
-  assert.equal(primaryStateActions(staleRecovery.html).length, 1, 'recovery+stale must expose one state-machine action');
-  assert.equal(withAttr(staleRecovery.buttons, 'data-update-person-plan').length, 0,
-    'recovery must not expose the internal person-plan repair operation as a second action');
-  assert.equal(withAttr(staleRecovery.buttons, 'data-generate-recovery').length, 1,
-    'the single result-oriented action must run recovery preflight before any paid operation');
-  assert.equal(withAttr(staleRecovery.buttons, 'data-generate-recovery')[0].disabled, false);
-  assert.match(recoveryCards(staleRecovery.html)[0], /data-recovery-count="3"/,
-    'the final DOM must expose the current missing count structurally, not only in copy');
-
-  const safeRecovery = await render({ checkpoint: recovery('not_billed'), stale: false });
-  assert.equal(recoveryCards(safeRecovery.html).length, 1);
-  assert.equal(independentPlanCards(safeRecovery.html).length, 0);
-  assert.equal(primaryStateActions(safeRecovery.html).length, 1);
-  assert.equal(withAttr(safeRecovery.buttons, 'data-generate-recovery').length, 1,
-    'after person-plan eligibility is restored, the same recovery card must switch to generate-only');
-  assert.equal(withAttr(safeRecovery.buttons, 'data-update-person-plan').length, 0);
-  assert.equal(withAttr(safeRecovery.buttons, 'data-generate-recovery')[0].disabled, false);
-
-  const pending = await render({ checkpoint: recovery('pending'), stale: true });
-  assert.equal(recoveryCards(pending.html).length, 1);
-  assert.equal(independentPlanCards(pending.html).length, 0);
-  assert.equal(primaryStateActions(pending.html).length, 1);
-  assert.equal(withAttr(pending.buttons, 'data-update-person-plan').length, 0,
-    'pending review must not expose an unrelated plan update action');
-  assert.equal(withAttr(pending.buttons, 'data-billing-review').length, 0);
-  assert.equal(withAttr(pending.buttons, 'data-generate-recovery').length, 1);
-  assert.equal(withAttr(pending.buttons, 'data-generate-recovery')[0].disabled, true,
-    'pending billing review keeps the single result action disabled');
-
-  const unverifiable = await render({ checkpoint: recovery('unverifiable'), stale: true });
-  assert.equal(recoveryCards(unverifiable.html).length, 1);
-  assert.equal(independentPlanCards(unverifiable.html).length, 0);
-  assert.equal(primaryStateActions(unverifiable.html).length, 1);
-  assert.equal(withAttr(unverifiable.buttons, 'data-update-person-plan').length, 0);
-  assert.equal(withAttr(unverifiable.buttons, 'data-generate-recovery').length, 1);
-  assert.equal(withAttr(unverifiable.buttons, 'data-generate-recovery')[0].disabled, false);
-  assert.equal(withAttr(unverifiable.buttons, 'data-accept-billing-risk').length, 0,
-    'duplicate-charge acceptance belongs in the later billing confirmation, not a second card action');
-
-  const eligiblePending = await render({ checkpoint: recovery('pending'), stale: false });
-  assert.equal(primaryStateActions(eligiblePending.html).length, 1);
-  assert.equal(withAttr(eligiblePending.buttons, 'data-billing-review').length, 0);
-  assert.equal(withAttr(eligiblePending.buttons, 'data-generate-recovery').length, 1,
-    'pending review retains one visible result action');
-  assert.equal(withAttr(eligiblePending.buttons, 'data-generate-recovery')[0].disabled, true,
-    'pending review remains non-actionable until billing is resolved');
-  assert.equal(withAttr(eligiblePending.buttons, 'data-update-person-plan').length, 0);
-
-  const completedStale = await render({ checkpoint: recovery('complete'), stale: true });
-  assert.equal(withAttr(completedStale.buttons, 'data-generate-recovery').length, 0);
-  assert.equal(withAttr(completedStale.buttons, 'data-billing-review').length, 0);
-  assert.equal(withAttr(completedStale.buttons, 'data-update-person-plan').length, 1,
-    'after recovery has no missing units, a genuinely stale person plan must become actionable again');
-  assert.equal(withAttr(completedStale.buttons, 'data-update-person-plan')[0].disabled, false);
-
-  const ordinaryStale = await render({ checkpoint: null, stale: true });
-  assert.equal(withAttr(ordinaryStale.buttons, 'data-update-person-plan').length, 1,
-    'ordinary stale plan without checkpoint recovery must preserve the update action');
-  assert.equal(withAttr(ordinaryStale.buttons, 'data-update-person-plan')[0].disabled, false);
-
-  const activeStale = await render({ checkpoint: null, stale: true, active: true });
-  assert.equal(withAttr(activeStale.buttons, 'data-update-person-plan').length, 1);
-  assert.equal(withAttr(activeStale.buttons, 'data-update-person-plan')[0].disabled, true,
-    'active generation must continue disabling plan mutation');
-
-  const safeSequence = [];
-  const safeClick = await render({
-    checkpoint: recovery('not_billed'), stale: true,
-    preflight: async (_url, options) => {
-      const { apply, expected_proof_token: proofToken } = options.body;
-      safeSequence.push(apply ? `apply:${proofToken}` : 'preview');
-      return apply
-        ? { state: 'ready', safe_to_continue: true, differences: [] }
-        : { state: 'safe_rebase_available', safe_to_continue: false, proof_token: 'proof-v81', differences: [] };
-    },
-    confirmation: async () => { safeSequence.push('confirm'); return { accepted: true, reviewBatch: { reviews: [] } }; },
-  });
-  const recoveryControl = safeClick.controls.get('[data-generate-recovery], [data-accept-billing-risk]');
-  assert(recoveryControl?.listeners?.click, 'the final recovery CTA must be wired to the real generation handler');
-  await recoveryControl.click();
-  assert.deepEqual(safeSequence, ['preview', 'apply:proof-v81', 'confirm'],
-    'safe recovery must preflight, atomically apply the proof, then ask for billing confirmation');
-  assert.equal(safeClick.runStageCalls.length, 1, 'safe recovery submits exactly once after confirmation');
-
-  let blockedConfirmations = 0;
-  const blockedClick = await render({
-    checkpoint: recovery('not_billed'), stale: true,
-    preflight: async () => ({
-      state: 'blocked', safe_to_continue: false,
-      differences: [{ message: '人物1服装已从蓝色长裙改为金色战甲' }],
-    }),
-    confirmation: async () => { blockedConfirmations += 1; return { accepted: true }; },
-  });
-  await blockedClick.controls.get('[data-generate-recovery], [data-accept-billing-risk]').click();
-  const blockedResult = blockedClick.controls.get('[data-recovery-preflight-result]');
-  assert.equal(blockedResult.hidden, false, 'unsafe recovery must reveal the concrete preflight difference');
-  assert.match(blockedResult.textContent, /蓝色长裙.*金色战甲/);
-  assert.equal(blockedConfirmations, 0, 'unsafe recovery must stop before billing confirmation');
-  assert.equal(blockedClick.runStageCalls.length, 0, 'unsafe recovery must not call the provider stage');
-
-  console.log(JSON.stringify({ passed: true, safe_preflight_sequence: safeSequence, blocked_provider_calls: 0,
-    stale_recovery_generate_actions: 1, eligible_recovery_generate_actions: 1,
-    pending_disabled_actions: 1, completed_stale_update_actions: 1, model_calls: 0 }));
+  for (const checkpointState of ['not_billed', 'pending', 'unverifiable', 'complete']) {
+    const mounted = await render({ checkpoint: recovery(checkpointState), stale: true });
+    assert.equal(recoveryCards(mounted.html).length, 0, 'legacy recovery state must not mount in the live asset center');
+    assert.equal(withAttr(mounted.buttons, 'data-generate-recovery').length, 0);
+    assert.equal(withAttr(mounted.buttons, 'data-update-person-plan').length, 0);
+    assert.equal(withAttr(mounted.buttons, 'data-generate-production-assets').length, 1);
+  }
+  const active = await render({ active: true });
+  assert.equal(withAttr(active.buttons, 'data-generate-production-assets').length, 1);
+  assert.equal(withAttr(active.buttons, 'data-generate-production-assets')[0].disabled, true);
+  const ready = await render({ ready: true });
+  assert.equal(withAttr(ready.buttons, 'data-confirm-assets').length, 1);
+  assert.equal(withAttr(ready.buttons, 'data-generate-production-assets').length, 0);
+  console.log(JSON.stringify({ passed: true, unified_generation_actions: 1, legacy_recovery_actions: 0, model_calls: 0 }));
 }
 
 module.exports = { render, tags, withAttr, resetStageLoads: () => { stageLoads = 0; }, stageLoadCount: () => stageLoads };

@@ -108,12 +108,12 @@ function recoverySummary() {
 (async () => {
   const safe = priorProfiles.every((row, index) => subjectAssets.personProfileResumeCompatible(row, equivalentProfiles[index]));
   assert.equal(safe, true);
-  // Production still carries the old person-plan eligibility bit. Recovery owns
-  // this stage and must present the user result, while click-time preflight is
-  // responsible for revalidating compatibility before confirmation/submission.
+  // ProductionGraph is now the only live generation authority. Historical
+  // checkpoint state may remain readable, but it must not remount legacy actions.
   const safePage = await uiHarness.render({ checkpoint: recoverySummary(), stale: true });
-  assert.equal(uiHarness.withAttr(safePage.buttons, 'data-generate-recovery').length, 1,
-    'the recovery stage must expose the single result CTA; click-time preflight remains the authority');
+  assert.equal(uiHarness.withAttr(safePage.buttons, 'data-generate-production-assets').length, 1,
+    'the live asset center must expose only the unified ProductionGraph action');
+  assert.equal(uiHarness.withAttr(safePage.buttons, 'data-generate-recovery').length, 0);
   assert.equal(uiHarness.withAttr(safePage.buttons, 'data-update-person-plan').length, 0);
   assert.doesNotMatch(safePage.html, /先更新人物方案|人物方案需要更新|更新当前内容的人物方案/,
     'the recovery UI must not expose internal person-plan terminology');
