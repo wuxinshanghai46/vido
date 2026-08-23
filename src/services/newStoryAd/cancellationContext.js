@@ -102,7 +102,7 @@ function cancelActive(generationId, { ownerId = '', cancelledBy = '' } = {}) {
   if (!meta) return { cancelled: false, not_running: true };
   if (meta.ownerId && ownerId && String(meta.ownerId) !== String(ownerId)) return { cancelled: false, forbidden: true };
   cancel(generationId, { ...meta, cancelledBy });
-  return { cancelled: true, stage: meta.stage, generation_id: meta.generationId };
+  return { cancelled: true, task_id: meta.taskId || '', stage: meta.stage, generation_id: meta.generationId };
 }
 
 function throwIfCancelled(taskId = '') {

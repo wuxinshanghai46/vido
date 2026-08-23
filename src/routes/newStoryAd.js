@@ -1549,7 +1549,10 @@ router.post('/generations/:generationId/cancel', asyncRoute(async (req, res) => 
   const ownerId = String(user.id || user.userId || user.username || 'anonymous');
   const result = cancellation.cancelActive(req.params.generationId, { ownerId, cancelledBy: ownerId });
   if (result.forbidden) return res.status(403).json({ success: false, code: 'FORBIDDEN', error: '无权取消该生成任务' });
-  res.json({ success: true, ...result });
+  const taskResult = result.cancelled && result.task_id
+    ? jobService.cancelJob(result.task_id, { generationId: req.params.generationId, cancelledBy: ownerId })
+    : null;
+  res.json({ success: true, ...result, task_cancelled: taskResult?.cancelled === true });
 }));
 
 router.post('/tasks/:id/scene-assets', asyncRoute(async (req, res) => {

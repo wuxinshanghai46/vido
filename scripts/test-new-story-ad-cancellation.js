@@ -92,14 +92,16 @@ async function main() {
 
   let releaseAuxiliary;
   const auxiliaryId = 'person-sheet-test-generation';
-  const auxiliary = cancellation.run({ generationId: auxiliaryId, stage: 'person_sheet', ownerId: 'cancel-owner' }, async () => {
+  const auxiliary = cancellation.run({ generationId: auxiliaryId, taskId, stage: 'person_sheet', ownerId: 'cancel-owner' }, async () => {
     await new Promise(resolve => { releaseAuxiliary = resolve; });
     cancellation.throwIfCancelled();
   });
   await waitUntil(() => typeof releaseAuxiliary === 'function');
   assert.equal(cancellation.cancelActive(auxiliaryId, { ownerId: 'other-user' }).forbidden, true);
   const cancelStartedAt = Date.now();
-  assert.equal(cancellation.cancelActive(auxiliaryId, { ownerId: 'cancel-owner' }).cancelled, true);
+  const auxiliaryCancellation = cancellation.cancelActive(auxiliaryId, { ownerId: 'cancel-owner' });
+  assert.equal(auxiliaryCancellation.cancelled, true);
+  assert.equal(auxiliaryCancellation.task_id, taskId, '按 generation 取消必须返回所属任务，供路由同步收敛任务权威状态');
   await assert.rejects(
     Promise.race([
       auxiliary,
