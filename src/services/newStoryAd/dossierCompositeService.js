@@ -150,18 +150,27 @@ async function generateDetailRows({
       '严格依据参考图，不改变服装款式和配色，不加入文字、标签、水印、拼贴边框或人物档案排版。',
     ].filter(Boolean).join('\n');
     const auditSafePrompt = `纯净暖白背景的${spec.label}独立产品目录图。仅呈现该物件的外形、材质和佩戴方向；不出现人物、身体、武器、文字、水印或其它配饰。目标证据：${evidence}`;
-    const localWardrobeFallback = async modelCallCount => {
-      if (detailKind !== 'wardrobe_detail') return null;
-      const crop = {
+    const localDetailFallback = async modelCallCount => {
+      const crop = detailKind === 'wardrobe_detail' ? ({
         outfit_silhouette: { x: 0.24, y: 0.12, width: 0.52, height: 0.75, outputWidth: 520, outputHeight: 720 },
         neckline_cut: { x: 0.29, y: 0.20, width: 0.42, height: 0.24, outputWidth: 640, outputHeight: 480 },
         fabric_drape: { x: 0.30, y: 0.40, width: 0.40, height: 0.30, outputWidth: 640, outputHeight: 480 },
         hem_and_footwear: { x: 0.27, y: 0.65, width: 0.46, height: 0.22, outputWidth: 640, outputHeight: 480 },
-      }[spec.key];
+      }[spec.key]) : ({
+        head_accessories: { x: 0.28, y: 0.04, width: 0.44, height: 0.30, outputWidth: 640, outputHeight: 480 },
+        ear_accessories: { x: 0.30, y: 0.10, width: 0.40, height: 0.32, outputWidth: 640, outputHeight: 480 },
+        eyewear: { x: 0.26, y: 0.10, width: 0.48, height: 0.28, outputWidth: 640, outputHeight: 480 },
+        neck_accessories: { x: 0.27, y: 0.20, width: 0.46, height: 0.30, outputWidth: 640, outputHeight: 480 },
+        waist_accessories: { x: 0.18, y: 0.36, width: 0.64, height: 0.28, outputWidth: 640, outputHeight: 480 },
+        wrist_wearables: { x: 0.18, y: 0.38, width: 0.64, height: 0.28, outputWidth: 640, outputHeight: 480 },
+        shoes: { x: 0.24, y: 0.68, width: 0.52, height: 0.24, outputWidth: 640, outputHeight: 480 },
+      }[spec.key]);
       if (!crop) return null;
       const buffer = await detailTile(reference, crop, crop.outputWidth, crop.outputHeight, mediaAdapter);
       if (!buffer) return null;
-      const filename = wardrobeFilename(spec.key, taskId, assetId, revision);
+      const filename = detailKind === 'wardrobe_detail'
+        ? wardrobeFilename(spec.key, taskId, assetId, revision)
+        : wearableFilename(spec.key, taskId, assetId, revision);
       const outputPath = mediaAdapter.assetPathFromName(filename);
       fs.mkdirSync(path.dirname(outputPath), { recursive: true });
       await fs.promises.writeFile(outputPath, buffer);
@@ -175,6 +184,7 @@ async function generateDetailRows({
         source_asset_id: reference.id || reference.asset_id || reference.key || '',
         derived_locally: true,
         detail_mode: 'local_reference_crop_after_provider_audit',
+        evidence_mode: detailKind === 'wearable_accessory' ? 'authoritative_person_crop' : 'wardrobe_reference_crop',
         resolution: `${crop.outputWidth}x${crop.outputHeight}`,
         provider_used: 'local/sharp',
         model_call_count: modelCallCount,
@@ -182,7 +192,7 @@ async function generateDetailRows({
       };
     };
     if (cached?.error?.code === 'PROVIDER_CONTENT_AUDIT') {
-      const recovered = await localWardrobeFallback(0);
+      const recovered = await localDetailFallback(0);
       if (recovered) {
         await saveCheckpoint(checkpointKey, checkpointService.normalizeCheckpoint({
           ...cached,
@@ -251,7 +261,7 @@ async function generateDetailRows({
             });
           } catch (error) {
             if (error?.code === 'PROVIDER_CONTENT_AUDIT') {
-              const recovered = await localWardrobeFallback(1);
+              const recovered = await localDetailFallback(1);
               if (recovered) return recovered;
             }
             throw error;
@@ -330,7 +340,9 @@ async function detailTile(asset, focus, width, height, mediaAdapter) {
 
 /**
  * 这里只承担人物自身的可见妆发证据裁切。发饰、耳饰、腰佩、腕饰和鞋履
- * 等可穿戴物由 wearableEvidencePolicy 进入独立白底物件生成，不能再用身体局部裁切冒充清单。
+ * 等可穿戴物优先由 wearableEvidencePolicy 进入独立白底物件生成；只有所有供应商均明确
+ * 未计费且内容审核拒绝时，才保留标记为 authoritative_person_crop 的人物权威图局部证据，
+ * 不得把该恢复图标记成独立白底目录图。
  */
 async function composeWearableDetails({
   taskId,

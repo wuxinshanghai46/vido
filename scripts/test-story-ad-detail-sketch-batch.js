@@ -9,6 +9,8 @@ const composites = require('../src/services/newStoryAd/dossierCompositeService')
 const pipeline = require('../src/services/pipelineModelService');
 const sketches = require('../src/services/storyAdWorkspace/storyboardSketchService');
 const storage = require('../src/services/newStoryAd/storageService');
+const mediaAdapter = require('../src/services/newStoryAd/mediaAdapter');
+const sharp = require('sharp');
 
 function loadBrowserModule(file, exposed) {
   const source = read(file).replace(/^import\s+.*?;\s*$/gm, '').replace(/\bexport\s+/g, '');
@@ -57,6 +59,33 @@ async function main() {
   await composites.generateWearableDetails(common, { mediaAdapter: fakeMedia });
   await composites.generateWardrobeDetails(common, { mediaAdapter: fakeMedia });
   assert.equal(calls.length, 6, '检查点恢复不得重复产生图片调用');
+
+  const auditedReferenceName = `audited-wearable-${process.pid}.png`;
+  const auditedReferencePath = mediaAdapter.assetPathFromName(auditedReferenceName);
+  await sharp({ create: { width: 900, height: 1200, channels: 3, background: '#334455' } }).png().toFile(auditedReferencePath);
+  const auditedCheckpoints = {};
+  try {
+    const recoveredWearable = await composites.generateWearableDetails({
+      taskId: 'audited-wearable-recovery', assetId: 'person-audit', revision: 1,
+      atomicAssets: [{ id: 'front-audit', kind: 'body', key: 'front', image_url: mediaAdapter.publicAssetUrl(auditedReferenceName) }],
+      profile: { wardrobeText: '银色高跟鞋' },
+      loadCheckpoint: async key => auditedCheckpoints[key],
+      saveCheckpoint: async (key, value) => { auditedCheckpoints[key] = value; },
+    }, {
+      mediaAdapter: {
+        ...mediaAdapter,
+        async generateImage() {
+          throw Object.assign(new Error('provider content audit'), { code: 'PROVIDER_CONTENT_AUDIT' });
+        },
+      },
+    });
+    assert.equal(recoveredWearable.length, 1);
+    assert.equal(recoveredWearable[0].derived_locally, true);
+    assert.equal(recoveredWearable[0].evidence_mode, 'authoritative_person_crop');
+    assert.equal(recoveredWearable[0].recovery_reason, 'PROVIDER_CONTENT_AUDIT');
+  } finally {
+    fs.rmSync(auditedReferencePath, { force: true });
+  }
 
   assert.equal(pipeline.getStageDefaults('new_story_ad.storyboard_sketch')[0].model_id, 'gpt-image-2');
   assert(pipeline.NEW_STORY_AD_IMAGE_STAGE_IDS.has('new_story_ad.storyboard_sketch'));
