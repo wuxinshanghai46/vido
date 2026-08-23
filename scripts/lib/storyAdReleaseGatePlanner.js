@@ -115,6 +115,7 @@ const DOMAIN_RULES = [
     patterns: [
       /(?:assetPlan|PlanningDetails|PlanRelease|PlanMigration|scenePlanStatus|contextBuilder|subjectAssetBundle)/i,
       /^scripts\/test-story-ad-person-plan/i,
+      /^scripts\/test-new-story-ad-asset-contracts\.js$/i,
     ],
   },
   {
