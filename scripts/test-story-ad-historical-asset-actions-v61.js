@@ -68,15 +68,15 @@ const browserSource = source => source
   .replace(/\bexport\s+/g, '');
 const stageSandbox = { makeGuardMap: () => ({}), makePersonGuard: () => ({}), escapeHtml: value => String(value) };
 vm.runInNewContext(`${browserSource(inlineProgressSource)}\n${browserSource(technicalDetailsSource)}\n${browserSource(planStatusSource)}\n${browserSource(stageSource)}\nglobalThis.__stage=assetPlanStageView;`, stageSandbox);
-const historicalGenerateDom = stageSandbox.__stage({ assetPlanReady: true, missingSubjectCount: 2, counts: { people: 2 } });
-const historicalContinueDom = stageSandbox.__stage({ assetPlanReady: true, missingSubjectCount: 0, counts: { people: 2 } });
+const historicalGenerateDom = stageSandbox.__stage({ counts: { people: 2 }, productionGraph: null });
+const historicalContinueDom = stageSandbox.__stage({ counts: { people: 2 }, productionGraph: { validation: { status: 'ready' } } });
 const historicalEditDom = stageSandbox.__stage({ assetPlanReady: false, eligibility: { issues: ['person_plan_stale'] } });
 
 // 人物资产页仍保留自身的精确只读控件分类；壳层不再注入第 1 步全局解锁横幅。
 assert.match(
   historicalGenerateDom,
-  buttonTagWith('data-generate-missing-subjects', 'data-history-safe'),
-  '整批人物图片生成按钮必须显式声明为历史资产页仍可执行的动作',
+  buttonTagWith('data-generate-production-assets', 'data-history-safe'),
+  '统一制作图谱生成按钮必须显式声明为历史资产页仍可执行的动作',
 );
 assert.match(
   historicalContinueDom,
@@ -95,8 +95,8 @@ const controlFromDom = (html, attribute) => {
   assert(tag, `最终DOM缺少 ${attribute} 按钮`);
   return control(tag.includes('data-history-safe') ? ['[data-history-safe]'] : []);
 };
-const safeAction = controlFromDom(historicalGenerateDom, 'data-generate-missing-subjects');
-const ordinaryAction = controlFromDom(historicalEditDom, 'data-update-person-plan');
+const safeAction = controlFromDom(historicalGenerateDom, 'data-generate-production-assets');
+const ordinaryAction = control([]);
 const editInput = control([]);
 const fakeHost = { querySelectorAll: () => [safeAction, ordinaryAction, editInput] };
 historyModule.applyHistoricalReadonlyControls(fakeHost);
@@ -107,7 +107,8 @@ assert.doesNotMatch(assets, /data-unlock-history-step|新增\s*\/\s*修改内容
 assert.doesNotMatch(app, /historicalReadOnly\s*:/, '壳层不得再把第2步后的独立编辑入口降级成公共历史只读模式');
 assert.match(assets, /data-asset-id/, '人物资产必须保留本步骤的详情编辑入口');
 assert.match(planningDetails, /personEditForm\(item\)/, '人物详情必须保留独立人物编辑表单');
-assert.match(planningDetails, /data-drawer-generate/, '历史只读只保护文字编辑，付费生成入口在二次确认前仍需可达');
+assert.doesNotMatch(planningDetails, /data-drawer-generate/, '人物详情不得继续提供旧的单项付费生成入口');
+assert.match(assets, /data-generate-production-assets/, '历史资产页只允许统一制作图谱作为付费生成入口');
 assert.match(assets, /createKeyedRequestGuard\(\)/, '人物图片生成必须按意图复用统一防重入 guard');
 assert.match(assets, /subjectRequests\.run\(intent,[\s\S]*await confirmBillingAwareAction\(\{/, '防重入 guard 必须包住计费确认与提交链');
 assert.match(requestGuards, /if \(guard\.active\) return onSkipped\?\.\(\);[\s\S]*await guard\.run\(operation\)/, '同一意图在确认框打开前必须被 guard 拦截');
@@ -134,9 +135,10 @@ const renderSections = new Function('emptyState', 'GROUPS', 'escapeHtml', 'asset
   ({ title }) => `<div>${title}</div>`, groupContract, value => String(value || ''), item => `<article>${item.name}</article>`,
 );
 const commercialProductDom = renderSections({ products: [{ id: 'product-1', name: '商品一' }] }, 1, 'commercial_subject', commercialGroups, '');
-assert.match(commercialProductDom, /data-asset-section="products"[\s\S]*data-generate-product-main[\s\S]*添加商品\/展示主体/, '广告商品操作必须渲染在商品/展示主体分类内部');
+assert.match(commercialProductDom, /data-asset-section="products"[\s\S]*data-add-asset="products"[\s\S]*上传商品\/展示主体素材/, '广告商品素材上传必须渲染在商品/展示主体分类内部');
+assert.doesNotMatch(commercialProductDom, /data-generate-product-main/, '商品分类不得继续提供旧的独立生成入口');
 const commercialEmptyDom = renderSections({}, 0, 'commercial_subject', commercialGroups, '');
-assert.match(commercialEmptyDom, /data-asset-section="products" hidden[\s\S]*data-generate-product-main[\s\S]*上传商品\/展示主体素材/, '广告全部资产为空时仍必须保留可由分类点击显示的商品空态与操作');
+assert.match(commercialEmptyDom, /data-asset-section="products" hidden[\s\S]*data-add-asset="products"[\s\S]*上传商品\/展示主体素材/, '广告全部资产为空时仍必须保留可由分类点击显示的商品上传空态');
 const narrativeDom = renderSections({ products: [{ id: 'legacy-product', name: '旧主体' }] }, 1, 'narrative_story', narrativeGroups, '');
 assert.doesNotMatch(narrativeDom, /data-generate-product-main|商品 \/ 展示主体|legacy-product/, '剧情项目最终资产 DOM 不得泄漏历史商品主体操作');
 const viewHead = assets.match(/<section class="view-head">[\s\S]*?<\/section>/)?.[0] || '';
@@ -182,8 +184,8 @@ async function assertMountedHistoricalControls() {
   assert.equal(harness.stageLoadCount(), 1, '真实assetCenterView mount必须恰好加载一次资产阶段模块');
   const eligibleControls = controls(eligible.buttons);
   historyModule.applyHistoricalReadonlyControls({ querySelectorAll: () => eligibleControls });
-  const generateButton = eligibleControls.find(button => /data-generate-missing-subjects\b/.test(button.attrs));
-  assert(generateButton && generateButton.disabled === false, '真实mount最终DOM中的历史安全生成人物按钮必须保持可用');
+  const generateButton = eligibleControls.find(button => /data-generate-production-assets\b/.test(button.attrs));
+  assert(generateButton && generateButton.disabled === false, '真实mount最终DOM中的历史安全统一制作按钮必须保持可用');
   assert(eligibleControls.find(button => /data-select-person\b/.test(button.attrs))?.disabled === true,
     '真实mount最终DOM中的人物编辑/替换动作必须继续受历史只读保护');
 
@@ -192,9 +194,10 @@ async function assertMountedHistoricalControls() {
   assert.equal(harness.stageLoadCount(), 1, '人物方案阻断态mount也必须通过同一loader加载阶段模块');
   const staleControls = controls(stale.buttons);
   historyModule.applyHistoricalReadonlyControls({ querySelectorAll: () => staleControls });
-  const updateButton = staleControls.find(button => /data-update-person-plan\b/.test(button.attrs));
-  assert(updateButton && updateButton.disabled === true && !/data-history-safe/.test(updateButton.attrs),
-    '历史资产页的人物方案编辑按钮不得伪装成安全生成动作绕过只读');
+  assert(!staleControls.some(button => /data-update-person-plan\b/.test(button.attrs)),
+    '历史资产页不得继续渲染旧的人物方案更新按钮');
+  const staleGenerate = staleControls.find(button => /data-generate-production-assets\b/.test(button.attrs));
+  assert(staleGenerate && staleGenerate.disabled === false, '失效图谱必须通过唯一统一制作动作重建');
 }
 
 assertMountedHistoricalControls()

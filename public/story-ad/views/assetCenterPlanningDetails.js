@@ -1,9 +1,9 @@
-import { escapeHtml, mediaPreview } from '../components/ui.js?v=20260823-person-profile-v200b';
-import { bindMediaLightbox } from './mediaLightbox.js?v=20260823-person-profile-v200b';
-import { personDossierShowcase } from './personDossierShowcase.js?v=20260823-person-profile-v200b';
-import { bindSceneDossierCard, renderSceneDossierCard } from './sceneDossierCard.js?v=20260823-person-profile-v200b';
-import { bindPersonLookForm } from './assetCenterPersonLooks.js?v=20260823-person-profile-v200b';
-import { bindPersonEvolutionForm } from './assetCenterPersonEvolution.js?v=20260823-person-profile-v200b';
+import { escapeHtml, mediaPreview } from '../components/ui.js?v=20260823-production-v201b';
+import { bindMediaLightbox } from './mediaLightbox.js?v=20260823-production-v201b';
+import { personDossierShowcase } from './personDossierShowcase.js?v=20260823-production-v201b';
+import { bindSceneDossierCard, renderSceneDossierCard } from './sceneDossierCard.js?v=20260823-production-v201b';
+import { bindPersonLookForm } from './assetCenterPersonLooks.js?v=20260823-production-v201b';
+import { bindPersonEvolutionForm } from './assetCenterPersonEvolution.js?v=20260823-production-v201b';
 
 export function ownedPropDetails(item = {}) {
   const rows = Array.isArray(item.owned_props) ? item.owned_props : [];
@@ -164,7 +164,6 @@ export function openAssetDrawer(item, group, handlers = {}, renderers = {}) {
     }
     if (saved === true) close();
   });
-  drawer.querySelector('[data-drawer-generate]')?.addEventListener('click', async event => { if (await onGenerate?.(item, group, event.currentTarget) === true) close(); });
   drawer.querySelector('[data-drawer-verify-product]')?.addEventListener('click', async event => { if (await onVerifyProduct?.(item, event.currentTarget) === true) close(); });
   bindSubmit('[data-person-edit]', onSavePerson);
   bindPersonLookForm(drawer.querySelector('[data-person-edit]'));
@@ -178,8 +177,6 @@ export function openAssetDrawer(item, group, handlers = {}, renderers = {}) {
   bindSubmit('[data-scene-edit]', onSaveScene);
   drawer.querySelector('[data-ai-assist-person]')?.addEventListener('click', event => onAssistPerson?.(item, drawer.querySelector('[data-person-edit]'), event.currentTarget));
   drawer.querySelector('[data-ai-assist-scene]')?.addEventListener('click', event => onAssistScene?.(item, drawer.querySelector('[data-scene-edit]'), event.currentTarget));
-  drawer.querySelector('[data-drawer-generate-scene]')?.addEventListener('click', async event => { if (await onGenerateScene?.(item, event.currentTarget) === true) close(); });
-  drawer.querySelector('[data-drawer-generate-product]')?.addEventListener('click', async event => { if (await onGenerateProduct?.(item, event.currentTarget) === true) close(); });
   drawer.querySelector('[data-drawer-upload-product]')?.addEventListener('click', () => { close(); onUploadProduct?.(item); });
   drawer.querySelectorAll('[data-generate-owned-prop]').forEach(button => button.addEventListener('click', async () => {
     const prop = (item.owned_props || []).find(row => String(row.id) === button.dataset.generateOwnedProp);
