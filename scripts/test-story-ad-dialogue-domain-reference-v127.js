@@ -50,6 +50,9 @@ async function main() {
   assert.match(commercialMarkup, /可执行广告方案/);
   assert.match(commercialMarkup, /确认设想，生成广告脚本/);
   assert.match(commercialMarkup, /data-reference-dialogue-status/);
+  const emptyReferenceMarkup = briefDialogueMarkup({ brief: {} }, {});
+  assert.match(emptyReferenceMarkup, /data-reference-progress-host/,
+    '新项目必须预留对话内进度宿主，添加参考后才能无刷新原位显示状态');
   assert.doesNotMatch(commercialMarkup, /确认设想，生成剧情与对白/);
 
   const failedProgress = progressModule.namespace.referenceProgress({
@@ -207,7 +210,7 @@ async function main() {
 
   console.log(JSON.stringify({
     passed: true,
-    checks: 38,
+    checks: 39,
     scope: 'story-ad-dialogue-domain-reference-v127',
     real_model_calls: 0,
     paid_generation_calls: 0,
