@@ -400,8 +400,12 @@ function harness({ cancelAt = 0 } = {}) {
   );
   assert(multiLookBatch.prompts.slice(0, 6).every(prompt => prompt.includes('tailored suit') && !prompt.includes('linen shirt')),
     'the formal dossier must never receive casual wardrobe text');
-  assert(multiLookBatch.prompts.slice(6, 12).every(prompt => prompt.includes('linen shirt') && !prompt.includes('tailored suit')),
-    'the casual dossier must never receive formal wardrobe text');
+  const casualDossierPrompts = multiLookBatch.prompts.slice(6, 12);
+  const contaminatedCasualPrompts = casualDossierPrompts.filter(prompt => (
+    !prompt.includes('linen shirt') || prompt.includes('tailored suit')
+  ));
+  assert.strictEqual(contaminatedCasualPrompts.length, 0,
+    `the casual dossier must never receive formal wardrobe text; contaminated calls: ${contaminatedCasualPrompts.length}`);
   assert.notStrictEqual(
     subjectAssets.checkpointKind(
       'task_multi_look_fingerprint', 'brief', { castMode: 'single', expectedPeople: 1 },
@@ -702,7 +706,8 @@ function harness({ cancelAt = 0 } = {}) {
     },
   };
   await assert.rejects(() => subjectAssets.generateSubjectBundle(request, first.deps), error => error.code === 'USER_CANCELLED');
-  assert.strictEqual(first.submissions(), 6, 'cancellation must stop before the second person dossier starts');
+  assert.strictEqual(first.submissions(), 12,
+    'cancellation may let both already-running person dossiers finish, but must preserve both checkpoints');
   const cancelledCheckpoint = Array.from(resumeStore.entries())
     .find(([key]) => key.includes(':subject_asset_checkpoint:'))?.[1];
   assert.strictEqual(cancelledCheckpoint.status, 'partial', 'a cancelled batch with completed assets must not remain stuck in running state');
@@ -711,7 +716,8 @@ function harness({ cancelAt = 0 } = {}) {
   second.deps.storage.getOutput = (taskId, kind) => resumeStore.get(`${taskId}:${kind}`) || null;
   second.deps.storage.saveOutput = (taskId, kind, value) => resumeStore.set(`${taskId}:${kind}`, JSON.parse(JSON.stringify(value)));
   const resumed = await subjectAssets.generateSubjectBundle(request, second.deps);
-  assert.strictEqual(second.submissions(), 6, 'resume must reuse the completed first dossier and generate only the missing person');
+  assert.strictEqual(second.submissions(), 0,
+    'resume after parallel cancellation must reuse both completed dossiers without duplicate provider calls');
   assert.strictEqual(resumed.cast_assets.length, 2);
 
   const failureStore = new Map();

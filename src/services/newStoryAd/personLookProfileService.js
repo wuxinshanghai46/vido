@@ -98,6 +98,9 @@ function profileWithLook(profile = {}, look = null) {
     negativeText: [profile.negativeText, look.negativeText].map(value => clean(value, 800)).filter(Boolean).join('；'),
     active_look_id: look.id,
     active_look_name: look.name,
+    look_name: look.name || '',
+    story_state: look.story_state || '',
+    wardrobe_contract: look.wardrobe_contract || null,
     style_richness: normalizeStyleRichness(look.style_richness || look.styleRichness),
   };
 }
