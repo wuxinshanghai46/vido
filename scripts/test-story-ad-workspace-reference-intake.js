@@ -428,8 +428,13 @@ async function testProjectReferenceRemoval() {
   const originalCancel = referenceVideoAnalyses.cancel;
   const originalRemove = referenceVideoAnalyses.remove;
   let removedId = '';
+  let removalReason = '';
   referenceVideoAnalyses.get = analysisId => ({ id: analysisId, status: 'completed' });
-  referenceVideoAnalyses.remove = analysisId => { removedId = analysisId; return { id: analysisId, deleted: true }; };
+  referenceVideoAnalyses.remove = (analysisId, _user, options = {}) => {
+    removedId = analysisId;
+    removalReason = options.reason || '';
+    return { id: analysisId, deleted: true, audit_tombstone: true };
+  };
   const app = express();
   app.use(express.json({ limit: '5mb' }));
   app.use((req, res, next) => { req.user = user; next(); });
@@ -444,8 +449,9 @@ async function testProjectReferenceRemoval() {
     );
     assert.equal(response.status, 200);
     assert.equal(response.payload.reference_removed, true);
-    assert.equal(response.payload.analysis_cleanup, 'deleted');
+    assert.equal(response.payload.analysis_cleanup, 'deleted_with_audit_tombstone');
     assert.equal(removedId, completedReference().analysis_id);
+    assert.equal(removalReason, 'detached_from_story_ad_project');
     const context = storage.getOutput(taskId, 'context');
     assert.equal(context.reference_video_analysis, null, '移除后任务不得继续绑定旧参考分析');
     assert.equal(context.brief, '', '参考分析自动填写的目标必须清空，恢复手动填写和 AI 帮写入口');
