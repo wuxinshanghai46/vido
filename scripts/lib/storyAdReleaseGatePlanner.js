@@ -107,7 +107,10 @@ const DOMAIN_RULES = [
   {
     domain: 'upload_media',
     risk: 'upload_media',
-    patterns: [/(?:upload|multipart|mediaAdapter|mediaCatalog|fileStorage|videoAnalysis)/i],
+    patterns: [
+      /(?:upload|multipart|mediaAdapter|mediaCatalog|fileStorage|videoAnalysis)/i,
+      /^scripts\/test-new-story-ad-visual-asset-failure-recovery\.js$/i,
+    ],
   },
   {
     domain: 'asset_plan',

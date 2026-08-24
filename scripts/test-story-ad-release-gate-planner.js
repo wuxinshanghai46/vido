@@ -66,6 +66,11 @@ assert.deepEqual(
   '按账号自动注册音色必须执行系统性、UI 与发布门禁，但家庭电脑不得触发跨版本完整回归',
 );
 assert.equal(plan(['src/services/newStoryAd/unclassifiedAuthority.js']).profile, 'full');
+assert.equal(
+  plan(['scripts/test-new-story-ad-visual-asset-failure-recovery.js']).profile,
+  'upload_media',
+  'the visual asset failure recovery test belongs to the upload/media gate instead of unknown full scope',
+);
 assert(plan(['src/services/newStoryAd/unclassifiedAuthority.js']).gates.some(row => row.id === 'systemic'),
   '未知运行文件回退full时必须执行systemic结构与权威门禁');
 assert.equal(plan(['scripts/deploy-story-ad-immutable-release.js']).profile, 'full');
