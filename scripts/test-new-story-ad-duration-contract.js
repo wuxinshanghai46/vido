@@ -103,6 +103,18 @@ const normalizedLongShots = storyboardTableService.normalizeShots(
 assert.equal(normalizedLongShots.length, 100);
 assert.equal(normalizedLongShots.reduce((total, shot) => total + shot.duration, 0), 600, '100 镜标准长片必须精确覆盖 600 秒');
 assert.ok(normalizedLongShots.every(shot => shot.duration === productionLimits.MAX_SHOT_DURATION));
+for (const [duration, expectedShots] of [[45, 8], [180, 30], [300, 50], [480, 80], [600, 100]]) {
+  const beats = storyboardTableService.plannedBeats({ beats: [{ beat_index: 1, role: 'story', plot: `${duration}秒内容` }] }, {
+    brief: `${duration}秒成片`, target_duration: duration,
+  });
+  const shots = storyboardTableService.normalizeShots(
+    beats.map(beat => ({ index: beat.beat_index, visual: beat.plot, action: `推进 ${beat.beat_index}` })),
+    { brief: `${duration}秒成片`, target_duration: duration, characters: [], scene_assets: [] },
+  );
+  assert.equal(beats.length, expectedShots, `${duration} 秒必须规划 ${expectedShots} 镜以满足单镜最多 6 秒`);
+  assert.equal(shots.reduce((total, shot) => total + shot.duration, 0), duration, `${duration} 秒必须精确覆盖成片总时长`);
+  assert.ok(shots.every(shot => shot.duration <= productionLimits.MAX_SHOT_DURATION), `${duration} 秒不得产生超长单镜`);
+}
 const qaWindows = qualityReviewService.storyboardQaChunks(normalizedLongShots);
 assert.equal(qaWindows.length, 13, '100镜质量审核必须按窗口覆盖，不能只截取前段');
 assert.deepEqual(qaWindows.flat().map(shot => shot.index), normalizedLongShots.map(shot => shot.index));

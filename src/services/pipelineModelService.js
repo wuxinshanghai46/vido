@@ -231,9 +231,9 @@ const NEW_STORY_AD_PANORAMA_REQUIRED_CAPABILITIES = Object.freeze([
 ]);
 const NEW_STORY_AD_IMAGE_DEFAULTS = [
   { provider_id: 'smscrw', model_id: 'gpt-image-2', priority: 1, enabled: true },
-  { provider_id: 'deyunai', model_id: 'gpt-image-2', priority: 2, enabled: true },
-  { provider_id: 'apismile', model_id: 'gpt-image-2', priority: 3, enabled: false },
-  { provider_id: 'webang-maas', model_id: 'gpt-image-2', priority: 4, enabled: false },
+  { provider_id: 'webang-maas', model_id: 'gpt-image-2', priority: 2, enabled: true },
+  { provider_id: 'deyunai', model_id: 'gpt-image-2', priority: 3, enabled: true },
+  { provider_id: 'apismile', model_id: 'gpt-image-2', priority: 4, enabled: false },
 ];
 
 const STAGE_DEFAULTS = {

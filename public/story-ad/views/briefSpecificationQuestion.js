@@ -1,9 +1,4 @@
-function durationLabel(seconds = 30) {
-  const value = Number(seconds || 30) || 30;
-  if (value % 60 === 0) return `${value / 60} 分钟`;
-  if (value > 60) return `${Math.floor(value / 60)} 分 ${value % 60} 秒`;
-  return `${value} 秒`;
-}
+import { BRIEF_DURATION_OPTIONS, durationLabel } from './briefDurationOptions.js?v=20260824-production-v202a';
 
 export function specificationQuestionText({ mode = '', duration = 30, ratio = '9:16', resolution = '1080p' } = {}) {
   const kind = mode === 'commercial_subject' ? '这条广告' : '这个故事';
@@ -17,7 +12,7 @@ export function mountSpecificationQuestion(conversation, options = {}) {
   const find = selector => article.querySelector(selector);
   article.className = 'brief-message is-assistant';
   article.dataset.specificationQuestion = '';
-  article.innerHTML = `<span class="brief-message-avatar">导</span><div><small>导演助理</small><div class="brief-bubble"><p></p></div><div class="brief-quick-actions" data-spec-actions><button type="button" data-spec-choice="confirm">确认当前规格</button><button type="button" data-spec-choice="adjust">调整规格</button></div><div class="brief-inline-specification" data-spec-editor hidden><label>时长<select data-spec-duration>${optionsList([15, 30, 60, 90, 120], Number(options.duration || 30), durationLabel)}</select></label><label>画幅<select data-spec-ratio>${optionsList(['9:16', '16:9', '1:1'], options.ratio || '9:16')}</select></label><label>清晰度<select data-spec-resolution>${optionsList(['720p', '1080p', '4K'], options.resolution || '1080p')}</select></label><button type="button" data-spec-choice="apply">确认调整</button></div></div>`;
+  article.innerHTML = `<span class="brief-message-avatar">导</span><div><small>导演助理</small><div class="brief-bubble"><p></p></div><div class="brief-quick-actions" data-spec-actions><button type="button" data-spec-choice="confirm">确认当前规格</button><button type="button" data-spec-choice="adjust">调整规格</button></div><div class="brief-inline-specification" data-spec-editor hidden><label>时长<select data-spec-duration>${optionsList(BRIEF_DURATION_OPTIONS, Number(options.duration || 30), durationLabel)}</select></label><label>画幅<select data-spec-ratio>${optionsList(['9:16', '16:9', '1:1'], options.ratio || '9:16')}</select></label><label>清晰度<select data-spec-resolution>${optionsList(['720p', '1080p', '4K'], options.resolution || '1080p')}</select></label><button type="button" data-spec-choice="apply">确认调整</button></div></div>`;
   find('.brief-bubble p').textContent = specificationQuestionText(options);
   conversation.appendChild(article);
   find('[data-spec-choice="confirm"]')?.addEventListener('click', () => {

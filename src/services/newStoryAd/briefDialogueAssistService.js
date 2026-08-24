@@ -102,6 +102,11 @@ function creativeDelegationRequested(value = '') {
   return /(?:这些|这个|内容|设定)?(?:你|平台|系统)?(?:帮我|替我|由你|你来|请你)[^，。；\n]{0,16}(?:完善|补全|补充|细化|设计|决定|安排)|(?:完善|补全|补充|细化)[^，。；\n]{0,8}(?:一下|下|吧)/u.test(cleanText(value, 400));
 }
 
+function creativeApproachRequested(body = {}) {
+  const message = cleanText(body.user_message || body.message || '', 1600);
+  return creativeDelegationRequested(message) || message.length >= 40;
+}
+
 function contextualQuestion(profile = {}, topic = '', accumulatedIdea = '', contentMode = '') {
   const fallback = profile.questions?.[topic] || ['', []];
   if (contentMode === 'commercial_subject' || !/(?:机器人|机械人|仿生人|AI陪伴|人工智能)/u.test(cleanText(accumulatedIdea, 4000))) return fallback;
@@ -156,7 +161,7 @@ function systemPrompt(dynamicKnowledge = '', contentMode = '') {
   const commercial = contentMode === 'commercial_subject';
   const lines = [
     '你是 VIDO 剧情广告模块的资深导演与制片策划，负责用自然、专业、具体的中文完成对话式立项。只输出 JSON 对象，不要 markdown。',
-    '不要复述、确认或总结用户刚刚回答的内容，不要说“我记下了”“我理解了”“这部分已经清楚”“接下来”。直接提出当前唯一一个问题；只有问题本身不易理解时，才允许加一句很短的通俗说明。',
+    '不要只复述、确认或空泛总结用户刚刚回答的内容，不要说“我记下了”“我理解了”“这部分已经清楚”“接下来”。当用户给出一段完整设想、镜头顺序或委托你完善时，先用 creative_direction 给出一段具体的执行构想，再提出当前唯一一个问题。',
     '每轮只追问 1 个当前最影响创作与制作的缺口；不要向用户罗列检查项或宣布后续流程。进入成片规格前必须覆盖五类制作依据：subject（主要人物/关系或产品主体）、structure（开端触发、发展冲突、高潮/结局，或广告价值演示链）、audience_intent（目标观众及希望留下的情绪/认知/行动）、world_context（足够执行的时代、地区、社会环境或明确架空规则）、visual_direction（真人/动画等媒介、写实度、美学气质或用户明确委托导演建议）。',
     commercial
       ? '当前是商业广告。广告与剧情短片必须使用不同问询合同：只确认产品或服务主体、核心卖点、可见证据、目标受众与行动、真实展示场景、画面方式和视觉方向。禁止追问人物关系、感情变化、反派、冲突升级、穿越、高潮或故事结局；只有用户明确要求剧情化广告并亲自提出人物情感时，才可沿用户原话确认，不能主动添加爱情或其它情感线。'
@@ -167,7 +172,7 @@ function systemPrompt(dynamicKnowledge = '', contentMode = '') {
     '用户一次已经讲完整时不得重复询问已经有直接证据的内容；completed_topics 中的决策已经回答，禁止换一种说法再次询问。五类均明确后 next_step 才进入 specifications。时长、画幅和清晰度必须作为一组简洁确认，不能把系统默认值说成用户已经确认。',
     '规格确认后 next_step 才能进入 reference。参考提问必须结合当前剧情或商业内容说明可能有价值的参考类型；参考材料不是必填项，但必须由用户明确选择提供或不提供。',
     '不得编造用户没有说过的人物、品牌、产品功效、价格、时代、地点或结局；不得引用旧任务、知识库案例或其它用户内容。',
-    'reply 控制在 12 至 100 个中文字符，只说用户需要回答的问题。不要解释系统为什么要问，不要展示审核、证据、覆盖率、流程或内部判断；不要使用“真实克制”“东方诗意”“宏大传奇”等专业概括，要换成普通用户一看就懂的话。',
+    'creative_direction 控制在 20 至 180 个中文字符，说明大概会怎样安排开场、推进、重点画面和收尾，必须贴合用户当前设想，不得新增用户未提供的事实。短选项回答时可以为空。reply 控制在 12 至 100 个中文字符，只说用户需要回答的问题。不要解释系统为什么要问，不要展示审核、证据、覆盖率、流程或内部判断；不要使用“真实克制”“东方诗意”“宏大传奇”等空泛概括，要换成普通用户一看就懂的话。',
     '未完成创意确认时，同时给出 2 至 3 个 suggested_answers。它们必须是贴合当前内容、可由用户直接选用的真实答案，不得是“继续补充”“都可以”“其他”等空标签；每个不超过 36 个中文字符。一个选项只表达当前问题的一种选择，不要在媒介名称后用逗号追加第二层风格评价。问题与选项应帮助没有影视专业知识的用户表达，而不是考用户。',
     '你必须主动发现并追问内容本身隐含的制作决策，不能等用户反问才意识到。例如跨越古今、穿越或轮回的故事，要主动确认人物年龄、身份、容貌和造型如何连续；多主角要确认关系与视角；商业内容要确认可见的价值证据。只要这类关键决策仍悬空，idea_ready 必须为 false。',
   ];
@@ -218,7 +223,7 @@ function userPrompt(body = {}) {
     `已经回答、禁止重复询问的创作决策：${cleanTopicsForMode(body.completed_topics, body.content_mode).join('、') || '无'}`,
     `最近对话：${JSON.stringify(history)}`,
     '请重新审计五类制作依据，不要继承上一轮未经用户证据支持的判断，并输出：',
-    '{"reply":"直接提出唯一一个下一问","question_topic":"从允许值中选择本轮问题身份","suggested_answers":["贴合当前内容的答案一","贴合当前内容的答案二","贴合当前内容的答案三"],"coverage":{"subject":{"status":"explicit|missing","evidence":"用户原文短语或空"},"structure":{"status":"explicit|missing","evidence":"用户原文短语或空"},"audience_intent":{"status":"explicit|missing","evidence":"用户原文短语或空"},"world_context":{"status":"explicit|missing","evidence":"用户原文短语或空"},"visual_direction":{"status":"explicit|missing","evidence":"用户原文短语或空"}},"idea_ready":false,"missing_topics":["本轮唯一追问的缺口"],"next_step":"idea_details"}',
+    '{"creative_direction":"根据当前设想给出可执行的开场、推进、重点画面与收尾构想；短回答时可为空","reply":"直接提出唯一一个下一问","question_topic":"从允许值中选择本轮问题身份","suggested_answers":["贴合当前内容的答案一","贴合当前内容的答案二","贴合当前内容的答案三"],"coverage":{"subject":{"status":"explicit|missing","evidence":"用户原文短语或空"},"structure":{"status":"explicit|missing","evidence":"用户原文短语或空"},"audience_intent":{"status":"explicit|missing","evidence":"用户原文短语或空"},"world_context":{"status":"explicit|missing","evidence":"用户原文短语或空"},"visual_direction":{"status":"explicit|missing","evidence":"用户原文短语或空"}},"idea_ready":false,"missing_topics":["本轮唯一追问的缺口"],"next_step":"idea_details"}',
     `question_topic 只能是：${profile.order.join('、')}。它是本轮唯一问题的稳定身份，不能选择已经完成的值。`,
     'next_step 只能是 idea_details、specifications、reference、review。五类 coverage 未全部 explicit 时 idea_ready 必须为 false，missing_topics 只能列出本轮唯一追问的一项，并必须返回 2 至 3 个 suggested_answers；进入 specifications 后 question_topic 为空、suggested_answers 可以为空数组。',
   ].join('\n');
@@ -242,6 +247,7 @@ function normalizeParsed(parsed = {}, accumulatedIdea = '', completedTopics = nu
   const profile = topicProfile(contentMode);
   const completed = cleanTopicsForMode(completedTopics, contentMode);
   let reply = cleanText(parsed.reply || parsed.dialogue_reply || parsed.message || '', 300);
+  const creativeDirection = cleanText(parsed.creative_direction || parsed.execution_approach || '', 360);
   const coverage = normalizeCoverage(parsed, accumulatedIdea);
   const coverageReady = COVERAGE_TOPICS.every(topic => coverage[topic].status === 'explicit');
   const impliedGap = impliedDecisionGap(accumulatedIdea, Array.isArray(completedTopics) ? completedTopics : undefined, contentMode);
@@ -288,15 +294,17 @@ function normalizeParsed(parsed = {}, accumulatedIdea = '', completedTopics = nu
       missingTopics = [questionTopic];
     }
   } else { suggestedAnswers = []; questionTopic = ''; }
-  return { reply, question_topic: questionTopic, idea_ready: ideaReady, missing_topics: missingTopics, suggested_answers: suggestedAnswers, next_step: nextStep, coverage };
+  return { creative_direction: creativeDirection, reply, question_topic: questionTopic, idea_ready: ideaReady, missing_topics: missingTopics, suggested_answers: suggestedAnswers, next_step: nextStep, coverage };
 }
 
-function validateRaw(raw = '', { accumulatedIdea = '', completedTopics = [], history = [], contentMode = '' } = {}) {
+function validateRaw(raw = '', { accumulatedIdea = '', completedTopics = [], history = [], contentMode = '', requireCreativeDirection = false } = {}) {
   try {
     const parsed = jsonRepair.parseJson(raw, 'object');
     const value = normalizeParsed(parsed, accumulatedIdea, completedTopics, contentMode);
     const completed = cleanTopicsForMode(completedTopics, contentMode);
-    return Boolean(value.reply.length >= 12
+    return Boolean((!requireCreativeDirection || value.creative_direction.length >= 20)
+      && value.creative_direction.length <= 360
+      && value.reply.length >= 12
       && value.reply.length <= 300
       && displayableReply(value.reply, history)
       && NEXT_STEPS.has(value.next_step)
@@ -319,8 +327,12 @@ function buildResponse({ parsed = {}, modelResult = {}, body = {} } = {}) {
     ? (body.specifications_confirmed !== true ? 'specifications'
       : (!body.reference_attached && !body.reference_skipped ? 'reference' : 'review'))
     : 'idea_details';
+  const dialogueReply = value.creative_direction
+    ? `大概会这样做：${value.creative_direction}\n${value.reply}`
+    : value.reply;
   return {
-    dialogue_reply: value.reply,
+    dialogue_reply: dialogueReply,
+    creative_direction: value.creative_direction,
     idea_ready: value.idea_ready,
     missing_topics: value.missing_topics,
     suggested_answers: value.suggested_answers,
@@ -351,7 +363,7 @@ function recoveryResponse(body = {}, failedModels = []) {
 async function run({ body = {}, modelGateway, taskId = '' } = {}) {
   assertInput(body);
   const accumulatedIdea = body.accumulated_idea || body.brief || '';
-  if (questionBudgetReached(body.completed_topics, body.content_mode) && !creativeDelegationRequested(body.user_message || body.message)) return {
+  if (questionBudgetReached(body.completed_topics, body.content_mode) && !creativeApproachRequested(body)) return {
     dialogue_reply: '创作关键信息已足够，接下来确认成片规格。',
     idea_ready: true,
     missing_topics: [],
@@ -385,7 +397,13 @@ async function run({ body = {}, modelGateway, taskId = '' } = {}) {
       timeoutMs: 8000,
       stageBudgetMs: 12000,
       structuredOutput: { mode: 'json_object' },
-      validateText: raw => validateRaw(raw, { accumulatedIdea, completedTopics: body.completed_topics, history: body.history, contentMode: body.content_mode }),
+      validateText: raw => validateRaw(raw, {
+        accumulatedIdea,
+        completedTopics: body.completed_topics,
+        history: body.history,
+        contentMode: body.content_mode,
+        requireCreativeDirection: creativeApproachRequested(body),
+      }),
     });
   } catch (error) {
     if (error?.code !== 'MODEL_ATTEMPTS_EXHAUSTED') throw error;
@@ -421,6 +439,7 @@ module.exports = {
   questionBudget,
   questionBudgetReached,
   creativeDelegationRequested,
+  creativeApproachRequested,
   contextualQuestion,
   topicProfile,
   nextQuestionTopic,

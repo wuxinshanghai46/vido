@@ -16,6 +16,7 @@ import { bindBriefViewport, briefDialogueAssist } from './briefDialogueRuntime.j
 import { bindBriefSettingsModal } from './briefSettingsModal.js?v=20260824-production-v202a';
 import { formPayload } from './briefFormPayload.js?v=20260824-production-v202a';
 import { bindBriefReferenceRecovery } from './briefReferenceRecovery.js?v=20260824-production-v202a';
+import { durationOptionsMarkup } from './briefDurationOptions.js?v=20260824-production-v202a';
 export function referenceProgress(reference = {}) { return renderReferenceProgress(reference); }
 
 export async function mount(host, context) {
@@ -60,7 +61,7 @@ export async function mount(host, context) {
 <header class="brief-config-heading"><span class="brief-config-index">02</span><span><b id="brief-output-settings-title">成片规格</b><small>时长、画幅与清晰度。</small></span></header>
 <div class="brief-output-grid">
 <label class="field brief-output-field"><span>目标时长</span><select class="select" name="target_duration">
-${[15, 30, 45, 60, 90, 120, 180, 240, 300, 360, 480, 600].map(value => `<option value="${value}" ${Number(brief.target_duration || 30) === value ? 'selected' : ''}>${({ 60: '1 分钟', 90: '1 分 30 秒', 120: '2 分钟', 180: '3 分钟', 240: '4 分钟', 300: '5 分钟', 360: '6 分钟', 480: '8 分钟', 600: '10 分钟' })[value] || `${value} 秒`}</option>`).join('')}
+${durationOptionsMarkup(brief.target_duration || 30)}
 </select><small>决定节奏与建议镜头量</small></label>
 <label class="field brief-output-field"><span>画面比例</span><select class="select" name="output_ratio">${['9:16', '16:9', '1:1'].map(value => `<option ${brief.output_ratio === value ? 'selected' : ''}>${value}</option>`).join('')}</select><small>竖屏、横屏或方形</small></label>
 <label class="field brief-output-field"><span>视频分辨率</span><select class="select" name="video_resolution">${['1080p', '720p', '4K'].map(value => `<option ${brief.video_resolution === value ? 'selected' : ''}>${value}</option>`).join('')}</select><small>最终导出清晰度</small></label>

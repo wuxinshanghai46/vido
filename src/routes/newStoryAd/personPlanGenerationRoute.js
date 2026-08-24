@@ -1,5 +1,4 @@
 'use strict';
-const productionGraph = require('../../services/newStoryAd/productionGraphService');
 
 function ageValue(profile = {}) {
   return String(profile.age_contract?.value || profile.age || 'match_brief');
@@ -79,7 +78,6 @@ function updatePersonPlanProgress(storage, taskId, generationId, update = {}) {
 function registerPersonPlanGenerationRoute(router, deps = {}) {
   const { asyncRoute, queueTaskStage, userFromReq, service, storage, generationPermit, generateAndCommitSubjectAssets } = deps;
   router.post('/tasks/:id/person-plan', asyncRoute(async (req, res) => {
-    productionGraph.assertLegacyMutationAllowed(req.params.id, 'person_plan');
     const user = userFromReq(req), userId = String(user.id || user.userId || user.username || 'anonymous');
     return queueTaskStage(req, res, 'person_plan', async job => {
       const initial = currentPersonGenerationBody({ taskId: req.params.id, input: req.body || {}, service, storage });

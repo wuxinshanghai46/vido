@@ -1600,7 +1600,6 @@ router.post('/tasks/:id/visual-assets', asyncRoute(async (req) => {
 
 router.post('/tasks/:id/scene-assets/:sceneId/panorama', asyncRoute(async (req, res) => {
   taskForReq(req);
-  productionGraph.assertLegacyMutationAllowed(req.params.id, 'scene_panorama');
   res.setHeader('Cache-Control', 'private, no-store, no-cache, must-revalidate');
   res.setHeader('Vary', 'Authorization');
   const body = req.body || {};
@@ -1626,7 +1625,6 @@ router.post('/tasks/:id/scene-assets/:sceneId/panorama', asyncRoute(async (req, 
 
 router.post('/tasks/:id/scene-assets/panoramas', asyncRoute(async (req, res) => {
   taskForReq(req);
-  productionGraph.assertLegacyMutationAllowed(req.params.id, 'scene_panorama_batch');
   res.setHeader('Cache-Control', 'private, no-store, no-cache, must-revalidate');
   res.setHeader('Vary', 'Authorization');
   const body = req.body || {};
@@ -1645,7 +1643,6 @@ router.post('/tasks/:id/scene-assets/panoramas', asyncRoute(async (req, res) => 
 
 router.post('/tasks/:id/product-assets', asyncRoute(async (req, res) => {
   taskForReq(req);
-  productionGraph.assertLegacyMutationAllowed(req.params.id, 'product_asset');
   const body = req.body || {};
   return queueTaskStage(req, res, 'product_asset', job => productAssetGeneration.generateProductAsset(req.params.id, body, { generationId: job.generationId }), {
     deadlineMs: 20 * 60 * 1000,
@@ -1794,7 +1791,6 @@ router.get('/tasks/:id/diagnostics', asyncRoute(async (req, res) => {
 }));
 
 router.post('/tasks/:id/scene-config', asyncRoute(async (req, res) => {
-  productionGraph.assertLegacyMutationAllowed(req.params.id, 'scene_config');
   const replanSceneCoverage = req.body?.replan_scene_coverage === true || req.body?.replanSceneCoverage === true;
   return queueTaskStage(req, res, 'scene_config', job => service.generateSceneConfig(req.params.id, {
     generation_id: job.generationId,
@@ -1807,7 +1803,6 @@ router.post('/tasks/:id/scene-config', asyncRoute(async (req, res) => {
 registerPersonPlanGenerationRoute(router, { asyncRoute, queueTaskStage, userFromReq, service, storage, generationPermit, generateAndCommitSubjectAssets });
 
 router.post('/tasks/:id/scene-plan', asyncRoute(async (req, res) => {
-  productionGraph.assertLegacyMutationAllowed(req.params.id, 'scene_plan');
   return queueTaskStage(req, res, 'scene_plan', job => service.updateScenePlan(req.params.id, {
     generation_id: job.generationId,
   }), { deadlineMs: task => service.sceneConfigStageBudgetMs(task.id, { replan_scene_coverage: true }) });
