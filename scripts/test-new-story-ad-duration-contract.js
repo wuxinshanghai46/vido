@@ -81,12 +81,12 @@ assert.equal(longBlueprintProfile.maxReasonable, productionLimits.MAX_AUTO_BLUEP
 const longFormBeats = storyboardTableService.plannedBeats({ beats: Array.from({ length: 18 }, (_, index) => ({
   beat_index: index + 1, role: 'story', plot: `章节 ${index + 1}`, spoken_line: `旁白 ${index + 1}`,
 })) }, { brief: '通用长片', target_duration: 600 });
-assert.equal(longFormBeats.length, 100, '600 秒成片按每镜最多 6 秒自动展开为100镜');
+assert.equal(longFormBeats.length, 40, '600 秒成片只按已验证的 15 秒生成上限建立安全下限，不再按 6 秒机械拆成 100 镜');
 assert.equal(storyboardTableService.plannedBeats(
   { beats: longFormBeats.slice(0, 18) },
   { brief: '旧任务长片', target_duration: 600, shot_count: 18 },
-).length, 100, '旧任务残留的18镜不得覆盖600秒所需的100镜下限');
-assert.equal(longFormBeats.at(-1).beat_index, 100);
+).length, 40, '旧任务残留的18镜不得覆盖600秒所需的40镜安全下限');
+assert.equal(longFormBeats.at(-1).beat_index, 40);
 assert.ok(longFormBeats.every(beat => beat.long_form_segment?.index <= beat.long_form_segment?.total));
 assert.ok(longFormBeats.filter(beat => beat.spoken_line).length <= 18, '章节拆镜不得重复复制旁白');
 const longFormChunks = storyboardTableService.storyboardBeatChunks(longFormBeats, longFormBeats);
@@ -100,10 +100,10 @@ const normalizedLongShots = storyboardTableService.normalizeShots(
   longFormBeats.map(beat => ({ index: beat.beat_index, visual: beat.plot, action: `推进 ${beat.beat_index}` })),
   { brief: '通用长片', target_duration: 600, characters: [], scene_assets: [] },
 );
-assert.equal(normalizedLongShots.length, 100);
-assert.equal(normalizedLongShots.reduce((total, shot) => total + shot.duration, 0), 600, '100 镜标准长片必须精确覆盖 600 秒');
+assert.equal(normalizedLongShots.length, 40);
+assert.equal(normalizedLongShots.reduce((total, shot) => total + shot.duration, 0), 600, '剧情规划出的镜头必须精确覆盖 600 秒');
 assert.ok(normalizedLongShots.every(shot => shot.duration === productionLimits.MAX_SHOT_DURATION));
-for (const [duration, expectedShots] of [[45, 8], [180, 30], [300, 50], [480, 80], [600, 100]]) {
+for (const [duration, expectedShots] of [[45, 3], [180, 12], [300, 20], [480, 32], [600, 40]]) {
   const beats = storyboardTableService.plannedBeats({ beats: [{ beat_index: 1, role: 'story', plot: `${duration}秒内容` }] }, {
     brief: `${duration}秒成片`, target_duration: duration,
   });
@@ -111,12 +111,19 @@ for (const [duration, expectedShots] of [[45, 8], [180, 30], [300, 50], [480, 80
     beats.map(beat => ({ index: beat.beat_index, visual: beat.plot, action: `推进 ${beat.beat_index}` })),
     { brief: `${duration}秒成片`, target_duration: duration, characters: [], scene_assets: [] },
   );
-  assert.equal(beats.length, expectedShots, `${duration} 秒必须规划 ${expectedShots} 镜以满足单镜最多 6 秒`);
+  assert.equal(beats.length, expectedShots, `${duration} 秒在只有一个剧情节拍时只建立 15 秒生成能力安全下限`);
   assert.equal(shots.reduce((total, shot) => total + shot.duration, 0), duration, `${duration} 秒必须精确覆盖成片总时长`);
   assert.ok(shots.every(shot => shot.duration <= productionLimits.MAX_SHOT_DURATION), `${duration} 秒不得产生超长单镜`);
 }
+const storyDrivenShots = storyboardTableService.normalizeShots([
+  { index: 1, duration: 3, visual: '外景建立环境', action: '人物走入画面' },
+  { index: 2, duration: 9, visual: '跟随人物穿过门厅', action: '持续移动并观察材料' },
+  { index: 3, duration: 6, visual: '展厅全景与样板细节', action: '从全景推进到细节' },
+  { index: 4, duration: 12, visual: '品牌标志收尾', action: '材质粒子聚合成标志' },
+], { brief: '按剧情节奏安排镜头', target_duration: 30, characters: [], scene_assets: [] });
+assert.deepEqual(storyDrivenShots.map(shot => shot.duration), [3, 9, 6, 12], '模型按剧情给出的相对时长必须保留，不得全部压成 6 秒');
 const qaWindows = qualityReviewService.storyboardQaChunks(normalizedLongShots);
-assert.equal(qaWindows.length, 13, '100镜质量审核必须按窗口覆盖，不能只截取前段');
+assert.equal(qaWindows.length, 5, '长片质量审核必须按窗口覆盖，不能只截取前段');
 assert.deepEqual(qaWindows.flat().map(shot => shot.index), normalizedLongShots.map(shot => shot.index));
 assert.ok(qaWindows.every(window => window.length <= 8));
 assert.equal(contextBuilder.buildContext({

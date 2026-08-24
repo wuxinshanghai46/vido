@@ -3,6 +3,7 @@ const knowledgeBase = require('../knowledgeBaseService');
 
 const MODES = new Set(['brief_dialogue', 'dialogue_intake']);
 const NEXT_STEPS = new Set(['idea_details', 'specifications', 'reference', 'review']);
+const RESPONSE_MODES = new Set(['question', 'scene_interpretation', 'ready']);
 const COVERAGE_TOPICS = ['subject', 'structure', 'audience_intent', 'world_context', 'visual_direction'];
 const COVERAGE_LABELS = { subject: '人物/主体', structure: '叙事或价值演示链', audience_intent: '受众与表达目标', world_context: '世界时空', visual_direction: '视觉制作方向' };
 const DIALOGUE_TOPICS = new Set([
@@ -92,6 +93,17 @@ function cleanTopicsForMode(value = [], contentMode = '') {
   return cleanTopics(value).filter(topic => allowed.has(topic));
 }
 
+function normalizeCoveredTopics(parsed = {}, accumulatedIdea = '', contentMode = '') {
+  const source = cleanText(accumulatedIdea, 4000);
+  const allowed = new Set(topicProfile(contentMode).order);
+  const rows = Array.isArray(parsed.covered_topics) ? parsed.covered_topics : [];
+  return [...new Set(rows.map(item => {
+    const topic = cleanInline(typeof item === 'string' ? item : item?.topic, 40);
+    const evidence = cleanInline(typeof item === 'string' ? '' : item?.evidence, 160);
+    return allowed.has(topic) && evidence.length >= 2 && source.includes(evidence) ? topic : '';
+  }).filter(Boolean))];
+}
+
 function questionBudget(contentMode = '') { return contentMode === 'commercial_subject' ? 2 : 3; }
 
 function questionBudgetReached(value = [], contentMode = '') {
@@ -161,19 +173,19 @@ function systemPrompt(dynamicKnowledge = '', contentMode = '') {
   const commercial = contentMode === 'commercial_subject';
   const lines = [
     '你是 VIDO 剧情广告模块的资深导演与制片策划，负责用自然、专业、具体的中文完成对话式立项。只输出 JSON 对象，不要 markdown。',
-    '不要只复述、确认或空泛总结用户刚刚回答的内容，不要说“我记下了”“我理解了”“这部分已经清楚”“接下来”。当用户给出一段完整设想、镜头顺序或委托你完善时，先用 creative_direction 给出一段具体的执行构想，再提出当前唯一一个问题。',
+    '不要只复述、确认或空泛总结用户刚刚回答的内容，不要说“我记下了”“我理解了”“这部分已经清楚”“接下来”。当用户给出具体场景、动作顺序、开场到收尾设想时，本轮 response_mode 必须为 scene_interpretation：先用 creative_direction 说明大概会呈现的场景与推进方式，不再追加问题；只有用户没有给出可分析的具体设想时，response_mode 才为 question 并提出一个真实缺口。',
     '每轮只追问 1 个当前最影响创作与制作的缺口；不要向用户罗列检查项或宣布后续流程。进入成片规格前必须覆盖五类制作依据：subject（主要人物/关系或产品主体）、structure（开端触发、发展冲突、高潮/结局，或广告价值演示链）、audience_intent（目标观众及希望留下的情绪/认知/行动）、world_context（足够执行的时代、地区、社会环境或明确架空规则）、visual_direction（真人/动画等媒介、写实度、美学气质或用户明确委托导演建议）。',
     commercial
       ? '当前是商业广告。广告与剧情短片必须使用不同问询合同：只确认产品或服务主体、核心卖点、可见证据、目标受众与行动、真实展示场景、画面方式和视觉方向。禁止追问人物关系、感情变化、反派、冲突升级、穿越、高潮或故事结局；只有用户明确要求剧情化广告并亲自提出人物情感时，才可沿用户原话确认，不能主动添加爱情或其它情感线。'
       : '当前是剧情短片。问询顺序必须连贯：先理清人物、关系、动机与对立，再理清触发、发展和结局，然后确认受众与表达目标，再确认时空规则和跨时代连续性，最后确认视觉媒介与气质。用户原话已明确的部分直接跳过，只问该顺序中最早的真实缺口，不能在不同层级之间来回跳。',
     '“古代”“现代”“好看”“电影感”这类宽泛词不能单独算 world_context 或 visual_direction 已明确；应结合用户内容给出 2 至 3 个专业选项帮助选择。用户说“由你建议/你来定”时，先给出具体建议并请用户确认，确认后才能标为 explicit。',
-    '用户说“帮我完善”“你来补充”“由你决定”等委托创作时，必须根据当前累计设想给出一项具体、可直接采用的完善建议，并用一个简短问题请用户确认；不得沉默、不得跳过回复，也不得套用与当前题材无关的古代、爱情、权贵、秘宝或穿越案例。',
+    '用户说“帮我完善”“你来补充”“由你决定”等委托创作时，必须根据当前累计设想给出一项具体、可直接采用的完善建议；如果用户同时给出了具体场景或动作顺序，本轮只解释会怎样呈现，不再请用户重复确认。只有设想仍很简略时才用一个短问题确认建议。不得沉默、不得跳过回复，也不得套用与当前题材无关的古代、爱情、权贵、秘宝或穿越案例。',
     'coverage 的每个 evidence 必须是从当前累计设想中原样摘取的短语，不能改写或编造。未明确的项 status 必须为 missing。只有五类均为 explicit，idea_ready 才能为 true；否则必须继续 idea_details。',
-    '用户一次已经讲完整时不得重复询问已经有直接证据的内容；completed_topics 中的决策已经回答，禁止换一种说法再次询问。五类均明确后 next_step 才进入 specifications。时长、画幅和清晰度必须作为一组简洁确认，不能把系统默认值说成用户已经确认。',
+    '用户一次已经讲完整时不得重复询问已经有直接证据的内容；completed_topics 和 covered_topics 中的决策均已经回答，禁止换一种说法再次询问。covered_topics 必须逐项返回稳定 topic 和用户原文 evidence，证据不是累计设想原文子串时无效。五类均明确后 next_step 才进入 specifications。时长、画幅和清晰度必须作为一组简洁确认，不能把系统默认值说成用户已经确认。',
     '规格确认后 next_step 才能进入 reference。参考提问必须结合当前剧情或商业内容说明可能有价值的参考类型；参考材料不是必填项，但必须由用户明确选择提供或不提供。',
     '不得编造用户没有说过的人物、品牌、产品功效、价格、时代、地点或结局；不得引用旧任务、知识库案例或其它用户内容。',
-    'creative_direction 控制在 20 至 180 个中文字符，说明大概会怎样安排开场、推进、重点画面和收尾，必须贴合用户当前设想，不得新增用户未提供的事实。短选项回答时可以为空。reply 控制在 12 至 100 个中文字符，只说用户需要回答的问题。不要解释系统为什么要问，不要展示审核、证据、覆盖率、流程或内部判断；不要使用“真实克制”“东方诗意”“宏大传奇”等空泛概括，要换成普通用户一看就懂的话。',
-    '未完成创意确认时，同时给出 2 至 3 个 suggested_answers。它们必须是贴合当前内容、可由用户直接选用的真实答案，不得是“继续补充”“都可以”“其他”等空标签；每个不超过 36 个中文字符。一个选项只表达当前问题的一种选择，不要在媒介名称后用逗号追加第二层风格评价。问题与选项应帮助没有影视专业知识的用户表达，而不是考用户。',
+    'creative_direction 控制在 20 至 180 个中文字符，说明大概会怎样安排开场、推进、重点画面和收尾，必须贴合用户当前设想，不得新增用户未提供的事实。scene_interpretation 模式下 reply、question_topic、suggested_answers 为空；question 模式下 reply 控制在 12 至 100 个中文字符，只说用户需要回答的问题。不要解释系统为什么要问，不要展示审核、证据、覆盖率、流程或内部判断；不要使用“真实克制”“东方诗意”“宏大传奇”等空泛概括，要换成普通用户一看就懂的话。',
+    'question 模式下同时给出 2 至 3 个 suggested_answers。它们必须是贴合当前内容、可由用户直接选用的真实答案，不得是“继续补充”“都可以”“其他”等空标签；每个不超过 36 个中文字符。一个选项只表达当前问题的一种选择，不要在媒介名称后用逗号追加第二层风格评价。问题与选项应帮助没有影视专业知识的用户表达，而不是考用户。',
     '你必须主动发现并追问内容本身隐含的制作决策，不能等用户反问才意识到。例如跨越古今、穿越或轮回的故事，要主动确认人物年龄、身份、容貌和造型如何连续；多主角要确认关系与视角；商业内容要确认可见的价值证据。只要这类关键决策仍悬空，idea_ready 必须为 false。',
   ];
   if (dynamicKnowledge) lines.push(
@@ -223,9 +235,9 @@ function userPrompt(body = {}) {
     `已经回答、禁止重复询问的创作决策：${cleanTopicsForMode(body.completed_topics, body.content_mode).join('、') || '无'}`,
     `最近对话：${JSON.stringify(history)}`,
     '请重新审计五类制作依据，不要继承上一轮未经用户证据支持的判断，并输出：',
-    '{"creative_direction":"根据当前设想给出可执行的开场、推进、重点画面与收尾构想；短回答时可为空","reply":"直接提出唯一一个下一问","question_topic":"从允许值中选择本轮问题身份","suggested_answers":["贴合当前内容的答案一","贴合当前内容的答案二","贴合当前内容的答案三"],"coverage":{"subject":{"status":"explicit|missing","evidence":"用户原文短语或空"},"structure":{"status":"explicit|missing","evidence":"用户原文短语或空"},"audience_intent":{"status":"explicit|missing","evidence":"用户原文短语或空"},"world_context":{"status":"explicit|missing","evidence":"用户原文短语或空"},"visual_direction":{"status":"explicit|missing","evidence":"用户原文短语或空"}},"idea_ready":false,"missing_topics":["本轮唯一追问的缺口"],"next_step":"idea_details"}',
+    '{"response_mode":"question|scene_interpretation|ready","creative_direction":"根据当前设想给出可执行的开场、推进、重点画面与收尾构想；短回答时可为空","reply":"question 模式才填写唯一一个下一问","question_topic":"question 模式才从允许值中选择","covered_topics":[{"topic":"用户已直接回答的稳定问题身份","evidence":"累计设想中的原文短语"}],"suggested_answers":["贴合当前内容的答案一","贴合当前内容的答案二","贴合当前内容的答案三"],"coverage":{"subject":{"status":"explicit|missing","evidence":"用户原文短语或空"},"structure":{"status":"explicit|missing","evidence":"用户原文短语或空"},"audience_intent":{"status":"explicit|missing","evidence":"用户原文短语或空"},"world_context":{"status":"explicit|missing","evidence":"用户原文短语或空"},"visual_direction":{"status":"explicit|missing","evidence":"用户原文短语或空"}},"idea_ready":false,"missing_topics":["question 模式的唯一缺口；scene_interpretation 模式可为空"],"next_step":"idea_details"}',
     `question_topic 只能是：${profile.order.join('、')}。它是本轮唯一问题的稳定身份，不能选择已经完成的值。`,
-    'next_step 只能是 idea_details、specifications、reference、review。五类 coverage 未全部 explicit 时 idea_ready 必须为 false，missing_topics 只能列出本轮唯一追问的一项，并必须返回 2 至 3 个 suggested_answers；进入 specifications 后 question_topic 为空、suggested_answers 可以为空数组。',
+    'next_step 只能是 idea_details、specifications、reference、review。五类 coverage 未全部 explicit 时 idea_ready 必须为 false。question 模式的 missing_topics 只能列出唯一缺口并返回 2 至 3 个 suggested_answers；scene_interpretation 模式只分析用户已给场景，reply、question_topic、missing_topics、suggested_answers 都为空；进入 specifications 后 question_topic 为空、suggested_answers 可以为空数组。',
   ].join('\n');
 }
 
@@ -246,6 +258,8 @@ function normalizeCoverage(parsed = {}, accumulatedIdea = '') {
 function normalizeParsed(parsed = {}, accumulatedIdea = '', completedTopics = null, contentMode = '') {
   const profile = topicProfile(contentMode);
   const completed = cleanTopicsForMode(completedTopics, contentMode);
+  const coveredTopics = normalizeCoveredTopics(parsed, accumulatedIdea, contentMode);
+  const answeredTopics = [...new Set([...completed, ...coveredTopics])];
   let reply = cleanText(parsed.reply || parsed.dialogue_reply || parsed.message || '', 300);
   const creativeDirection = cleanText(parsed.creative_direction || parsed.execution_approach || '', 360);
   const coverage = normalizeCoverage(parsed, accumulatedIdea);
@@ -259,13 +273,15 @@ function normalizeParsed(parsed = {}, accumulatedIdea = '', completedTopics = nu
     .filter((item, index, values) => values.indexOf(item) === index)
     .slice(0, 3);
   let nextStep = cleanInline(parsed.next_step, 40);
+  let responseMode = cleanInline(parsed.response_mode, 40);
+  if (!RESPONSE_MODES.has(responseMode)) responseMode = ideaReady ? 'ready' : 'question';
   let questionTopic = cleanInline(parsed.question_topic, 40);
   if (!profile.order.includes(questionTopic)) questionTopic = '';
-  const repeatedCanonicalTopic = profile.order.find(topic => completed.includes(topic)
+  const repeatedCanonicalTopic = profile.order.find(topic => answeredTopics.includes(topic)
     && cleanInline(profile.questions[topic]?.[0], 300) === cleanInline(reply, 300));
-  const repeatedCompletedTopic = completed.includes(questionTopic) || Boolean(repeatedCanonicalTopic);
+  const repeatedCompletedTopic = answeredTopics.includes(questionTopic) || Boolean(repeatedCanonicalTopic);
   if (repeatedCompletedTopic) {
-    questionTopic = nextQuestionTopic(profile, completed);
+    questionTopic = nextQuestionTopic(profile, answeredTopics);
     if (questionTopic && profile.questions[questionTopic]) {
       [reply, suggestedAnswers] = contextualQuestion(profile, questionTopic, accumulatedIdea, contentMode);
       missingTopics = [questionTopic];
@@ -273,6 +289,14 @@ function normalizeParsed(parsed = {}, accumulatedIdea = '', completedTopics = nu
     }
   }
   if (!NEXT_STEPS.has(nextStep)) nextStep = ideaReady ? 'specifications' : 'idea_details';
+  if (!ideaReady && responseMode === 'scene_interpretation' && creativeDirection.length >= 20) {
+    return {
+      response_mode: responseMode,
+      creative_direction: creativeDirection,
+      reply: '', question_topic: '', idea_ready: false, missing_topics: [], suggested_answers: [],
+      next_step: 'idea_details', coverage, covered_topics: coveredTopics,
+    };
+  }
   if (!ideaReady) {
     nextStep = 'idea_details';
     if (impliedGap) {
@@ -281,7 +305,7 @@ function normalizeParsed(parsed = {}, accumulatedIdea = '', completedTopics = nu
       reply = impliedGap.reply;
       suggestedAnswers = impliedGap.answers;
     } else if (!missingTopics.length) missingTopics = COVERAGE_TOPICS.filter(topic => coverage[topic].status !== 'explicit').slice(0, 1).map(topic => COVERAGE_LABELS[topic]);
-    if (!questionTopic) questionTopic = inferQuestionTopic(reply, missingTopics, completedTopics, contentMode);
+    if (!questionTopic) questionTopic = inferQuestionTopic(reply, missingTopics, answeredTopics, contentMode);
     if (!impliedGap && parsed.idea_ready === true && !coverageReady && profile.questions[questionTopic]) {
       [reply, suggestedAnswers] = contextualQuestion(profile, questionTopic, accumulatedIdea, contentMode);
       missingTopics = [questionTopic];
@@ -289,12 +313,12 @@ function normalizeParsed(parsed = {}, accumulatedIdea = '', completedTopics = nu
     if (contentMode === 'commercial_subject'
       && !commercialNarrativeAuthorized(accumulatedIdea)
       && commercialStoryLeak(`${reply} ${suggestedAnswers.join(' ')}`)) {
-      questionTopic = profile.order.find(topic => !cleanTopicsForMode(completedTopics, contentMode).includes(topic)) || profile.order[0];
+      questionTopic = profile.order.find(topic => !answeredTopics.includes(topic)) || profile.order[0];
       [reply, suggestedAnswers] = contextualQuestion(profile, questionTopic, accumulatedIdea, contentMode);
       missingTopics = [questionTopic];
     }
-  } else { suggestedAnswers = []; questionTopic = ''; }
-  return { creative_direction: creativeDirection, reply, question_topic: questionTopic, idea_ready: ideaReady, missing_topics: missingTopics, suggested_answers: suggestedAnswers, next_step: nextStep, coverage };
+  } else { suggestedAnswers = []; questionTopic = ''; responseMode = 'ready'; }
+  return { response_mode: responseMode, creative_direction: creativeDirection, reply, question_topic: questionTopic, idea_ready: ideaReady, missing_topics: missingTopics, suggested_answers: suggestedAnswers, next_step: nextStep, coverage, covered_topics: coveredTopics };
 }
 
 function validateRaw(raw = '', { accumulatedIdea = '', completedTopics = [], history = [], contentMode = '', requireCreativeDirection = false } = {}) {
@@ -302,13 +326,12 @@ function validateRaw(raw = '', { accumulatedIdea = '', completedTopics = [], his
     const parsed = jsonRepair.parseJson(raw, 'object');
     const value = normalizeParsed(parsed, accumulatedIdea, completedTopics, contentMode);
     const completed = cleanTopicsForMode(completedTopics, contentMode);
+    const interpretation = value.response_mode === 'scene_interpretation';
     return Boolean((!requireCreativeDirection || value.creative_direction.length >= 20)
       && value.creative_direction.length <= 360
-      && value.reply.length >= 12
-      && value.reply.length <= 300
-      && displayableReply(value.reply, history)
+      && (interpretation || (value.reply.length >= 12 && value.reply.length <= 300 && displayableReply(value.reply, history)))
       && NEXT_STEPS.has(value.next_step)
-      && (value.idea_ready || (value.question_topic && !completed.includes(value.question_topic) && value.missing_topics.length === 1 && value.suggested_answers.length >= 2)));
+      && (interpretation || value.idea_ready || (value.question_topic && !completed.includes(value.question_topic) && value.missing_topics.length === 1 && value.suggested_answers.length >= 2)));
   } catch {
     return false;
   }
@@ -316,7 +339,8 @@ function validateRaw(raw = '', { accumulatedIdea = '', completedTopics = [], his
 
 function buildResponse({ parsed = {}, modelResult = {}, body = {} } = {}) {
   const value = normalizeParsed(parsed, body.accumulated_idea || body.brief || '', body.completed_topics, body.content_mode);
-  if (!value.reply || (!value.idea_ready && !value.missing_topics.length)) {
+  const interpretation = value.response_mode === 'scene_interpretation' && value.creative_direction;
+  if ((!value.reply && !interpretation) || (!value.idea_ready && !value.missing_topics.length && !interpretation)) {
     const error = new Error('导演助理没有返回可用的下一问，请保留当前输入后重试');
     error.code = 'BRIEF_DIALOGUE_REPLY_INCOMPLETE';
     error.status = 422;
@@ -328,7 +352,7 @@ function buildResponse({ parsed = {}, modelResult = {}, body = {} } = {}) {
       : (!body.reference_attached && !body.reference_skipped ? 'reference' : 'review'))
     : 'idea_details';
   const dialogueReply = value.creative_direction
-    ? `大概会这样做：${value.creative_direction}\n${value.reply}`
+    ? `大概会这样呈现：${value.creative_direction}${value.reply ? `\n${value.reply}` : ''}`
     : value.reply;
   return {
     dialogue_reply: dialogueReply,
@@ -337,6 +361,8 @@ function buildResponse({ parsed = {}, modelResult = {}, body = {} } = {}) {
     missing_topics: value.missing_topics,
     suggested_answers: value.suggested_answers,
     question_topic: value.question_topic,
+    covered_topics: value.covered_topics,
+    response_mode: value.response_mode,
     next_step: nextStep,
     coverage: value.coverage,
     model_meta: {
@@ -429,6 +455,7 @@ module.exports = {
   buildResponse,
   normalizeParsed,
   normalizeCoverage,
+  normalizeCoveredTopics,
   impliedDecisionGap,
   inferQuestionTopic,
   knowledgeContext,

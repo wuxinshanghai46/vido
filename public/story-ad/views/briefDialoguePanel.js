@@ -379,6 +379,9 @@ export function bindBriefDialogue(host, { form, referenceState={}, referenceAtta
         completed_topics: [...completedTopics],
       });
       ideaReady = result?.idea_ready === true;
+      (Array.isArray(result?.covered_topics) ? result.covered_topics : []).forEach(topic => {
+        sanitizeDialogueTopics([String(topic || '').trim()], mode).forEach(value => completedTopics.add(value));
+      });
       activeQuestionTopic = ideaReady ? '' : (sanitizeDialogueTopics([String(result?.question_topic || '').trim()], mode)[0] || '');
       const reply = String(result?.dialogue_reply || contextualDialogueFallback(mode, ideaReady));
       pending.article.classList.remove('is-thinking');

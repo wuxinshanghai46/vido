@@ -2,7 +2,10 @@ const MIN_TARGET_DURATION = 10;
 const MAX_TARGET_DURATION = 600;
 const MAX_SHOT_COUNT = 120;
 const MAX_AUTO_BLUEPRINT_BEATS = 18;
-const MAX_SHOT_DURATION = 6;
+// 分镜叙事时长与供应商单次视频能力是两个不同合同。6 秒只作为默认节奏，
+// 不再作为每个剧情镜头的硬上限；当前视频适配器已验证支持 1-15 秒。
+const DEFAULT_SHOT_DURATION = 6;
+const MAX_SHOT_DURATION = 15;
 
 function targetDuration(value, fallback = 30) {
   return Math.max(MIN_TARGET_DURATION, Math.min(MAX_TARGET_DURATION, Math.round(Number(value) || fallback)));
@@ -14,9 +17,11 @@ function shotCount(value, fallback = 0) {
 }
 
 function requiredStoryboardShotCount(duration, existingCount = 0) {
+  const target = targetDuration(duration);
+  const narrativeMinimum = Math.ceil(target / MAX_SHOT_DURATION);
   return Math.max(
     Math.max(1, Math.min(MAX_SHOT_COUNT, Math.round(Number(existingCount) || 1))),
-    Math.min(MAX_SHOT_COUNT, Math.ceil(targetDuration(duration) / MAX_SHOT_DURATION)),
+    Math.min(MAX_SHOT_COUNT, narrativeMinimum),
   );
 }
 
@@ -50,6 +55,7 @@ module.exports = {
   MAX_TARGET_DURATION,
   MAX_SHOT_COUNT,
   MAX_AUTO_BLUEPRINT_BEATS,
+  DEFAULT_SHOT_DURATION,
   MAX_SHOT_DURATION,
   targetDuration,
   shotCount,

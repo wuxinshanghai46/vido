@@ -160,7 +160,7 @@ function normalizeShot(shot, ctx, idx, defaultDuration = 3) {
     index: n,
     title: clampText(shot.title || `镜头 ${n}`, 40),
     role: clampText(shot.role || shot.story_stage || shot.purpose || '', 40),
-    duration: Math.max(2, Math.min(6, Number(shot.duration || shot.duration_sec || 0) || defaultDuration)),
+    duration: Math.max(2, Math.min(productionLimits.MAX_SHOT_DURATION, Number(shot.duration || shot.duration_sec || 0) || defaultDuration)),
     purpose: clampText(shot.purpose || shot.script_purpose || shot.objective || shot.role || '', 40),
     subject_type: shot.subject_type || shot.subjectType || 'auto',
     expected_people: Math.max(0, Math.min(12, Math.round(Number(
@@ -266,21 +266,30 @@ function normalizeShot(shot, ctx, idx, defaultDuration = 3) {
 function normalizeDurations(shots, ctx) {
   if (!shots.length) return shots;
   const target = productionLimits.targetDuration(ctx.target_duration);
-  const base = Math.max(2, Math.min(5, Math.round(target / shots.length)));
+  const base = Math.max(2, Math.min(productionLimits.MAX_SHOT_DURATION, Math.round(target / shots.length)));
   let rows = shots.map((shot, idx) => normalizeShot(shot, ctx, idx, base));
   let total = rows.reduce((sum, shot) => sum + Number(shot.duration || 0), 0);
   let guard = 0;
 
-  while (total > target && guard < 200) {
-    const item = rows.find(shot => shot.duration > 2);
+  // 保留模型根据对白、动作和场景节奏给出的相对时长。需要对齐总时长时，
+  // 每轮调整当前最长/最短且仍有余量的镜头，避免过去从第一镜开始机械填满 6 秒。
+  const longestAdjustable = () => rows
+    .filter(shot => shot.duration > 2)
+    .sort((a, b) => b.duration - a.duration || Number(b.index) - Number(a.index))[0];
+  const shortestAdjustable = () => rows
+    .filter(shot => shot.duration < productionLimits.MAX_SHOT_DURATION)
+    .sort((a, b) => a.duration - b.duration || Number(a.index) - Number(b.index))[0];
+
+  while (total > target && guard < productionLimits.MAX_SHOT_COUNT * productionLimits.MAX_SHOT_DURATION) {
+    const item = longestAdjustable();
     if (!item) break;
     item.duration -= 1;
     total -= 1;
     guard += 1;
   }
 
-  while (total < target && guard < 400) {
-    const item = rows.find(shot => shot.duration < 6);
+  while (total < target && guard < productionLimits.MAX_SHOT_COUNT * productionLimits.MAX_SHOT_DURATION * 2) {
+    const item = shortestAdjustable();
     if (!item) break;
     item.duration += 1;
     total += 1;

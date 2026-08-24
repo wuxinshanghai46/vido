@@ -167,12 +167,12 @@ const PIPELINE_SCHEMA = {
 //   注意：这只是"建议默认值"，实际业务还是按各 service 内部的 fallback 逻辑跑
 const NEW_STORY_AD_TEXT_DEFAULTS = [
   { provider_id: 'apismile', model_id: 'gpt-5.5', priority: 1, enabled: true },
-  { provider_id: 'apismile', model_id: 'gemini-2.5-pro', priority: 2, enabled: true },
-  { provider_id: 'apismile', model_id: 'gemini-2.5-flash', priority: 3, enabled: true },
-  { provider_id: 'aiapi', model_id: 'deepseek-chat', priority: 4, enabled: true },
-  { provider_id: 'deyunai', model_id: 'gemini-2.5-pro', priority: 5, enabled: true },
-  { provider_id: 'webang-maas', model_id: 'gpt-5.6-sol', priority: 6, enabled: false },
-  { provider_id: 'webang-maas', model_id: 'gpt-5.6-terra', priority: 7, enabled: false },
+  { provider_id: 'webang-maas', model_id: 'gpt-5.6-terra', priority: 2, enabled: true },
+  { provider_id: 'apismile', model_id: 'gemini-2.5-pro', priority: 3, enabled: true },
+  { provider_id: 'apismile', model_id: 'gemini-2.5-flash', priority: 4, enabled: true },
+  { provider_id: 'aiapi', model_id: 'deepseek-chat', priority: 5, enabled: true },
+  { provider_id: 'deyunai', model_id: 'gemini-2.5-pro', priority: 6, enabled: true },
+  { provider_id: 'webang-maas', model_id: 'gpt-5.6-sol', priority: 7, enabled: false },
   { provider_id: 'webang-maas', model_id: 'gpt-5.6-luna', priority: 8, enabled: false },
   { provider_id: 'webang-maas', model_id: 'gemini-3.5-flash', priority: 9, enabled: false },
   { provider_id: 'webang-maas', model_id: 'claude-opus-5', priority: 10, enabled: false },
@@ -185,8 +185,9 @@ const NEW_STORY_AD_TEXT_DEFAULTS = [
 ];
 const NEW_STORY_AD_DIALOGUE_DEFAULTS = [
   { provider_id: 'apismile', model_id: 'gemini-2.5-flash', priority: 1, enabled: true },
-  { provider_id: 'aiapi', model_id: 'deepseek-chat', priority: 2, enabled: true },
-  { provider_id: 'deyunai', model_id: 'gemini-2.5-flash', priority: 3, enabled: true },
+  { provider_id: 'webang-maas', model_id: 'gpt-5.6-luna', priority: 2, enabled: true },
+  { provider_id: 'aiapi', model_id: 'deepseek-chat', priority: 3, enabled: true },
+  { provider_id: 'deyunai', model_id: 'gemini-2.5-flash', priority: 4, enabled: true },
 ];
 const NEW_STORY_AD_REFERENCE_VISION_DEFAULTS = [
   { provider_id: 'deyunai', model_id: 'gemini-2.5-flash', priority: 1, enabled: true },

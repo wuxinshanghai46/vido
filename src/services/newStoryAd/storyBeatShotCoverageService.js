@@ -105,7 +105,7 @@ function planCoverage({
   beats = [],
   target_shots = 0,
   target_duration = 0,
-  max_shot_duration = 6,
+  max_shot_duration = 15,
   max_obligations_per_unit = 2,
 } = {}) {
   const normalizedBeats = list(beats).map(normalizeBeat);
@@ -118,7 +118,7 @@ function planCoverage({
   const options = {
     target_shots: Math.max(0, Math.round(Number(target_shots) || 0)),
     target_duration: Math.max(0, Number(target_duration) || 0),
-    max_shot_duration: Math.max(1, Math.min(30, Number(max_shot_duration) || 6)),
+    max_shot_duration: Math.max(1, Math.min(30, Number(max_shot_duration) || 15)),
     max_obligations_per_unit: Math.max(1, Math.min(12, Math.round(Number(max_obligations_per_unit) || 2))),
   };
   const allocations = allocationFor(normalizedBeats, options);
