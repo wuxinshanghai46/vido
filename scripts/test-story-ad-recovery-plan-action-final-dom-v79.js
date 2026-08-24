@@ -70,6 +70,7 @@ const viewSandbox = {
   personLookSummary: () => '', bindPersonEvolutionForm() {}, collectPersonEvolutionValues: values => values,
   renderPersonEvolutionSummary: () => '', createKeyedRequestGuard: guard, createPersonPlanRequestGuard: guard,
   personPlanBlockedView: planSandbox.__plan.personPlanBlockedView,
+  checkpointRecoverySummary: recoverySandbox.__recovery.checkpointRecoverySummary,
 };
 vm.runInNewContext(`${executable('public/story-ad/views/assetCenterView.js')}\nglobalThis.__mount=mount;`, viewSandbox, { filename: 'assetCenterView.js' });
 
