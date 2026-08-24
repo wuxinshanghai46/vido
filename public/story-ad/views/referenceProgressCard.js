@@ -74,6 +74,10 @@ export function referenceProgress(reference = {}) {
   const batchCompleted = Math.max(0, Math.min(batchTotal, Number(batchProgress.completed || 0) || 0));
   const partialEvidence = batchTotal > 0 && batchCompleted > 0 && batchCompleted < batchTotal;
   const completeEvidence = batchTotal > 0 && batchCompleted === batchTotal;
+  const importFailure = (failed || cancelled)
+    && reference.source?.input_type === 'url'
+    && !reference.source?.read_method
+    && !completeEvidence;
   const semanticProgress = reference.semantic_contract_progress && typeof reference.semantic_contract_progress === 'object' ? reference.semantic_contract_progress : {};
   const labels = {
     uploading: '正在上传参考视频', importing: '正在读取参考链接', uploaded: '视频已就绪，等待分析', queued: '已进入分析队列',
@@ -109,7 +113,9 @@ export function referenceProgress(reference = {}) {
       : (extendedConfirmation
         ? `本次比普通分析多 ${Number(preflight.extra_batch_count || 0)} 批；尚未启动任何收费分析。确认后会完整读取全部片段，并逐批保存成功结果。`
         : (failed
-        ? failedUserCopy({ errorCode: `${errorCode} ${reference.error || ''}`, completeEvidence, billingUnknown })
+        ? (importFailure
+          ? '原链接视频还没有生成分析副本，尚未调用识别模型。可以直接重新读取原链接，或更换链接和上传本地视频。'
+          : failedUserCopy({ errorCode: `${errorCode} ${reference.error || ''}`, completeEvidence, billingUnknown }))
         : (cancelled ? '分析已经停止，当前未完成的结果不会进入后续制作环节。' : '正在后台读取和理解视频；完成后会自动填写广告目标，并把其他结果分配到对应制作环节。')));
   const retryMinutes = Math.ceil(Math.max(0, Number(reference.retry_after_ms || 0) || 0) / 60000);
   const note = [
@@ -122,11 +128,13 @@ export function referenceProgress(reference = {}) {
   const canReuseEvidence = reference.visual_evidence_reusable === true || completeEvidence;
   const retryLabel = extendedConfirmation
     ? `确认分批分析（${Number(preflight.batch_count || 0)} 批）`
+    : (importFailure
+    ? '重新读取链接'
     : (reference.semantic_result_reusable === true
     ? '复用已保留结果重新校验'
     : (canReuseEvidence
       ? '重新整理内容'
-      : (completedInvalid || cancelled ? '重新识别当前视频' : (partialEvidence ? `继续读取缺失镜头（${batchCompleted}/${batchTotal} 批）` : '重新读取镜头证据'))));
+      : (completedInvalid || cancelled ? '重新识别当前视频' : (partialEvidence ? `继续读取缺失镜头（${batchCompleted}/${batchTotal} 批）` : '重新读取镜头证据')))));
   const retry = (failed || cancelled || completedInvalid) && reference.client_pending !== true
     ? `<button class="btn" type="button" data-reference-retry>${retryLabel}</button>` : '';
   const abandon = (failed || cancelled || completedInvalid) && reference.client_pending !== true

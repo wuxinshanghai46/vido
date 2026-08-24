@@ -872,6 +872,38 @@ router.post('/reference-video-analyses/:analysisId/reanalyze', asyncRoute(async 
   });
 }));
 
+router.post('/reference-video-analyses/:analysisId/reimport', asyncRoute(async (req, res) => {
+  const user = userFromReq(req);
+  const current = referenceVideoAnalyses.get(req.params.analysisId, user);
+  const taskId = String(current.task_id || '').trim();
+  if (taskId) {
+    const task = service.assertTaskOwner(taskId, user);
+    if (String(task.active_generation_id || '').trim()) {
+      const error = new Error('当前生成正在使用已锁定内容；请先取消或等待生成完成，再重新读取参考链接');
+      error.code = 'GENERATION_ACTIVE_EDIT_BLOCKED';
+      error.status = 409;
+      error.retryable = false;
+      throw error;
+    }
+    const context = storage.getOutput(taskId, 'context') || task.request || {};
+    const boundId = String(context.reference_video_analysis?.analysis_id
+      || context.reference_video_analysis?.id || '').trim();
+    if (boundId && boundId !== req.params.analysisId) {
+      const error = new Error('当前项目已经绑定更新的参考视频，旧链接不能重新覆盖项目内容');
+      error.code = 'REFERENCE_VIDEO_NEWER_SOURCE_BOUND';
+      error.status = 409;
+      error.retryable = false;
+      throw error;
+    }
+  }
+  const retried = await referenceVideoAnalyses.retryImport(req.params.analysisId, user);
+  return res.status(202).json({
+    success: true,
+    ...retried,
+    analysis: retried.record,
+  });
+}));
+
 router.get('/reference-video-analyses/:analysisId', asyncRoute(async (req, res) => {
   let analysis = referenceVideoAnalyses.get(req.params.analysisId, userFromReq(req));
   if (['completed', 'failed', 'cancelled'].includes(String(analysis.status || '').toLowerCase())

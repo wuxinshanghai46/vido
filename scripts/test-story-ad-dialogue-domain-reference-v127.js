@@ -71,6 +71,14 @@ async function main() {
     '失败卡默认视图不得暴露模型、供应商、内部阶段或合同术语');
   assert.match(failedProgress, /is-recovery/);
   assert.doesNotMatch(failedProgress, /role="progressbar"/, '终态恢复卡不得继续占用大面积进度条');
+  const importFailureProgress = progressModule.namespace.referenceProgress({
+    analysis_id: 'failed-import-reference',
+    status: 'failed',
+    source: { input_type: 'url', display_url: 'https://www.liblib.tv/detail/example' },
+    error: { code: 'REFERENCE_VIDEO_TOO_LARGE' },
+  });
+  assert.match(importFailureProgress, />重新读取链接<\/button>/);
+  assert.match(importFailureProgress, /尚未调用识别模型/);
   const recoveryMarkup = briefDialogueMarkup({
     brief: { content_mode: 'commercial_subject', content_mode_source: 'user', text: '不锈钢板材广告' },
     reference: { analysis_id: 'failed-billing-reference', status: 'failed' },
@@ -120,6 +128,14 @@ async function main() {
   assert.deepEqual(projectedBrief.brief_intake, {
     creative_brief_confirmed: true, specifications_confirmed: true, reference_decision: 'skipped',
     completed_dialogue_topics: ['audience_intent', 'commercial_evidence'], active_dialogue_topic: '',
+    dialogue_history: [],
+    cast_intent: {
+      confirmed: false,
+      mode: 'auto',
+      expected_people: 0,
+      participants: [],
+      source: '',
+    },
   }, '工作区摘要投影必须携带完整对话进度，刷新后不得退回旧问题');
 
   const narrativeMarkup = briefDialogueMarkup({
@@ -127,6 +143,24 @@ async function main() {
   }, {});
   assert.match(narrativeMarkup, /可执行剧情/);
   assert.match(narrativeMarkup, /确认设想，生成剧情与对白/);
+
+  const briefViewSource = fs.readFileSync(path.join(root, 'public/story-ad/views/briefView.js'), 'utf8');
+  const linkHandlerSource = briefViewSource.slice(
+    briefViewSource.indexOf('async function handleReferenceLink'),
+    briefViewSource.indexOf('dialogueCleanup = bindBriefDialogueWorkflow'),
+  );
+  assert.doesNotMatch(linkHandlerSource, /refreshShell|navigate\(/,
+    '添加参考链接后不得重挂载页面或重置当前对话滚动位置');
+  assert.match(briefViewSource, /if \(role !== 'reference'\) \{[\s\S]{0,180}refreshShell/,
+    '本地参考视频上传必须跳过整页刷新，同时保留其他材料原有刷新流程');
+  assert.match(briefViewSource, /route\.isNew = false;[\s\S]{0,180}render: false/,
+    '新项目首次添加参考后必须静默切换规范 URL，不能重建对话 DOM');
+  const appSource = fs.readFileSync(path.join(root, 'public/story-ad/app.js'), 'utf8');
+  assert.match(appSource, /if \(options\.render === false\) return;/,
+    '静默规范 URL 必须由路由器显式支持');
+  const recoverySource = fs.readFileSync(path.join(root, 'public/story-ad/views/briefReferenceRecovery.js'), 'utf8');
+  assert.match(recoverySource, /importFailure[\s\S]*retryReferenceImport\(\)/,
+    '链接导入失败必须重新读取链接，不能误入缺少本地文件的重新分析入口');
 
   const failed = referenceDialogueStatus({
     analysis_id: 'failed-v127', status: 'failed', error: '链接需要登录（请求编号：qa-127）',
@@ -145,15 +179,35 @@ async function main() {
       user_message: '突出品牌的专业能力', accumulated_idea: '不锈钢板材品牌广告', content_mode: 'commercial_subject',
       completed_topics: ['plot_trigger', 'subject_identity', 'subject_motivation'], specifications_confirmed: false,
     },
-    modelGateway: { async generateText() { gatewayCalls += 1; throw new Error('达到预算后不应调用模型'); } },
+    modelGateway: { async generateText() {
+      gatewayCalls += 1;
+      return {
+        text: JSON.stringify({
+          response_mode: 'question',
+          reply: '为了把专业能力拍得可信，准备用哪组真实画面证明这个卖点？',
+          question_topic: 'commercial_evidence',
+          covered_topics: [],
+          cast_intent: { status: 'missing', decision: '', expected_people: 0, participants: [], evidence: '' },
+          suggested_answers: ['展示真实使用过程和结果', '用细节特写呈现材质与工艺'],
+          coverage: {},
+          idea_ready: false,
+          missing_topics: ['commercial_evidence'],
+          next_step: 'idea_details',
+        }),
+        used_model: 'mock/dialogue',
+        fallback_used: false,
+        failed_models: [],
+      };
+    } },
   });
-  assert.equal(compact.idea_ready, true);
-  assert.equal(compact.next_step, 'specifications');
-  assert.equal(gatewayCalls, 0);
+  assert.equal(compact.idea_ready, false);
+  assert.equal(compact.next_step, 'idea_details');
+  assert.match(compact.dialogue_reply, /哪组真实画面/);
+  assert.equal(gatewayCalls, 1, '自由反馈不得再被旧问题数量静默截断');
 
   console.log(JSON.stringify({
     passed: true,
-    checks: 31,
+    checks: 38,
     scope: 'story-ad-dialogue-domain-reference-v127',
     real_model_calls: 0,
     paid_generation_calls: 0,

@@ -73,6 +73,7 @@ function currentRoute() {
 
 function navigate(path, options = {}) {
   history[options.replace ? 'replaceState' : 'pushState']({}, '', path);
+  if (options.render === false) return;
   renderRoute().catch(showFatal);
 }
 

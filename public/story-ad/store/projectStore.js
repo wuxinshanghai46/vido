@@ -287,6 +287,26 @@ export function createProjectStore() {
     }
   }
 
+  async function retryReferenceImport() {
+    const analysisId = state.bundle?.reference?.analysis_id || '';
+    if (!analysisId) throw new Error('当前没有可重新读取的参考链接。');
+    const previousReference = beginReferenceRetry(state, set);
+    try {
+      const data = await request(`/api/new-story-ad/reference-video-analyses/${encodeURIComponent(analysisId)}/reimport`, {
+        method: 'POST',
+        body: {},
+      });
+      const analysis = data.analysis || {};
+      applyReferenceLiveState(analysis);
+      syncReferencePolling(true);
+      set({ saving: false });
+      return analysis;
+    } catch (error) {
+      restoreReferenceRetry(state, set, previousReference, error);
+      throw error;
+    }
+  }
+
   function referenceTaskRecord(analysis = {}) {
     const result = analysis.result && typeof analysis.result === 'object' ? analysis.result : {};
     return {
@@ -587,6 +607,7 @@ export function createProjectStore() {
     attachMaterial,
     uploadReference,
     addReferenceLink,
+    retryReferenceImport,
     retryReferenceAnalysis,
     removeReference: () => removeProjectReference({ state, set, request, stopPolling: stopReferencePolling, applyMutationResult }),
     videoPreflight,

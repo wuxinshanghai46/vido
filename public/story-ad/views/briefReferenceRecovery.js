@@ -28,6 +28,10 @@ export function bindBriefReferenceRecovery(host, { store, context } = {}) {
     referenceRetryPending = true;
     setButtonBusy(button, true, '正在确认…');
     const currentReference = store.state.bundle?.reference || {};
+    const importFailure = ['failed', 'cancelled'].includes(String(currentReference.status || '').toLowerCase())
+      && currentReference.source?.input_type === 'url'
+      && !currentReference.source?.read_method
+      && !currentReference.visual_evidence_reusable;
     const extendedConfirmation = String(currentReference.error_code || currentReference.error?.code || '')
       === 'REFERENCE_VIDEO_EXTENDED_ANALYSIS_CONFIRMATION_REQUIRED';
     const preflight = currentReference.analysis_preflight && typeof currentReference.analysis_preflight === 'object'
@@ -41,7 +45,9 @@ export function bindBriefReferenceRecovery(host, { store, context } = {}) {
       || String(currentReference.provider_submission_state || '').toLowerCase() === 'submitted_unknown';
     const completedInvalid = currentReference.status === 'completed' && currentReference.analysis_valid !== true;
     const partialEvidence = Number(batchProgress.completed || 0) > 0 && Number(batchProgress.completed || 0) < Number(batchProgress.total || 0);
-    const retryMessage = billingUnknown
+    const retryMessage = importFailure
+      ? '原链接视频尚未生成分析副本，也没有调用识别模型。系统会重新读取原链接；如果原视频超过 200MB，会自动生成受控大小的分析副本。是否继续？'
+      : billingUnknown
       ? `上一次内容整理请求已经发出，但系统没有收到完整结果，因此暂时无法确认是否计费。${Number(batchProgress.total || 0) > 0 ? `已完成的 ${Number(batchProgress.completed || 0)}/${Number(batchProgress.total || 0)} 批视频画面都会保留` : '已经读取成功的视频画面都会保留'}。如果继续，系统不会重新读取画面，只会再发起一次内容整理，并可能新增一次费用。是否继续？`
       : extendedConfirmation
       ? `系统已免费检测到 ${Number(preflight.segment_count || 0)} 个取证片段，需要 ${Number(preflight.batch_count || 0)} 批视觉读取；普通分析包含 10 批，本次将增加 ${Number(preflight.extra_batch_count || 0)} 批。确认后会完整读取全部片段，并按批保存进度；失败重试不会重复读取已通过批次。是否继续？`
@@ -59,8 +65,8 @@ export function bindBriefReferenceRecovery(host, { store, context } = {}) {
     let confirmed = false;
     try {
       confirmed = await confirmDialog(retryMessage, {
-        title: billingUnknown ? '确认可能新增一次模型费用' : (extendedConfirmation ? '确认分批分析参考视频' : (completedInvalid ? '重新识别当前视频' : (semanticReusable ? '重新校验参考视频' : (reusable ? '继续补齐语义结构' : '重新读取镜头证据')))),
-        confirmText: billingUnknown ? '确认风险，仅重试语义' : (extendedConfirmation ? `确认读取 ${Number(preflight.batch_count || 0)} 批` : (completedInvalid ? '确认重新识别' : (semanticReusable ? '确认重新校验' : (reusable ? '确认重新整理' : '确认重新分析')))),
+        title: importFailure ? '重新读取参考链接' : (billingUnknown ? '确认可能新增一次模型费用' : (extendedConfirmation ? '确认分批分析参考视频' : (completedInvalid ? '重新识别当前视频' : (semanticReusable ? '重新校验参考视频' : (reusable ? '继续补齐语义结构' : '重新读取镜头证据'))))),
+        confirmText: importFailure ? '重新读取链接' : (billingUnknown ? '确认风险，仅重试语义' : (extendedConfirmation ? `确认读取 ${Number(preflight.batch_count || 0)} 批` : (completedInvalid ? '确认重新识别' : (semanticReusable ? '确认重新校验' : (reusable ? '确认重新整理' : '确认重新分析'))))),
       });
     } catch (error) {
       referenceRetryPending = false;
@@ -75,7 +81,9 @@ export function bindBriefReferenceRecovery(host, { store, context } = {}) {
     }
     try {
       setButtonBusy(button, true, extendedConfirmation ? '正在启动分批分析…' : (completedInvalid ? '正在重新识别…' : (semanticReusable ? '正在重新校验…' : (reusable ? '正在重新整理…' : '正在重新分析…'))), { elapsed: true });
-      if (extendedConfirmation) {
+      if (importFailure) {
+        await store.retryReferenceImport();
+      } else if (extendedConfirmation) {
         await store.retryReferenceAnalysis({
           extended_analysis_confirmed: true,
           preflight_fingerprint: String(preflight.fingerprint || ''),
@@ -83,7 +91,7 @@ export function bindBriefReferenceRecovery(host, { store, context } = {}) {
       } else {
         await store.retryReferenceAnalysis({ acknowledge_billing_unknown: billingUnknown });
       }
-      toast(extendedConfirmation ? `已确认 ${Number(preflight.batch_count || 0)} 批完整分析；已通过批次会持续保存。` : (completedInvalid ? '已保留当前视频并开始重新识别，无需重新上传。' : (semanticReusable ? '已复用现有结果开始重新校验，不会再次调用模型。' : (reusable ? '已复用完整镜头证据，只继续补齐语义结构。' : '已开始重新检测并分析镜头证据。'))), 'success');
+      toast(importFailure ? '已重新读取原链接，进度会继续显示在当前对话下方。' : (extendedConfirmation ? `已确认 ${Number(preflight.batch_count || 0)} 批完整分析；已通过批次会持续保存。` : (completedInvalid ? '已保留当前视频并开始重新识别，无需重新上传。' : (semanticReusable ? '已复用现有结果开始重新校验，不会再次调用模型。' : (reusable ? '已复用完整镜头证据，只继续补齐语义结构。' : '已开始重新检测并分析镜头证据。')))), 'success');
     } catch (error) {
       toast(error.message, 'danger');
       setButtonBusy(button, false);

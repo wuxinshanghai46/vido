@@ -139,6 +139,36 @@ async function main() {
   assert.strictEqual(inspected.display_url, 'https://www.bilibili.com/video/BV1TEST');
   assert.strictEqual(linkSecurity._private.platformForHost('www.liblib.tv'), 'liblib');
 
+  const proxyDir = path.join(tempRoot, 'analysis-proxy');
+  fs.mkdirSync(proxyDir, { recursive: true });
+  const oversizedResponse = fs.createReadStream(input);
+  oversizedResponse.headers = {
+    'content-length': String(linkSecurity.MAX_FILE_BYTES + 1),
+    'content-type': 'video/mp4',
+  };
+  const proxied = await linkSecurity._private.transcodeResponseToAnalysisProxy(
+    oversizedResponse,
+    new URL('https://cdn.example.com/original.mp4'),
+    proxyDir,
+  );
+  assert.strictEqual(proxied.method, 'direct-temp+ffmpeg-analysis-proxy');
+  assert.strictEqual(proxied.analysis_proxy.generated, true);
+  assert.ok(fs.existsSync(proxied.file_path));
+  assert.ok(proxied.size_bytes > 0 && proxied.size_bytes < linkSecurity.MAX_FILE_BYTES);
+  const rejectedOversizedSource = fs.createReadStream(input);
+  rejectedOversizedSource.headers = {
+    'content-length': String(linkSecurity.MAX_SOURCE_STREAM_BYTES + 1),
+    'content-type': 'video/mp4',
+  };
+  await assert.rejects(
+    () => linkSecurity._private.transcodeResponseToAnalysisProxy(
+      rejectedOversizedSource,
+      new URL('https://cdn.example.com/unsafe-original.mp4'),
+      proxyDir,
+    ),
+    error => error.code === 'REFERENCE_VIDEO_SOURCE_STREAM_TOO_LARGE',
+  );
+
   let liblibApiUrl = '';
   const resolvedLiblib = await linkSecurity._private.resolveLiblibShareVideo({
     url: 'https://www.liblib.tv/skill/share?uuid=fa22a3be235546c5b063f4abeecfba76',
@@ -209,6 +239,28 @@ async function main() {
   assert.ok(liblibProjectApiUrl.includes('/api/community/project/template/detail?projectTemplateUuid=cf025f2c342c47b69a1d19f6ee2009e5'));
   assert.strictEqual(resolvedLiblibProject.title, '门窗产品TVC广告片');
   assert.ok(resolvedLiblibProject.url.endsWith('/project.mp4'));
+  const liblibProxyLineage = await linkSecurity.downloadVideo(
+    'https://www.liblib.tv/detail/cf025f2c342c47b69a1d19f6ee2009e5',
+    proxyDir,
+    {
+      inspected: {
+        url: 'https://www.liblib.tv/detail/cf025f2c342c47b69a1d19f6ee2009e5',
+        platform: 'liblib',
+      },
+      fetchJson: async () => ({
+        code: 0,
+        data: { detail: { name: '大文件广告', finalOutput: 'https://cdn.example.com/proxy-source.mp4' } },
+      }),
+      inspectUrl: async url => ({ url, platform: 'public_web', hostname: 'cdn.example.com' }),
+      downloadDirect: async () => ({
+        file_path: path.join(proxyDir, 'source.mp4'),
+        size_bytes: 1024,
+        method: 'direct-temp+ffmpeg-analysis-proxy',
+        analysis_proxy: { generated: true },
+      }),
+    },
+  );
+  assert.strictEqual(liblibProxyLineage.method, 'liblib-api+direct-temp+ffmpeg-analysis-proxy');
 
   await assert.rejects(
     () => linkSecurity._private.resolveLiblibVideo({
@@ -340,6 +392,17 @@ async function main() {
   if (analysisService._private.activeImports.get(failing.id)?.promise) {
     await analysisService._private.activeImports.get(failing.id).promise;
   }
+  assert.throws(
+    () => analysisService.reanalyze(failing.id, user),
+    error => error.code === 'REFERENCE_VIDEO_SOURCE_MISSING',
+  );
+  const retriedImport = await analysisService.retryImport(failing.id, user, mockLinkService(input));
+  assert.strictEqual(retriedImport.accepted, true);
+  assert.strictEqual(retriedImport.record.status, 'importing');
+  const retriedUploaded = await waitFor(failing.id, user, ['uploaded', 'failed']);
+  assert.strictEqual(retriedUploaded.status, 'uploaded', JSON.stringify(retriedUploaded.error || {}));
+  assert.strictEqual(retriedUploaded.source.read_method, 'test-copy');
+  assert.strictEqual(retriedUploaded.import_retry.attempt, 1);
 
   if (analysisService._private.activeRuns.get(created.id)) {
     await analysisService._private.activeRuns.get(created.id);
@@ -350,7 +413,7 @@ async function main() {
 
   console.log(JSON.stringify({
     passed: true,
-    checks: 61,
+    checks: 73,
     public_url_input: 'pass',
     liblib_share_api_resolution: 'pass',
     liblib_project_api_resolution: 'pass',
@@ -358,6 +421,8 @@ async function main() {
     query_secret_exposed: false,
     cancellation: 'pass',
     failed_progress_terminal: true,
+    oversized_analysis_proxy: 'pass',
+    failed_import_retry: 'pass',
     chinese_autofill_source: 'pass',
     downstream_generation_triggered: false,
   }));

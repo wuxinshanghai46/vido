@@ -312,6 +312,11 @@ ${renderAdvancedReferenceControls(bundle, route.isNew)}
     const project = await store.createProject(payload);
     createdProjectId = project.id;
     await store.loadBundle(createdProjectId, 'summary,reference');
+    route.isNew = false;
+    route.taskId = createdProjectId;
+    navigate(`/story-ad/projects/${encodeURIComponent(createdProjectId)}?view=brief`, { replace: true, render: false });
+    const saveState = document.querySelector('.project-topbar .save-state');
+    if (saveState) saveState.textContent = '已连接真实任务';
     dirtyFields.clear();
     return createdProjectId;
   }
@@ -391,8 +396,6 @@ ${renderAdvancedReferenceControls(bundle, route.isNew)}
       setButtonBusy(button, true, '正在添加…');
       const analysis = await store.addReferenceLink(url);
       toast('参考链接已添加，读取与分析进度已显示在对话中。', 'success');
-      if (route.isNew) navigate(`/story-ad/projects/${encodeURIComponent(taskId)}?view=brief`, { replace: true });
-      else await context.refreshShell();
       return { taskId, analysis };
     } catch (error) {
       const requestId = String(error?.data?.request_id || '').trim();
@@ -485,8 +488,7 @@ ${renderAdvancedReferenceControls(bundle, route.isNew)}
           await store.attachMaterial(role, asset, { authorized: role === 'logo' });
         }
         toast('材料已添加到当前项目。', 'success');
-        if (route.isNew) navigate(`/story-ad/projects/${encodeURIComponent(taskId)}?view=brief`, { replace: true });
-        else {
+        if (role !== 'reference') {
           await store.loadBundle(taskId, 'all');
           await context.refreshShell();
         }

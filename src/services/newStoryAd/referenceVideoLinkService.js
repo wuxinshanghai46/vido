@@ -4,10 +4,12 @@ const http = require('http');
 const https = require('https');
 const net = require('net');
 const path = require('path');
-const { execFile } = require('child_process');
+const { execFile, spawn } = require('child_process');
+const ffmpegPath = require('ffmpeg-static');
 const ytdlpService = require('../ytdlpService');
 
 const MAX_FILE_BYTES = 200 * 1024 * 1024;
+const MAX_SOURCE_STREAM_BYTES = 1024 * 1024 * 1024;
 const MAX_DURATION_SECONDS = 180;
 const MAX_REDIRECTS = 5;
 const REQUEST_TIMEOUT_MS = 120000;
@@ -161,6 +163,131 @@ async function inspectUrl(raw, options = {}) {
 
 function safeUnlink(filePath) {
   try { if (filePath && fs.existsSync(filePath)) fs.unlinkSync(filePath); } catch {}
+}
+
+function transcodeLocalSourceToAnalysisProxy(sourcePath, current, directory, sourceSize, options = {}) {
+  if (!ffmpegPath) {
+    return Promise.reject(makeError('服务器缺少视频压缩组件，请改用本地上传', 'REFERENCE_VIDEO_TRANSCODER_UNAVAILABLE', 503));
+  }
+  const partPath = path.join(directory, 'source-analysis.part.mp4');
+  const finalPath = path.join(directory, 'source.mp4');
+  safeUnlink(partPath);
+  safeUnlink(finalPath);
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    let stderr = '';
+    const child = spawn(ffmpegPath, [
+      '-hide_banner', '-loglevel', 'error', '-y',
+      '-i', sourcePath,
+      '-t', String(MAX_DURATION_SECONDS + 1),
+      '-vf', 'scale=w=1280:h=720:force_original_aspect_ratio=decrease,scale=w=trunc(iw/2)*2:h=trunc(ih/2)*2',
+      '-map', '0:v:0', '-map', '0:a?',
+      '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '28',
+      '-maxrate', '2500k', '-bufsize', '5000k',
+      '-c:a', 'aac', '-b:a', '96k',
+      '-pix_fmt', 'yuv420p', '-movflags', '+faststart',
+      partPath,
+    ], { windowsHide: true, stdio: ['ignore', 'ignore', 'pipe'] });
+    const finish = (error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      clearInterval(outputGuard);
+      if (error) {
+        safeUnlink(partPath);
+        safeUnlink(finalPath);
+        reject(error);
+        return;
+      }
+      const sizeBytes = fs.existsSync(partPath) ? fs.statSync(partPath).size : 0;
+      if (!sizeBytes || sizeBytes > MAX_FILE_BYTES) {
+        safeUnlink(partPath);
+        reject(makeError('视频无法压缩到安全的分析大小，请上传压缩版本', 'REFERENCE_VIDEO_ANALYSIS_PROXY_TOO_LARGE', 413));
+        return;
+      }
+      fs.renameSync(partPath, finalPath);
+      resolve({
+        file_path: finalPath,
+        original_name: path.basename(current.pathname) || '链接视频.mp4',
+        mimetype: 'video/mp4',
+        size_bytes: sizeBytes,
+        original_size_bytes: sourceSize,
+        final_url: current.toString(),
+        method: 'direct-temp+ffmpeg-analysis-proxy',
+        analysis_proxy: {
+          generated: true,
+          max_width: 1280,
+          max_height: 720,
+          source_size_bytes: sourceSize,
+        },
+      });
+    };
+    const stop = error => {
+      try { child.kill('SIGKILL'); } catch {}
+      finish(error);
+    };
+    const timeout = setTimeout(() => stop(makeError('生成视频分析副本超时，请稍后重试或上传压缩版本', 'REFERENCE_VIDEO_TRANSCODE_TIMEOUT', 504)), options.transcodeTimeoutMs || 10 * 60 * 1000);
+    const outputGuard = setInterval(() => {
+      try {
+        if (fs.existsSync(partPath) && fs.statSync(partPath).size > MAX_FILE_BYTES) {
+          stop(makeError('视频无法压缩到安全的分析大小，请上传压缩版本', 'REFERENCE_VIDEO_ANALYSIS_PROXY_TOO_LARGE', 413));
+        }
+      } catch (error) {
+        stop(error);
+      }
+    }, 500);
+    child.stderr.on('data', chunk => { stderr = `${stderr}${chunk}`.slice(-1200); });
+    child.on('error', error => stop(makeError(`视频分析副本生成失败：${error.message}`, 'REFERENCE_VIDEO_TRANSCODE_FAILED', 422)));
+    child.on('close', code => {
+      if (settled) return;
+      if (code !== 0) {
+        finish(makeError(`视频分析副本生成失败${stderr ? `：${stderr}` : ''}`, 'REFERENCE_VIDEO_TRANSCODE_FAILED', 422));
+        return;
+      }
+      finish();
+    });
+  });
+}
+
+async function transcodeResponseToAnalysisProxy(response, current, directory, options = {}) {
+  const contentLength = Number(response.headers['content-length'] || 0);
+  if (contentLength > MAX_SOURCE_STREAM_BYTES) {
+    response.destroy();
+    throw makeError('原视频体积过大，无法安全生成分析副本，请上传压缩版本', 'REFERENCE_VIDEO_SOURCE_STREAM_TOO_LARGE', 413);
+  }
+  const sourcePart = path.join(directory, 'source-original.part');
+  safeUnlink(sourcePart);
+  let received = 0;
+  try {
+    await new Promise((resolve, reject) => {
+      const output = fs.createWriteStream(sourcePart, { flags: 'wx' });
+      let settled = false;
+      const finish = error => {
+        if (settled) return;
+        settled = true;
+        if (error) {
+          try { output.destroy(); } catch {}
+          reject(error);
+        }
+        else resolve();
+      };
+      response.on('data', chunk => {
+        received += chunk.length;
+        if (received > MAX_SOURCE_STREAM_BYTES) {
+          response.destroy(makeError('原视频体积过大，无法安全生成分析副本，请上传压缩版本', 'REFERENCE_VIDEO_SOURCE_STREAM_TOO_LARGE', 413));
+          return;
+        }
+        options.onProgress?.(received, contentLength);
+      });
+      response.on('error', finish);
+      output.on('error', finish);
+      output.on('finish', () => finish());
+      response.pipe(output);
+    });
+    return await transcodeLocalSourceToAnalysisProxy(sourcePart, current, directory, received || contentLength, options);
+  } finally {
+    safeUnlink(sourcePart);
+  }
 }
 
 async function fetchPublicJson(initialUrl, options = {}) {
@@ -344,15 +471,14 @@ async function downloadDirect(initialUrl, directory, options = {}) {
       throw makeError(`视频链接读取失败（HTTP ${status || '未知'}）`, 'REFERENCE_VIDEO_URL_FETCH_FAILED', 422);
     }
     const contentLength = Number(response.headers['content-length'] || 0);
-    if (contentLength > MAX_FILE_BYTES) {
-      response.destroy();
-      throw makeError('链接视频不能超过 200MB', 'REFERENCE_VIDEO_TOO_LARGE', 413);
-    }
     const contentType = String(response.headers['content-type'] || '').toLowerCase();
     const pathname = current.pathname.toLowerCase();
     if (!contentType.startsWith('video/') && !/\.(mp4|mov|webm)$/.test(pathname)) {
       response.destroy();
       throw makeError('该地址不是可直接读取的视频，请粘贴受支持平台的视频作品页或视频直链', 'REFERENCE_VIDEO_URL_NOT_MEDIA', 422);
+    }
+    if (!contentLength || contentLength > MAX_FILE_BYTES) {
+      return transcodeResponseToAnalysisProxy(response, current, directory, options);
     }
     let received = 0;
     await new Promise((resolve, reject) => {
@@ -463,9 +589,9 @@ async function downloadVideo(raw, directory, options = {}) {
   let downloaded;
   if (inspected.platform === 'liblib' && !isDirectMedia) {
     const media = await resolveLiblibVideo(inspected, options);
-    downloaded = await downloadDirect(media.url, directory, options);
+    downloaded = await (options.downloadDirect || downloadDirect)(media.url, directory, options);
     downloaded.original_name = `${media.title}${path.extname(downloaded.file_path).toLowerCase()}`;
-    downloaded.method = 'liblib-api+direct';
+    downloaded.method = `liblib-api+${downloaded.method}`;
   } else if (inspected.platform !== 'public_web' && !isDirectMedia) {
     downloaded = await downloadPlatformVideo(inspected, directory, options);
   } else {
@@ -476,6 +602,7 @@ async function downloadVideo(raw, directory, options = {}) {
 
 module.exports = {
   MAX_FILE_BYTES,
+  MAX_SOURCE_STREAM_BYTES,
   MAX_DURATION_SECONDS,
   inspectUrl,
   downloadVideo,
@@ -493,5 +620,7 @@ module.exports = {
     resolveLiblibProjectVideo,
     resolveLiblibVideo,
     downloadDirect,
+    transcodeResponseToAnalysisProxy,
+    transcodeLocalSourceToAnalysisProxy,
   },
 };

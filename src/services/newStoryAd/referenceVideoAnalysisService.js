@@ -469,10 +469,12 @@ async function runLinkImport(initialRecord, linkService, inspected) {
         original_name: downloaded.original_name,
         mimetype: downloaded.mimetype,
         size_bytes: Number(downloaded.size_bytes || metadata.size_bytes || 0),
+        original_size_bytes: Number(downloaded.original_size_bytes || downloaded.size_bytes || metadata.size_bytes || 0),
         local_path: sourcePath,
         private_directory: dir,
         metadata,
         read_method: downloaded.method,
+        analysis_proxy: downloaded.analysis_proxy || null,
       },
       imported_at: now(),
     });
@@ -573,6 +575,75 @@ async function createFromUrl({ body = {}, user = {}, linkService = referenceVide
     }).catch(() => {});
   }
   return publicRecord(record);
+}
+
+async function retryImport(analysisId, user = {}, linkService = referenceVideoLinks) {
+  let record = assertOwned(analysisId, user);
+  if (activeImports.has(analysisId) || record.status === 'importing') {
+    return { record: publicRecord(record), accepted: false, duplicate: true };
+  }
+  if (activeRuns.has(analysisId) || ['uploaded', 'queued', 'running', 'cancelling'].includes(record.status)) {
+    const error = new Error('当前参考视频已经进入分析流程，不能重复读取链接');
+    error.code = 'REFERENCE_VIDEO_IMPORT_RETRY_NOT_READY';
+    error.status = 409;
+    throw error;
+  }
+  const inputUrl = String(record.source?.input_url || '').trim();
+  if (record.source?.input_type !== 'url' || !inputUrl) {
+    const error = new Error('当前记录没有可重新读取的原链接，请重新粘贴链接或上传视频');
+    error.code = 'REFERENCE_VIDEO_IMPORT_SOURCE_MISSING';
+    error.status = 409;
+    throw error;
+  }
+  if (record.source?.local_path && fs.existsSync(record.source.local_path)) {
+    const error = new Error('视频已经读取成功，请直接重新分析现有视频');
+    error.code = 'REFERENCE_VIDEO_IMPORT_ALREADY_COMPLETED';
+    error.status = 409;
+    throw error;
+  }
+  const inspected = await linkService.inspectUrl(inputUrl);
+  record = save(record, {
+    status: 'importing',
+    progress: 3,
+    phase: '正在重新检查视频链接',
+    cancelled: false,
+    error: null,
+    failed_at: '',
+    cancelled_at: '',
+    source: {
+      ...record.source,
+      display_url: inspected.display_url,
+      platform: inspected.platform,
+      original_name: inspected.hostname,
+    },
+    import_retry: {
+      attempt: Math.max(0, Number(record.import_retry?.attempt || 0) || 0) + 1,
+      requested_at: now(),
+    },
+  });
+  const controller = new AbortController();
+  activeImports.set(analysisId, { controller, promise: null });
+  const promise = runLinkImport(record, linkService, inspected);
+  activeImports.get(analysisId).promise = promise;
+  if (record.task_id) {
+    void promise.then(() => {
+      const imported = readRecord(record.user_id, analysisId);
+      if (!imported || imported.status !== 'uploaded' || imported.cancelled) return;
+      try {
+        start(analysisId, { id: record.user_id });
+      } catch (error) {
+        const latest = readRecord(record.user_id, analysisId) || imported;
+        save(latest, {
+          status: 'failed',
+          progress: 0,
+          phase: '分析启动失败',
+          error: publicVisionFailure(error),
+          failed_at: now(),
+        });
+      }
+    }).catch(() => {});
+  }
+  return { record: publicRecord(record), accepted: true, duplicate: false };
 }
 
 function createUploadSession({ body = {}, user = {} } = {}) {
@@ -3878,6 +3949,7 @@ module.exports = {
   probeVideo,
   create,
   createFromUrl,
+  retryImport,
   taskRecord,
   createUploadSession,
   saveUploadChunk,
