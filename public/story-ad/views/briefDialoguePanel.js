@@ -1,6 +1,6 @@
 import { escapeHtml } from '../components/ui.js?v=20260824-production-v201ar';
 import { createReferenceLinkDialogueHandler, referenceDialogueStatus, referenceNextStepDescription, routeReferenceInput, syncReferenceDialogueStatus } from './briefReferenceDialogueState.js?v=20260824-production-v201ar';
-import { dialogueBudgetReached,referenceDialoguePhase,sanitizeDialogueTopics } from './briefDialoguePolicy.js?v=20260824-production-v201ar';
+import { delegates,dialogueBudgetReached,referenceDialoguePhase,sanitizeDialogueTopics } from './briefDialoguePolicy.js?v=20260824-production-v201ar';
 import { followConversationAfter } from './briefConversationScroll.js?v=20260824-production-v201ar';
 import { appendDialogueSuggestions,briefIdeaPreview,contextualDialogueFallback,dialogueHistoryMarkup,ideaMarkup,modeLabel,normalizedDialogueHistory,recordDialogueHistory } from './briefDialogueProjection.js?v=20260824-production-v201ar';
 import { dialogueIntakeState, dialogueProgressState } from './briefDialogueReadiness.js?v=20260824-production-v201ar';
@@ -345,7 +345,7 @@ export function bindBriefDialogue(host, { form, referenceState={}, referenceAtta
     recordHistory('user', text, { topic: answeredTopic, selectedAnswer: Boolean(answeredTopic) });
     ideaReady = false;
     sync();
-    if (dialogueBudgetReached([...completedTopics], mode)) {
+    if (dialogueBudgetReached([...completedTopics], mode) && !delegates(text)) {
       ideaReady = true;
       const intake = sync();
       await persistDialogueState();

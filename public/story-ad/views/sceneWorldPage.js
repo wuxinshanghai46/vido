@@ -4,10 +4,10 @@ import { bindScenePlanUpdate, scenePlanBlockedView } from './scenePlanStatus.js?
 
 function sceneGenerationQueue(bundle = {}) {
   const scenes = Array.isArray(bundle.assets?.scenes) ? bundle.assets.scenes : [];
-  if (!scenes.length) return '<section class="card"><h2>场景资产核对</h2><p>统一制作图谱尚未建立场景。</p></section>';
-  return `<section class="card scene-generation-queue"><div class="section-title"><h2>场景资产核对</h2><span>${scenes.length}</span></div><p>这里仅查看统一制作图谱生成的场景、机位与全景；如需修改，请回到资产中心修改设定后重新执行“生成全部制作资产”。</p><div class="scene-queue-grid">${scenes.map(scene => {
+  if (!scenes.length) return '<section class="card"><h2>场景资产核对</h2><p>尚未建立场景资产。</p></section>';
+  return `<section class="card scene-generation-queue"><div class="section-title"><h2>场景资产核对</h2><span>${scenes.length}</span></div><p>这里仅查看场景、机位与人物移动关系；如需修改，请回到资产中心，在对应场景卡片中重新生成。</p><div class="scene-queue-grid">${scenes.map(scene => {
     const generated = Boolean(scene.layout?.image_url || scene.view_images?.length || scene.cameras?.some(camera => camera.image_url));
-    return `<article class="asset-card"><div><small>${generated ? '已进入统一制作图谱' : '统一制作资产待补齐'}</small><h3>${escapeHtml(scene.name || '未命名场景')}</h3><p>${escapeHtml(scene.description || scene.scene_spec?.description || '')}</p></div><span class="status-tag ${generated ? 'is-ready' : 'is-neutral'}">${generated ? '场景资产已就绪' : '请返回资产中心统一生成'}</span></article>`;
+    return `<article class="asset-card"><div><small>${generated ? '场景资产已生成' : '场景资产待补齐'}</small><h3>${escapeHtml(scene.name || '未命名场景')}</h3><p>${escapeHtml(scene.description || scene.scene_spec?.description || '')}</p></div><span class="status-tag ${generated ? 'is-ready' : 'is-neutral'}">${generated ? '场景资产已就绪' : '请返回资产中心生成场景'}</span></article>`;
   }).join('')}</div></section>`;
 }
 

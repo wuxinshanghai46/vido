@@ -26,6 +26,8 @@ export function dialogueBudgetReached(values = [], mode = '') {
   return sanitizeDialogueTopics(values, mode).length >= dialogueQuestionBudget(mode);
 }
 
+export const delegates = value => /(?:帮我|由你|你来).{0,8}(?:完善|补全|补充|细化|决定)/u.test(value);
+
 export function referenceDialoguePhase(reference = {}) {
   const status = String(reference.status || '').toLowerCase();
   if (!reference.analysis_id && !['importing', 'uploading', 'queued', 'running'].includes(status)) return 'none';

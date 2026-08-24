@@ -110,7 +110,8 @@ async function main() {
   assert.match(referenceQuestionSource, /data-reference-choice="none"[^>]*>没有<\/button>/, '无参考按钮只显示“没有”');
   assert.doesNotMatch(referenceQuestionSource, /没有，继续/, '无参考按钮不得附加流程词');
   assert.match(referenceQuestionSource, /产品实拍、品牌视觉、竞品视频或镜头节奏参考/, '商业参考问题必须结合商业内容类型');
-  assert.match(referenceQuestionSource, /人物形象、时代氛围、影片画面或镜头参考/, '剧情参考问题必须结合剧情内容类型');
+  assert.match(referenceQuestionSource, /青年年龄变化、机器人外观、生活空间/, '机器人题材的参考问题必须跟随当前内容');
+  assert.match(referenceQuestionSource, /人物形象、生活环境、影片画面或镜头/, '普通现代剧情不得默认套用古代文化问题');
   assert.match(referenceQuestionSource, /直接在这里上传参考视频或添加公开链接/, '内容类型尚未确认时必须使用中性参考入口，不得擅自称为故事');
   assert.match(referenceQuestion.referenceQuestionText({}), /上传参考视频或添加公开链接/, '未确认广告或剧情前的实际提示必须保持中性');
   assert.match(castQuestionSource, /目标客户需要在画面中实际出镜吗/, '人物追问必须明确区分目标客户与实际出镜人物');

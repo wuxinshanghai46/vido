@@ -281,9 +281,7 @@ export async function mount(host, context) {
         && !await ensureSubjectRecoveryReady({ bundle, generationPayload: payload, button, host })) return false;
       const selected = payload.subject_targets?.length || payload.expected_people + payload.expected_animals;
       const regeneratingCompletePerson = selected === 1 && group === 'people' && personAssetState(target || {}) === 'complete_dossier';
-      const lookCount = payload.cast_profiles.reduce((sum, profile) => sum + Math.max(1, profile.look_profiles?.length || 0), 0);
-      const lookNotice = lookCount > payload.expected_people ? `当前 ${payload.expected_people} 个人物共包含 ${lookCount} 套造型；每套造型会分别生成独立档案并产生相应模型调用。\n\n` : '';
-      const confirmation = `${lookNotice}本次会生成完整人物、穿搭配饰、随身物、动作表情。`;
+      const confirmation = '本次会生成完整人物、穿搭配饰、随身物、动作表情。';
       const accepted = await confirmDialog(confirmation, {
         title: regeneratingCompletePerson ? `重生成${target.name}的完整人物档案` : (selected > 1 ? '生成缺失人物 / 动物资产' : (target ? `生成${target.name}的完整资产` : '生成人物 / 动物资产')),
         confirmText: regeneratingCompletePerson ? '确认重生成完整档案' : '确认开始生成',

@@ -26,19 +26,19 @@ const TOPIC_HINTS = [
   ['commercial_evidence', /卖点|价值|证据|产品|功效/u], ['subject_identity', /人物|主角|主体|身份/u],
 ];
 const TOPIC_QUESTIONS = {
-  subject_identity: ['古代女主和现代男主分别是什么身份？', ['守护秘宝的家族传人和文物修复师', '被追杀的女侠和历史研究者', '古代医女和现代急诊医生']],
-  subject_relationship: ['他们第一次相遇时，是什么关系？', ['原本陌生，因为秘宝相识', '彼此利用，后来产生感情', '两家有旧怨，一开始互相敌视']],
-  subject_motivation: ['他们各自最想得到或守住什么？', ['女主守住秘宝，男主查清身世', '两人都想阻止反派改变历史', '女主想回家，男主想让她留下']],
-  opposition: ['那个权贵为什么一定要抢到秘宝？', ['想借秘宝夺取皇位', '想用秘宝让自己长生', '想掩盖与女主家族有关的旧案']],
-  plot_trigger: ['反派第一次出手时，做了什么让男女主卷入争夺？', ['嫁祸男主，逼他逃亡追查', '抓走女主亲人，逼她交出秘宝', '借朝廷之手灭门，强夺秘宝']],
-  plot_development: ['冲突升级后，两人的关系怎么变化？', ['一起追查，感情逐渐加深', '互相隐瞒，信任彻底破裂', '先分开，再因为真相重新联手']],
-  climax_ending: ['最后一场对决中，他们得到什么，又失去什么？', ['守住彼此，但秘宝永远消失', '打败反派，却被迫相隔千年', '放弃秘宝，换来家人与爱人的自由']],
-  audience_intent: ['你希望观众看完后最强烈的感受是什么？', ['为跨越千年的爱情感动', '思考命运和自己的选择', '感到复仇结束后的释然']],
-  world_era: ['古代部分发生在哪个朝代或年代？', ['参考唐代的繁华城市', '参考明代的江湖与朝堂', '不对应真实朝代的架空古代']],
-  world_region_rules: ['故事主要发生在哪里？穿越需要遵守什么规则？', ['古城与现代博物馆，秘宝触发穿越', '江湖门派与现代城市，月圆时穿越', '架空王朝与现代小镇，只能穿越一次']],
-  character_continuity: ['到了现代后，人物的长相和年龄怎么变化？', ['长相不变，只改变服装和气质', '五官相似，但年龄和身份改变', '转世为另一个人，保留明显特征']],
+  subject_identity: ['主要人物分别是什么身份？', ['普通人之间的相遇', '不同职业的人因事件相识', '一方陪伴另一方成长']],
+  subject_relationship: ['他们之间最重要的关系是什么？', ['从陌生到彼此信任', '长期陪伴但逐渐产生分歧', '一开始亲近，后来被迫分开']],
+  subject_motivation: ['他们各自最想得到或守住什么？', ['守住重要的人和承诺', '找到自己真正想要的生活', '完成一件一直没有完成的事']],
+  opposition: ['这段故事最大的阻力来自什么？', ['时间与现实变化', '人物之间的选择冲突', '一次无法回避的意外']],
+  plot_trigger: ['发生什么事后，人物不得不开始行动？', ['一次意外打破原有生活', '收到一个无法忽视的消息', '失去重要事物后决定改变']],
+  plot_development: ['事情发展后，人物关系和目标怎样变化？', ['陪伴加深，但现实阻力出现', '彼此误解，后来重新理解', '目标一致，却选择了不同道路']],
+  climax_ending: ['故事最后最重要的选择是什么？', ['接受离别并完成最后承诺', '放下过去，开始新的生活', '为守住对方付出无法挽回的代价']],
+  audience_intent: ['你希望观众看完后最强烈的感受是什么？', ['感受到长期陪伴的重量', '思考时间、失去与选择', '在遗憾中看到温暖和希望']],
+  world_era: ['故事发生在什么时期？', ['当代现实生活', '距离现在不远的未来', '不对应现实年代的架空世界']],
+  world_region_rules: ['故事主要发生在哪里，这个世界有什么关键规则？', ['城市日常空间', '小城与自然环境', '具有特殊技术规则的未来社会']],
+  character_continuity: ['随着时间推进，人物外貌和状态怎样变化？', ['年龄自然增长，身份保持不变', '外貌变化明显，但保留核心特征', '不同阶段使用独立造型表现']],
   visual_medium: ['你希望用哪种方式来拍？', ['真人拍摄', '二维动画', '三维动画']],
-  visual_tone: ['你希望画面看起来更接近哪一种？', ['像真实电影一样自然', '画面柔美，有古风意境', '场面宏大，像传奇故事']],
+  visual_tone: ['你希望画面看起来更接近哪一种？', ['像真实电影一样自然', '画面柔和，突出人物情绪', '视觉风格鲜明，强调想象力']],
   commercial_evidence: ['观众从哪个画面能直接看出产品的好处？', ['使用前后效果对比', '真实使用过程和结果', '用户当场体验后的反应']],
 };
 const COMMERCIAL_TOPIC_QUESTIONS = {
@@ -98,6 +98,29 @@ function questionBudgetReached(value = [], contentMode = '') {
   return cleanTopicsForMode(value, contentMode).length >= questionBudget(contentMode);
 }
 
+function creativeDelegationRequested(value = '') {
+  return /(?:这些|这个|内容|设定)?(?:你|平台|系统)?(?:帮我|替我|由你|你来|请你)[^，。；\n]{0,16}(?:完善|补全|补充|细化|设计|决定|安排)|(?:完善|补全|补充|细化)[^，。；\n]{0,8}(?:一下|下|吧)/u.test(cleanText(value, 400));
+}
+
+function contextualQuestion(profile = {}, topic = '', accumulatedIdea = '', contentMode = '') {
+  const fallback = profile.questions?.[topic] || ['', []];
+  if (contentMode === 'commercial_subject' || !/(?:机器人|机械人|仿生人|AI陪伴|人工智能)/u.test(cleanText(accumulatedIdea, 4000))) return fallback;
+  const robotQuestions = {
+    subject_identity: ['青年和机器人分别是什么身份，机器人为什么会陪伴他？', ['普通青年与家用陪伴机器人', '独居创作者与实验型机器人', '青年工程师与他亲手造的机器人']],
+    subject_relationship: ['青年和机器人的关系希望怎样发展？', ['从工具变成一生的家人', '彼此陪伴但始终保持克制', '青年依赖它，后来学会告别']],
+    subject_motivation: ['他们一生最想守住的是什么？', ['守住彼此陪伴的记忆', '让青年不再独自面对人生', '完成一起去看海的约定']],
+    opposition: ['这段陪伴最大的阻力来自什么？', ['人的衰老与机器人的长久存在', '记忆逐渐消失但机器人仍记得', '机器人老化，无法继续陪伴']],
+    plot_trigger: ['哪件事让机器人开始陪伴青年？', ['青年独居时收到陪伴机器人', '青年在故障仓库救下机器人', '青年亲手完成机器人的首次启动']],
+    plot_development: ['青年逐渐老去时，他们的关系怎样变化？', ['机器人照顾他并保存共同记忆', '青年失忆后一次次重新认识它', '机器人逐渐故障却隐瞒自己的状态']],
+    climax_ending: ['青年离世后，机器人为什么选择沉入海底？', ['履行一起看海的最后约定', '把共同记忆永久封存在海底', '完成告别后主动结束漫长等待']],
+    audience_intent: ['你希望观众从这段人机陪伴中感受到什么？', ['陪伴终会结束但记忆会留下', '生命有限让相处更珍贵', '机器人也学会了爱与告别']],
+    world_era: ['这个人机陪伴故事发生在当代还是近未来？', ['当代城市，机器人技术较先进', '近未来，陪伴机器人已经普及', '从当代开始，跨越到近未来']],
+    world_region_rules: ['他们一生主要在哪些地方共同生活？', ['城市住宅、医院与最后的海边', '小城老屋、公园与海岸', '未来公寓、养老机构与深海']],
+    character_continuity: ['青年从年轻到老年，机器人外观怎样随时间变化？', ['青年自然老去，机器人保留同一外观', '青年分阶段变老，机器人也逐渐磨损', '机器人定期换外壳但保留同一核心身份']],
+  };
+  return robotQuestions[topic] || fallback;
+}
+
 function assertInput(body = {}) {
   if (cleanText(body.user_message || body.message || '', 1600)) return;
   const error = new Error('请先输入你想制作的内容；没有调用文本模型');
@@ -139,6 +162,7 @@ function systemPrompt(dynamicKnowledge = '', contentMode = '') {
       ? '当前是商业广告。广告与剧情短片必须使用不同问询合同：只确认产品或服务主体、核心卖点、可见证据、目标受众与行动、真实展示场景、画面方式和视觉方向。禁止追问人物关系、感情变化、反派、冲突升级、穿越、高潮或故事结局；只有用户明确要求剧情化广告并亲自提出人物情感时，才可沿用户原话确认，不能主动添加爱情或其它情感线。'
       : '当前是剧情短片。问询顺序必须连贯：先理清人物、关系、动机与对立，再理清触发、发展和结局，然后确认受众与表达目标，再确认时空规则和跨时代连续性，最后确认视觉媒介与气质。用户原话已明确的部分直接跳过，只问该顺序中最早的真实缺口，不能在不同层级之间来回跳。',
     '“古代”“现代”“好看”“电影感”这类宽泛词不能单独算 world_context 或 visual_direction 已明确；应结合用户内容给出 2 至 3 个专业选项帮助选择。用户说“由你建议/你来定”时，先给出具体建议并请用户确认，确认后才能标为 explicit。',
+    '用户说“帮我完善”“你来补充”“由你决定”等委托创作时，必须根据当前累计设想给出一项具体、可直接采用的完善建议，并用一个简短问题请用户确认；不得沉默、不得跳过回复，也不得套用与当前题材无关的古代、爱情、权贵、秘宝或穿越案例。',
     'coverage 的每个 evidence 必须是从当前累计设想中原样摘取的短语，不能改写或编造。未明确的项 status 必须为 missing。只有五类均为 explicit，idea_ready 才能为 true；否则必须继续 idea_details。',
     '用户一次已经讲完整时不得重复询问已经有直接证据的内容；completed_topics 中的决策已经回答，禁止换一种说法再次询问。五类均明确后 next_step 才进入 specifications。时长、画幅和清晰度必须作为一组简洁确认，不能把系统默认值说成用户已经确认。',
     '规格确认后 next_step 才能进入 reference。参考提问必须结合当前剧情或商业内容说明可能有价值的参考类型；参考材料不是必填项，但必须由用户明确选择提供或不提供。',
@@ -237,7 +261,7 @@ function normalizeParsed(parsed = {}, accumulatedIdea = '', completedTopics = nu
   if (repeatedCompletedTopic) {
     questionTopic = nextQuestionTopic(profile, completed);
     if (questionTopic && profile.questions[questionTopic]) {
-      [reply, suggestedAnswers] = profile.questions[questionTopic];
+      [reply, suggestedAnswers] = contextualQuestion(profile, questionTopic, accumulatedIdea, contentMode);
       missingTopics = [questionTopic];
       ideaReady = false;
     }
@@ -253,14 +277,14 @@ function normalizeParsed(parsed = {}, accumulatedIdea = '', completedTopics = nu
     } else if (!missingTopics.length) missingTopics = COVERAGE_TOPICS.filter(topic => coverage[topic].status !== 'explicit').slice(0, 1).map(topic => COVERAGE_LABELS[topic]);
     if (!questionTopic) questionTopic = inferQuestionTopic(reply, missingTopics, completedTopics, contentMode);
     if (!impliedGap && parsed.idea_ready === true && !coverageReady && profile.questions[questionTopic]) {
-      [reply, suggestedAnswers] = profile.questions[questionTopic];
+      [reply, suggestedAnswers] = contextualQuestion(profile, questionTopic, accumulatedIdea, contentMode);
       missingTopics = [questionTopic];
     }
     if (contentMode === 'commercial_subject'
       && !commercialNarrativeAuthorized(accumulatedIdea)
       && commercialStoryLeak(`${reply} ${suggestedAnswers.join(' ')}`)) {
       questionTopic = profile.order.find(topic => !cleanTopicsForMode(completedTopics, contentMode).includes(topic)) || profile.order[0];
-      [reply, suggestedAnswers] = profile.questions[questionTopic];
+      [reply, suggestedAnswers] = contextualQuestion(profile, questionTopic, accumulatedIdea, contentMode);
       missingTopics = [questionTopic];
     }
   } else { suggestedAnswers = []; questionTopic = ''; }
@@ -315,7 +339,7 @@ function recoveryResponse(body = {}, failedModels = []) {
   const completed = cleanTopicsForMode(body.completed_topics, body.content_mode);
   const profile = topicProfile(body.content_mode);
   const topic = nextQuestionTopic(profile, completed) || profile.order[0];
-  const fallback = profile.questions[topic];
+  const fallback = contextualQuestion(profile, topic, body.accumulated_idea || body.brief || '', body.content_mode);
   return {
     dialogue_reply: fallback[0], idea_ready: false, missing_topics: [topic], question_topic: topic,
     suggested_answers: fallback[1], next_step: 'idea_details',
@@ -327,7 +351,7 @@ function recoveryResponse(body = {}, failedModels = []) {
 async function run({ body = {}, modelGateway, taskId = '' } = {}) {
   assertInput(body);
   const accumulatedIdea = body.accumulated_idea || body.brief || '';
-  if (questionBudgetReached(body.completed_topics, body.content_mode)) return {
+  if (questionBudgetReached(body.completed_topics, body.content_mode) && !creativeDelegationRequested(body.user_message || body.message)) return {
     dialogue_reply: '创作关键信息已足够，接下来确认成片规格。',
     idea_ready: true,
     missing_topics: [],
@@ -396,6 +420,8 @@ module.exports = {
   cleanTopicsForMode,
   questionBudget,
   questionBudgetReached,
+  creativeDelegationRequested,
+  contextualQuestion,
   topicProfile,
   nextQuestionTopic,
   commercialNarrativeAuthorized,

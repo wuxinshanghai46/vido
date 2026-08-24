@@ -33,6 +33,8 @@ async function main() {
   assert.match(service.systemPrompt(), /suggested_answers/);
   assert.match(service.systemPrompt(), /不得是“继续补充”“都可以”“其他”/);
   assert.match(service.systemPrompt(), /不能等用户反问才意识到/);
+  assert.match(service.systemPrompt(), /帮我完善/);
+  assert.equal(service.creativeDelegationRequested('这些你帮我完善一下吧'), true);
   assert.match(service.systemPrompt('【动态检索到的知识】导演提问方法'), /只用于改善提问方法/);
   assert.match(service.systemPrompt('【动态检索到的知识】导演提问方法'), /不得照搬其中案例/);
 
@@ -87,7 +89,7 @@ async function main() {
   const crossEra = service.buildResponse({ parsed: JSON.parse(ready), body: { accumulated_idea: crossEraIdea } });
   assert.equal(crossEra.idea_ready, false, '跨时代人物连续性未回答时不得进入规格');
   assert.deepEqual(crossEra.missing_topics, ['跨时代人物连续性']);
-  assert.match(crossEra.dialogue_reply, /现代后.*长相和年龄怎么变化/);
+  assert.match(crossEra.dialogue_reply, /时间推进.*外貌和状态怎样变化/);
   assert.equal(crossEra.suggested_answers.length, 3);
   assert.equal(service.impliedDecisionGap(`${crossEraIdea}，人物容貌基本不变，只改变服装与气质`), null, '用户回答人物连续性后不得重复追问');
   let impliedModelCalls = 0;
@@ -97,7 +99,7 @@ async function main() {
   });
   assert.equal(impliedModelCalls, 0, '可确定的内容特有问题必须即时返回，不等待模型');
   assert.equal(immediateCrossEra.model_meta.deterministic, true);
-  assert.match(immediateCrossEra.dialogue_reply, /现代后.*长相和年龄怎么变化/);
+  assert.match(immediateCrossEra.dialogue_reply, /时间推进.*外貌和状态怎样变化/);
   assert.equal(immediateCrossEra.question_topic, 'character_continuity');
 
   const repeatedOpposition = JSON.stringify({
@@ -116,7 +118,7 @@ async function main() {
     body: { accumulated_idea: '古代武侠故事，反派是江湖仇家', completed_topics: ['opposition'] },
   });
   assert.equal(normalizedRepeatedOpposition.question_topic, 'plot_trigger');
-  assert.match(normalizedRepeatedOpposition.dialogue_reply, /第一次出手/);
+  assert.match(normalizedRepeatedOpposition.dialogue_reply, /开始行动/);
   assert.equal(service.validateRaw(repeatedOpposition, { accumulatedIdea: '古代武侠故事', history: [{ role: 'assistant', content: JSON.parse(repeatedOpposition).reply }] }), false, '与最近一轮完全相同的助手回复不得再次展示');
   assert.equal(service.displayableReply('我记下了你的回答，接下来继续确认。'), false);
   assert.equal(service.displayableReply('你希望他们第一次相遇时是什么关系？'), true);
@@ -180,7 +182,7 @@ async function main() {
     modelGateway: { async generateText() { const error = new Error('invalid'); error.code = 'MODEL_ATTEMPTS_EXHAUSTED'; error.failed_models = ['one', 'two']; throw error; } },
   });
   assert.equal(recovered.question_topic, 'plot_trigger');
-  assert.match(recovered.dialogue_reply, /第一次出手/);
+  assert.match(recovered.dialogue_reply, /开始行动/);
   assert.doesNotMatch(recovered.dialogue_reply, /没有取得可靠|请补充最影响制作/);
   assert.doesNotMatch(recovered.dialogue_reply, /我记下了|我理解了|接下来/);
   assert.equal(recovered.model_meta.deterministic, true);
@@ -222,7 +224,32 @@ async function main() {
   assert.notEqual(relationshipRecovery.dialogue_reply, motivationRecovery.dialogue_reply, '不同问题主题不得复用同一句恢复文案');
   const toneRecovery = service.recoveryResponse({ completed_topics: [...service.DIALOGUE_TOPICS].slice(0, 12) });
   assert.match(toneRecovery.dialogue_reply, /画面看起来/);
-  assert.deepEqual(toneRecovery.suggested_answers, ['像真实电影一样自然', '画面柔美，有古风意境', '场面宏大，像传奇故事']);
+  assert.deepEqual(toneRecovery.suggested_answers, ['像真实电影一样自然', '画面柔和，突出人物情绪', '视觉风格鲜明，强调想象力']);
+  const robotIdea = '现代青年从年轻到老年一直由机器人陪伴，青年离世后机器人走向海底永久沉睡。';
+  const robotRecovery = service.recoveryResponse({ accumulated_idea: robotIdea, user_message: '这些你帮我完善一下吧', completed_topics: [] });
+  assert.match(robotRecovery.dialogue_reply, /青年和机器人/);
+  assert.doesNotMatch(`${robotRecovery.dialogue_reply} ${robotRecovery.suggested_answers.join(' ')}`, /古代|权贵|秘宝|穿越/);
+  let delegatedModelCalls = 0;
+  const delegated = await service.run({
+    body: {
+      accumulated_idea: robotIdea,
+      user_message: '这些你帮我完善一下吧',
+      content_mode: 'narrative_story',
+      completed_topics: ['subject_identity', 'subject_relationship', 'subject_motivation'],
+    },
+    modelGateway: {
+      async generateText() {
+        delegatedModelCalls += 1;
+        return { text: JSON.stringify({
+          reply: '我建议把核心冲突设为人的衰老与机器人的长久存在，是否采用？',
+          question_topic: 'opposition', idea_ready: false, missing_topics: ['核心阻力'], next_step: 'idea_details',
+          suggested_answers: ['采用这个方向', '改成机器人逐渐故障', '改成青年逐渐失去记忆'], coverage: {},
+        }), used_model: 'fixture', fallback_used: false, failed_models: [] };
+      },
+    },
+  });
+  assert.equal(delegatedModelCalls, 1, '用户委托平台完善时，即使达到普通提问上限也必须回复');
+  assert.match(delegated.dialogue_reply, /人的衰老与机器人的长久存在/);
   const reviewResult = service.buildResponse({ parsed: JSON.parse(ready), body: { accumulated_idea: completeIdea, specifications_confirmed: true, reference_skipped: true } });
   assert.equal(reviewResult.next_step, 'review', '规格与参考都完成后下一步必须由状态机确定，不能听从模型重复插入阶段');
 
@@ -252,8 +279,9 @@ async function main() {
   assert.match(dialogueSource, /appendSuggestions/);
   assert.match(dialogueSource, /result\?\.suggested_answers/);
   assert.match(dialogueSource, /completed_topics: \[\.\.\.completedTopics\]/);
-  assert.match(dialogueSource, /completedTopics\.add\(activeQuestionTopic\)/);
-  assert.ok(dialogueSource.indexOf('routeReferenceInput({') < dialogueSource.indexOf('completedTopics.add(activeQuestionTopic)'), '参考链接或视频意图必须先路由，不能误标当前创作问题已完成');
+  assert.match(dialogueSource, /completedTopics\.add\(answeredTopic\)/);
+  assert.match(dialogueSource, /!delegates\(text\)/, '用户要求平台完善时不得被提问上限静默吞掉');
+  assert.ok(dialogueSource.indexOf('routeReferenceInput({') < dialogueSource.indexOf('completedTopics.add(answeredTopic)'), '参考链接或视频意图必须先路由，不能误标当前创作问题已完成');
   assert.match(guidedResumeSource, /answers: \['真人实拍', '国风二维动画', '电影级三维动画'\]/);
   assert.doesNotMatch(guidedResumeSource, /克制而写实|诗意留白|宏大奇幻/);
   assert.match(dialogueSource, /dialogueProgressState/);
