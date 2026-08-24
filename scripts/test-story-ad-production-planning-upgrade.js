@@ -175,7 +175,9 @@ async function main() {
   assert.match(planningUi, /data-scene-edit/);
   assert.match(planningUi, /data-product-edit/);
   assert.match(assetUi, /standalone_generation_supported/);
-  assert.match(assetUi, /AI 生成主体参考图/);
+  assert.match(assetUi, /AI 生成商品资产/);
+  assert.match(assetUi, /AI 生成展示主体参考图/);
+  assert.match(assetUi, /不会伪装成独立商品四视图/);
   assert.match(assetUi, /data-upload-product/);
   assert.match(assetUi, /重新生成场景与机位/);
   assert.doesNotMatch(assetUi, /本片广告结构与竞品方法/);
