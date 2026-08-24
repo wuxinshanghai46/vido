@@ -200,7 +200,21 @@ async function main() {
   assert.ok(dossierDone.dossier.qa.wardrobe_consistency_score >= 0.86);
   assert.ok(dossierDone.dossier.qa.action_physics_score >= 0.8);
   assert.ok(fs.existsSync(mediaAdapter.assetPathFromName(dossierDone.dossier.sheet.filename)));
-  const dossierCalls = calls.filter(call => call.stage === 'new_story_ad.person_dossier_atlas');
+  const dossierStageCounts = calls.reduce((counts, call) => {
+    if (![
+      'new_story_ad.person_dossier_atlas',
+      'new_story_ad.person_dossier_expression',
+      'new_story_ad.person_dossier_action',
+    ].includes(call.stage)) return counts;
+    counts[call.stage] = (counts[call.stage] || 0) + 1;
+    return counts;
+  }, {});
+  const dossierCalls = calls.filter(call => dossierStageCounts[call.stage]);
+  assert.deepStrictEqual(dossierStageCounts, {
+    'new_story_ad.person_dossier_atlas': 2,
+    'new_story_ad.person_dossier_expression': 1,
+    'new_story_ad.person_dossier_action': 1,
+  }, 'four dossier atlases must remain routed through their three managed model stages');
   assert.strictEqual(
     new Set(dossierCalls.map(call => mediaAdapter.safeFilename(call.filename))).size,
     4,
