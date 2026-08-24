@@ -104,7 +104,8 @@ function testUiAndExportBoundaries() {
   assert(exporter.includes('const WIDTH = 1800') && exporter.includes('const HEIGHT = 2400'));
   assert(exporter.includes("request(url, { responseType: 'blob'") && exporter.includes('model_call_count: 0'));
   assert(!/generate(?:Image|Vision|Text)|runStage\(|fetch\([^)]*\/generate/i.test(exporter), '本地导出不得触发生成或任务阶段');
-  assert(world.includes('data-plan-scene-experience') && world.includes('data-generate-panorama') && world.includes('data-world-mode="panorama"'), '3D/360 入口不得被场景档案替换');
+  assert(world.includes('data-plan-scene-experience') && world.includes('data-world-mode="panorama"'), '可选的3D/360规划与查看入口不得被场景档案替换');
+  assert(!world.includes('data-generate-panorama'), '场景世界不得绕过统一制作图谱恢复旧的单项全景付费入口');
   assert(css.includes('@media(max-width:820px)') && css.includes('.drawer.is-scene-drawer{width:100vw'), '移动端场景抽屉必须使用完整视口宽度');
   assert(html.includes('/story-ad/scene-dossier.css'));
 }
