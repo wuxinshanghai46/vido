@@ -1,8 +1,8 @@
-import { request, uploadAsset, uploadReferenceVideo } from '../api.js?v=20260824-production-v204h';
-import { beginReferenceReplacement, referenceSyncInterrupted, replacementCurrent, removeProjectReference, restoreReferenceReplacement } from './referenceReplacementState.js?v=20260824-production-v204h';
-import { retryReferenceAnalysisRequest, retryReferenceImportRequest } from './referenceRetryStore.js?v=20260824-production-v204h';
-import { loadProjectList } from './projectListStore.js?v=20260824-production-v204h';
-import { loadProjectBundle, refreshProjectBundle } from './projectBundleStore.js?v=20260824-production-v204h';
+import { request, uploadAsset, uploadReferenceVideo } from '../api.js?v=20260824-production-v204i';
+import { beginReferenceReplacement, referenceSyncInterrupted, replacementCurrent, removeProjectReference, restoreReferenceReplacement } from './referenceReplacementState.js?v=20260824-production-v204i';
+import { retryReferenceAnalysisRequest, retryReferenceImportRequest } from './referenceRetryStore.js?v=20260824-production-v204i';
+import { loadProjectList } from './projectListStore.js?v=20260824-production-v204i';
+import { loadProjectBundle, refreshProjectBundle } from './projectBundleStore.js?v=20260824-production-v204i';
 export function createProjectStore() {
   const state = {
     projects: [],
@@ -55,7 +55,7 @@ export function createProjectStore() {
     hydrateReferenceFailure();
     return bundle;
   }
-  const mediaStore = () => import('./mediaCatalogStore.js?v=20260824-production-v204h'), loadMediaPage = async options => (await mediaStore()).loadMediaPage({ request, state }, options);
+  const mediaStore = () => import('./mediaCatalogStore.js?v=20260824-production-v204i'), loadMediaPage = async options => (await mediaStore()).loadMediaPage({ request, state }, options);
   const loadMoreMedia = async (kind = 'keyframes', limit = 24) => (await mediaStore()).loadMoreMedia({ request, state, set }, kind, limit);
 
   async function refreshSections(sections) {

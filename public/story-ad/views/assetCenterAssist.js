@@ -1,7 +1,7 @@
-import { request } from '../api.js?v=20260824-production-v204h';
-import { promptDialog } from '../components/dialog.js?v=20260824-production-v204h';
-import { setButtonBusy, toast } from '../components/ui.js?v=20260824-production-v204h';
-import { applyGeneratedPersonLooks, collectPersonLookValues } from './assetCenterPersonLooks.js?v=20260824-production-v204h';
+import { request } from '../api.js?v=20260824-production-v204i';
+import { promptDialog } from '../components/dialog.js?v=20260824-production-v204i';
+import { setButtonBusy, toast } from '../components/ui.js?v=20260824-production-v204i';
+import { applyGeneratedPersonLooks, collectPersonLookValues } from './assetCenterPersonLooks.js?v=20260824-production-v204i';
 
 export function createAssetAssistHandlers(bundle) {
   const assistPerson = async (item, form, button = null) => {
