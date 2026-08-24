@@ -1,8 +1,11 @@
 # 2026-08-24 当前上下文驱动生成与 V202a 生产交接
 
-> 交接时间：2026-08-24 18:15（Asia/Shanghai）  
-> 目标：家庭电脑从 Gitee 拉取后，继续优化剧情广告的人物、场景与模型接入。  
-> 权威远端：仅 Gitee `origin`；不使用、不推送、不核对 GitHub。  
+> 交接时间：2026-08-24 18:15（Asia/Shanghai）
+>
+> 目标：家庭电脑从 Gitee 拉取后，继续优化剧情广告的人物、场景与模型接入。
+>
+> 权威远端：仅 Gitee `origin`；不使用、不推送、不核对 GitHub。
+>
 > 当前分支：`codex/story-ad-systemic-remediation`
 
 ## 1. 当日目标与用户决策
@@ -159,6 +162,7 @@ b604d565 fix(story-ad): plan typed subjects before generation
 f04f75ff build(story-ad): freeze V202 release
 135c7185 fix(story-ad): keep orchestration boundary within freeze
 3ce9d6ab build(story-ad): freeze V202a release
+465d0601 docs(story-ad): hand off V202a context planning
 ```
 
 交接文件提交会位于以上提交之后。家庭电脑执行：
@@ -179,8 +183,8 @@ node src/server.js
 
 | 核对面 | 结果 | 证据 |
 |---|---|---|
-| 本地 Git | 一致 | 交接前 `HEAD=3ce9d6ab...`，与上游 ahead/behind `0/0` |
-| Gitee `origin` | 一致 | `origin/codex/story-ad-systemic-remediation=3ce9d6ab...`；交接 MD 提交后再次推送并复核 `0/0` |
+| 本地 Git | 一致 | 交接完成后当前 `HEAD` 与上游复核为 ahead/behind `0/0` |
+| Gitee `origin` | 一致 | `origin/codex/story-ad-systemic-remediation` 已包含 V202a 代码、制品与交接 MD |
 | 本地运行制品 | 一致 | 836 个清单内运行文件验证通过，`runtime_hash=1581e766...d0501` |
 | 生产运行制品 | 一致 | PM2 实际目录的 836 个清单文件验证通过；加运行清单共 837 项 |
 | 制品身份 | 一致 | `build_id=20260824-production-v202a`，`artifact_id=c262e757...a3fb1`，本地与生产完全相同 |
