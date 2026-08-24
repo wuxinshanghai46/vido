@@ -1,5 +1,5 @@
-import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260824-production-v201ao';
-import { bindMoreMedia, moreMediaButton } from './finalMediaPagination.js?v=20260824-production-v201ao';
+import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260824-production-v201ap';
+import { bindMoreMedia, moreMediaButton } from './finalMediaPagination.js?v=20260824-production-v201ap';
 
 function itemIndex(item = {}, index = 0) {
   const value = Number(item.shot_index ?? item.shotIndex ?? item.index);
