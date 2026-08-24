@@ -41,15 +41,15 @@ const assetPersonState = fs.readFileSync(path.join(root, 'public/story-ad/views/
 const assetView = fs.readFileSync(path.join(root, 'public/story-ad/views/assetCenterView.js'), 'utf8');
 assert.match(assetPersonState, /visual_asset_contract_version \|\| 0\) >= 2/);
 assert.match(assetView, /旧版档案 · 待升级/);
-assert.match(assetView, /升级独立穿搭 \/ 配饰档案/);
+assert.match(assetView, /生成缺失人物 \/ 动物资产/, 'batch upgrade action must describe the current unified missing-subject flow');
 assert.match(assetView, /repair_existing: repairing/);
 assert.match(assetView, /subject_targets = pending\.map/, 'one user action must submit every missing person target');
 
 const subjectBundleSource = fs.readFileSync(path.join(root, 'src/services/newStoryAd/subjectAssetBundleService.js'), 'utf8');
-assert.match(subjectBundleSource, /for \(let index = 0; index < humans\.length; index \+= 1\)/, 'the service must process people as isolated subject units');
+assert.match(subjectBundleSource, /generationConcurrency\.map\([\s\S]*?humans\.map\(\(member, index\) => \(\{ member, index \}\)\)[\s\S]*?Math\.min\(2, Math\.max\(1, humans\.length\)\)/, 'the service must process people as isolated units with bounded concurrency');
 assert.match(subjectBundleSource, /subjectFailures\.push\(\{ kind: 'human'/, 'one failed person must be recorded independently');
 assert.match(subjectBundleSource, /人物 \$\{index \+ 1\} 生成中断，继续处理其它独立主体/, 'one failed person must not stop the remaining people');
-assert.match(subjectBundleSource, /checkpoint\.humans\[index\] = asset;[\s\S]*?save\(\);/, 'each successful person must be checkpointed before the next subject');
+assert.match(subjectBundleSource, /checkpoint\.humans\[index\] = asset;[\s\S]*?checkpoint\.generated_counts\.people \+= 1;[\s\S]*?save\(\);/, 'each successful person must be atomically checkpointed before its worker completes');
 
 const personEditor = fs.readFileSync(path.join(root, 'public/story-ad/views/assetCenterPersonLooks.js'), 'utf8');
 assert.match(personEditor, /华丽程度（AI 帮写和图片生成都会遵守）/);
@@ -65,8 +65,10 @@ assert.match(contextSource, /visual_asset_contract_version/);
 assert.match(contextSource, /isolated_accessory_count/);
 
 const routeSource = fs.readFileSync(path.join(root, 'src/routes/newStoryAd.js'), 'utf8');
-assert.match(routeSource, /target\.repair_existing/);
-assert.match(routeSource, /sceneAssetService\.repairSceneAsset/);
+const productionAssetOrchestratorSource = fs.readFileSync(path.join(root, 'src/services/newStoryAd/productionAssetOrchestratorService.js'), 'utf8');
+assert.match(routeSource, /productionAssetOrchestratorFactory\.create/, 'the route must delegate to the unified production asset orchestrator');
+assert.match(productionAssetOrchestratorSource, /target\.repair_existing/);
+assert.match(productionAssetOrchestratorSource, /sceneAssetService\.repairSceneAsset/);
 
 const sceneWorld = fs.readFileSync(path.join(root, 'public/story-ad/views/sceneWorldView.js'), 'utf8');
 assert.match(sceneWorld, /选择360 \/ 3D模式/);

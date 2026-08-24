@@ -48,10 +48,21 @@ function context(brief = '古代恋人在祭台分别，千年后在竹海重逢
 }
 
 function cast() {
-  return [
-    { id: 'male_lead', name: '男主', role: '跨越千年的恋人', appearanceText: '年轻清俊', wardrobeText: '古代华服', look_profiles: [] },
-    { id: 'female_lead', name: '女主', role: '古代恋人与现代转世', appearanceText: '年轻清秀', wardrobeText: '古代与现代独立造型', look_profiles: [] },
-  ];
+  return ['男主', '女主'].map((name, index) => {
+    const id = index ? 'female_lead' : 'male_lead';
+    const wardrobeText = '深灰色羊毛外套搭配米色棉质衬衫、黑色直筒长裤、棕色皮鞋和银色手表，无其他配饰；衣料纹理、剪裁层次、材质与配色在所有镜头中固定一致。';
+    return { id, name, role: index ? '古代恋人与现代转世' : '跨越千年的恋人', age_range: '25~30岁', ethnicity: '东亚原创人物外貌', asset_scope: 'primary',
+      appearanceText: '二十八岁原创真人，椭圆脸型，眉眼清晰、鼻梁挺直、唇形自然，五官比例明确；暖色真实肤色和细腻皮肤纹理，身形修长、肩背挺直、体态克制，目光沉静、表情自然且神态可靠，人物气质内敛。', wardrobeText,
+      hairMakeupText: '自然黑色长发或短发，三七分缝且发型固定；清透素颜妆并保留真实肤质；不佩戴眼镜、耳饰、帽子或其他首饰。',
+      negativeText: '禁止改变年龄、性别、脸型、五官、身份、发型、发色、妆容、服装、鞋和配饰；禁止网红脸、塑料皮肤、肢体畸形和多余人物。',
+      look_profiles: [{ id: `${id}_look_1`, name: '主造型', story_state: index ? '现代转世段落' : '古代等待段落', wardrobeText }] };
+  });
+}
+
+function storyBeats() {
+  return ['opening', 'development', 'turning_point', 'resolution'].map((phase, index) => ({ id: `beat_${index + 1}`, phase, era: index < 2 ? '古代' : '现代', time_anchor: `阶段${index + 1}`, location: '竹海', production_state: '竹海连续可见状态',
+    production_relation: { era: index === 0 || index === 2 ? 'changed' : 'same', time: index ? 'continuous' : 'changed', location: index ? 'same' : 'changed', environment: index ? 'same' : 'changed' },
+    production_requirements: { layout: '竹径与溪流固定布局', material_light: '连续竹叶薄雾天光', interaction: '人物完成可见动作', negative: '禁止商品品牌' }, summary: `剧情阶段${index + 1}`, cause: index ? '承接上一阶段' : '故事开始', consequence: index === 3 ? '形成结局' : '推动下一阶段' }));
 }
 
 function scene(advertisedSubject = '纯剧情 / 故事主题') {
@@ -129,10 +140,14 @@ function scene(advertisedSubject = '纯剧情 / 故事主题') {
     }
     recoveryCalls += 1;
     assert.equal(options.stage, 'new_story_ad.asset_plan_section_patch');
-    const storySeed = { logline: '跨越千年的重逢', opening: '祭台分别', development: '等待千年', turning_point: '竹海相遇', resolution: '静静相望' };
+    const storySeed = { logline: '跨越千年的重逢', opening: '祭台分别', development: '等待千年', turning_point: '竹海相遇', resolution: '静静相望', plot_beats: storyBeats() };
+    const request = JSON.parse(options.userPrompt || '{}');
+    const section = request.required_missing_sections?.[0];
+    const sectionValues = { story_seed: storySeed, scene_plan: scene(), prop_plan: [], cast_profiles: cast() };
+    assert(Object.prototype.hasOwnProperty.call(sectionValues, section), `unexpected recovery section: ${section}`);
     const payload = {
-      required_missing_sections: ['story_seed'],
-      section_patch: { section: 'story_seed', value: storySeed },
+      required_missing_sections: [section],
+      section_patch: { section, value: sectionValues[section] },
     };
     await options.validateText(JSON.stringify(payload), { parsed_json: payload });
     return { text: JSON.stringify(payload), used_model: 'mock/recovery', fallback_used: false, failed_models: [] };
@@ -141,7 +156,7 @@ function scene(advertisedSubject = '纯剧情 / 故事主题') {
 
   const recovered = await assetPlan.generate(taskId);
   assert.equal(unifiedCalls, 0, '语义相同的失败续作不得重复调用主规划');
-  assert.equal(recoveryCalls, 1, '只允许调用一次缺失故事种子恢复');
+  assert(recoveryCalls >= 1 && recoveryCalls <= 2, '只允许恢复故事种子及其覆盖校验所需的场景区段');
   assert.equal(recovered.advertised_subject, '');
   assert.equal(storage.getOutput(taskId, 'asset_plan').story_seed.logline, '跨越千年的重逢');
 

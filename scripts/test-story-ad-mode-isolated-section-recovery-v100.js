@@ -56,11 +56,30 @@ function commercialContext(id) {
   };
 }
 
+function detailedPerson(profile = {}, index = 0) {
+  const wardrobeText = `${profile.wardrobeText}；深灰色羊毛外套搭配米色棉质衬衫、黑色直筒长裤、棕色皮鞋和银色手表，无其他配饰；衣料纹理、剪裁层次、材质与配色在所有场景和镜头中固定一致。`;
+  return { ...profile, age_range: profile.age_range || '25~30岁', ethnicity: '东亚原创人物外貌', asset_scope: 'primary',
+    appearanceText: `${profile.appearanceText}；椭圆脸型，眉眼清晰、鼻梁挺直、唇形自然；暖色真实肤色和皮肤纹理，身形修长、肩背挺直，目光沉静且神态可靠。`,
+    wardrobeText, hairMakeupText: '自然黑色长发或短发，三七分缝且发型固定；清透素颜妆并保留真实肤质；不佩戴眼镜、耳饰、帽子或其他首饰。',
+    negativeText: '禁止改变年龄、性别、脸型、五官、身份、发型、发色、妆容、服装、鞋和配饰；禁止网红脸、塑料皮肤、肢体畸形和多余人物。',
+    look_profiles: [{ id: `${profile.id}_look_1`, name: '主造型', story_state: index ? '现代段落' : '古代或主要段落', wardrobeText }],
+  };
+}
+
+function beats(commercial = false) {
+  const locations = commercial ? ['住宅玄关', '住宅玄关', '住宅玄关', '住宅玄关'] : ['古代祭台', '古代祭台', '竹海', '竹海'];
+  return ['opening', 'development', 'turning_point', 'resolution'].map((phase, index) => ({ id: `beat_${index + 1}`, phase,
+    era: commercial ? '当代' : (index < 2 ? '古代' : '现代'), time_anchor: `阶段${index + 1}`, location: locations[index], production_state: `${locations[index]}连续可见状态`,
+    production_relation: { era: index === 0 || (!commercial && index === 2) ? 'changed' : 'same', time: index ? 'continuous' : 'changed', location: index === 0 || (!commercial && index === 2) ? 'changed' : 'same', environment: index === 0 || (!commercial && index === 2) ? 'changed' : 'same' },
+    production_requirements: { layout: '固定布局', material_light: '连续材质光线', interaction: '人物完成可见动作', negative: commercial ? '禁止虚构功效' : '禁止商品品牌' },
+    summary: `剧情阶段${index + 1}`, cause: index ? '承接上一阶段' : '故事开始', consequence: index === 3 ? '形成结局' : '推动下一阶段' }));
+}
+
 function onlyNarrativeCast() {
   return {
     cast_profiles: [
-      { id: 'ancient_lead', name: '古代恋人', role: '古代线主角', appearanceText: '年轻清俊', wardrobeText: '古代华服', look_profiles: [] },
-      { id: 'modern_lead', name: '现代转世', role: '现代线主角', appearanceText: '年轻清秀', wardrobeText: '现代服装', look_profiles: [] },
+      detailedPerson({ id: 'ancient_lead', name: '古代恋人', role: '古代线主角', appearanceText: '年轻清俊', wardrobeText: '古代华服' }, 0),
+      detailedPerson({ id: 'modern_lead', name: '现代转世', role: '现代线主角', appearanceText: '年轻清秀', wardrobeText: '现代服装' }, 1),
     ],
   };
 }
@@ -68,7 +87,7 @@ function onlyNarrativeCast() {
 function onlyCommercialCast() {
   return {
     cast_profiles: [
-      { id: 'homeowner', name: '归家女性', role: '产品体验者', appearanceText: '年轻都市女性', wardrobeText: '现代通勤装', look_profiles: [] },
+      detailedPerson({ id: 'homeowner', name: '归家女性', role: '产品体验者', appearanceText: '年轻都市女性', wardrobeText: '现代通勤装' }, 1),
     ],
   };
 }
@@ -79,7 +98,7 @@ function narrativeRecovery({ contaminated = false } = {}) {
       ? [{ id: 'injected_product', name: '智能门锁', type: 'advertised_product', description: '不应进入剧情' }]
       : [],
     story_seed: {
-      logline: '跨越千年的重逢', opening: '祭台相爱', development: '被迫分别', turning_point: '等待千年', resolution: '竹海重逢',
+      logline: '跨越千年的重逢', opening: '祭台相爱', development: '被迫分别', turning_point: '等待千年', resolution: '竹海重逢', plot_beats: beats(false),
     },
     scene_plan: {
       business_boundary: '纯剧情爱情故事',
@@ -99,7 +118,7 @@ function commercialRecovery({ missingSubject = false } = {}) {
   return {
     prop_plan: [{ id: 'smart_lock', name: '智能门锁', type: 'advertised_product', description: '安装在入户门上的智能门锁' }],
     story_seed: {
-      logline: '展示顺畅开锁并安心归家', opening: '走近家门', development: '验证身份', turning_point: '门锁开启', resolution: '安心进门',
+      logline: '展示顺畅开锁并安心归家', opening: '走近家门', development: '验证身份', turning_point: '门锁开启', resolution: '安心进门', advertised_subject: '智能门锁', product_proof_requirements: ['展示开锁'], plot_beats: beats(true),
     },
     scene_plan: {
       business_boundary: '智能门锁使用体验广告',
