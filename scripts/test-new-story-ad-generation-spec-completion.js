@@ -183,7 +183,8 @@ async function main() {
   assert(subjectSource.indexOf('const completion = await generationSpecCompletion.completePersonProfiles') < subjectSource.indexOf('assertCompleteSubjectProfiles(counts, humans, pets)'), '人物补齐必须发生在完整性门禁和图片生成之前');
   assert(sceneSource.indexOf('const sceneCompletion = await generationSpecCompletion.completeSceneSpec') < sceneSource.indexOf('assertCompleteUpgradeSceneSpec(body)'), '场景补齐必须发生在付费图片生成门禁之前');
   assert.doesNotMatch(uiSource.slice(uiSource.indexOf('function generationValidation'), uiSource.indexOf('function assetCard')), /\['服装',\s*profile\.wardrobeText\]/);
-  assert.match(uiSource, /自动补齐缺少的服装、鞋履、配饰、配色和面料/);
+  assert.match(uiSource, /本次会生成完整人物、穿搭配饰、随身物、动作表情。/);
+  assert.doesNotMatch(uiSource, /自动补齐缺少的服装、鞋履、配饰、配色和面料/);
 
   console.log(JSON.stringify({
     passed: true,
