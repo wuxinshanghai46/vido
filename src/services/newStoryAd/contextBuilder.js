@@ -466,6 +466,9 @@ function normalizeSceneSpec(input = {}) {
   const extent = ['enclosed', 'open', 'stage', 'screen', 'unspecified'].includes(cleanText(experienceInput.extent, 40).toLowerCase())
     ? cleanText(experienceInput.extent, 40).toLowerCase()
     : 'unspecified';
+  const requiredAuthority = ['panorama_3dof', 'geometry_6dof'].includes(experienceInput.required_authority)
+    ? experienceInput.required_authority
+    : 'multi_view';
   return {
     mode: cleanText(raw.mode || raw.sceneMode || 'auto', 40),
     layoutText,
@@ -477,10 +480,12 @@ function normalizeSceneSpec(input = {}) {
     routes,
     cameraPlan,
     sceneExperienceContract: {
-      required_authority: experienceInput.required_authority === 'geometry_6dof' ? 'geometry_6dof' : 'panorama_3dof',
+      required_authority: requiredAuthority,
       representation,
       extent,
-      rotation_required: experienceInput.rotation_required !== false,
+      rotation_required: requiredAuthority === 'multi_view'
+        ? experienceInput.rotation_required === true
+        : experienceInput.rotation_required !== false,
       translation_required: experienceInput.translation_required === true,
       actor_blocking_required: experienceInput.actor_blocking_required === true || interactionAnchors.length > 0,
       camera_path_required: experienceInput.camera_path_required === true,

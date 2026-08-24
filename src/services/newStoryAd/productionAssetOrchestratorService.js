@@ -21,7 +21,7 @@ function imagePriceUsd(modelId = '') {
   return match ? Number(match[1] || 0) : NaN;
 }
 
-function productionImagePricePlan() {
+function productionImagePricePlan({ includePanorama = false } = {}) {
   const stages = [
     'new_story_ad.person_dossier_atlas', 'new_story_ad.person_dossier_expression',
     'new_story_ad.person_dossier_action', 'new_story_ad.person_dossier_native_master',
@@ -29,8 +29,9 @@ function productionImagePricePlan() {
     'new_story_ad.prop_dossier_atlas', 'new_story_ad.scene_extension_atlas',
     'new_story_ad.scene_extension_master', 'new_story_ad.scene_extension_layout',
     'new_story_ad.scene_extension_reverse', 'new_story_ad.scene_extension_interaction',
-    'new_story_ad.scene_extension_detail', 'new_story_ad.scene_panorama',
+    'new_story_ad.scene_extension_detail',
   ];
+  if (includePanorama) stages.push('new_story_ad.scene_panorama');
   const routes = stages.flatMap(stage => pipelineModels.pickAllEnabledWithDefault(stage).map(item => ({
     stage, provider: String(item.provider || item.provider_id || ''), model: String(item.model || item.model_id || ''),
   })));
@@ -49,6 +50,11 @@ function paidPersonDossierCalls(castProfiles = []) {
     // those high-resolution sheets; only isolated wearable objects add calls.
     return sum + looks * (6 + isolatedWearables);
   }, 0);
+}
+
+function requestedSpatialMode(body = {}) {
+  if (body.spatial_mode || body.spatialMode) return productionGraph.normalizeSpatialMode(body.spatial_mode || body.spatialMode);
+  return body.generate_panoramas === true ? productionGraph.PANORAMA_MODE : productionGraph.MULTI_VIEW_MODE;
 }
 
 function create({ service, storage, generateAndCommitSubjectAssets, persistProviderPersonIds } = {}) {
@@ -147,10 +153,11 @@ function create({ service, storage, generateAndCommitSubjectAssets, persistProvi
     const people = castProfiles.length;
     const animals = Array.isArray(ctx.pet_profiles) ? ctx.pet_profiles.length : 0;
     const sceneCount = Math.max(1, (scenePlan.spaces || scenePlan.scenes || []).length || Number(ctx.expected_scene_count || 0) || 1);
-    const panoramaCount = body.generate_panoramas === false ? 0 : sceneCount;
-    const graphDraft = productionGraph.compile(taskId, { compiled_by: 'unified_orchestrator:cost_plan' });
+    const spatialMode = requestedSpatialMode(body);
+    const panoramaCount = spatialMode === productionGraph.PANORAMA_MODE ? sceneCount : 0;
+    const graphDraft = productionGraph.compile(taskId, { compiled_by: 'unified_orchestrator:cost_plan', spatial_mode: spatialMode });
     const carriedProps = graphDraft.props.filter(item => item.attachment_mode === 'carried' && !item.image_url);
-    const basis = { contract_version: productionGraph.CONTRACT_VERSION, task_id: taskId,
+    const basis = { contract_version: productionGraph.CONTRACT_VERSION, task_id: taskId, spatial_mode: spatialMode,
       content_revision: Number(task.content_revision || 1) || 1, people, animals, scene_count: sceneCount, panorama_count: panoramaCount,
       estimated_model_calls: { text_planning_max: people + 3, person_dossier_max: paidPersonDossierCalls(castProfiles),
         animal_dossier_max: animals, prop_assets_max: carriedProps.reduce((sum, prop) => sum + (Array.isArray(prop.states) && prop.states.length > 1 ? 2 : 1), 0),
@@ -159,7 +166,7 @@ function create({ service, storage, generateAndCommitSubjectAssets, persistProvi
         Number(body.confirmed_cost_limit_rmb || MAX_CONFIRMED_VISUAL_COST_RMB) || MAX_CONFIRMED_VISUAL_COST_RMB)),
       maximum_confirmable_cost_rmb: MAX_CONFIRMED_VISUAL_COST_RMB };
     basis.estimated_model_calls.total_max = Object.values(basis.estimated_model_calls).reduce((sum, value) => sum + Number(value || 0), 0);
-    const pricePlan = productionImagePricePlan();
+    const pricePlan = productionImagePricePlan({ includePanorama: panoramaCount > 0 });
     const imageCalls = basis.estimated_model_calls.person_dossier_max + basis.estimated_model_calls.animal_dossier_max
       + basis.estimated_model_calls.prop_assets_max + basis.estimated_model_calls.scene_assets_max + basis.estimated_model_calls.panorama_image_max;
     const cost = Number.isFinite(pricePlan.maximum_unit_usd)
@@ -187,6 +194,14 @@ function create({ service, storage, generateAndCommitSubjectAssets, persistProvi
   }
 
   async function run({ taskId, body, job, userId, user }) {
+    const spatialMode = requestedSpatialMode(body);
+    storage.saveOutput(taskId, 'production_spatial_contract', {
+      contract_version: 1,
+      mode: spatialMode,
+      panorama_required: spatialMode === productionGraph.PANORAMA_MODE,
+      selected_by: body.spatial_mode || body.spatialMode ? 'explicit_spatial_mode' : 'generation_request',
+      updated_at: new Date().toISOString(),
+    });
     let graph = productionGraph.publish(taskId, { compiled_by: 'unified_orchestrator:cutover' });
     try {
       await service.updatePersonPlan(taskId, { generation_id: job.generationId, user, production_graph_authority: true });
@@ -213,7 +228,7 @@ function create({ service, storage, generateAndCommitSubjectAssets, persistProvi
       }
       if (generatedProps.length) graph = productionGraph.publish(taskId, { compiled_by: 'unified_orchestrator:props' });
       let panoramas = null;
-      if (body.generate_panoramas !== false) {
+      if (spatialMode === productionGraph.PANORAMA_MODE) {
         const panoramaPlan = scenePanoramaService.planForTask(taskId);
         panoramas = await scenePanoramaService.generateTaskPanoramas(taskId, { plan_fingerprint: panoramaPlan.plan_fingerprint,
           cost_confirmation: true, generation_id: job.generationId }, { generationId: job.generationId });
@@ -236,4 +251,4 @@ function create({ service, storage, generateAndCommitSubjectAssets, persistProvi
   return { plan, assertConfirmation, run };
 }
 
-module.exports = { create, imagePriceUsd, productionImagePricePlan, paidPersonDossierCalls, MAX_CONFIRMED_VISUAL_COST_RMB };
+module.exports = { create, imagePriceUsd, productionImagePricePlan, paidPersonDossierCalls, requestedSpatialMode, MAX_CONFIRMED_VISUAL_COST_RMB };

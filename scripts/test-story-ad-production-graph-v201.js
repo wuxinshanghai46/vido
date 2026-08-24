@@ -10,6 +10,7 @@ const revisions = require('../src/services/newStoryAd/revisionService');
 const pipelineModels = require('../src/services/pipelineModelService');
 const authorityLifecycle = require('../src/services/newStoryAd/authorityLifecycleService');
 const productionOrchestrator = require('../src/services/newStoryAd/productionAssetOrchestratorService');
+const contextBuilder = require('../src/services/newStoryAd/contextBuilder');
 
 let checks = 0;
 const ok = (value, message) => { assert(value, message); checks += 1; };
@@ -19,7 +20,7 @@ const taskId = 'production-graph-regression';
 const expressions = Array.from({ length: 6 }, (_, index) => ({ id: `expr_${index}`, key: `expression_${index}`, image_url: `/expr-${index}.png` }));
 const actions = Array.from({ length: 6 }, (_, index) => ({ id: `action_${index}`, key: `action_${index}`, image_url: `/action-${index}.png` }));
 const profile = {
-  id: 'char_designer', displayName: '林岚', roleName: '空间设计师', gender: 'female', age: '25岁',
+  id: 'char_designer', actor_id: 'new_story_actor_designer', actor_asset_id: 'actor_asset_designer', displayName: '林岚', roleName: '空间设计师', gender: 'female', age: '25岁',
   ethnicity: '原创东亚女性角色设计', appearanceText: '椭圆脸，清晰眉眼，挺拔匀称体态，沉静专业气质。',
   look_profiles: [{ id: 'look_work', name: '工作造型', scene_ids: ['scene_hall'], wardrobeText: '深色西装、同色长裤、低跟皮鞋，剪裁与面料完整明确。', hairMakeupText: '低马尾，干净自然妆面。', negativeText: '禁止换装、禁止增加首饰。' }],
   owned_props: [{ id: 'prop_bag', name: '设计师文件包', type: 'bag', description: '深棕色硬挺皮革文件包，金属扣，手提使用。', material: '皮革', hand: 'left' }],
@@ -29,7 +30,7 @@ equal(productionOrchestrator.paidPersonDossierCalls([{ ...profile,
   'one-look dossier prices six reusable boards plus only the isolated shoe object; wardrobe and hair evidence are local crops');
 const context = {
   cast_profiles: [profile], cast_mode: 'single', brief: '设计师向客户介绍大厅材料方案。',
-  person_asset: { cast_assets: [{ id: 'person_asset_1', profile_id: profile.id, cast_member_index: 0,
+  person_asset: { cast_assets: [{ id: 'actor_asset_designer', actor_id: 'new_story_actor_designer', actor_asset_id: 'actor_asset_designer', name: '林岚', cast_member_index: 1,
     dossier_sheet: { image_url: '/person-dossier.png' }, native_masters: { face: { image_url: '/face.png' }, body: { image_url: '/body.png' } },
     expressions, base_actions: actions, person_contract: { status: 'verified' } }] },
   person_contract: { status: 'verified' },
@@ -39,7 +40,8 @@ const outputs = {
   blueprint: { id: 'blueprint_1', revision: 3, fingerprint: 'blueprint-fingerprint', beats: [{ id: 'beat_1' }] },
   asset_plan_active: { fingerprint: 'asset-plan-fingerprint', plan: { spaces: [{ id: 'scene_hall', name: '社区大厅' }] } },
   scene_config: { spaces: [{ id: 'scene_hall', name: '社区大厅', story_purpose: '材料介绍', scene_spec: { layoutText: '入口、展示墙与洽谈区构成可通行的连续空间。', materialLightText: '金属墙板与自然侧光。' } }] },
-  scene_assets: [{ id: 'scene_hall', scene_id: 'scene_hall', name: '社区大厅', layout: { image_url: '/scene-master.png' },
+  scene_assets: [{ id: 'scene_hall', scene_id: 'scene_hall', name: '社区大厅', image_url: '/scene-master.png',
+    view_images: [{ key: 'master', camera_id: 'camera_master', image_url: '/scene-master.png' }],
     scene_spec: { layout: '入口、展示墙与洽谈区构成可通行的连续空间。', materials: '金属墙板' }, zones: [{ id: 'zone_wall', label: '展示墙' }],
     cameras: [{ id: 'camera_main', label: '主机位', lens: '35mm', framing: '中景', image_url: '/camera.png' }],
     scene_world_assets: { authority_mode: 'panorama_3dof', panorama_url: '/panorama.png', panoramas: [{ id: 'pano_hall', image_url: '/panorama.png' }] }, qa: { pass: true } }],
@@ -71,8 +73,16 @@ try {
   equal(draft.props[0].default_hand, 'unspecified', 'root prop keeps explicit per-shot hand state separate from default');
   equal(draft.shots[0].object_bindings[0].hand_contact, 'left_hand', 'shot binds bag to left hand');
   equal(draft.shots[0].scene_binding.panorama_id, 'pano_hall', 'shot binds authoritative panorama');
+  equal(draft.characters[0].assets.dossier_sheet_url, '/person-dossier.png', 'one-based production cast index binds the correct dossier');
+  equal(draft.scenes[0].assets.master_view_url, '/scene-master.png', 'root scene image projects as the authoritative master');
   equal(draft.shots[0].camera_binding.camera_id, 'camera_main', 'shot binds exact camera');
   equal(draft.validation.status, 'ready', `complete graph should be ready: ${draft.validation.issues.join(',')}`);
+  const multiViewGraph = { ...draft, spatial_mode: graphService.MULTI_VIEW_MODE,
+    scenes: draft.scenes.map(scene => ({ ...scene, assets: { ...scene.assets, panorama_id: '', panorama_url: '', panorama_authority: '' } })) };
+  equal(graphService.validate(multiViewGraph).status, 'ready', 'five-view mode is ready without a panorama');
+  const panoramaGraph = { ...multiViewGraph, spatial_mode: graphService.PANORAMA_MODE };
+  ok(graphService.validate(panoramaGraph).issues.includes('scene_panorama_missing:scene_hall'),
+    'explicit panorama mode still requires an authoritative panorama');
   const published = graphService.publish(taskId, { compiled_by: 'test' });
   equal(task.production_graph_authority, graphService.AUTHORITY, 'new graph becomes task authority');
   equal(task.legacy_generation_enabled, false, 'legacy generation is disabled');
@@ -166,6 +176,8 @@ const productionAction = fs.readFileSync(path.join(__dirname, '../public/story-a
 ok(assetView.includes('assetCenterUnifiedProductionAction.js'), 'unified action is loaded only when the user clicks');
 ok(productionAction.includes('/production-assets/plan'), 'UI reads server plan before generation');
 ok(productionAction.includes("store.runStage('production-assets'"), 'UI submits only unified production stage');
+ok(productionAction.includes("spatial_mode: 'multi_view'"), 'UI defaults unified production to five-view mode');
+ok(productionAction.includes('generate_panoramas: false'), 'UI does not silently request panorama generation');
 ok(productionAction.includes('plan.maximum_confirmable_cost_rmb'), 'UI reads the server-owned cost ceiling instead of duplicating it');
 const routeSource = fs.readFileSync(path.join(__dirname, '../src/routes/newStoryAd.js'), 'utf8');
 const orchestratorSource = fs.readFileSync(path.join(__dirname, '../src/services/newStoryAd/productionAssetOrchestratorService.js'), 'utf8');
@@ -190,6 +202,17 @@ try {
 } catch (error) { insufficientBudgetRejected = error.code === 'PRODUCTION_GRAPH_COST_LIMIT_EXCEEDED'; }
 ok(insufficientBudgetRejected, 'generation stops before model calls when the estimated visual cost exceeds confirmation');
 ok(orchestratorSource.includes('const executionPlan = plan'), 'cost plan is recomputed after person and scene planning');
+equal(productionOrchestrator.requestedSpatialMode({}), graphService.MULTI_VIEW_MODE, 'unified production defaults to five-view mode');
+equal(productionOrchestrator.requestedSpatialMode({ generate_panoramas: true }), graphService.PANORAMA_MODE,
+  'legacy explicit panorama request remains panorama mode');
+equal(productionOrchestrator.requestedSpatialMode({ spatial_mode: 'multi_view', generate_panoramas: true }), graphService.MULTI_VIEW_MODE,
+  'explicit spatial mode wins over a stale panorama boolean');
+const defaultSceneSpec = contextBuilder.normalizeSceneSpec({});
+equal(defaultSceneSpec.sceneExperienceContract.required_authority, 'multi_view', 'scene contracts default to multi-view authority');
+equal(defaultSceneSpec.sceneExperienceContract.rotation_required, false, 'multi-view does not silently require 360 rotation');
+const panoramaSceneSpec = contextBuilder.normalizeSceneSpec({ sceneExperienceContract: { required_authority: 'panorama_3dof' } });
+equal(panoramaSceneSpec.sceneExperienceContract.required_authority, 'panorama_3dof', 'explicit panorama scene authority is preserved');
+equal(panoramaSceneSpec.sceneExperienceContract.rotation_required, true, 'explicit panorama authority retains rotation requirement');
 ok(orchestratorSource.includes('production_graph_authority: true'), 'person and scene planning are published under the owned graph generation');
 ok(subjectBundleSource.includes('dossierComposites.composeWardrobeDetails'), 'unified person dossiers derive wardrobe detail panels locally from paid high-resolution contact sheets');
 ok(routeSource.includes("assertLegacyMutationAllowed(req.params.id, 'scene_asset_repair')"), 'legacy scene repair is blocked at the server boundary');

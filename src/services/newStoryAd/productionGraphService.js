@@ -8,12 +8,19 @@ const SCHEMA_VERSION = 1;
 const CONTRACT_VERSION = 'production-graph-v1';
 const OUTPUT_KIND = 'production_graph_v1';
 const AUTHORITY = 'production_graph_v1';
+const MULTI_VIEW_MODE = 'multi_view';
+const PANORAMA_MODE = 'panorama_3dof';
 
 function clean(value, max = 1200) {
   return String(value ?? '').trim().slice(0, max);
 }
 
 function rows(value) { return Array.isArray(value) ? value.filter(Boolean) : []; }
+
+function normalizeSpatialMode(value = '') {
+  const mode = clean(value, 60).toLowerCase();
+  return ['panorama_3dof', 'panorama_360'].includes(mode) ? PANORAMA_MODE : MULTI_VIEW_MODE;
+}
 
 function canonical(value) {
   if (Array.isArray(value)) return value.map(canonical);
@@ -46,14 +53,22 @@ function sourceMap(taskId) {
     prop_assets: rows(output('prop_assets')),
     storyboard: rows(output('storyboard_table')),
     keyframe_contracts: rows(output('keyframe_contracts')),
+    spatial_contract: output('production_spatial_contract') || null,
   };
 }
 
 function castAssetFor(profile = {}, index = 0, ctx = {}) {
   const assets = rows(ctx.person_asset?.cast_assets);
   const profileId = clean(profile.id || profile.identity_id, 160);
-  return assets.find(asset => [asset.subject_id, asset.identity_id, asset.profile_id, asset.id].some(value => clean(value, 160) === profileId))
-    || assets.find(asset => Number(asset.cast_member_index) === index)
+  const actorIds = [profile.actor_asset_id, profile.actor_id, profile.subject_id, profileId].map(value => clean(value, 160)).filter(Boolean);
+  const profileName = clean(profile.displayName || profile.name, 160);
+  const memberIndexes = assets.map(asset => Number(asset.cast_member_index)).filter(Number.isFinite);
+  const oneBasedIndexes = memberIndexes.length > 0 && !memberIndexes.includes(0) && Math.min(...memberIndexes) >= 1;
+  const expectedMemberIndex = oneBasedIndexes ? index + 1 : index;
+  return assets.find(asset => [asset.subject_id, asset.identity_id, asset.profile_id, asset.actor_asset_id, asset.actor_id, asset.id]
+    .some(value => actorIds.includes(clean(value, 160))))
+    || assets.find(asset => profileName && clean(asset.displayName || asset.name, 160) === profileName)
+    || assets.find(asset => Number(asset.cast_member_index) === expectedMemberIndex)
     || (assets.length === 1 ? assets[0] : null);
 }
 
@@ -180,6 +195,9 @@ function buildScenes(source = {}) {
     const id = clean(space.id || space.space_id || space.scene_id, 160) || stableId('scene', source.task.id, index, space.name);
     const asset = assets.find(item => clean(item.scene_id || item.id, 160) === id) || {};
     const panorama = rows(asset.scene_world_assets?.panoramas)[0] || {};
+    const viewImages = rows(asset.view_images);
+    const masterView = viewImages.find(view => clean(view.key || view.id || view.camera_id, 80).toLowerCase() === 'master'
+      || clean(view.camera_id, 80).toLowerCase() === 'camera_master') || {};
     const cameras = rows(asset.cameras || space.scene_spec?.cameraPlan || space.camera_plan).map((camera, cameraIndex) => ({
       id: clean(camera.id || camera.camera_id, 160) || stableId('camera', id, cameraIndex, camera.label),
       scene_id: id, label: clean(camera.label || `机位 ${cameraIndex + 1}`, 160),
@@ -201,10 +219,10 @@ function buildScenes(source = {}) {
         fixed_prop_placements: rows(asset.spatial_contract?.fixed_prop_placements),
       },
       assets: {
-        master_view_url: clean(asset.layout?.image_url || asset.master_view?.image_url || '', 1600),
+        master_view_url: clean(asset.master_view?.image_url || masterView.image_url || masterView.url || asset.image_url || asset.url || asset.layout?.image_url || '', 1600),
         panorama_id: clean(panorama.id || '', 160), panorama_url: clean(panorama.image_url || asset.scene_world_assets?.panorama_url || '', 1600),
         panorama_authority: clean(asset.scene_world_assets?.authority_mode || '', 60),
-        view_images: rows(asset.view_images).map(view => ({ id: clean(view.id || view.key, 160), image_url: clean(view.image_url || view.url, 1600) })),
+        view_images: viewImages.map(view => ({ id: clean(view.id || view.key, 160), image_url: clean(view.image_url || view.url, 1600) })),
       },
       cameras,
       qa: asset.qa || {},
@@ -277,7 +295,8 @@ function validate(graph = {}) {
     if (!scene.spatial_contract.layout) issues.push(`scene_layout_missing:${scene.id}`);
     if (!scene.cameras.length) issues.push(`scene_cameras_missing:${scene.id}`);
     if (!scene.assets.master_view_url) issues.push(`scene_master_view_missing:${scene.id}`);
-    if (!scene.assets.panorama_url || scene.assets.panorama_authority !== 'panorama_3dof') issues.push(`scene_panorama_missing:${scene.id}`);
+    if (normalizeSpatialMode(graph.spatial_mode) === PANORAMA_MODE
+      && (!scene.assets.panorama_url || scene.assets.panorama_authority !== PANORAMA_MODE)) issues.push(`scene_panorama_missing:${scene.id}`);
   });
   graph.props.filter(prop => prop.attachment_mode === 'carried').forEach(prop => {
     if (!prop.description) issues.push(`carry_prop_description_missing:${prop.id}`);
@@ -293,6 +312,7 @@ function validate(graph = {}) {
 
 function compile(taskId, options = {}) {
   const source = sourceMap(taskId);
+  const spatialMode = normalizeSpatialMode(options.spatial_mode || source.spatial_contract?.mode);
   const characters = buildCharacters(source.context, taskId);
   const props = buildProps(source, characters, source.storyboard);
   const scenes = buildScenes(source);
@@ -300,7 +320,7 @@ function compile(taskId, options = {}) {
   const previous = storage.getOutput(taskId, OUTPUT_KIND) || {};
   const graph = {
     schema_version: SCHEMA_VERSION, contract_version: CONTRACT_VERSION, graph_id: previous.graph_id || stableId('production_graph', taskId),
-    task_id: taskId, content_revision: Number(source.task.content_revision || 1) || 1,
+    task_id: taskId, content_revision: Number(source.task.content_revision || 1) || 1, spatial_mode: spatialMode,
     revision: Math.max(1, Number(previous.revision || 0) + (options.publish === false ? 0 : 1)),
     authority: { mode: AUTHORITY, execution_path: 'new_only', legacy_generation_writes: 'blocked', prompt_source: 'graph_only' },
     story: { blueprint_id: clean(source.blueprint.id || '', 160), blueprint_revision: Number(source.blueprint.revision || 0), blueprint_fingerprint: clean(source.blueprint.fingerprint || '', 200), cast_expected: rows(source.context.cast_profiles).length, beats: rows(source.blueprint.beats) },
@@ -350,4 +370,5 @@ function assertExecutable(taskId) {
   throw error;
 }
 
-module.exports = { SCHEMA_VERSION, CONTRACT_VERSION, OUTPUT_KIND, AUTHORITY, fingerprint, compile, publish, validate, authorityActive, assertLegacyMutationAllowed, assertExecutable };
+module.exports = { SCHEMA_VERSION, CONTRACT_VERSION, OUTPUT_KIND, AUTHORITY, MULTI_VIEW_MODE, PANORAMA_MODE,
+  normalizeSpatialMode, fingerprint, compile, publish, validate, authorityActive, assertLegacyMutationAllowed, assertExecutable };
