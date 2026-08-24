@@ -1,9 +1,9 @@
-import { escapeHtml } from '../components/ui.js?v=20260824-production-v204c';
-import { createReferenceLinkDialogueHandler, referenceDialogueStatus, referenceNextStepDescription, routeReferenceInput, syncReferenceDialogueStatus } from './briefReferenceDialogueState.js?v=20260824-production-v204c';
-import { referenceDialoguePhase,sanitizeDialogueTopics } from './briefDialoguePolicy.js?v=20260824-production-v204c';
-import { followConversationAfter } from './briefConversationScroll.js?v=20260824-production-v204c';
-import { appendDialogueSuggestions,briefIdeaPreview,contextualDialogueFallback,dialogueHistoryMarkup,ideaMarkup,modeLabel,normalizedDialogueHistory,recordDialogueHistory } from './briefDialogueProjection.js?v=20260824-production-v204c';
-import { dialogueIntakeState, dialogueProgressState } from './briefDialogueReadiness.js?v=20260824-production-v204c';
+import { escapeHtml } from '../components/ui.js?v=20260824-production-v204d';
+import { createReferenceLinkDialogueHandler, referenceDialogueStatus, referenceNextStepDescription, routeReferenceInput, syncReferenceDialogueStatus } from './briefReferenceDialogueState.js?v=20260824-production-v204d';
+import { referenceDialoguePhase,sanitizeDialogueTopics } from './briefDialoguePolicy.js?v=20260824-production-v204d';
+import { followConversationAfter } from './briefConversationScroll.js?v=20260824-production-v204d';
+import { appendDialogueSuggestions,briefIdeaPreview,contextualDialogueFallback,dialogueHistoryMarkup,ideaMarkup,modeLabel,normalizedDialogueHistory,recordDialogueHistory } from './briefDialogueProjection.js?v=20260824-production-v204d';
+import { dialogueIntakeState, dialogueProgressState } from './briefDialogueReadiness.js?v=20260824-production-v204d';
 export { referenceDialogueStatus, referenceNextStepDescription, syncReferenceDialogueStatus };
 export { briefIdeaPreview,dialogueIntakeState,dialogueProgressState };
 export function briefDialogueMarkup(bundle={}, _route={}, options={}) {
@@ -114,7 +114,7 @@ export function bindBriefDialogue(host, { form, referenceState={}, referenceAtta
   const appendReferenceQuestion = async () => {
     if (referenceQuestionLoading || conversation.querySelector('[data-reference-question]') || referencePresent || referenceSkipped) return;
     referenceQuestionLoading = true;
-    const { mountReferenceQuestion, referenceQuestionText } = await import('./briefReferenceQuestion.js?v=20260824-production-v204c');
+    const { mountReferenceQuestion, referenceQuestionText } = await import('./briefReferenceQuestion.js?v=20260824-production-v204d');
     recordHistory('assistant', referenceQuestionText({ mode: String(control('content_mode')?.value || ''), idea: briefIdeaPreview(String(control('brief')?.value || ''), 54).text }), { topic: 'reference' });
     mountReferenceQuestion(conversation, {
       mode: String(control('content_mode')?.value || ''),
@@ -135,7 +135,7 @@ export function bindBriefDialogue(host, { form, referenceState={}, referenceAtta
   const appendSpecificationQuestion = async () => {
     if (specificationQuestionLoading || conversation.querySelector('[data-specification-question]') || specificationsConfirmed) return;
     specificationQuestionLoading = true;
-    const { mountSpecificationQuestion, specificationQuestionText } = await import('./briefSpecificationQuestion.js?v=20260824-production-v204c');
+    const { mountSpecificationQuestion, specificationQuestionText } = await import('./briefSpecificationQuestion.js?v=20260824-production-v204d');
     recordHistory('assistant', specificationQuestionText({ mode: String(control('content_mode')?.value || ''), duration: Number(control('target_duration')?.value || 30) || 30, ratio: String(control('output_ratio')?.value || '9:16'), resolution: String(control('video_resolution')?.value || '1080p') }), { topic: 'specifications' });
     mountSpecificationQuestion(conversation, {
       mode: String(control('content_mode')?.value || ''),
@@ -171,7 +171,7 @@ export function bindBriefDialogue(host, { form, referenceState={}, referenceAtta
   const appendCastQuestion = async () => {
     if (castQuestionLoading || conversation.querySelector('[data-cast-question]') || castIntent?.confirmed === true || String(control('content_mode')?.value || '') !== 'commercial_subject') return;
     castQuestionLoading = true;
-    const { mountCastQuestion, castQuestionText } = await import('./briefCastQuestion.js?v=20260824-production-v204c');
+    const { mountCastQuestion, castQuestionText } = await import('./briefCastQuestion.js?v=20260824-production-v204d');
     const question = castQuestionText();
     recordHistory('assistant', question, { topic: 'on_screen_cast' });
     mountCastQuestion(conversation, {
@@ -266,7 +266,7 @@ export function bindBriefDialogue(host, { form, referenceState={}, referenceAtta
     sending = true;
     send.disabled = true;
     panel.setAttribute('aria-busy', 'true');
-    const explicitSettings = await import('./briefExplicitSettings.js?v=20260824-production-v204c');
+    const explicitSettings = await import('./briefExplicitSettings.js?v=20260824-production-v204d');
     input.value = '';
     const intakeBefore = sync();
     if (await routeReferenceInput({
@@ -409,7 +409,7 @@ export function bindBriefDialogue(host, { form, referenceState={}, referenceAtta
   const initialReferencePhase = referenceDialoguePhase(currentReference);
   applyReferenceGate(currentReference).catch(() => {});
   if (!requireUserInitiation && initialReferencePhase === 'none' && String(control('brief')?.value || '').trim() && !ideaReady) {
-    import('./briefGuidedResume.js?v=20260824-production-v204c').then(({ guidedResumePrompt }) => {
+    import('./briefGuidedResume.js?v=20260824-production-v204d').then(({ guidedResumePrompt }) => {
       if (disposed) return;
       const guidance = guidedResumePrompt({ mode: String(control('content_mode')?.value || ''), idea: String(control('brief')?.value || '') });
       const entry = message('assistant', guidance.text);
