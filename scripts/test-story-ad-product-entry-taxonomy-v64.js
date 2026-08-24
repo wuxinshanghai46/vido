@@ -36,19 +36,20 @@ vm.runInNewContext(`${billingBindingSource}\nglobalThis.__bindSubjectBillingReco
 });
 const realBindSubjectBillingRecovery = billingBindingSandbox.__bindSubjectBillingRecovery;
 const billingRecoveryBindings = [];
+let subjectConfirmationCalls = 0;
 const sandbox = {
   __loadAssetCheckpointRecovery: async () => ({
     checkpointRecoverySummary: () => ({ completed: 0, total: 0, missing: [], retry_blocked: false }),
     checkpointRecoveryBanner: () => '',
   }),
-  __loadAssetCenterStage: async () => ({ assetPlanStageView: ({ recoveryActive } = {}) => recoveryActive ? '' : '<section data-plan-stage></section>' }),
+  __loadAssetCenterStage: async () => ({ assetPlanStageView: ({ missingSubjectCount = 0 } = {}) => `<section data-plan-stage>${missingSubjectCount ? '<button data-generate-subject-assets>生成人物资产</button>' : ''}</section>` }),
   request: async () => ({}),
   bindMediaLightbox() {},
   emptyState: ({ title = '', body = '', action = '', actionId = '' } = {}) => `<section data-empty><b>${title}</b><p>${body}</p><button data-empty-action="${actionId}">${action}</button></section>`,
   escapeHtml,
   setButtonBusy() {},
   toast() {},
-  confirmDialog: async () => false,
+  confirmDialog: async message => { subjectConfirmationCalls += 1; assert.equal(message, '本次会生成完整人物、穿搭配饰、随身物、动作表情。'); return false; },
   openActorLibrary() {},
   openRealPersonFlow() {},
   authorizeBillingReviews: async () => {},
@@ -57,6 +58,8 @@ const sandbox = {
     return realBindSubjectBillingRecovery(options);
   },
   confirmBillingAwareAction: async () => ({ accepted: false }),
+  recoveryRequestKey: () => 'subject-click-regression',
+  ensureSubjectRecoveryReady: async () => true,
   collectPersonLookValues: values => values,
   renderPersonLookTiles: () => '',
   legacyDossierBoard: () => '',
@@ -64,7 +67,7 @@ const sandbox = {
   assetCardMedia: () => '<span data-media></span>',
   assertSavedPerson() {},
   personAgeDisplay: profile => profile.age || profile.age_range || '',
-  personAssetState: () => 'complete_dossier',
+  personAssetState: () => 'missing_dossier',
   personLookSummary: () => '',
   bindPersonEvolutionForm() {},
   collectPersonEvolutionValues: values => values,
@@ -72,6 +75,10 @@ const sandbox = {
   createKeyedRequestGuard: guard,
   createPersonPlanRequestGuard: guard,
   personPlanBlockedView: () => '<section data-plan-blocked></section>',
+  checkpointRecoverySummary: people => {
+    const missing = people.flatMap(item => item.checkpoint_recovery_summary?.missing_units || []);
+    return { completed: 0, total: missing.length, missing, retry_blocked: missing.some(unit => unit.retry_blocked), billing_review_state: 'not_billed' };
+  },
 };
 vm.runInNewContext(`${source}\nglobalThis.__tested = { mount };`, sandbox, { filename: 'assetCenterView.js' });
 
@@ -107,6 +114,7 @@ async function render(contentMode, products = [], { includePerson = true } = {})
   let html = '';
   let filters = [];
   let sections = [];
+  const controls = new Map();
   const host = {
     get innerHTML() { return html; },
     set innerHTML(value) {
@@ -123,7 +131,12 @@ async function render(contentMode, products = [], { includePerson = true } = {})
       if (selector === '[data-asset-section]') return sections;
       return [];
     },
-    querySelector: () => control(),
+    querySelector(selector) {
+      const attribute = selector.match(/^\[([^\]]+)\]$/)?.[1];
+      if (attribute && !html.includes(attribute)) return null;
+      if (!controls.has(selector)) controls.set(selector, control());
+      return controls.get(selector);
+    },
   };
   const bundle = {
     project: { id: `task-${contentMode}`, active_generation_id: '', content_mode: contentMode },
@@ -137,7 +150,7 @@ async function render(contentMode, products = [], { includePerson = true } = {})
     store: { runStage: async () => {}, updateRequest: async () => bundle },
     bundle, refreshShell: async () => {}, refreshCurrentView: async () => {}, navigate() {},
   });
-  return { html: host.innerHTML, host, filters, sections };
+  return { html: host.innerHTML, host, filters, sections, controls };
 }
 
 function buttonTag(html, attribute) {
@@ -153,7 +166,8 @@ function viewHead(html) {
 }
 
 (async () => {
-  const narrative = (await render('narrative_story', [product()])).html;
+  const narrativeResult = await render('narrative_story', [product()]);
+  const narrative = narrativeResult.html;
   assert.doesNotMatch(viewHead(narrative), /data-generate-product-main/, '剧情项目顶栏不得出现商品/展示主体入口');
   assert.doesNotMatch(narrative, /data-asset-filter="products"/, '剧情项目不得出现商品/展示主体分类');
   assert.doesNotMatch(narrative, /data-asset-section="products"|data-add-asset="products"|data-generate-product=/, '剧情项目任何资产分类都不得泄漏展示主体添加或生成入口');
@@ -161,6 +175,10 @@ function viewHead(html) {
   assert.match(narrative, /data-select-person/, '剧情项目必须保留选择已有人物素材');
   assert.match(narrative, /data-upload-real-person/, '剧情项目必须保留上传真人素材');
   assert.doesNotMatch(narrative, /data-generate-subjects/, '剧情项目不得继续暴露旧人物/动物单项生成入口');
+  const subjectButton = narrativeResult.controls.get('[data-generate-subject-assets]');
+  assert(subjectButton, '人物主按钮必须完成真实事件绑定');
+  await subjectButton.click();
+  assert.equal(subjectConfirmationCalls, 1, '点击人物主按钮必须进入确认框，不能因未定义的恢复状态静默失败');
 
   const narrativeNoAssets = (await render('narrative_story', [], { includePerson: false })).html;
   assert.match(narrativeNoAssets, /当前项目还没有可用资产/, '剧情总资产为0时必须保留正常空状态');

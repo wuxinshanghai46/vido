@@ -10,6 +10,7 @@ import { assetCardMedia } from './sceneDossierCard.js?v=20260824-production-v201
 import { assertSavedPerson, personAgeDisplay, personAssetState, personLookSummary } from './assetCenterPersonState.js?v=20260824-production-v201at';
 import { bindPersonEvolutionForm, collectPersonEvolutionValues, renderPersonEvolutionSummary } from './assetCenterPersonEvolution.js?v=20260824-production-v201at';
 import { createKeyedRequestGuard } from './assetCenterRequestGuard.js?v=20260824-production-v201at';
+import { checkpointRecoverySummary } from './assetCheckpointRecovery.js?v=20260824-production-v201at';
 const GROUPS = [['people', '人物'], ['animals', '动物'], ['products', '商品 / 展示主体'], ['logos', 'LOGO']];
 const GENERATABLE = new Set(['people', 'animals']);
 const loadAssetCenterStage = globalThis.__loadAssetCenterStage || (() => import('./assetCenterStageView.js?v=20260824-production-v201at'));
@@ -251,6 +252,8 @@ export async function mount(host, context) {
   const contractDisabled = assetPlanReady ? '' : 'disabled title="请先更新当前人物方案"';
   const missingSubjectCount = (assets.people || []).filter(item => subjectNeedsGeneration(item, 'human')).length
     + (assets.animals || []).filter(item => subjectNeedsGeneration(item, 'animal')).length;
+  const recoverySummary = checkpointRecoverySummary([...(assets.people || []), ...(assets.animals || [])]);
+  const checkpointRecovery = { ...recoverySummary, missing_units: recoverySummary.missing };
   host.innerHTML = `
     <section class="view-head">
       <div><h1>资产中心</h1><p>${narrative ? '人物、动物、场景与机位独立建档。' : '人物、动物、商品/展示主体、LOGO、场景与机位独立建档。'}</p></div>
