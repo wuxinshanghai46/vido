@@ -11,7 +11,7 @@ function read(relativePath) {
 
 /** 计算文本行数，作为防止单文件继续膨胀的守卫。 */
 function lines(relativePath) {
-  return read(relativePath).split(/\r?\n/).length;
+  return read(relativePath).replace(/\r?\n$/, '').split(/\r?\n/).length;
 }
 
 /** 校验新通用核心的每个命名函数前都存在中文功能备注。 */

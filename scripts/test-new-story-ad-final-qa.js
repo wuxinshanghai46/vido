@@ -227,7 +227,9 @@ function testForceRegenerateAllIsNeverImplicit() {
 
 function testModuleResponsibilityBoundaries() {
   const root = path.resolve(__dirname, '..');
-  const lineCount = relative => fs.readFileSync(path.join(root, relative), 'utf8').split(/\r?\n/).length;
+  const lineCount = relative => fs.readFileSync(path.join(root, relative), 'utf8')
+    .replace(/\r?\n$/, '')
+    .split(/\r?\n/).length;
   assert(lineCount('src/services/newStoryAd/motionAwareEditService.js') <= 280, '运动分析应保持独立小模块，不能回灌主服务');
   assert(lineCount('src/services/newStoryAd/finalVideoQaService.js') <= 280, '最终 QA 应保持独立小模块，不能回灌主服务');
   assert(lineCount('src/services/newStoryAd/videoSubmissionGateService.js') <= 140, '范围、费用与提交门禁应保持独立小模块');
