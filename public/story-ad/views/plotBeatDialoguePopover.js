@@ -1,4 +1,4 @@
-import { escapeHtml as e } from '../components/ui.js?v=20260824-production-v203';
+import { escapeHtml as e } from '../components/ui.js?v=20260824-production-v203a';
 
 function o(c=[],s='',m='dialogue'){const p=c.filter(x=>x?.on_screen!==false);if(m==='voiceover')return '<option value="旁白" data-speaker-id="narrator">旁白</option>';return `${p.length?'':'<option value="">完善人物</option>'}${p.map(x=>`<option value="${e(x.name||'')}" data-speaker-id="${e(x.id||'')}"${x.name===s?' selected':''}>${e(x.name||x.role||'未命名')}</option>`).join('')}`}
 function l(x={},c=[]){const m=x.speech_mode==='voiceover'||x.kind==='voiceover'?'voiceover':'dialogue',s=m==='voiceover'?'旁白':(x.speaker||'');return `<div class="beat-dialogue-line" data-dialogue-line><select class="input" data-dialogue-mode><option value="dialogue"${m==='dialogue'?' selected':''}>台词</option><option value="voiceover"${m==='voiceover'?' selected':''}>旁白</option></select><select class="input" data-dialogue-speaker>${o(c,s,m)}</select><textarea class="textarea" rows="2" data-dialogue-text>${e(x.line||x.text||'')}</textarea><button type="button" data-remove-dialogue-line>×</button></div>`}
