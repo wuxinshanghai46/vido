@@ -62,6 +62,7 @@ async function main() {
 
   const auditedReferenceName = `audited-wearable-${process.pid}.png`;
   const auditedReferencePath = mediaAdapter.assetPathFromName(auditedReferenceName);
+  fs.mkdirSync(path.dirname(auditedReferencePath), { recursive: true });
   await sharp({ create: { width: 900, height: 1200, channels: 3, background: '#334455' } }).png().toFile(auditedReferencePath);
   const auditedCheckpoints = {};
   try {
