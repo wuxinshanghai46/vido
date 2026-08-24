@@ -1,5 +1,6 @@
 import { request, uploadAsset, uploadReferenceVideo } from '../api.js?v=20260824-production-v204h';
-import { beginReferenceReplacement, beginReferenceRetry, referenceSyncInterrupted, replacementCurrent, removeProjectReference, restoreReferenceReplacement, restoreReferenceRetry } from './referenceReplacementState.js?v=20260824-production-v204h';
+import { beginReferenceReplacement, referenceSyncInterrupted, replacementCurrent, removeProjectReference, restoreReferenceReplacement } from './referenceReplacementState.js?v=20260824-production-v204h';
+import { retryReferenceAnalysisRequest, retryReferenceImportRequest } from './referenceRetryStore.js?v=20260824-production-v204h';
 import { loadProjectList } from './projectListStore.js?v=20260824-production-v204h';
 import { loadProjectBundle, refreshProjectBundle } from './projectBundleStore.js?v=20260824-production-v204h';
 export function createProjectStore() {
@@ -262,50 +263,9 @@ export function createProjectStore() {
     }
   }
 
-  async function retryReferenceAnalysis() {
-    const options = arguments[0] || {};
-    const analysisId = state.bundle?.reference?.analysis_id || '';
-    if (!analysisId) throw new Error('当前没有可重新整理的参考视频。');
-    const previousReference = beginReferenceRetry(state, set);
-    try {
-      const data = await request(`/api/new-story-ad/reference-video-analyses/${encodeURIComponent(analysisId)}/reanalyze`, {
-        method: 'POST',
-        body: {
-          extended_analysis_confirmed: options.extended_analysis_confirmed === true,
-          preflight_fingerprint: String(options.preflight_fingerprint || ''),
-          acknowledge_billing_unknown: options.acknowledge_billing_unknown === true,
-        },
-      });
-      const analysis = data.analysis || {};
-      applyReferenceLiveState(analysis);
-      syncReferencePolling(true);
-      set({ saving: false });
-      return analysis;
-    } catch (error) {
-      restoreReferenceRetry(state, set, previousReference, error);
-      throw error;
-    }
-  }
-
-  async function retryReferenceImport() {
-    const analysisId = state.bundle?.reference?.analysis_id || '';
-    if (!analysisId) throw new Error('当前没有可重新读取的参考链接。');
-    const previousReference = beginReferenceRetry(state, set);
-    try {
-      const data = await request(`/api/new-story-ad/reference-video-analyses/${encodeURIComponent(analysisId)}/reimport`, {
-        method: 'POST',
-        body: {},
-      });
-      const analysis = data.analysis || {};
-      applyReferenceLiveState(analysis);
-      syncReferencePolling(true);
-      set({ saving: false });
-      return analysis;
-    } catch (error) {
-      restoreReferenceRetry(state, set, previousReference, error);
-      throw error;
-    }
-  }
+  const referenceRetryDeps = () => ({ request, state, set, applyReferenceLiveState, syncReferencePolling });
+  const retryReferenceAnalysis = options => retryReferenceAnalysisRequest(referenceRetryDeps(), options);
+  const retryReferenceImport = () => retryReferenceImportRequest(referenceRetryDeps());
 
   function referenceTaskRecord(analysis = {}) {
     const result = analysis.result && typeof analysis.result === 'object' ? analysis.result : {};

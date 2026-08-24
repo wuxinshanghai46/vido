@@ -402,6 +402,7 @@ assert.doesNotMatch(projectStore, /async function retryReferenceAnalysis\(\)[\s\
 assert.doesNotMatch(projectStore, /function syncReferencePolling[\s\S]*?bindReferenceAnalysis[\s\S]*?function clearProject/, 'polling must remain read-only because the server owns task projection');
 assert.match(projectStore, /referenceSyncInterrupted\(currentReference, error, interruptedAt\)/, 'polling interruption must freeze elapsed time while automatic reconnect continues');
 const referenceReplacementState = read('public/story-ad/store/referenceReplacementState.js');
+const referenceRetryStore = read('public/story-ad/store/referenceRetryStore.js');
 const storyAdStyles = read('public/story-ad/styles.css');
 assert.match(storyAdStyles, /@media \(hover: hover\) and \(pointer: fine\)[\s\S]*\.btn:not\(:disabled\):hover[\s\S]*transform: translateY\(-2px\)/, '可点击按钮必须提供明显且仅限精确指针的悬停位移');
 assert.match(storyAdStyles, /\.btn\.primary:not\(:disabled\):hover[\s\S]*box-shadow: 0 10px 26px/, '主操作悬停必须提供高对比阴影和颜色反馈');
@@ -416,12 +417,13 @@ assert.match(projectStore, /phase:\s*String\(analysis\.phase/, '参考分析绑�
 assert.match(projectStore, /applyReferenceLiveState\(analysis\)/, '同一状态内的轮询进度必须立即合并到界面状态');
 assert.match(projectStore, /async function hydrateReferenceFailure\(\)/, '历史失败任务必须从权威分析记录补回中文错误原因');
 assert.match(projectStore, /live\.error\.message \|\| live\.error\.code/, '实时失败状态必须优先展示中文错误信息而不是内部代码');
-assert.match(projectStore, /async function retryReferenceAnalysis\(\)/, '参考分析失败后必须提供同一 ID 的缓存重试能力');
-assert.match(projectStore, /extended_analysis_confirmed:\s*options\.extended_analysis_confirmed === true[\s\S]*preflight_fingerprint:/,
+assert.match(projectStore, /retryReferenceAnalysis\s*=\s*options\s*=>\s*retryReferenceAnalysisRequest/, '项目 Store 必须公开同一 ID 的缓存重试能力');
+assert.match(referenceRetryStore, /extended_analysis_confirmed:\s*options\.extended_analysis_confirmed === true[\s\S]*preflight_fingerprint:/,
   '同一分析 ID 的重试接口必须传递扩展费用确认和预检指纹');
-assert.match(projectStore, /beginReferenceRetry\(state, set\)[\s\S]*request\(`\/api\/new-story-ad\/reference-video-analyses/, '点击重新识别后必须先显示本地受理状态，不能等待网络响应');
-assert.match(projectStore, /catch \(error\)[\s\S]*restoreReferenceRetry\(state, set, previousReference, error\)/, '重新识别请求失败时必须恢复权威旧状态');
-assert.match(projectStore, /reference-video-analyses\/\$\{encodeURIComponent\(analysisId\)\}\/reanalyze/, '重新识别必须调用专用接口，不能被 completed 幂等门静默吞掉');
+assert.match(referenceRetryStore, /beginReferenceRetry\(state, set\)[\s\S]*request\(`\/api\/new-story-ad\/reference-video-analyses/, '点击重新识别后必须先显示本地受理状态，不能等待网络响应');
+assert.match(referenceRetryStore, /catch \(error\)[\s\S]*restoreReferenceRetry\(state, set, previousReference, error\)/, '重新识别请求失败时必须恢复权威旧状态');
+assert.match(referenceRetryStore, /runReferenceRetry\(deps, 'reanalyze'/, '重新识别必须调用专用接口，不能被 completed 幂等门静默吞掉');
+assert.match(referenceRetryStore, /runReferenceRetry\(deps, 'reimport'/, '链接读取失败必须沿用同一分析 ID 调用专用重读接口');
 assert.match(projectStore, /visual_evidence_reusable:\s*analysis\.visual_evidence_reusable === true/, '界面只能按后端逐帧覆盖结论决定是否复用证据');
 assert.match(projectStore, /evidence_batch_progress:\s*analysis\.evidence_batch_progress/, '失败恢复必须把已完成批次投影到页面，不能误导为全部重读');
 assert.match(projectStore, /refreshSections\('all'\)/, '终态分析采用后必须刷新完整工作区投影');
