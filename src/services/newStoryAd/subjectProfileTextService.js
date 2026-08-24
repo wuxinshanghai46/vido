@@ -35,6 +35,23 @@ const ASSIST_PROFILE_FIELDS = [
 const ASSIST_DETAIL_FIELDS = ['appearanceText', 'wardrobeText', 'hairMakeupText', 'negativeText'];
 const REPLACEABLE_AUTHORITIES = new Set(['reference_direction', 'reference_safety', 'system_default']);
 
+const ROBOT_PROFILE_PATTERN = /(?:机器人|机械人|仿生人|机械体|智能机器|安防机器|陪伴机器|android\b|\brobot\b|\bdroid\b|\bmecha\b)/iu;
+
+function subjectKind(profile = {}) {
+  const explicit = text(
+    profile.subject_kind || profile.subjectKind || profile.entity_type || profile.entityType
+      || profile.subject_type || profile.subjectType || profile.character_type || profile.characterType,
+    40,
+  ).toLowerCase();
+  if (/^(?:robot|android|droid|mecha|machine)$/.test(explicit)) return 'robot';
+  if (/^(?:human|person|cast|character)$/.test(explicit)) return 'human';
+  const evidence = [
+    profile.displayName, profile.name, profile.roleName, profile.role, profile.description,
+    profile.appearanceText, profile.appearance, profile.wardrobeText, profile.hairMakeupText,
+  ].map(value => typeof value === 'object' ? JSON.stringify(value) : value).filter(Boolean).join(' ');
+  return ROBOT_PROFILE_PATTERN.test(evidence) ? 'robot' : 'human';
+}
+
 function stringList(value, allowed = null, limit = 24) {
   const items = Array.isArray(value) ? value : [];
   const allow = allowed ? new Set(allowed) : null;
@@ -129,11 +146,29 @@ function assistedFieldQuality(field = '', value = '') {
   };
 }
 
+function robotFieldQuality(field = '', value = '') {
+  const normalized = text(value, 1200);
+  const rules = {
+    appearanceText: { min: 55, required: 3, patterns: [/结构|骨架|壳体|机身|头部/u, /材质|金属|合金|陶瓷|聚合物|碳纤维/u, /尺寸|身高|比例|重心|轮廓/u, /传感器|镜头|显示屏|灯带|眼部|接口/u] },
+    wardrobeText: { min: 50, required: 4, patterns: [/外壳|装甲|护板|面板|覆盖件/u, /关节|驱动|滑轮|履带|机械臂|夹爪/u, /携带|挂载|配件|工具|背包|充电/u, /颜色|配色|色带|涂层/u, /材质|金属|合金|橡胶|玻璃|陶瓷/u] },
+    hairMakeupText: { min: 40, required: 3, patterns: [/头部|面板|面罩|显示屏|眼部/u, /传感器|镜头|阵列|天线|拾音|扬声器/u, /指示灯|灯带|发光|交互表情|状态显示/u] },
+    negativeText: { min: 40, required: 3, patterns: [/结构|比例|零件|关节/u, /材质|颜色|涂层|磨损/u, /传感器|灯带|面板|接口/u, /多余|缺失|变形|漂浮|拼接|文字/u] },
+  };
+  const rule = rules[field];
+  if (!rule) return { valid: !!normalized, length: normalized.length, category_count: normalized ? 1 : 0 };
+  const count = categoryCount(normalized, rule.patterns);
+  return { valid: normalized.length >= rule.min && count >= rule.required, length: normalized.length,
+    category_count: count, minimum_length: rule.min, minimum_categories: rule.required };
+}
+
 function assistedProfileQuality(profile = {}, fields = ASSIST_DETAIL_FIELDS) {
   const checked = stringList(fields, ASSIST_DETAIL_FIELDS);
-  const details = Object.fromEntries(checked.map(field => [field, assistedFieldQuality(field, profile[field])]));
+  const kind = subjectKind(profile);
+  const details = Object.fromEntries(checked.map(field => [field, kind === 'robot'
+    ? robotFieldQuality(field, profile[field])
+    : assistedFieldQuality(field, profile[field])]));
   const issues = Object.entries(details).filter(([, result]) => !result.valid).map(([field]) => field);
-  return { valid: issues.length === 0, issues, details };
+  return { valid: issues.length === 0, issues, details, subject_kind: kind };
 }
 
 function dedupeClauses(value = '', max = 800) {
@@ -211,6 +246,7 @@ function canonicalProfile(profile = {}, options = {}) {
   const resolved = profileTexts(profile, options);
   return {
     ...profile,
+    subject_kind: subjectKind(profile),
     ...resolved,
     appearance: {
       ...(profile.appearance && typeof profile.appearance === 'object' ? profile.appearance : {}),
@@ -239,7 +275,9 @@ module.exports = {
   userEditedFields,
   replaceableAssistFields,
   assistedFieldQuality,
+  robotFieldQuality,
   assistedProfileQuality,
+  subjectKind,
   dedupeClauses,
   alignAgeDescription,
   profileTexts,

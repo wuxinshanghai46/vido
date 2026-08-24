@@ -613,6 +613,9 @@ function ageRangeForStoryStage(text = '') {
 }
 
 function normalizeProfileDemographics(profile = {}, existing = {}, ctx = {}, castCount = 1) {
+  if (subjectProfileText.subjectKind({ ...existing, ...profile }) === 'robot') {
+    return { subject_kind: 'robot', ethnicity: '', ethnicity_source: 'not_applicable_robot' };
+  }
   const ageCandidates = [
     profile.age_contract?.display_text, profile.age_contract?.value, profile.age, profile.age_range, profile.ageRange,
     ...(Array.isArray(profile.age_states) ? profile.age_states.map(item => item?.apparent_age) : []),

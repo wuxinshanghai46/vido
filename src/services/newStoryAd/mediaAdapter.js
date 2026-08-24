@@ -193,6 +193,32 @@ function buildOpenAiCompatibleGptImage2Request(config = {}, { prompt = '', size 
   };
 }
 
+function isWebangMaasConfig(config = {}) {
+  return /webang-maas/i.test([config.family, config.adapter, config.providerId, config.provider?.preset, config.provider?.adapter]
+    .filter(Boolean).join(' '));
+}
+
+async function buildWebangGptImage2EditForm(config = {}, { prompt = '', size = '1024x1024', referenceImages = [] } = {}) {
+  const refs = (Array.isArray(referenceImages) ? referenceImages : []).filter(Boolean).slice(0, 6);
+  if (!refs.length) throw new Error('微众 GPT Image 2 edits 至少需要一个参考图文件');
+  const FormData = require('form-data');
+  const form = new FormData();
+  form.append('model', String(config.modelId || 'gpt-image-2'));
+  form.append('prompt', String(prompt || '').slice(0, 32000));
+  if (size) form.append('size', String(size));
+  form.append('quality', 'high');
+  for (let index = 0; index < refs.length; index += 1) {
+    const buffer = await imageBufferFromResult({ image_url: refs[index] });
+    form.append('image[]', buffer, { filename: `reference_${index + 1}.png`, contentType: 'image/png' });
+  }
+  return form;
+}
+
+function buildWebangGptImage2GenerationBody(config = {}, { prompt = '', size = '1024x1024' } = {}) {
+  return { model: String(config.modelId || 'gpt-image-2'), prompt: String(prompt || '').slice(0, 32000),
+    n: 1, size: String(size || '1024x1024'), quality: 'high' };
+}
+
 function normalizeCompatibleImageResponse(payload = {}) {
   const rows = Array.isArray(payload?.data) ? payload.data
     : (Array.isArray(payload?.images) ? payload.images : (Array.isArray(payload?.output) ? payload.output : []));
@@ -249,13 +275,23 @@ async function invokeOpenAiCompatibleGptImage2(config = {}, options = {}) {
   await notifyGenerationObserver(options.onSubmitting, {
     clientRequestId: options.clientRequestId || '', status: 'submitting', submittedAt: new Date().toISOString(),
   });
-  const response = await axios.post(request.endpoint, request.body, {
+  const webangEdit = isWebangMaasConfig(config) && Array.isArray(options.referenceImages) && options.referenceImages.filter(Boolean).length > 0;
+  const webangImageConfig = config.provider?.adapter_config?.image || {};
+  const webangForm = webangEdit ? await buildWebangGptImage2EditForm(config, options) : null;
+  const endpoint = webangEdit
+    ? `${String(config.baseURL || '').replace(/\/$/, '')}${String(webangImageConfig.edit_endpoint || '/images/edits').replace(/^([^/])/, '/$1')}`
+    : request.endpoint;
+  const generationBody = isWebangMaasConfig(config) && !webangEdit
+    ? buildWebangGptImage2GenerationBody(config, options)
+    : request.body;
+  const response = await axios.post(endpoint, webangForm || generationBody, {
     headers: {
       Authorization: `Bearer ${config.apiKey}`,
-      'Content-Type': 'application/json',
+      ...(webangForm ? webangForm.getHeaders() : { 'Content-Type': 'application/json' }),
       ...(options.clientRequestId ? { 'X-Request-ID': String(options.clientRequestId).slice(0, 100) } : {}),
     },
     timeout: options.timeoutMs,
+    ...(webangForm ? { maxContentLength: 64 * 1024 * 1024, maxBodyLength: 64 * 1024 * 1024 } : {}),
     validateStatus: () => true,
     signal: options.signal,
   });
@@ -808,7 +844,7 @@ async function generateImage({
         config,
         String(stage || '').startsWith('new_story_ad.') ? rightsAwareImagePrompt(auditSafePrompt) : auditSafePrompt,
       );
-      const compatibleImage2 = /gpt-image-2/i.test(config.modelId) && /openai-compatible/i.test(config.family);
+      const compatibleImage2 = /gpt-image-2/i.test(config.modelId) && /openai-compatible|webang-maas/i.test(config.family);
       const client = compatibleImage2 ? null : new OpenAI({ apiKey: config.apiKey, baseURL: config.baseURL || undefined });
       const response = await generationBillingGuard.run(
         {
@@ -1033,6 +1069,9 @@ module.exports = {
   rightsAwareImagePrompt,
   domesticGptImage2ReviewPrompt,
   buildOpenAiCompatibleGptImage2Request,
+  buildWebangGptImage2EditForm,
+  buildWebangGptImage2GenerationBody,
+  isWebangMaasConfig,
   normalizeCompatibleImageResponse,
   createImageSubmissionTracker,
   promptForImageCandidate,

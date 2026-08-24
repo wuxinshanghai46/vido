@@ -417,6 +417,7 @@ function humanMemberSpecs(spec = {}, body = {}, count = 1) {
     const age = ageResolution.age;
     return {
       ...withLooks,
+      subject_kind: subjectProfileText.subjectKind(source),
       id: cleanText(source.id || source.cast_id || source.castId || '', 80),
       member_index: index + 1,
       displayName: cleanText(source.displayName || source.name || '', 120),
@@ -706,6 +707,23 @@ function assertCompleteSubjectProfiles(counts = {}, humans = [], pets = []) {
 }
 
 function humanPrompt(member, count) {
+  if (subjectProfileText.subjectKind(member) === 'robot') {
+    return [
+      'Create one production-ready reusable robot identity for a complete 20-item mechanical subject dossier.',
+      worldSetting.visualMediumPrompt(member.visual_medium || 'auto', 'robot identity dossier'),
+      'This is a non-human mechanical subject. Do not invent ethnicity, human skin, hair or makeup.',
+      'Lock the exact silhouette, scale, shell geometry, materials, joints, locomotion system, sensor/camera array, face panel, indicator lights, ports, carried modules, colors and wear state across every view.',
+      'Render separate full-body structure, component close-up, interaction-expression-state and mechanical-action contact sheets with readable floor contact, neutral studio light, no text, watermark, unrelated scenery or extra subject.',
+      count > 1 ? `This is cast subject ${member.member_index} of ${count}; keep it visually distinct from every other subject.` : '',
+      `Name/function: ${member.displayName}; ${member.roleName}.`,
+      member.appearanceText ? `Locked mechanical appearance and structure: ${member.appearanceText}.` : '',
+      member.wardrobeText ? `Locked shell, protection, mounted accessories and carried equipment: ${member.wardrobeText}.` : '',
+      member.hairMakeupText ? `Locked head panel, sensors, cameras, antennas, lights and interaction display: ${member.hairMakeupText}.` : '',
+      member.performanceText ? `Mechanical movement and interaction behavior: ${member.performanceText}.` : '',
+      member.continuityText ? `Cross-shot mechanical continuity lock: ${member.continuityText}.` : '',
+      member.negativeText ? `Negative mechanical continuity rules: ${member.negativeText}.` : '',
+    ].filter(Boolean).join('\n');
+  }
   const richnessRules = {
     restrained: 'Styling richness lock: restrained and understated. Use period-correct construction and complete accessories, but keep ornament density low and materials sober.',
     refined: 'Styling richness lock: refined and elegant. Use period-correct layered construction, premium believable textiles, controlled embroidery and a coherent set of shoes and accessories.',

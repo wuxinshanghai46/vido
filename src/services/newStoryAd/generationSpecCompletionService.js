@@ -180,6 +180,7 @@ async function completePersonProfiles(options = {}, deps = {}) {
     .map(profile => ({
       ...profile,
       look_profiles: profile.look_profiles.map(look => {
+        if (subjectProfileText.subjectKind(profile) === 'robot') return look;
         if (look.wardrobe_contract && typeof look.wardrobe_contract === 'object') return look;
         const input = { brief, profile, look };
         const projected = wardrobeKnowledge.buildEvidenceContract(look.wardrobeText, input);
@@ -189,6 +190,7 @@ async function completePersonProfiles(options = {}, deps = {}) {
       }),
     }));
   const targets = sourceProfiles.flatMap((profile, index) => (
+    subjectProfileText.subjectKind(profile) === 'robot' ? [] :
     profile.look_profiles.map((look, lookIndex) => ({
       id: cleanText(profile.id || `cast_${index + 1}`, 80),
       index,

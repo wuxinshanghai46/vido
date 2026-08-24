@@ -722,7 +722,7 @@ assert.match(sceneWithCameraImage, /data-scene-dossier=/, '场景详情回归夹
 
 const generateFunction = assets.slice(assets.indexOf('const generate = async'), assets.indexOf("host.querySelectorAll('[data-asset-filter]"));
 assert(generateFunction.indexOf('confirmDialog') >= 0, '人物生成必须包含一次简洁确认');
-assert(generateFunction.indexOf('confirmDialog') < generateFunction.indexOf("store.runStage('subject-assets'"), '确认必须发生在模型请求前');
+assert(generateFunction.indexOf('confirmDialog') < generateFunction.indexOf("store.runStage('person-plan'"), '确认必须发生在真实规划模型请求前');
 const verifyProductFunction = assets.slice(assets.indexOf('const verifyProduct = async'), assets.indexOf("host.querySelectorAll('[data-asset-filter]"));
 assert(verifyProductFunction.indexOf('confirmDialog') >= 0, '商品视觉验证必须包含显式费用确认');
 assert(verifyProductFunction.indexOf('confirmDialog') < verifyProductFunction.indexOf('/product-verify'), '商品验证确认必须发生在视觉模型请求前');

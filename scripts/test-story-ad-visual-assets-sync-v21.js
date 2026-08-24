@@ -86,7 +86,7 @@ assert(billingRoutes.includes("'/tasks/:id/visual-assets/retry-authorizations'")
 assert(billingRetryView.includes("? '核对并继续'"), '计费未知状态的主按钮必须先表达核对，再继续缺失项');
 assert(!billingRetryView.includes("? '重新生成'"), '计费未知状态不得误导用户整批重新生成');
 assert(!assetView.includes('当前人物配饰存在计费未知记录'), '单个人物按钮不能再被其它计费未知单元全局拦截');
-assert(assetView.includes("store.runStage('subject-assets', payload)"), '人物按钮必须只提交人物分支');
+assert(assetView.includes("store.runStage('person-plan', payload)"), '人物按钮必须先提交独立人物规划，再由服务端启动图片分支');
 assert(assetView.includes("lane: 'scenes'"), '场景按钮必须只核对当前场景的失败单元');
 assert(billingRetryView.includes('accept_duplicate_charge_risk: true'));
 assert(billingRetryView.includes('/visual-assets/retry-authorizations'));

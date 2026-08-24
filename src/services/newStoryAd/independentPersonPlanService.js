@@ -37,8 +37,10 @@ async function complete(taskId, options = {}, deps = {}) {
       active.add(index);
       await report('person_plan_character', `正在独立完善${profile.displayName || profile.name || `人物${index + 1}`}的外观、穿着与造型`, { current_index: index + 1 });
       try {
+        const subjectKind = subjectProfileText.subjectKind(profile);
         const forcedProfile = {
           ...profile,
+          subject_kind: subjectKind,
           user_edited_fields: [], userEditedFields: [], _userEditedFields: [],
           field_authority: Object.fromEntries(subjectProfileText.ASSIST_PROFILE_FIELDS.map(field => [field, 'system_default'])),
         };
@@ -48,6 +50,7 @@ async function complete(taskId, options = {}, deps = {}) {
           mode: 'person_spec',
           cast_profiles: profiles.map((item, itemIndex) => itemIndex === index ? forcedProfile : item),
           assist_subject_target: { kind: 'human', index, id: profile.id },
+          assist_subject_kind: subjectKind,
           assist_replaceable_fields: subjectProfileText.ASSIST_PROFILE_FIELDS,
           _internal_model_stage: 'new_story_ad.person_plan_character',
         }, options.user || {});
@@ -55,6 +58,7 @@ async function complete(taskId, options = {}, deps = {}) {
         const edited = new Set(subjectProfileText.userEditedFields(profile));
         const merged = {
           ...profile, ...generated,
+          subject_kind: subjectKind,
           id: profile.id,
           displayName: profile.displayName || profile.name || generated.displayName,
           name: profile.name || profile.displayName || generated.name,

@@ -57,8 +57,8 @@ function outputSchema() {
       petType: '宠物类型或品种', petDescription: '跨镜头稳定的宠物识别特征',
     },
     cast_profiles: [{
-      id: '稳定且唯一的 cast ID', displayName: '人物姓名或关系称呼', roleName: '独立身份、年龄关系或职责',
-      appearanceText: '只描述该人物的年龄、脸型、体型、气质和可识别外貌', wardrobeText: '首个造型兼容字段',
+      id: '稳定且唯一的 cast ID', subject_kind: 'human/robot', displayName: '主体姓名或关系称呼', roleName: '独立身份、关系或职责',
+      appearanceText: '人类写年龄、脸型、体型、气质和识别特征；机器人写尺寸比例、壳体结构、材质、传感器和稳定识别特征', wardrobeText: '人类写穿搭配饰；机器人写外壳护板、关节驱动、挂载配件、配色与材质',
       look_profiles: [{
         id: '稳定且唯一的造型ID', name: '用户可理解的造型名称', story_state: '时代或剧情状态',
         scene_ids: ['适用场景ID'], scene_names: ['适用场景名称'], wardrobeText: '60-160 字；该造型固定上装、下装或连衣裙、鞋履、颜色、材质、配饰及佩戴位置',
@@ -73,7 +73,7 @@ function outputSchema() {
           negative_constraints: ['当前造型禁止项'], knowledge_doc_ids: ['实际使用的知识条目ID'],
         },
       }],
-      hairMakeupText: '帽子、眼镜、发带等发饰和首饰始终佩戴或始终不佩戴；首个造型兼容字段',
+      hairMakeupText: '人类写发型妆造和佩戴物；机器人写头部面板、镜头/传感器阵列、指示灯和交互表情显示',
       negativeText: '人物全局禁止项；禁止四视图之间增减、更换、变色或移动服装、鞋、帽子、眼镜、发饰和首饰',
     }],
     pet_profiles: [{ id: '稳定且唯一的 pet ID', name: '宠物名字', type: '物种或品种', breed: '细分品种', appearance: '稳定识别特征' }],
@@ -92,7 +92,27 @@ function preferDetailedField(field = '', preferred = '', alternative = '') {
   return preferredText || alternativeText;
 }
 
-function modelDraftQuality(parsed = {}, target = null, replaceableFields = []) {
+const HISTORICAL_CONTEXT_PATTERN = /(?:古代|古装|汉服|襦裙|朝代|宫廷|发髻|玉簪|武侠|仙侠|前世|古今)/u;
+const MODERN_CONTEXT_PATTERN = /(?:现代|当代|现今|办公室|西装|运动鞋|手机|机器人|LED|现代城市)/iu;
+
+function contextEraIssues(candidate = {}, context = {}, target = null) {
+  const authority = JSON.stringify({
+    brief: context.brief || '', world_setting: context.world_setting || context.worldSetting || {},
+    target: target?.profile || {}, content_mode: context.content_mode || '',
+  });
+  const generated = JSON.stringify({
+    roleName: candidate.roleName, appearanceText: candidate.appearanceText, wardrobeText: candidate.wardrobeText,
+    hairMakeupText: candidate.hairMakeupText, negativeText: candidate.negativeText, look_profiles: candidate.look_profiles,
+  });
+  const historicalAuthority = HISTORICAL_CONTEXT_PATTERN.test(authority);
+  const modernAuthority = MODERN_CONTEXT_PATTERN.test(authority) || subjectProfileText.subjectKind(target?.profile || candidate) === 'robot';
+  const issues = [];
+  if (modernAuthority && !historicalAuthority && HISTORICAL_CONTEXT_PATTERN.test(generated)) issues.push('unsupported_historical_context');
+  if (historicalAuthority && !modernAuthority && MODERN_CONTEXT_PATTERN.test(generated)) issues.push('unsupported_modern_context');
+  return issues;
+}
+
+function modelDraftQuality(parsed = {}, target = null, replaceableFields = [], context = {}) {
   if (!target?.kind) return { valid: true, issues: [], details: {} };
   const profiles = Array.isArray(parsed.cast_profiles || parsed.castProfiles)
     ? (parsed.cast_profiles || parsed.castProfiles)
@@ -101,9 +121,10 @@ function modelDraftQuality(parsed = {}, target = null, replaceableFields = []) {
   const detailed = replaceableFields.filter(field => subjectProfileText.ASSIST_DETAIL_FIELDS.includes(field));
   const quality = subjectProfileText.assistedProfileQuality(candidate, detailed);
   const missing = replaceableFields.filter(field => !cleanText(candidate[field] || '', 1200));
+  const contextIssues = contextEraIssues(candidate, context, target);
   return {
-    valid: missing.length === 0 && quality.valid,
-    issues: [...new Set([...missing, ...quality.issues])],
+    valid: missing.length === 0 && quality.valid && contextIssues.length === 0,
+    issues: [...new Set([...missing, ...quality.issues, ...contextIssues])],
     details: quality.details,
   };
 }
@@ -141,6 +162,7 @@ function normalizeCastProfiles(parsed = {}, context = {}, target = null) {
     }));
     return {
     ...withLooks,
+    subject_kind: subjectProfileText.subjectKind({ ...profile, ...withLooks }),
     wardrobeText,
     hairMakeupText,
     negativeText,
@@ -187,7 +209,7 @@ function buildResponse({
     context,
   );
   const castProfiles = normalizeCastProfiles(parsed, context, target);
-  const quality = modelDraftQuality({ cast_profiles: castProfiles }, target, replaceableFields);
+  const quality = modelDraftQuality({ cast_profiles: castProfiles }, target, replaceableFields, context);
   if (target?.kind && !quality.valid) {
     const error = new Error(`人物详细设定未达到可生成标准：${quality.issues.join('、')}`);
     error.code = 'ASSIST_PERSON_PROFILE_INCOMPLETE';
@@ -231,5 +253,6 @@ module.exports = {
   resolveAssistSubjectTarget,
   resolveReplaceableFields,
   modelDraftQuality,
+  contextEraIssues,
   buildResponse,
 };

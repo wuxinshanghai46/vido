@@ -96,17 +96,6 @@ function generationValidation(payload = {}) {
   if (!payload.expected_people && !payload.expected_animals) return '当前项目还没有人物或动物档案，请先完善主体资料。';
   if (payload.cast_profiles.length !== payload.expected_people) return `人物档案数量不完整：需要 ${payload.expected_people} 份。`;
   if (payload.pet_profiles.length !== payload.expected_animals) return `动物档案数量不完整：需要 ${payload.expected_animals} 份。`;
-  for (const [index, profile] of payload.cast_profiles.entries()) {
-    const missing = [['姓名', profile.displayName], ['角色', profile.roleName], ['年龄', personAgeDisplay(profile)], ['原创族裔外貌设定', profile.ethnicity], ['外貌', profile.appearanceText], ['发型/妆造', profile.hairMakeupText]]
-      .filter(([, value]) => !String(value || '').trim()).map(([label]) => label);
-    if (missing.length) return `人物 ${index + 1} 缺少：${missing.join('、')}。`;
-    const looks = Array.isArray(profile.look_profiles) ? profile.look_profiles : [];
-    if (!looks.length || looks.some(look => !String(look.wardrobeText || '').trim())) return `人物 ${index + 1} 至少需要一套完整造型。`;
-    if (looks.length > 1 && looks.some(look => !(look.scene_ids || []).length && !String(look.story_state || '').trim())) return `人物 ${index + 1} 的每套造型都需要填写适用场景或剧情状态。`;
-  }
-  for (const [index, profile] of payload.pet_profiles.entries()) {
-    if (!String(profile.type || '').trim() || !String(profile.appearance || '').trim()) return `动物 ${index + 1} 缺少类型或外观特征。`;
-  }
   return '';
 }
 
@@ -292,7 +281,7 @@ export async function mount(host, context) {
       if (!accepted) return false;
       try {
         setButtonBusy(button, true, regeneratingCompletePerson ? '正在重生成完整档案…' : '正在生成完整档案…', { elapsed: true });
-        await store.runStage('subject-assets', payload);
+        await store.runStage('person-plan', payload);
         toast(regeneratingCompletePerson ? '人物视觉档案重生成已提交；剧情、文字故事板和场景分配会继续保留。' : '人物或动物资产生成已提交，页面顶部会持续显示阶段、百分比和耗时。', 'success');
         return true;
       } catch (error) {

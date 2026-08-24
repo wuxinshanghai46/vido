@@ -27,6 +27,7 @@ const subjectReferences = require('./subjectReferenceService');
 const subjectAssetBundle = require('./subjectAssetBundleService');
 const sceneSpace = require('./sceneSpaceContractService'), assistSubjectProfiles = require('./assistSubjectProfileService');
 const subjectContinuityPolicy = require('./subjectContinuityPolicyService');
+const subjectProfileText = require('./subjectProfileTextService');
 const independentPersonPlan = require('./independentPersonPlanService');
 const worldSetting = require('./worldSettingContractService');
 const revisionService = require('./revisionService'), sceneAuthority = require('./sceneAuthorityService'), personIdentity = require('./personIdentityContractService'), petIdentity = require('./petIdentityContractService');
@@ -3546,7 +3547,7 @@ async function assistBrief(body = {}, user = {}) {
     '当 mode 是 style_control 时，只补写画面风格方向，不要写剧本、分镜、卖点或执行步骤。',
     '当 mode 是 negative_control 时，只整理画面禁止项，每条都必须是明确不能出现的内容。',
     assistCreativeDirection.systemRule(),
-    '当 mode 是 person_spec 时，按当前主体模式补齐设定字段。人物模式必须包含外貌、穿着、发型妆造和人物禁止项；动物或人物+宠物模式还必须包含独立宠物数量、类型/品种和跨镜头识别特征。',
+    '当 mode 是 person_spec 时，必须先根据当前项目和该主体自身证据识别 subject_kind，不得沿用旧任务或其他主体的类型。human 必须补齐外貌体态、穿搭配饰、发型妆造和禁止项；robot 必须补齐尺寸比例、壳体结构与材质、关节驱动、传感器/面板/指示灯、挂载配件、机械动作与结构禁止项，不得要求机器人提供族裔或妆容。动物或人物+宠物模式还必须包含独立宠物数量、类型/品种和跨镜头识别特征。',
     '同一时代内的换装可保留为多个 look_profiles；同一姓名同时存在古代与现代、前世与今生等跨时代状态时，必须拆成独立人物档案，并分别命名为“人名（古代）”“人名（现代）”，人物数量随拆分结果增加。',
     isPersonSpec ? worldSetting.promptBlock(ctx.world_setting) : '',
     assistSubjectTarget ? 'person_spec 单人物辅助模式只能输出目标人物的一条 cast_profiles 记录，pet_profiles 必须为空；不得重写或评价其他人物与宠物。' : 'person_spec 模式还必须按精确人数输出 cast_profiles，并按精确宠物数量输出 pet_profiles。每个数组成员只能描述一个主体；禁止复制同一套外貌、服装、发型或宠物特征给不同成员。',
@@ -3639,7 +3640,7 @@ async function assistBrief(body = {}, user = {}) {
   const storyAssistContext = isStoryBeat ? storyBeatAssist.buildContext(body) : null, currentExperience = body.scene_experience || body.sceneExperience || body.experience_plan || body.experiencePlan || {};
   const userPrompt = `${contextPrompt(ctx)}
 模式：${isBriefGoal ? briefGoalAssist.modePrompt(ctx) : isCreativeDirection ? 'creative_direction 剧情与表演要求辅写' : isStyleControl ? 'style_control 风格方向帮写' : isNegativeControl ? 'negative_control 禁止项帮写' : isPersonSpec ? 'person_spec 人物设定补齐' : isSceneSpec ? 'scene_spec 场景空间设定补齐' : isSceneExperience ? 'scene_experience 360/3D空间规划补齐' : isShotSettings ? 'shot_settings 当前镜头设置补齐' : isStoryBeat ? 'story_beat 当前情节点帮写' : mode === 'clean' ? 'clean 整理内容' : 'write 帮我写'}
-${isPersonSpec ? `人物设定中用户已经明确选择的主体模式、人物数量、宠物数量、性别、年龄、地域、身份、姓名和宠物品种是硬约束，必须原样保留；外貌、穿着、发型妆造、宠物识别特征和禁止项必须根据这些选择重新生成。${assistSubjectTarget ? `本次只完善目标人物：${JSON.stringify({ index: assistSubjectTarget.index, id: assistSubjectTarget.id, current_profile: assistSubjectTarget.profile })}。允许生成或重写的字段只有：${assistReplaceableFields.join('、') || '无'}；这些字段属于空白、参考创作方向或系统默认描述，必须改写为可直接生成人物资产的具体设定。其余字段均为用户或业务事实权威，必须原样保留；不得返回或改写其他人物和宠物。` : '人物+宠物模式必须分别描述人物与宠物，不能把两者合并为一个数量。cast_profiles 长度必须等于精确人物数，pet_profiles 长度必须等于精确宠物数；单人、双人、多人、纯宠物、人物加宠物都不得共用一份全局描述。'}${subjectContinuityPolicy.assistRuleZh()}` : ''}
+${isPersonSpec ? `主体设定中用户已经明确选择的主体模式、数量、身份、姓名和其它事实是硬约束，必须原样保留。人类造型中帽子、眼镜、发带等发饰和首饰始终佩戴或始终不佩戴；机器人则对等锁定面板、传感器、指示灯和挂载件。${assistSubjectTarget ? `本次只完善目标人物：${JSON.stringify({ index: assistSubjectTarget.index, id: assistSubjectTarget.id, subject_kind: subjectProfileText.subjectKind(assistSubjectTarget.profile), current_profile: assistSubjectTarget.profile })}。允许生成或重写的字段只有：${assistReplaceableFields.join('、') || '无'}；必须使用该 subject_kind 的专用语义补齐；其余字段原样保留，不得返回或改写其他人物和宠物。` : '每个主体必须独立识别 subject_kind 并独立描述，不得共用一份全局模板。'}${subjectContinuityPolicy.assistRuleZh()}` : ''}
   ${isSceneSpec ? `当前用户场景设定是本次唯一内容权威：${JSON.stringify({ scene_spec: ctx.scene_spec || {}, scene_plan: currentScenePlan }).slice(0, 18000)}。${preserveCurrentSceneFields ? '所有当前非空字段必须原样保留，只允许补齐空字段；不得用模型记忆、旧任务或通用模板重写。' : '本次允许按当前需求重编译目标场景，但仍不得引用旧任务内容。'}` : ''}${assistSceneTargetId ? `本次只允许补齐场景 ${assistSceneTargetId}。必须保留全部场景的数量、顺序和稳定 ID，不得新增、删除、重命名或改写其它场景；可以只返回目标场景一条记录。` : ''}
 ${isSceneExperience ? `当前场景与规划：${JSON.stringify({ scene: body.target_scene || body.targetScene || {}, experience: currentExperience }).slice(0, 12000)}。用户补充：${cleanText(body.user_instruction || body.instruction || '', 1000)}。必须结合当前故事、场景用途、区域和人物行动完善，不能套用别的行业或场景。` : ''}
 ${isShotSettings ? `当前镜头上下文：${JSON.stringify(shotAssistContext).slice(0, 18000)}\n只返回当前镜头设置，不要重写其它镜头。已有场景 ID 和人物/商品身份必须保持不变。` : ''}
@@ -3662,6 +3663,7 @@ ${outputSchema}`;
           draft,
           assistSubjectTarget,
           assistReplaceableFields,
+          ctx,
         ).valid;
       } catch {
         return false;
