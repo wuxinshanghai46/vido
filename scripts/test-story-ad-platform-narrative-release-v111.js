@@ -323,7 +323,16 @@ async function main() {
   assert.match(immutableDeploy, /--node \$\{quote\(nodeRuntimeBin\)\}/);
   assert.match(pm2Release, /--interpreter/);
   assert.match(pm2Release, /STORY_AD_ENFORCE_NODE_RUNTIME/);
-  assert(pm2Release.includes("name.startsWith('vido-candidate-')"), '启动候选前必须清理所有旧候选进程，防止端口返回旧 bundle');
+  const staleCandidateCleanupIndex = pm2Release.indexOf('const staleCandidateIds');
+  const candidateStartIndex = pm2Release.indexOf('start(candidateName, 4601)');
+  assert.match(pm2Release, /\.startsWith\('vido-candidate-'\)/, '候选清理必须覆盖所有 vido-candidate-* 进程');
+  assert.match(pm2Release, /PORT[\s\S]{0,160}=== '4601'/, '候选清理必须覆盖占用 4601 端口的遗留进程');
+  assert(
+    staleCandidateCleanupIndex >= 0
+      && candidateStartIndex >= 0
+      && staleCandidateCleanupIndex < candidateStartIndex,
+    '启动候选前必须先清理所有旧候选进程，防止端口返回旧 bundle',
+  );
   assert(immutableDeploy.includes('pm2 delete ${quote(candidateName)}'), '部署失败必须清理本轮候选进程');
 
   console.log(JSON.stringify({
