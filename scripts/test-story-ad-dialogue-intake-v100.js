@@ -137,7 +137,7 @@ async function main() {
   assert.doesNotMatch(dialogueSource, /这份设想尚未完成专业创作确认|缺少的内容会在对话中逐项询问/, '恢复已有项目时不得用系统规则冒充下一问');
   assert.match(projectionSource, /dataset\.dialogueSuggestions/);
   assert.doesNotMatch(dialogueSource, /正在理解你的想法/, '等待态不得显示解释性占位文案');
-  assert.match(dialogueSource, /pending\.article\.remove\(\)/, '进入规格阶段时必须移除模型过渡气泡，避免规格重复询问');
+  assert.doesNotMatch(dialogueSource, /pending\.article\.remove\(\)/, '进入规格阶段前必须保留对当前用户内容的回复，规格由独立交互继续承接');
   assert.doesNotMatch(dialogueSource, /核对右侧确认单/, '所有问题问完后不得把下一步推给右侧确认单');
   assert.match(dialogueSource, /specificationsConfirmed = String\(control\('specifications_confirmed'\)/, '已有项目不得按路由状态自动冒充规格已确认');
   assert.match(dialogueSource, /explicitSpecificationKeys\.size === explicitSettings\.OUTPUT_SETTING_KEYS\.length/, '只修改一项规格不得把整组规格标为确认');

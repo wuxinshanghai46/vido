@@ -389,17 +389,6 @@ function recoveryResponse(body = {}, failedModels = []) {
 async function run({ body = {}, modelGateway, taskId = '' } = {}) {
   assertInput(body);
   const accumulatedIdea = body.accumulated_idea || body.brief || '';
-  if (questionBudgetReached(body.completed_topics, body.content_mode) && !creativeApproachRequested(body)) return {
-    dialogue_reply: '创作关键信息已足够，接下来确认成片规格。',
-    idea_ready: true,
-    missing_topics: [],
-    question_topic: '',
-    suggested_answers: [],
-    next_step: body.specifications_confirmed !== true ? 'specifications'
-      : (!body.reference_attached && !body.reference_skipped ? 'reference' : 'review'),
-    coverage: normalizeCoverage({}, accumulatedIdea),
-    model_meta: { used_model: null, fallback_used: false, failed_models: [], deterministic: true, reason: 'question_budget_reached' },
-  };
   const immediateGap = impliedDecisionGap(accumulatedIdea, body.completed_topics, body.content_mode);
   if (immediateGap) return {
     dialogue_reply: immediateGap.reply,

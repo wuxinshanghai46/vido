@@ -1,6 +1,6 @@
 import { escapeHtml } from '../components/ui.js?v=20260824-production-v204b';
 import { createReferenceLinkDialogueHandler, referenceDialogueStatus, referenceNextStepDescription, routeReferenceInput, syncReferenceDialogueStatus } from './briefReferenceDialogueState.js?v=20260824-production-v204b';
-import { delegates,dialogueBudgetReached,referenceDialoguePhase,sanitizeDialogueTopics } from './briefDialoguePolicy.js?v=20260824-production-v204b';
+import { referenceDialoguePhase,sanitizeDialogueTopics } from './briefDialoguePolicy.js?v=20260824-production-v204b';
 import { followConversationAfter } from './briefConversationScroll.js?v=20260824-production-v204b';
 import { appendDialogueSuggestions,briefIdeaPreview,contextualDialogueFallback,dialogueHistoryMarkup,ideaMarkup,modeLabel,normalizedDialogueHistory,recordDialogueHistory } from './briefDialogueProjection.js?v=20260824-production-v204b';
 import { dialogueIntakeState, dialogueProgressState } from './briefDialogueReadiness.js?v=20260824-production-v204b';
@@ -89,15 +89,12 @@ export function bindBriefDialogue(host, { form, referenceState={}, referenceAtta
   const streamMessage = async (text, target = null, meta = {}) => {
     const entry = target || message('assistant');
     const value = String(text || '').trim();
+    const characters = [...value];
     entry.article.classList.add('is-streaming');
     entry.textNode.textContent = '';
-    const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
-    if (reduced) entry.textNode.textContent = value;
-    else {
-      for (let index = 0; index < value.length && !disposed; index += 2) {
-        followConversationAfter(conversation, () => { entry.textNode.textContent = value.slice(0, index + 2); });
-        await new Promise(resolve => setTimeout(resolve, 22));
-      }
+    for (let index = 0; index < characters.length && !disposed; index += 1) {
+      followConversationAfter(conversation, () => { entry.textNode.textContent = characters.slice(0, index + 1).join(''); });
+      await new Promise(resolve => setTimeout(resolve, 22));
     }
     entry.article.classList.remove('is-streaming');
     followConversationAfter(conversation, () => {});
@@ -345,19 +342,6 @@ export function bindBriefDialogue(host, { form, referenceState={}, referenceAtta
     recordHistory('user', text, { topic: answeredTopic, selectedAnswer: Boolean(answeredTopic) });
     ideaReady = false;
     sync();
-    if (dialogueBudgetReached([...completedTopics], mode) && !delegates(text)) {
-      ideaReady = true;
-      const intake = sync();
-      await persistDialogueState();
-      sending = false;
-      send.disabled = false;
-      panel.removeAttribute('aria-busy');
-      if (intake.next === 'cast') await appendCastQuestion();
-      if (intake.next === 'specifications') await appendSpecificationQuestion();
-      if (intake.next === 'reference') await appendReferenceQuestion();
-      input.focus();
-      return;
-    }
     await persistDialogueState();
     const pending = message('assistant');
     pending.article.classList.add('is-thinking');
@@ -383,11 +367,8 @@ export function bindBriefDialogue(host, { form, referenceState={}, referenceAtta
       activeQuestionTopic = ideaReady ? '' : (sanitizeDialogueTopics([String(result?.question_topic || '').trim()], mode)[0] || '');
       const reply = String(result?.dialogue_reply || contextualDialogueFallback(mode, ideaReady));
       pending.article.classList.remove('is-thinking');
-      if (ideaReady && result?.next_step === 'specifications') pending.article.remove();
-      else {
-        await streamMessage(reply, pending, { topic: activeQuestionTopic || answeredTopic });
-        appendSuggestions(pending, result?.suggested_answers);
-      }
+      await streamMessage(reply, pending, { topic: activeQuestionTopic || answeredTopic });
+      appendSuggestions(pending, result?.suggested_answers);
     } catch {
       ideaReady = false;
       const reply = contextualDialogueFallback(mode, ideaReady);
@@ -420,7 +401,6 @@ export function bindBriefDialogue(host, { form, referenceState={}, referenceAtta
   confirm?.addEventListener('click', () => onConfirm?.(confirm));
   form.addEventListener('input', sync);
   form.addEventListener('change', sync);
-  if (dialogueBudgetReached([...completedTopics], modeAtMount)) ideaReady = true;
   const initialIntake = sync();
   const initialReferencePhase = referenceDialoguePhase(currentReference);
   applyReferenceGate(currentReference).catch(() => {});

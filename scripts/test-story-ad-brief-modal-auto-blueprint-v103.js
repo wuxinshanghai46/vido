@@ -344,6 +344,50 @@ async function main() {
     assert.match(topicLedger.persisted, /opposition/, '已完成决策必须进入表单持久化载荷');
     assert.equal(topicLedger.active, 'plot_trigger', '下一问必须切换为新的稳定决策身份');
 
+    // 达到旧问题数量后仍须分析当前回答；回复即使准备进入下一阶段也要按 Unicode 字符逐个呈现。
+    await page.evaluate(async build => {
+      document.body.innerHTML = `<main class="view-host" id="qa-answer-flow"></main><form id="qa-answer-form">
+        <input name="project_name" value="板材广告"><select name="content_mode"><option value="commercial_subject" selected>广告</option></select>
+        <textarea name="brief">为同系列板材制作三段场景广告</textarea><input name="target_duration" value="30"><input name="output_ratio" value="9:16"><input name="video_resolution" value="1080p">
+        <input name="completed_dialogue_topics" value="subject_identity"><input name="active_dialogue_topic" value="audience_intent">
+      </form>`;
+      window.matchMedia = () => ({ matches: true, addEventListener() {}, removeEventListener() {} });
+      const module = await import(`/story-ad/views/briefDialoguePanel.js?v=${build}&answerQa=${Date.now()}`);
+      const host = document.querySelector('#qa-answer-flow');
+      host.innerHTML = module.briefDialogueMarkup({ brief: { text: '为同系列板材制作三段场景广告', content_mode: 'commercial_subject', content_mode_source: 'user' } }, { isNew: true });
+      window.__answerQa = { modelCalls: 0, lengths: [] };
+      module.bindBriefDialogue(host, {
+        form: document.querySelector('#qa-answer-form'), requireUserInitiation: true,
+        async onAssist(payload) {
+          window.__answerQa.modelCalls += 1;
+          window.__answerQa.payload = payload;
+          return {
+            idea_ready: true, next_step: 'specifications',
+            dialogue_reply: '可以不设置设计师主角，背景人物只负责带出三种板材的使用氛围，画面重点仍放在产品本身。',
+          };
+        },
+      });
+      new MutationObserver(() => {
+        const nodes = document.querySelectorAll('.brief-message.is-assistant .brief-bubble p');
+        const length = [...String(nodes[nodes.length - 1]?.textContent || '')].length;
+        if (length > 0 && window.__answerQa.lengths.at(-1) !== length) window.__answerQa.lengths.push(length);
+      }).observe(document.querySelector('[data-brief-conversation]'), { subtree: true, childList: true, characterData: true });
+    }, BUILD);
+    await page.type('[data-dialogue-input]', '不一定要设计师，也可以是背景人物');
+    await page.click('[data-dialogue-send]');
+    await page.waitForFunction(() => window.__answerQa.modelCalls === 1 && !document.querySelector('.brief-message.is-streaming'));
+    const answerFlow = await page.evaluate(() => ({
+      modelCalls: window.__answerQa.modelCalls,
+      completed: window.__answerQa.payload.completed_topics,
+      lengths: window.__answerQa.lengths,
+      text: [...document.querySelectorAll('.brief-message.is-assistant .brief-bubble p')].at(-1)?.textContent || '',
+    }));
+    assert.equal(answerFlow.modelCalls, 1, '达到旧问题数量的回答不得在前端静默返回');
+    assert.deepEqual(answerFlow.completed.sort(), ['audience_intent', 'subject_identity']);
+    assert.match(answerFlow.text, /背景人物/);
+    assert.ok(answerFlow.lengths.length > 10, '回复应产生连续可见的逐字更新');
+    assert.ok(answerFlow.lengths.every((value, index, rows) => index === 0 || value - rows[index - 1] === 1), '每次可见更新必须只增加一个 Unicode 字符');
+
     // 正式蓝图与历史 reference_draft 并存时，正式蓝图必须胜出且不得误标参考来源。
     const plotResult = await page.evaluate(async build => {
       document.body.innerHTML = '<main class="view-host" id="qa-plot"></main>';

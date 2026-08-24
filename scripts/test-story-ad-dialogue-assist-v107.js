@@ -250,6 +250,30 @@ async function main() {
   });
   assert.equal(delegatedModelCalls, 1, '用户委托平台完善时，即使达到普通提问上限也必须回复');
   assert.match(delegated.dialogue_reply, /人的衰老与机器人的长久存在/);
+  let answeredModelCalls = 0;
+  const answered = await service.run({
+    body: {
+      accumulated_idea: '为同系列板材制作三段场景广告，设计师不一定出镜，也可以只安排背景人物。',
+      user_message: '不一定要设计师，也可以是背景人物',
+      content_mode: 'commercial_subject',
+      completed_topics: ['subject_identity', 'audience_intent'],
+    },
+    modelGateway: {
+      async generateText() {
+        answeredModelCalls += 1;
+        return { text: JSON.stringify({
+          response_mode: 'scene_interpretation',
+          creative_direction: '三段产品场景仍作为主体，背景人物只在环境中自然活动，用来体现使用氛围，不抢板材展示重点。',
+          reply: '', question_topic: '', idea_ready: false, missing_topics: [], suggested_answers: [],
+          next_step: 'idea_details', coverage: {},
+          covered_topics: [{ topic: 'audience_intent', evidence: '背景人物' }],
+        }), used_model: 'fixture', fallback_used: false, failed_models: [] };
+      },
+    },
+  });
+  assert.equal(answeredModelCalls, 1, '回答达到旧问题数量时仍必须进入内容分析，不能静默跳过模型');
+  assert.match(answered.dialogue_reply, /背景人物/);
+  assert.match(answered.dialogue_reply, /不抢板材展示重点/);
   const reviewResult = service.buildResponse({ parsed: JSON.parse(ready), body: { accumulated_idea: completeIdea, specifications_confirmed: true, reference_skipped: true } });
   assert.equal(reviewResult.next_step, 'review', '规格与参考都完成后下一步必须由状态机确定，不能听从模型重复插入阶段');
 
@@ -280,7 +304,11 @@ async function main() {
   assert.match(dialogueSource, /result\?\.suggested_answers/);
   assert.match(dialogueSource, /completed_topics: \[\.\.\.completedTopics\]/);
   assert.match(dialogueSource, /completedTopics\.add\(answeredTopic\)/);
-  assert.match(dialogueSource, /!delegates\(text\)/, '用户要求平台完善时不得被提问上限静默吞掉');
+  assert.doesNotMatch(dialogueSource, /dialogueBudgetReached\(\[\.\.\.completedTopics\]/, '达到旧问题数量后也必须先分析并回复当前内容，不能在前端静默返回');
+  assert.doesNotMatch(dialogueSource, /pending\.article\.remove\(\)/, '内容分析判定可以进入下一阶段时也必须先展示本轮回复');
+  assert.match(dialogueSource, /const characters = \[\.\.\.value\]/, '流式展示必须按 Unicode 字符拆分');
+  assert.match(dialogueSource, /index \+= 1/, '流式展示每帧只能追加一个字符');
+  assert.doesNotMatch(dialogueSource, /prefers-reduced-motion/, '逐字回复不得退化为整段瞬间显示');
   assert.ok(dialogueSource.indexOf('routeReferenceInput({') < dialogueSource.indexOf('completedTopics.add(answeredTopic)'), '参考链接或视频意图必须先路由，不能误标当前创作问题已完成');
   assert.match(guidedResumeSource, /answers: \['真人实拍', '国风二维动画', '电影级三维动画'\]/);
   assert.doesNotMatch(guidedResumeSource, /克制而写实|诗意留白|宏大奇幻/);
