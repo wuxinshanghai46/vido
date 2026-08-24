@@ -67,6 +67,7 @@ assert.match(personDossierShowcase, /完整人物档案尚未合成/);
 assert.match(personDossierShowcase, /当前分类拼图不是最终整图/);
 
 const briefView = read('public/story-ad/views/briefView.js');
+const briefDurationOptions = read('public/story-ad/views/briefDurationOptions.js');
 const referenceDialogueState = read('public/story-ad/views/briefReferenceDialogueState.js');
 const referenceActionStateSource = read('public/story-ad/views/briefReferenceActionState.js');
 const briefFormPayload = read('public/story-ad/views/briefFormPayload.js');
@@ -100,7 +101,8 @@ assert.doesNotMatch(briefView, /故事结构|人物分析|动物分析|场景分
 assert.match(briefView, /<dialog class="brief-settings-modal" data-brief-settings-modal/, '对话优先流程必须把专业表单放进默认关闭的 modal');
 assert.match(briefDialoguePanel, /对话内容会自动同步到这里/, '确认单必须说明对话会自动同步');
 assert.match(briefDialoguePanel, /手动编辑全部设置/, '对话中必须保留专业设置 modal 入口');
-assert.match(briefView, /\[15, 30, 45, 60, 90, 120, 180, 240, 300, 360, 480, 600\]/, '新工作区必须提供 3、4、5、6、8、10 分钟的中长片选项');
+assert.match(briefView, /durationOptionsMarkup/, '手动设置必须复用统一时长选项，避免与对话内规格漂移');
+assert.match(briefDurationOptions, /\[15, 30, 45, 60, 90, 120, 180, 240, 300, 360, 480, 600\]/, '新工作区必须提供 3、4、5、6、8、10 分钟的中长片选项');
 assert.match(read('public/story-ad/views/briefSettingsSummary.js'), /return remainder \? `\$\{minutes\} 分 \$\{remainder\} 秒` : `\$\{minutes\} 分钟`/, '折叠摘要必须把 300/600 秒显示为 5/10 分钟');
 assert.match(briefView, /bindBriefSettingsModal\(host\)/, '目标页必须绑定独立专业设置 modal 控制器');
 assert.match(briefSettingsModal, /if \(!modal\.open\) modal\.showModal\(\)[\s\S]*modal\.querySelector\([^\n]+\)\?\.focus\(\)/, '专业设置只能通过显式入口打开并把焦点移入 modal');
