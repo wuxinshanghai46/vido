@@ -312,7 +312,7 @@ async function main() {
     assert.doesNotMatch(source, /checkpointRecoveryBanner\s*\(/);
     assert.doesNotMatch(source, /data-generate-recovery/);
     assert.doesNotMatch(source, /querySelectorAll\('\[data-generate-subjects\]/);
-    assert.match(source, /data-generate-production-assets/);
+    assert.match(source, /data-generate-subject-assets/);
   });
   verify('non-owner views do not expose person asset failures', () => {
     const globalPanel = ui.generationProgressPanel(recoveryBundle, 'brief');

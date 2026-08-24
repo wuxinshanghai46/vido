@@ -347,7 +347,8 @@ document.addEventListener('click', event => {
         deletingProjectIds.delete(String(taskId));
         renderCenter();
         const files = Number(result.cleanup?.deleted_files || 0);
-        toast(`项目已彻底删除${files ? `，同时清理 ${files} 个专属文件` : ''}。`, 'success');
+        const cleanupPending = result.cleanup?.cleanup_pending === true;
+        toast(`项目已彻底删除${files ? `，同时清理 ${files} 个专属文件` : ''}${cleanupPending ? '；专属文件正在后台清理' : ''}。`, 'success');
       } catch (error) {
         deletingProjectIds.delete(String(taskId));
         renderCenter();

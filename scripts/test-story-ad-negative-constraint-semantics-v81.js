@@ -111,8 +111,8 @@ function recoverySummary() {
   // ProductionGraph is now the only live generation authority. Historical
   // checkpoint state may remain readable, but it must not remount legacy actions.
   const safePage = await uiHarness.render({ checkpoint: recoverySummary(), stale: true });
-  assert.equal(uiHarness.withAttr(safePage.buttons, 'data-generate-production-assets').length, 1,
-    'the live asset center must expose only the unified ProductionGraph action');
+  assert.equal(uiHarness.withAttr(safePage.buttons, 'data-generate-subject-assets').length, 1,
+    'the live asset center must expose the independent subject generation action');
   assert.equal(uiHarness.withAttr(safePage.buttons, 'data-generate-recovery').length, 0);
   assert.equal(uiHarness.withAttr(safePage.buttons, 'data-update-person-plan').length, 0);
   assert.doesNotMatch(safePage.html, /先更新人物方案|人物方案需要更新|更新当前内容的人物方案/,

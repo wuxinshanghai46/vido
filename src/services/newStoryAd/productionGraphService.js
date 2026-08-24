@@ -352,7 +352,7 @@ function authorityActive(taskId) {
 
 function assertLegacyMutationAllowed(taskId, stage = '') {
   if (!taskId) return;
-  const error = new Error('旧的独立生成入口已停用，请使用“生成全部制作资产”。');
+  const error = new Error('这个旧入口已停用，请刷新页面后使用当前功能入口。');
   error.code = 'LEGACY_PRODUCTION_PATH_BLOCKED'; error.status = 409; error.retryable = false; error.stage = stage;
   throw error;
 }

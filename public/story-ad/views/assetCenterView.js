@@ -3,7 +3,7 @@ import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.j
 import { bindMediaLightbox } from './mediaLightbox.js?v=20260824-production-v201aq';
 import { confirmDialog } from '../components/dialog.js?v=20260824-production-v201aq';
 import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260824-production-v201aq';
-import { authorizeBillingReviews, confirmBillingAwareAction, ensureSubjectRecoveryReady, recoveryRequestKey } from './assetCenterBillingRetry.js?v=20260824-production-v201aq';
+import { confirmBillingAwareAction, ensureSubjectRecoveryReady, recoveryRequestKey } from './assetCenterBillingRetry.js?v=20260824-production-v201aq';
 import { collectPersonLookValues, renderPersonLookTiles } from './assetCenterPersonLooks.js?v=20260824-production-v201aq';
 import { legacyDossierBoard, mediaSection } from './assetCenterDossierSections.js?v=20260824-production-v201aq';
 import { assetCardMedia } from './sceneDossierCard.js?v=20260824-production-v201aq';
@@ -164,6 +164,7 @@ function assetCard(item, group) {
       ${group === 'people' && item.status === 'verified' && !item.provider_asset_id ? `<button class="btn small" type="button" data-history-safe data-sync-person-provider="${escapeHtml(item.id)}">同步 / 重试 Seedance 人物 ID</button>` : ''}
       ${group === 'products' ? `<button class="btn small" type="button" data-upload-product="${escapeHtml(item.id)}">${item.image_url ? '更换主体图片' : '上传主体图片'}</button>` : ''}
       ${group === 'scenes' ? `<button class="btn small" type="button" data-edit-scene-world="${escapeHtml(item.id)}">查看 / 修改场景设定</button>` : ''}
+      ${group === 'scenes' ? `<button class="btn small primary" type="button" data-generate-scene="${escapeHtml(item.id)}">${sceneGenerated ? '重新生成场景' : '生成场景'}</button>` : ''}
       ${needsProductVerification ? `<button class="btn small primary" type="button" data-history-safe data-verify-product="${escapeHtml(item.id)}">验证商品素材</button>` : ''}
     </div>
   </article>`;
@@ -282,26 +283,14 @@ export async function mount(host, context) {
       const regeneratingCompletePerson = selected === 1 && group === 'people' && personAssetState(target || {}) === 'complete_dossier';
       const lookCount = payload.cast_profiles.reduce((sum, profile) => sum + Math.max(1, profile.look_profiles?.length || 0), 0);
       const lookNotice = lookCount > payload.expected_people ? `当前 ${payload.expected_people} 个人物共包含 ${lookCount} 套造型；每套造型会分别生成独立档案并产生相应模型调用。\n\n` : '';
-      const confirmation = `${lookNotice}${regeneratingCompletePerson
-        ? `将为“${target.name}”重生成4类20项人物视图。保留人物身份和文字规划；完成后需刷新下游视觉资产。`
-        : `将生成 ${selected} 个主体；自动补齐缺少的服装、鞋履、配饰、配色和面料，再调用图片模型。`}`;
-      const confirmationResult = await confirmBillingAwareAction({
-        bundle,
-        lane: 'subjects',
-        subjectId: target?.subject_id || target?.profile?.id || '',
-        message: confirmation,
+      const confirmation = `${lookNotice}本次会生成完整人物、穿搭配饰、随身物、动作表情。`;
+      const accepted = await confirmDialog(confirmation, {
         title: regeneratingCompletePerson ? `重生成${target.name}的完整人物档案` : (selected > 1 ? '生成缺失人物 / 动物资产' : (target ? `生成${target.name}的完整资产` : '生成人物 / 动物资产')),
         confirmText: regeneratingCompletePerson ? '确认重生成完整档案' : '确认开始生成',
       });
-      if (!confirmationResult.accepted) return false;
+      if (!accepted) return false;
       try {
         setButtonBusy(button, true, regeneratingCompletePerson ? '正在重生成完整档案…' : '正在生成完整档案…', { elapsed: true });
-        await authorizeBillingReviews({
-          bundle,
-          lane: 'subjects',
-          subjectId: target?.subject_id || target?.profile?.id || '',
-          reviewBatch: confirmationResult.reviewBatch,
-        });
         await store.runStage('subject-assets', payload);
         toast(regeneratingCompletePerson ? '人物视觉档案重生成已提交；剧情、文字故事板和场景分配会继续保留。' : '人物或动物资产生成已提交，页面顶部会持续显示阶段、百分比和耗时。', 'success');
         return true;
@@ -335,11 +324,9 @@ export async function mount(host, context) {
     const repairKeys = item.repair_plan?.action === 'regenerate_failed_views' && Array.isArray(item.repair_plan?.view_keys)
       ? item.repair_plan.view_keys.filter(Boolean) : [];
     const repairing = sceneGenerated && repairKeys.length > 0;
-    const prompt = sceneGenerated
-      ? (repairing
-        ? `“${item.name}”已有成功视图，本次只补齐 ${repairKeys.length} 个未通过的视图（${repairKeys.join('、')}）；其余成功图片会原样保留，不会重复调用。`
-        : `“${item.name}”已有空间母版和机位。当前没有可定向补齐的失败视图；继续将完整重建该场景并产生全部视图的模型调用。`)
-      : `将先保留用户填写的场景设定并自动补齐布局关系、材质、光线、互动点和行动路线，再生成“${item.name}”的空间母版、场景视角和机位图。`;
+    const prompt = repairing
+      ? `本次只补齐“${item.name}”未通过的场景视图，保留已成功图片。`
+      : `本次只生成“${item.name}”的场景母图、场景视图、人物站位和移动轨迹，不生成人物资产。`;
     const confirmationResult = await confirmBillingAwareAction({
       bundle, lane: 'scenes', sceneId: item.id, message: prompt,
       title: sceneGenerated ? '重新生成场景与机位' : '生成场景与机位',
@@ -348,7 +335,6 @@ export async function mount(host, context) {
     if (!confirmationResult.accepted) return false;
     try {
       setButtonBusy(button, true, '正在提交场景生成…', { elapsed: true });
-      await authorizeBillingReviews({ bundle, lane: 'scenes', sceneId: item.id, reviewBatch: confirmationResult.reviewBatch });
       await store.runStage('scene-assets', { space_id: item.id, scene_id: item.id, name: item.name, regenerate: sceneGenerated, repair_existing: repairing });
       toast(`${sceneGenerated ? '场景与机位重新生成' : '场景与机位生成'}已提交，进度和耗时将在页面顶部显示。`, 'success');
       return true;
@@ -508,6 +494,11 @@ export async function mount(host, context) {
     const item = (assets.scenes || []).find(asset => String(asset.id) === button.dataset.editSceneWorld);
     if (item) openDrawer(item, 'scenes', { readOnly: historicalReadOnly, onSaveScene: saveScene, onAssistScene: assistScene, returnFocus: button });
   }));
+  host.querySelectorAll('[data-generate-scene]').forEach(button => button.addEventListener('click', event => {
+    event.stopPropagation();
+    const item = (assets.scenes || []).find(asset => String(asset.id) === button.dataset.generateScene);
+    if (item) generateScene(item, button);
+  }));
   host.querySelectorAll('[data-sync-person-provider]').forEach(button => button.addEventListener('click', async event => {
     event.stopPropagation();
     try {
@@ -542,10 +533,7 @@ export async function mount(host, context) {
 
   host.querySelector('[data-select-person]').addEventListener('click', () => openActorLibrary({ store, context, taskId: bundle.project.id }));
   host.querySelector('[data-upload-real-person]').addEventListener('click', () => openRealPersonFlow({ context, taskId: bundle.project.id }));
-  host.querySelector('[data-generate-production-assets]')?.addEventListener('click', async event => {
-    const { submitUnifiedProductionAssets } = await import('./assetCenterUnifiedProductionAction.js?v=20260824-production-v201aq');
-    await submitUnifiedProductionAssets({ button: event.currentTarget, bundle, request, confirmDialog, store, setButtonBusy, toast });
-  });
+  host.querySelector('[data-generate-subject-assets]')?.addEventListener('click', event => generate(null, '', event.currentTarget));
   host.querySelectorAll('[data-confirm-assets]').forEach(confirmButton => confirmButton.addEventListener('click', async event => {
     const button = event.currentTarget;
     try {

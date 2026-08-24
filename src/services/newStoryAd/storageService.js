@@ -420,6 +420,17 @@ function withoutTaskRows(db = {}, taskId = '') {
 
 function deleteTask(taskId, options = {}) {
   const id = String(taskId || '');
+  if (useSqlite() && !(options.snapshot && typeof options.snapshot === 'object')) {
+    if (!id || !getRow('tasks', id)) return false;
+    for (const [key, collection] of Object.entries(COLLECTIONS)) {
+      const ids = key === 'tasks'
+        ? [id]
+        : contentRecords.listIds(collection, { project_id: id });
+      contentRecords.removeMany(collection, ids);
+    }
+    if (dbConfig().dualWrite) writeJson(DB_PATH, withoutTaskRows(normalizedJsonDb(), id));
+    return true;
+  }
   const snapshot = options.snapshot && typeof options.snapshot === 'object' ? options.snapshot : readDb();
   if (!id || !(snapshot.tasks || []).some(row => String(row.id || '') === id)) return false;
   const next = withoutTaskRows(snapshot, id);
@@ -436,6 +447,27 @@ function deleteTask(taskId, options = {}) {
     writeJson(DB_PATH, withoutTaskRows(normalizedJsonDb(), id));
   }
   return true;
+}
+
+function taskDeletionPayload(taskId) {
+  const id = String(taskId || '');
+  if (!useSqlite()) {
+    const db = readDb();
+    const rows = Object.fromEntries(Object.entries(db).map(([key, items]) => [
+      key,
+      Array.isArray(items) ? items.filter(row => String(row.task_id || row.id || '') === id) : [],
+    ]));
+    return { task: (db.tasks || []).find(row => String(row.id || '') === id) || null, rows };
+  }
+  ensureDbSeeded();
+  const task = getRow('tasks', id);
+  const rows = {};
+  for (const [key, collection] of Object.entries(COLLECTIONS)) {
+    rows[key] = key === 'tasks'
+      ? [task].filter(Boolean)
+      : contentRecords.list(collection, { project_id: id });
+  }
+  return { task, rows };
 }
 
 function saveStage(taskId, stage, data = {}, options = {}) {
@@ -1019,6 +1051,7 @@ module.exports = {
   latestTaskRowsById,
   taskFingerprint,
   deleteTask,
+  taskDeletionPayload,
   saveStage,
   saveOutput,
   getOutput,

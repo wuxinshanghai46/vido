@@ -1107,7 +1107,7 @@ router.delete('/tasks/:id', asyncRoute(async (req, res) => {
   const cancelled = jobService.cancelJob(task.id, {
     cancelledBy: user.id || user.userId || user.username || '',
   });
-  const deletion = require('../services/newStoryAd/taskDeletionService').deleteTaskPermanently(storage, task.id);
+  const deletion = require('../services/newStoryAd/taskDeletionService').deleteTaskPermanently(storage, task.id, { deferFileCleanup: true });
   if (!deletion.deleted) {
     const err = new Error('任务不存在或已被删除');
     err.status = 404;
@@ -1123,6 +1123,7 @@ router.delete('/tasks/:id', asyncRoute(async (req, res) => {
       deleted_files: deletion.deleted_files,
       preserved_shared_files: deletion.preserved_shared_files,
       failed_files: deletion.failed_files,
+      cleanup_pending: deletion.cleanup_pending === true,
     },
   });
 }));
@@ -1474,10 +1475,9 @@ router.post('/tasks/:id/production-assets/plan', asyncRoute(async (req, res) => 
 router.post('/tasks/:id/production-assets', asyncRoute(async (req, res) => {
   taskForReq(req);
   const body = req.body || {}, expected = productionAssets.plan(req.params.id, body);
-  const confirmedCostLimitRmb = productionAssets.assertConfirmation(body, expected);
+  productionAssets.assertConfirmation(body, expected);
   const user = userFromReq(req), userId = String(user.id || user.userId || user.username || 'anonymous');
-  req.body = { ...body, confirmed_cost_limit_rmb: confirmedCostLimitRmb,
-    idempotency_key: `${req.params.id}:production_graph:${expected.plan_fingerprint}` };
+  req.body = { ...body, idempotency_key: `${req.params.id}:production_graph:${expected.plan_fingerprint}` };
   return queueTaskStage(req, res, 'production_assets', job => productionAssets.run({
     taskId: req.params.id, body: req.body, job, userId, user,
   }), { deadlineMs: 60 * 60 * 1000 });
@@ -1488,7 +1488,6 @@ router.post('/subject-assets', asyncRoute(async (req, res) => {
   const user = userFromReq(req);
   const taskId = String(body.task_id || body.taskId || '').trim();
   if (taskId) service.assertTaskOwner(taskId, user);
-  if (taskId) productionGraph.assertLegacyMutationAllowed(taskId, 'subject_assets');
   const generationId = String(body.generation_id || body.generationId || uuidv4());
   const ownerId = String(user.id || user.userId || user.username || 'anonymous');
   const permit = taskId ? generationPermit.issue(taskId, 'subject_assets', {
@@ -1508,7 +1507,6 @@ router.post('/subject-assets', asyncRoute(async (req, res) => {
 
 router.post('/tasks/:id/subject-assets', asyncRoute(async (req, res) => {
   taskForReq(req);
-  productionGraph.assertLegacyMutationAllowed(req.params.id, 'subject_assets');
   const user = userFromReq(req);
   const userId = String(user.id || user.userId || user.username || 'anonymous');
   const body = { ...(req.body || {}), task_id: req.params.id };
@@ -1556,7 +1554,7 @@ router.post('/generations/:generationId/cancel', asyncRoute(async (req, res) => 
 }));
 
 router.post('/tasks/:id/scene-assets', asyncRoute(async (req, res) => {
-  productionGraph.assertLegacyMutationAllowed(req.params.id, 'scene_asset');
+  taskForReq(req);
   const body = req.body || {};
   return queueTaskStage(req, res, 'scene_asset', job => (
     body.repair_existing === true || body.repairExisting === true
@@ -1692,14 +1690,12 @@ router.put('/tasks/:id/scene-assets', asyncRoute(async (req, res) => {
 
 router.post('/tasks/:id/scene-assets/:sceneId/verify', asyncRoute(async (req, res) => {
   taskForReq(req);
-  productionGraph.assertLegacyMutationAllowed(req.params.id, 'scene_asset_verify');
   const result = await sceneAssetService.reverifySceneAsset(req.params.id, req.params.sceneId);
   res.json({ success: true, task_id: req.params.id, ...result });
 }));
 
 router.post('/tasks/:id/scene-assets/:sceneId/repair', asyncRoute(async (req, res) => {
   taskForReq(req);
-  productionGraph.assertLegacyMutationAllowed(req.params.id, 'scene_asset_repair');
   const body = req.body || {};
   return queueTaskStage(req, res, 'scene_asset', job => sceneAssetService.repairSceneAsset(req.params.id, req.params.sceneId, {
     ...body,

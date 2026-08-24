@@ -605,8 +605,8 @@ function testBatchUiContract() {
   assert(!worldView.includes('runPanoramaBatchGeneration'));
   assert(unifiedAction.includes('/production-assets/plan'));
   assert(unifiedAction.includes("runStage('production-assets'"));
-  assert(unifiedStage.includes('360°全景'));
-  assert(unifiedStage.includes('data-generate-production-assets'));
+  assert(!unifiedStage.includes('360°全景'));
+  assert(unifiedStage.includes('data-generate-subject-assets'));
   assert(route.includes("'/tasks/:id/scene-assets/panoramas'"));
   assert(route.includes('productionGraph.assertLegacyMutationAllowed'));
   assert(orchestrator.includes('scenePanoramaService.generateTaskPanoramas'));

@@ -40,7 +40,7 @@ export function createProjectStore() {
   }
 
   async function deleteProject(taskId) {
-    const data = await request(`/api/new-story-ad/tasks/${encodeURIComponent(taskId)}`, { method: 'DELETE' });
+    const data = await request(`/api/new-story-ad/tasks/${encodeURIComponent(taskId)}`, { method: 'DELETE', timeoutMs: 120000 });
     await loadProjects();
     return data;
   }

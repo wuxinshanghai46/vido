@@ -15,6 +15,18 @@ function strings(value, result = []) {
   return result;
 }
 
+function retainedReferencePaths(value, result = new Set()) {
+  if (Array.isArray(value)) value.forEach(item => retainedReferencePaths(item, result));
+  else if (value && typeof value === 'object') {
+    const marker = [value.role, value.source_type, value.sourceType, value.origin, value.kind].join(' ').toLowerCase();
+    const sharedReference = Boolean(value.source_library_asset_id || value.asset_library_id || value.material_id)
+      || value.user_owned === true || /upload|reference|library|brand_logo/.test(marker);
+    if (sharedReference) strings(value).map(toPath).filter(Boolean).forEach(filePath => result.add(filePath));
+    Object.values(value).forEach(item => retainedReferencePaths(item, result));
+  }
+  return result;
+}
+
 function toPath(value = '') {
   const text = String(value || '').trim();
   if (!text) return '';
@@ -28,28 +40,20 @@ function toPath(value = '') {
 }
 
 function taskPayload(storage, taskId) {
+  if (typeof storage.taskDeletionPayload === 'function') return storage.taskDeletionPayload(taskId);
   const db = storage.readDb();
   const rows = {};
   for (const [key, items] of Object.entries(db)) {
     if (!Array.isArray(items)) continue;
     rows[key] = items.filter(row => String(row.task_id || row.id || '') === String(taskId));
   }
-  return { db, task: (db.tasks || []).find(row => String(row.id || '') === String(taskId)) || null, rows };
+  return { task: (db.tasks || []).find(row => String(row.id || '') === String(taskId)) || null, rows };
 }
 
-function deleteTaskPermanently(storage, taskId) {
-  const payload = taskPayload(storage, taskId);
-  const candidates = [...new Set(strings({ task: payload.task, rows: payload.rows }).map(toPath).filter(Boolean))];
-  const deleted = storage.deleteTask(taskId, { snapshot: payload.db });
-  if (!deleted) return { deleted: false, deleted_files: 0, preserved_shared_files: 0, failed_files: [] };
-  const remainingRows = Object.fromEntries(Object.entries(payload.db).map(([key, rows]) => [
-    key,
-    Array.isArray(rows) ? rows.filter(row => String(row.task_id || row.id || '') !== String(taskId)) : rows,
-  ]));
-  const remainingPaths = new Set(strings(remainingRows).map(toPath).filter(Boolean));
-  const result = { deleted: true, deleted_files: 0, preserved_shared_files: 0, failed_files: [] };
+function cleanupFiles(candidates = [], retainedPaths = new Set()) {
+  const result = { deleted_files: 0, preserved_shared_files: 0, failed_files: [] };
   for (const filePath of candidates) {
-    if (remainingPaths.has(filePath)) { result.preserved_shared_files += 1; continue; }
+    if (retainedPaths.has(filePath)) { result.preserved_shared_files += 1; continue; }
     try {
       if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
         fs.rmSync(filePath, { force: true });
@@ -62,4 +66,17 @@ function deleteTaskPermanently(storage, taskId) {
   return result;
 }
 
-module.exports = { OUTPUT_DIR, insideOutput, toPath, deleteTaskPermanently };
+function deleteTaskPermanently(storage, taskId, options = {}) {
+  const payload = taskPayload(storage, taskId);
+  const candidates = [...new Set(strings({ task: payload.task, rows: payload.rows }).map(toPath).filter(Boolean))];
+  const retainedPaths = retainedReferencePaths({ task: payload.task, rows: payload.rows });
+  const deleted = storage.deleteTask(taskId);
+  if (!deleted) return { deleted: false, deleted_files: 0, preserved_shared_files: 0, failed_files: [] };
+  if (options.deferFileCleanup === true) {
+    setImmediate(() => cleanupFiles(candidates, retainedPaths));
+    return { deleted: true, deleted_files: 0, preserved_shared_files: 0, failed_files: [], cleanup_pending: candidates.length > 0 };
+  }
+  return { deleted: true, cleanup_pending: false, ...cleanupFiles(candidates, retainedPaths) };
+}
+
+module.exports = { OUTPUT_DIR, insideOutput, toPath, retainedReferencePaths, cleanupFiles, deleteTaskPermanently };

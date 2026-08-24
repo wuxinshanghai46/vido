@@ -138,10 +138,11 @@ assert.match(referenceActionStateSource, /contentMode === 'commercial_subject' \
 assert.match(briefView, /data-ai-brief>AI 帮写/, '未添加参考视频时必须提供广告目标 AI 帮写入口');
 assert.match(briefFormPayload, /brief_source:\s*'user'/, '正式表单载荷必须把手填或 AI 帮写后的内容目标标记为用户权威，参考材料不得覆盖');
 assert.match(assets, /assetPlanStageView/, '资产中心必须通过统一阶段视图渲染制作资产入口');
-assert.match(assetPlanStageStatus, /data-generate-production-assets[\s\S]*生成全部制作资产/, '人物、场景和镜头必须使用唯一制作图谱生成动作');
+assert.match(assetPlanStageStatus, /data-generate-subject-assets/, '人物必须使用独立人物生成动作');
+assert.match(assetPlanStageStatus, /生成人物资产/, '人物入口必须使用清晰名称');
 assert.doesNotMatch(assetPlanStageStatus, /文字方案已建立|图片未生成|进入资产中心不会自动生成图片/, '资产中心不得继续暴露旧两步式人物方案流程');
 assert.match(projectStoreSource, /terminalProgress[\s\S]*!project\.active_generation_id && \(terminalProgress \|\|/, '方案内部完成且活动任务清空时必须刷新资产页，不得被旧 running 状态卡住');
-assert.match(assetPlanStageStatus, /确认制作资产，进入场景世界/, '制作图谱已经齐全时，页面顶部必须提供可见的确认入口');
+assert.match(assetPlanStageStatus, /人物资产已完成，进入场景/, '人物资产齐全时必须提供进入独立场景模块的动作');
 assert.doesNotMatch(assetPlanStageStatus, /data-confirm-assets[^>]*disabled/, '人物已经齐全时，确认入口不得被无关的后台生成任务错误禁用');
 assert.match(assets, /querySelectorAll\('\[data-confirm-assets\]'\)/, '顶部人物确认入口必须绑定真实点击事件');
 assert.doesNotMatch(assets, /step-completion-card[\s\S]*data-confirm-assets/, '资产列表底部不得重复放置用户难以发现的人物确认入口');
@@ -583,8 +584,9 @@ assert.doesNotMatch(assets, /当前没有通过本版本合同的 Active Plan/, 
 assert.match(assets, /asset_setup_confirmed:\s*true/);
 assert.match(assets, /view=scene/, '人物资产确认后必须进入独立场景流程');
 assert.match(assetPlanStageStatus, /asset-visual-next-step/, '进入人物资产步骤后必须明确展示人物视觉生成的下一步');
-assert.match(assetPlanStageStatus, /完整人物、穿搭配饰、随身物、动作表情、场景母图、360°全景、机位与逐镜绑定/, '必须明确完整制作资产由同一个动作生成');
-assert.match(assetPlanStageStatus, /data-generate-production-assets/, '必须只提供统一制作图谱生成入口');
+assert.match(assetPlanStageStatus, /完整人物、穿搭配饰、随身物、动作表情/, '人物入口必须只说明人物生成内容');
+assert.match(assetPlanStageStatus, /场景模块单独生成/, '人物入口必须明确场景独立生成');
+assert.match(assetPlanStageStatus, /data-generate-subject-assets/, '必须提供独立人物生成入口');
 assert.doesNotMatch(assetPlanStageStatus, /data-generate-missing-subjects/, '不得继续暴露旧的缺失人物单项生成入口');
 assert.doesNotMatch(assets, /data-show-pending-scenes/, '人物资产步骤不得继续混入待生成场景入口');
 assert.doesNotMatch(sceneWorldPage, /data-generate-base-scene|data-generate-all-panoramas|data-generate-panorama=/, '场景世界不得继续暴露旧的单场景或独立全景生成入口');
@@ -719,8 +721,8 @@ assert.match(sceneWithCameraImage, /scene-camera-card is-missing-image/);
 assert.match(sceneWithCameraImage, /data-scene-dossier=/, '场景详情回归夹具必须覆盖完整场景档案渲染');
 
 const generateFunction = assets.slice(assets.indexOf('const generate = async'), assets.indexOf("host.querySelectorAll('[data-asset-filter]"));
-assert(generateFunction.indexOf('confirmBillingAwareAction') >= 0, '人物生成必须包含一次费用感知确认');
-assert(generateFunction.indexOf('confirmBillingAwareAction') < generateFunction.indexOf("store.runStage('subject-assets'"), '确认必须发生在模型请求前');
+assert(generateFunction.indexOf('confirmDialog') >= 0, '人物生成必须包含一次简洁确认');
+assert(generateFunction.indexOf('confirmDialog') < generateFunction.indexOf("store.runStage('subject-assets'"), '确认必须发生在模型请求前');
 const verifyProductFunction = assets.slice(assets.indexOf('const verifyProduct = async'), assets.indexOf("host.querySelectorAll('[data-asset-filter]"));
 assert(verifyProductFunction.indexOf('confirmDialog') >= 0, '商品视觉验证必须包含显式费用确认');
 assert(verifyProductFunction.indexOf('confirmDialog') < verifyProductFunction.indexOf('/product-verify'), '商品验证确认必须发生在视觉模型请求前');

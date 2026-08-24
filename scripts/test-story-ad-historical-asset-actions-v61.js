@@ -68,20 +68,20 @@ const browserSource = source => source
   .replace(/\bexport\s+/g, '');
 const stageSandbox = { makeGuardMap: () => ({}), makePersonGuard: () => ({}), escapeHtml: value => String(value) };
 vm.runInNewContext(`${browserSource(inlineProgressSource)}\n${browserSource(technicalDetailsSource)}\n${browserSource(planStatusSource)}\n${browserSource(stageSource)}\nglobalThis.__stage=assetPlanStageView;`, stageSandbox);
-const historicalGenerateDom = stageSandbox.__stage({ counts: { people: 2 }, productionGraph: null });
-const historicalContinueDom = stageSandbox.__stage({ counts: { people: 2 }, productionGraph: { validation: { status: 'ready' } } });
+const historicalGenerateDom = stageSandbox.__stage({ counts: { people: 2 }, missingSubjectCount: 2 });
+const historicalContinueDom = stageSandbox.__stage({ counts: { people: 2 }, missingSubjectCount: 0 });
 const historicalEditDom = stageSandbox.__stage({ assetPlanReady: false, eligibility: { issues: ['person_plan_stale'] } });
 
 // 人物资产页仍保留自身的精确只读控件分类；壳层不再注入第 1 步全局解锁横幅。
 assert.match(
   historicalGenerateDom,
-  buttonTagWith('data-generate-production-assets', 'data-history-safe'),
-  '统一制作图谱生成按钮必须显式声明为历史资产页仍可执行的动作',
+  buttonTagWith('data-generate-subject-assets', 'data-history-safe'),
+  '人物资产生成按钮必须显式声明为历史资产页仍可执行的动作',
 );
 assert.match(
   historicalContinueDom,
   buttonTagWith('data-confirm-assets', 'data-history-safe'),
-  '人物资产确认/进入下一步必须显式声明为历史资产页仍可执行的动作',
+  '人物资产完成后进入场景的动作必须声明为历史安全动作',
 );
 const historyModule = new Function(`${historySource.replace(/\bexport\s+/g, '')}; return { applyHistoricalReadonlyControls, historicalStepUsesGlobalEdit };`)();
 assert.doesNotMatch(app, /applyHistoricalStepMode|data-unlock-history-step|新增\s*\/\s*修改内容/, '壳层不得再插入冗余全局历史编辑入口');
@@ -95,7 +95,7 @@ const controlFromDom = (html, attribute) => {
   assert(tag, `最终DOM缺少 ${attribute} 按钮`);
   return control(tag.includes('data-history-safe') ? ['[data-history-safe]'] : []);
 };
-const safeAction = controlFromDom(historicalGenerateDom, 'data-generate-production-assets');
+const safeAction = controlFromDom(historicalGenerateDom, 'data-generate-subject-assets');
 const ordinaryAction = control([]);
 const editInput = control([]);
 const fakeHost = { querySelectorAll: () => [safeAction, ordinaryAction, editInput] };
@@ -108,9 +108,9 @@ assert.doesNotMatch(app, /historicalReadOnly\s*:/, '壳层不得再把第2步后
 assert.match(assets, /data-asset-id/, '人物资产必须保留本步骤的详情编辑入口');
 assert.match(planningDetails, /personEditForm\(item\)/, '人物详情必须保留独立人物编辑表单');
 assert.doesNotMatch(planningDetails, /data-drawer-generate/, '人物详情不得继续提供旧的单项付费生成入口');
-assert.match(assets, /data-generate-production-assets/, '历史资产页只允许统一制作图谱作为付费生成入口');
+assert.match(assets, /data-generate-subject-assets/, '历史资产页的人物生成必须使用独立主体入口');
 assert.match(assets, /createKeyedRequestGuard\(\)/, '人物图片生成必须按意图复用统一防重入 guard');
-assert.match(assets, /subjectRequests\.run\(intent,[\s\S]*await confirmBillingAwareAction\(\{/, '防重入 guard 必须包住计费确认与提交链');
+assert.match(assets, /subjectRequests\.run\(intent,[\s\S]*await confirmDialog\(/, '防重入 guard 必须包住人物确认与提交链');
 assert.match(requestGuards, /if \(guard\.active\) return onSkipped\?\.\(\);[\s\S]*await guard\.run\(operation\)/, '同一意图在确认框打开前必须被 guard 拦截');
 assert.match(requestGuards, /try \{ return await operation\(requestKey\); \} finally \{ active = false; \}/, '取消、失败与成功后都必须释放人物生成防重入锁');
 assert.match(newStoryAdRoute, /requestKey[\s\S]*idempotencyKey[\s\S]*queueStage\(/, '页面防重入之外，人物生成请求仍必须保留服务端 request_key 幂等兜底');
@@ -184,8 +184,8 @@ async function assertMountedHistoricalControls() {
   assert.equal(harness.stageLoadCount(), 1, '真实assetCenterView mount必须恰好加载一次资产阶段模块');
   const eligibleControls = controls(eligible.buttons);
   historyModule.applyHistoricalReadonlyControls({ querySelectorAll: () => eligibleControls });
-  const generateButton = eligibleControls.find(button => /data-generate-production-assets\b/.test(button.attrs));
-  assert(generateButton && generateButton.disabled === false, '真实mount最终DOM中的历史安全统一制作按钮必须保持可用');
+  const generateButton = eligibleControls.find(button => /data-generate-subject-assets\b/.test(button.attrs));
+  assert(generateButton && generateButton.disabled === false, '真实mount最终DOM中的历史安全人物按钮必须保持可用');
   assert(eligibleControls.find(button => /data-select-person\b/.test(button.attrs))?.disabled === true,
     '真实mount最终DOM中的人物编辑/替换动作必须继续受历史只读保护');
 
@@ -196,8 +196,8 @@ async function assertMountedHistoricalControls() {
   historyModule.applyHistoricalReadonlyControls({ querySelectorAll: () => staleControls });
   assert(!staleControls.some(button => /data-update-person-plan\b/.test(button.attrs)),
     '历史资产页不得继续渲染旧的人物方案更新按钮');
-  const staleGenerate = staleControls.find(button => /data-generate-production-assets\b/.test(button.attrs));
-  assert(staleGenerate && staleGenerate.disabled === false, '失效图谱必须通过唯一统一制作动作重建');
+  const staleGenerate = staleControls.find(button => /data-generate-subject-assets\b/.test(button.attrs));
+  assert(staleGenerate && staleGenerate.disabled === false, '失效人物资产必须通过独立人物动作重建');
 }
 
 assertMountedHistoricalControls()

@@ -11,7 +11,6 @@ const propAssetService = require('./propAssetService');
 const videoAdapter = require('./videoAdapter');
 const personPlanGeneration = require('../../routes/newStoryAd/personPlanGenerationRoute');
 
-const MAX_CONFIRMED_VISUAL_COST_RMB = 12.38;
 
 function imagePriceUsd(modelId = '') {
   const normalized = String(modelId || '').trim().toLowerCase();
@@ -162,9 +161,7 @@ function create({ service, storage, generateAndCommitSubjectAssets, persistProvi
       estimated_model_calls: { text_planning_max: people + 3, person_dossier_max: paidPersonDossierCalls(castProfiles),
         animal_dossier_max: animals, prop_assets_max: carriedProps.reduce((sum, prop) => sum + (Array.isArray(prop.states) && prop.states.length > 1 ? 2 : 1), 0),
         scene_assets_max: sceneCount * 5, panorama_image_max: panoramaCount, panorama_qa_text_max: panoramaCount },
-      confirmed_cost_limit_rmb: Math.max(0, Math.min(MAX_CONFIRMED_VISUAL_COST_RMB,
-        Number(body.confirmed_cost_limit_rmb || MAX_CONFIRMED_VISUAL_COST_RMB) || MAX_CONFIRMED_VISUAL_COST_RMB)),
-      maximum_confirmable_cost_rmb: MAX_CONFIRMED_VISUAL_COST_RMB };
+    };
     basis.estimated_model_calls.total_max = Object.values(basis.estimated_model_calls).reduce((sum, value) => sum + Number(value || 0), 0);
     const pricePlan = productionImagePricePlan({ includePanorama: panoramaCount > 0 });
     const imageCalls = basis.estimated_model_calls.person_dossier_max + basis.estimated_model_calls.animal_dossier_max
@@ -178,18 +175,13 @@ function create({ service, storage, generateAndCommitSubjectAssets, persistProvi
   }
 
   function assertConfirmation(body = {}, expected = {}) {
-    const limit = Number(body.confirmed_cost_limit_rmb || body.confirmedCostLimitRmb || 0);
     if (expected.pricing_status === 'blocked_unknown_image_price') {
       const error = new Error('当前制作图谱包含未配置单价的图片模型，已阻止付费生成；请先在模型调用管理中补齐价格或改用已定价模型。');
       error.code = 'PRODUCTION_GRAPH_IMAGE_PRICE_UNKNOWN'; error.status = 409; error.retryable = false; error.current_plan = expected; throw error;
     }
-    if (Number(expected.estimated_visual_cost_max_rmb || 0) > limit) {
-      const error = new Error(`本轮视觉模型保守费用上限约 ${expected.estimated_visual_cost_max_rmb} 元，超过已授权的 ${limit || 0} 元，已在调用模型前停止。`);
-      error.code = 'PRODUCTION_GRAPH_COST_LIMIT_EXCEEDED'; error.status = 409; error.retryable = false; error.current_plan = expected; throw error;
-    }
-    if (body.cost_confirmation === true && limit > 0 && limit <= MAX_CONFIRMED_VISUAL_COST_RMB
-      && String(body.plan_fingerprint || '') === String(expected.plan_fingerprint || '')) return limit;
-    const error = new Error(`开始生成全部制作资产前，必须确认服务端最新调用计划和不超过${MAX_CONFIRMED_VISUAL_COST_RMB}元的本轮费用上限。`);
+    if (body.cost_confirmation === true
+      && String(body.plan_fingerprint || '') === String(expected.plan_fingerprint || '')) return true;
+    const error = new Error('开始生成前，请确认服务端最新生成计划。');
     error.code = 'PRODUCTION_GRAPH_COST_CONFIRMATION_REQUIRED'; error.status = 400; error.retryable = false; error.current_plan = expected; throw error;
   }
 
@@ -208,8 +200,7 @@ function create({ service, storage, generateAndCommitSubjectAssets, persistProvi
       await service.generateSceneConfig(taskId, { generation_id: job.generationId, production_graph_authority: true });
       const executionPlan = plan(taskId, body);
       assertConfirmation({ ...body, plan_fingerprint: executionPlan.plan_fingerprint }, executionPlan);
-      storage.saveOutput(taskId, 'production_asset_cost_plan', { ...executionPlan, confirmed_at: new Date().toISOString(),
-        confirmed_cost_limit_rmb: Number(body.confirmed_cost_limit_rmb || 0), generation_id: job.generationId });
+      storage.saveOutput(taskId, 'production_asset_cost_plan', { ...executionPlan, confirmed_at: new Date().toISOString(), generation_id: job.generationId });
       graph = productionGraph.publish(taskId, { compiled_by: 'unified_orchestrator:planned' });
       const personBody = personPlanGeneration.currentPersonGenerationBody({ taskId, input: body, service, storage });
       const context = storage.getOutput(taskId, 'context') || storage.getTask(taskId)?.request || {};
@@ -251,4 +242,4 @@ function create({ service, storage, generateAndCommitSubjectAssets, persistProvi
   return { plan, assertConfirmation, run };
 }
 
-module.exports = { create, imagePriceUsd, productionImagePricePlan, paidPersonDossierCalls, requestedSpatialMode, MAX_CONFIRMED_VISUAL_COST_RMB };
+module.exports = { create, imagePriceUsd, productionImagePricePlan, paidPersonDossierCalls, requestedSpatialMode };

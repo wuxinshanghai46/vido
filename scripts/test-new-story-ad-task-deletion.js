@@ -91,9 +91,9 @@ async function main() {
     fs.writeFileSync(ownedFile, 'owned');
     fs.writeFileSync(sharedFile, 'shared');
     fs.writeFileSync(outsideFile, 'outside');
-    storage.saveOutput(taskId, 'deletion_files', { owned: { file_path: ownedFile }, shared: { file_path: sharedFile }, outside: { file_path: outsideFile } });
+    storage.saveOutput(taskId, 'deletion_files', { owned: { file_path: ownedFile }, shared: { file_path: sharedFile, role: 'person_reference', source_library_asset_id: 'library-person-1' }, outside: { file_path: outsideFile } });
     createFixture('delete-shared-owner', 'owner-a', '共享文件保留测试');
-    storage.saveOutput('delete-shared-owner', 'shared_file', { file_path: sharedFile });
+    storage.saveOutput('delete-shared-owner', 'shared_file', { file_path: sharedFile, role: 'person_reference', source_library_asset_id: 'library-person-1' });
 
     assert.equal(service.listTaskSummaries({ userId: 'owner-a' }).tasks.some(task => task.id === taskId), true);
     assert.equal(service.listTaskSummaries({ userId: 'owner-b' }).tasks.some(task => task.id === taskId), false);
@@ -105,21 +105,16 @@ async function main() {
     assert.equal(forbidden.status, 403);
     assert(storage.getTask(taskId), 'unauthorized deletion must keep the task');
 
-    const originalReadDb = storage.readDb;
-    let deletionSnapshotReads = 0;
-    storage.readDb = (...args) => {
-      deletionSnapshotReads += 1;
-      return originalReadDb(...args);
-    };
+    const deletionStartedAt = Date.now();
     const deleted = await requestDelete(baseUrl, taskId, 'owner-a');
-    storage.readDb = originalReadDb;
+    const deletionResponseMs = Date.now() - deletionStartedAt;
     const deletedBody = deleted.body;
     assert.equal(deleted.status, 200);
     assert.equal(deletedBody.success, true);
     assert.equal(deletedBody.deleted, true);
-    assert.equal(deletedBody.cleanup.deleted_files, 1);
-    assert.equal(deletedBody.cleanup.preserved_shared_files, 1);
-    assert.equal(deletionSnapshotReads, 1, 'permanent deletion must reuse one database snapshot');
+    assert.equal(deletedBody.cleanup.cleanup_pending, true);
+    assert(deletionResponseMs < 3000, `logical deletion must respond before deferred file cleanup, got ${deletionResponseMs}ms`);
+    await waitUntil(() => !fs.existsSync(ownedFile));
     assert.equal(fs.existsSync(ownedFile), false, 'task-owned output file must be removed');
     assert.equal(fs.existsSync(sharedFile), true, 'file referenced by another task must be preserved');
     assert.equal(fs.existsSync(outsideFile), true, 'file outside OUTPUT_DIR must never be removed');

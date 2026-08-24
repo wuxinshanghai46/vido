@@ -169,38 +169,29 @@ ok(pipelineModels.getStageMeta('new_story_ad.person_dossier_expression'), 'expre
 ok(pipelineModels.getStageMeta('new_story_ad.person_dossier_action'), 'action stage appears in model management');
 
 const stageView = fs.readFileSync(path.join(__dirname, '../public/story-ad/views/assetCenterStageView.js'), 'utf8');
-ok(stageView.includes('生成全部制作资产'), 'asset center has one main generation action');
-ok(!stageView.includes('data-generate-missing-subjects'), 'old missing-person action is removed');
+ok(stageView.includes('生成人物资产'), 'asset center exposes a person-only generation action');
+ok(stageView.includes('场景模块单独生成'), 'person generation explicitly excludes scene output');
 const assetView = fs.readFileSync(path.join(__dirname, '../public/story-ad/views/assetCenterView.js'), 'utf8');
 const productionAction = fs.readFileSync(path.join(__dirname, '../public/story-ad/views/assetCenterUnifiedProductionAction.js'), 'utf8');
-ok(assetView.includes('assetCenterUnifiedProductionAction.js'), 'unified action is loaded only when the user clicks');
+ok(!assetView.includes('assetCenterUnifiedProductionAction.js'), 'person page no longer loads the combined production action');
 ok(productionAction.includes('/production-assets/plan'), 'UI reads server plan before generation');
 ok(productionAction.includes("store.runStage('production-assets'"), 'UI submits only unified production stage');
 ok(productionAction.includes("spatial_mode: 'multi_view'"), 'UI defaults unified production to five-view mode');
 ok(productionAction.includes('generate_panoramas: false'), 'UI does not silently request panorama generation');
-ok(productionAction.includes('plan.maximum_confirmable_cost_rmb'), 'UI reads the server-owned cost ceiling instead of duplicating it');
+ok(!productionAction.includes('maximum_confirmable_cost_rmb') && !productionAction.includes('视觉费用上限'), 'generation confirmation does not impose a fixed user spending ceiling');
 const routeSource = fs.readFileSync(path.join(__dirname, '../src/routes/newStoryAd.js'), 'utf8');
 const orchestratorSource = fs.readFileSync(path.join(__dirname, '../src/services/newStoryAd/productionAssetOrchestratorService.js'), 'utf8');
 const subjectBundleSource = fs.readFileSync(path.join(__dirname, '../src/services/newStoryAd/subjectAssetBundleService.js'), 'utf8');
 ok(orchestratorSource.includes('PRODUCTION_GRAPH_IMAGE_PRICE_UNKNOWN'), 'unpriced image routes are blocked before paid generation');
-ok(orchestratorSource.includes('PRODUCTION_GRAPH_COST_LIMIT_EXCEEDED'), 'server enforces the confirmed visual cost limit');
-equal(productionOrchestrator.MAX_CONFIRMED_VISUAL_COST_RMB, 12.38, 'server-owned production visual cost ceiling matches the authorized budget');
 const budgetGuard = productionOrchestrator.create({});
-equal(budgetGuard.assertConfirmation({ cost_confirmation: true, confirmed_cost_limit_rmb: 12.38, plan_fingerprint: 'budget-1238' },
-  { pricing_status: 'catalog_priced_hard_visual_limit', estimated_visual_cost_max_rmb: 12.38, plan_fingerprint: 'budget-1238' }), 12.38,
-  'the authorized 12.38 RMB boundary is accepted with the current server plan');
-let overBudgetRejected = false;
-try {
-  budgetGuard.assertConfirmation({ cost_confirmation: true, confirmed_cost_limit_rmb: 12.39, plan_fingerprint: 'budget-over' },
-    { pricing_status: 'catalog_priced_hard_visual_limit', estimated_visual_cost_max_rmb: 12.38, plan_fingerprint: 'budget-over' });
-} catch (error) { overBudgetRejected = error.code === 'PRODUCTION_GRAPH_COST_CONFIRMATION_REQUIRED'; }
-ok(overBudgetRejected, 'a client cannot raise the server-owned ceiling above 12.38 RMB');
-let insufficientBudgetRejected = false;
-try {
-  budgetGuard.assertConfirmation({ cost_confirmation: true, confirmed_cost_limit_rmb: 9.49, plan_fingerprint: 'budget-low' },
-    { pricing_status: 'catalog_priced_hard_visual_limit', estimated_visual_cost_max_rmb: 9.5, plan_fingerprint: 'budget-low' });
-} catch (error) { insufficientBudgetRejected = error.code === 'PRODUCTION_GRAPH_COST_LIMIT_EXCEEDED'; }
-ok(insufficientBudgetRejected, 'generation stops before model calls when the estimated visual cost exceeds confirmation');
+equal(budgetGuard.assertConfirmation({ cost_confirmation: true, plan_fingerprint: 'current-plan' },
+  { pricing_status: 'catalog_priced_hard_visual_limit', estimated_visual_cost_max_rmb: 99, plan_fingerprint: 'current-plan' }), true,
+  'the current plan confirmation is accepted without a fixed spending ceiling');
+let stalePlanRejected = false;
+try { budgetGuard.assertConfirmation({ cost_confirmation: true, plan_fingerprint: 'stale' },
+  { pricing_status: 'catalog_priced_hard_visual_limit', plan_fingerprint: 'current' });
+} catch (error) { stalePlanRejected = error.code === 'PRODUCTION_GRAPH_COST_CONFIRMATION_REQUIRED'; }
+ok(stalePlanRejected, 'a stale generation plan remains blocked before model calls');
 ok(orchestratorSource.includes('const executionPlan = plan'), 'cost plan is recomputed after person and scene planning');
 equal(productionOrchestrator.requestedSpatialMode({}), graphService.MULTI_VIEW_MODE, 'unified production defaults to five-view mode');
 equal(productionOrchestrator.requestedSpatialMode({ generate_panoramas: true }), graphService.PANORAMA_MODE,
@@ -215,7 +206,7 @@ equal(panoramaSceneSpec.sceneExperienceContract.required_authority, 'panorama_3d
 equal(panoramaSceneSpec.sceneExperienceContract.rotation_required, true, 'explicit panorama authority retains rotation requirement');
 ok(orchestratorSource.includes('production_graph_authority: true'), 'person and scene planning are published under the owned graph generation');
 ok(subjectBundleSource.includes('dossierComposites.composeWardrobeDetails'), 'unified person dossiers derive wardrobe detail panels locally from paid high-resolution contact sheets');
-ok(routeSource.includes("assertLegacyMutationAllowed(req.params.id, 'scene_asset_repair')"), 'legacy scene repair is blocked at the server boundary');
+ok(!routeSource.includes("assertLegacyMutationAllowed(req.params.id, 'scene_asset_repair')"), 'current scene repair remains available independently');
 const transition = fs.readFileSync(path.join(__dirname, '../public/story-ad/views/briefAssetPlanTransition.js'), 'utf8');
 ok(!transition.includes("runStage('scene-config'"), 'plot-to-assets transition no longer starts legacy scene generation');
 const progressUi = fs.readFileSync(path.join(__dirname, '../public/story-ad/components/ui.js'), 'utf8');

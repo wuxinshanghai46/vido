@@ -149,15 +149,15 @@ async function main() {
     assert.equal(recoveryCards(mounted.html).length, 0, 'legacy recovery state must not mount in the live asset center');
     assert.equal(withAttr(mounted.buttons, 'data-generate-recovery').length, 0);
     assert.equal(withAttr(mounted.buttons, 'data-update-person-plan').length, 0);
-    assert.equal(withAttr(mounted.buttons, 'data-generate-production-assets').length, 1);
+    assert.equal(withAttr(mounted.buttons, 'data-generate-subject-assets').length, 1);
   }
   const active = await render({ active: true });
-  assert.equal(withAttr(active.buttons, 'data-generate-production-assets').length, 1);
-  assert.equal(withAttr(active.buttons, 'data-generate-production-assets')[0].disabled, true);
+  assert.equal(withAttr(active.buttons, 'data-generate-subject-assets').length, 1);
+  assert.equal(withAttr(active.buttons, 'data-generate-subject-assets')[0].disabled, true);
   const ready = await render({ ready: true });
-  assert.equal(withAttr(ready.buttons, 'data-confirm-assets').length, 1);
-  assert.equal(withAttr(ready.buttons, 'data-generate-production-assets').length, 0);
-  console.log(JSON.stringify({ passed: true, unified_generation_actions: 1, legacy_recovery_actions: 0, model_calls: 0 }));
+  assert.equal(withAttr(ready.buttons, 'data-generate-subject-assets').length, 1,
+    'graph state must not hide an independently incomplete person asset');
+  console.log(JSON.stringify({ passed: true, subject_generation_actions: 1, legacy_recovery_actions: 0, model_calls: 0 }));
 }
 
 module.exports = { render, tags, withAttr, resetStageLoads: () => { stageLoads = 0; }, stageLoadCount: () => stageLoads };

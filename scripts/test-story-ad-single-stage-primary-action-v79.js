@@ -12,27 +12,27 @@ const stageSource = read('public/story-ad/views/assetCenterStageView.js')
 const sandbox = {};
 vm.runInNewContext(`${stageSource}\nglobalThis.__stage=assetPlanStageView;`, sandbox);
 
-const pending = sandbox.__stage({ generationActive: false, counts: { people: 2, scenes: 1 } });
-assert.match(pending, /data-generate-production-assets[^>]*>生成全部制作资产/);
-assert.equal((pending.match(/data-(?:generate-production-assets|confirm-assets)/g) || []).length, 1);
+const pending = sandbox.__stage({ generationActive: false, counts: { people: 2, scenes: 1 }, missingSubjectCount: 2 });
+assert.match(pending, /data-generate-subject-assets[^>]*>生成人物资产/);
+assert.equal((pending.match(/data-generate-subject-assets/g) || []).length, 1);
 assert.doesNotMatch(pending, /data-generate-recovery|data-update-person-plan|data-generate-subjects/);
 
-const active = sandbox.__stage({ generationActive: true, counts: { people: 2, scenes: 1 } });
-assert.match(active, /data-generate-production-assets[^>]*disabled[^>]*>正在生成全部制作资产/);
-assert.equal((active.match(/data-(?:generate-production-assets|confirm-assets)/g) || []).length, 1);
+const active = sandbox.__stage({ generationActive: true, counts: { people: 2, scenes: 1 }, missingSubjectCount: 2 });
+assert.match(active, /data-generate-subject-assets[^>]*disabled[^>]*>正在生成人物资产/);
+assert.equal((active.match(/data-generate-subject-assets/g) || []).length, 1);
 
 const ready = sandbox.__stage({
   generationActive: false,
   counts: { people: 2, scenes: 1 },
-  productionGraph: { validation: { status: 'ready' } },
+  missingSubjectCount: 0,
 });
-assert.match(ready, /data-confirm-assets[^>]*>确认制作资产，进入场景世界/);
-assert.doesNotMatch(ready, /data-generate-production-assets|data-generate-recovery|data-update-person-plan/);
-assert.equal((ready.match(/data-(?:generate-production-assets|confirm-assets)/g) || []).length, 1);
+assert.match(ready, /data-confirm-assets[^>]*>人物资产已完成，进入场景/);
+assert.doesNotMatch(ready, /data-generate-production-assets|data-generate-subject-assets|data-generate-recovery|data-update-person-plan/);
 
 const liveSource = read('public/story-ad/views/assetCenterView.js');
 assert.doesNotMatch(liveSource, /checkpointRecoveryBanner\s*\(/);
 assert.doesNotMatch(liveSource, /querySelectorAll\('\[data-generate-subjects\]/);
-assert.match(liveSource, /data-generate-production-assets/);
+assert.match(liveSource, /data-generate-subject-assets/);
+assert.match(liveSource, /data-generate-scene/);
 
-console.log(JSON.stringify({ passed: true, unified_primary_actions: 1, legacy_mounted_actions: 0, model_calls: 0 }));
+console.log(JSON.stringify({ passed: true, separated_subject_action: 1, separated_scene_action: true, model_calls: 0 }));
