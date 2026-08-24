@@ -668,10 +668,21 @@
     const extendedConfirmation = String(state.analysis.error?.code || state.analysis.error_code || '')
       === 'REFERENCE_VIDEO_EXTENDED_ANALYSIS_CONFIRMATION_REQUIRED';
     const preflight = state.analysis.analysis_preflight || {};
-    if (extendedConfirmation && !window.confirm(
-      `检测到 ${Number(preflight.segment_count || 0)} 个片段，需要 ${Number(preflight.batch_count || 0)} 批视觉读取，`
-      + `比普通分析增加 ${Number(preflight.extra_batch_count || 0)} 批模型费用。确认后完整读取全部片段，是否继续？`,
-    )) return;
+    if (extendedConfirmation) {
+      if (typeof window.DhDialog?.confirm !== 'function') {
+        notify('统一确认弹窗尚未加载，请刷新页面后重试。', 'error');
+        return;
+      }
+      const accepted = await window.DhDialog.confirm({
+        title: '确认扩展参考视频分析',
+        message: `检测到 ${Number(preflight.segment_count || 0)} 个片段，需要 ${Number(preflight.batch_count || 0)} 批视觉读取。`,
+        detail: `比普通分析增加 ${Number(preflight.extra_batch_count || 0)} 批模型费用。确认后将完整读取全部片段。`,
+        confirmText: '确认并开始分析',
+        cancelText: '暂不分析',
+        type: 'danger',
+      });
+      if (!accepted) return;
+    }
     try {
       const result = await api().request(`/api/new-story-ad/reference-video-analyses/${encodeURIComponent(state.analysis.id)}/start`, {
         method: 'POST',
