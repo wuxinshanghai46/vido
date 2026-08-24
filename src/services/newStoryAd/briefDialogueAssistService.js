@@ -104,6 +104,35 @@ function normalizeCoveredTopics(parsed = {}, accumulatedIdea = '', contentMode =
   }).filter(Boolean))];
 }
 
+function normalizeCastIntent(parsed = {}, accumulatedIdea = '') {
+  const raw = parsed.cast_intent && typeof parsed.cast_intent === 'object' ? parsed.cast_intent : {};
+  const evidence = cleanInline(raw.evidence, 160);
+  const source = cleanText(accumulatedIdea, 4000);
+  const decision = cleanInline(raw.decision || raw.mode, 40);
+  if (raw.status !== 'explicit' || evidence.length < 2 || !source.includes(evidence)
+    || !['no_human', 'background_only', 'single', 'dual', 'multi'].includes(decision)) return null;
+  const fixedCount = { no_human: 0, background_only: 0, single: 1, dual: 2 }[decision];
+  const expectedPeople = fixedCount ?? Math.max(3, Math.min(12, Number(raw.expected_people) || 3));
+  const participants = decision === 'background_only' || decision === 'no_human' ? []
+    : (Array.isArray(raw.participants) ? raw.participants : []).slice(0, expectedPeople).map((item, index) => ({
+      id: cleanInline(item?.id || `participant_${index + 1}`, 80),
+      role: cleanInline(item?.role || item?.description || `出镜人物 ${index + 1}`, 120),
+      gender: cleanInline(item?.gender || 'unknown', 30),
+      age_range: cleanInline(item?.age_range || '', 40),
+      on_screen: true,
+    }));
+  if (!['background_only', 'no_human'].includes(decision) && participants.length !== expectedPeople) return null;
+  return {
+    confirmed: true,
+    mode: decision === 'background_only' ? 'auto' : decision,
+    expected_people: expectedPeople,
+    participants,
+    source: 'semantic_dialogue',
+    evidence,
+    background_people: decision === 'background_only',
+  };
+}
+
 function questionBudget(contentMode = '') { return contentMode === 'commercial_subject' ? 2 : 3; }
 
 function questionBudgetReached(value = [], contentMode = '') {
@@ -180,6 +209,7 @@ function systemPrompt(dynamicKnowledge = '', contentMode = '') {
       : '当前是剧情短片。问询顺序必须连贯：先理清人物、关系、动机与对立，再理清触发、发展和结局，然后确认受众与表达目标，再确认时空规则和跨时代连续性，最后确认视觉媒介与气质。用户原话已明确的部分直接跳过，只问该顺序中最早的真实缺口，不能在不同层级之间来回跳。',
     '“古代”“现代”“好看”“电影感”这类宽泛词不能单独算 world_context 或 visual_direction 已明确；应结合用户内容给出 2 至 3 个专业选项帮助选择。用户说“由你建议/你来定”时，先给出具体建议并请用户确认，确认后才能标为 explicit。',
     '用户说“帮我完善”“你来补充”“由你决定”等委托创作时，必须根据当前累计设想给出一项具体、可直接采用的完善建议；如果用户同时给出了具体场景或动作顺序，本轮只解释会怎样呈现，不再请用户重复确认。只有设想仍很简略时才用一个短问题确认建议。不得沉默、不得跳过回复，也不得套用与当前题材无关的古代、爱情、权贵、秘宝或穿越案例。',
+    '出镜安排必须按用户自然语言语义判断，不得强迫用户套用设计师、客户等预设角色。用户明确选择无人、只用背景人物、单人、双人或多人时，在 cast_intent 返回原文证据和对应决定；背景人物属于环境表演，不建立需要身份连续性的人物资产。没有明确证据时 status 必须为 missing。',
     'coverage 的每个 evidence 必须是从当前累计设想中原样摘取的短语，不能改写或编造。未明确的项 status 必须为 missing。只有五类均为 explicit，idea_ready 才能为 true；否则必须继续 idea_details。',
     '用户一次已经讲完整时不得重复询问已经有直接证据的内容；completed_topics 和 covered_topics 中的决策均已经回答，禁止换一种说法再次询问。covered_topics 必须逐项返回稳定 topic 和用户原文 evidence，证据不是累计设想原文子串时无效。五类均明确后 next_step 才进入 specifications。时长、画幅和清晰度必须作为一组简洁确认，不能把系统默认值说成用户已经确认。',
     '规格确认后 next_step 才能进入 reference。参考提问必须结合当前剧情或商业内容说明可能有价值的参考类型；参考材料不是必填项，但必须由用户明确选择提供或不提供。',
@@ -235,7 +265,7 @@ function userPrompt(body = {}) {
     `已经回答、禁止重复询问的创作决策：${cleanTopicsForMode(body.completed_topics, body.content_mode).join('、') || '无'}`,
     `最近对话：${JSON.stringify(history)}`,
     '请重新审计五类制作依据，不要继承上一轮未经用户证据支持的判断，并输出：',
-    '{"response_mode":"question|scene_interpretation|ready","creative_direction":"根据当前设想给出可执行的开场、推进、重点画面与收尾构想；短回答时可为空","reply":"question 模式才填写唯一一个下一问","question_topic":"question 模式才从允许值中选择","covered_topics":[{"topic":"用户已直接回答的稳定问题身份","evidence":"累计设想中的原文短语"}],"suggested_answers":["贴合当前内容的答案一","贴合当前内容的答案二","贴合当前内容的答案三"],"coverage":{"subject":{"status":"explicit|missing","evidence":"用户原文短语或空"},"structure":{"status":"explicit|missing","evidence":"用户原文短语或空"},"audience_intent":{"status":"explicit|missing","evidence":"用户原文短语或空"},"world_context":{"status":"explicit|missing","evidence":"用户原文短语或空"},"visual_direction":{"status":"explicit|missing","evidence":"用户原文短语或空"}},"idea_ready":false,"missing_topics":["question 模式的唯一缺口；scene_interpretation 模式可为空"],"next_step":"idea_details"}',
+    '{"response_mode":"question|scene_interpretation|ready","creative_direction":"根据当前设想给出可执行的开场、推进、重点画面与收尾构想；短回答时可为空","reply":"question 模式才填写唯一一个下一问","question_topic":"question 模式才从允许值中选择","covered_topics":[{"topic":"用户已直接回答的稳定问题身份","evidence":"累计设想中的原文短语"}],"cast_intent":{"status":"explicit|missing","decision":"no_human|background_only|single|dual|multi","expected_people":0,"participants":[{"role":"用户明确的出镜角色"}],"evidence":"累计设想中的原文短语"},"suggested_answers":["贴合当前内容的答案一","贴合当前内容的答案二","贴合当前内容的答案三"],"coverage":{"subject":{"status":"explicit|missing","evidence":"用户原文短语或空"},"structure":{"status":"explicit|missing","evidence":"用户原文短语或空"},"audience_intent":{"status":"explicit|missing","evidence":"用户原文短语或空"},"world_context":{"status":"explicit|missing","evidence":"用户原文短语或空"},"visual_direction":{"status":"explicit|missing","evidence":"用户原文短语或空"}},"idea_ready":false,"missing_topics":["question 模式的唯一缺口；scene_interpretation 模式可为空"],"next_step":"idea_details"}',
     `question_topic 只能是：${profile.order.join('、')}。它是本轮唯一问题的稳定身份，不能选择已经完成的值。`,
     'next_step 只能是 idea_details、specifications、reference、review。五类 coverage 未全部 explicit 时 idea_ready 必须为 false。question 模式的 missing_topics 只能列出唯一缺口并返回 2 至 3 个 suggested_answers；scene_interpretation 模式只分析用户已给场景，reply、question_topic、missing_topics、suggested_answers 都为空；进入 specifications 后 question_topic 为空、suggested_answers 可以为空数组。',
   ].join('\n');
@@ -259,6 +289,7 @@ function normalizeParsed(parsed = {}, accumulatedIdea = '', completedTopics = nu
   const profile = topicProfile(contentMode);
   const completed = cleanTopicsForMode(completedTopics, contentMode);
   const coveredTopics = normalizeCoveredTopics(parsed, accumulatedIdea, contentMode);
+  const castIntent = normalizeCastIntent(parsed, accumulatedIdea);
   const answeredTopics = [...new Set([...completed, ...coveredTopics])];
   let reply = cleanText(parsed.reply || parsed.dialogue_reply || parsed.message || '', 300);
   const creativeDirection = cleanText(parsed.creative_direction || parsed.execution_approach || '', 360);
@@ -294,7 +325,7 @@ function normalizeParsed(parsed = {}, accumulatedIdea = '', completedTopics = nu
       response_mode: responseMode,
       creative_direction: creativeDirection,
       reply: '', question_topic: '', idea_ready: false, missing_topics: [], suggested_answers: [],
-      next_step: 'idea_details', coverage, covered_topics: coveredTopics,
+      next_step: 'idea_details', coverage, covered_topics: coveredTopics, cast_intent: castIntent,
     };
   }
   if (!ideaReady) {
@@ -318,7 +349,7 @@ function normalizeParsed(parsed = {}, accumulatedIdea = '', completedTopics = nu
       missingTopics = [questionTopic];
     }
   } else { suggestedAnswers = []; questionTopic = ''; responseMode = 'ready'; }
-  return { response_mode: responseMode, creative_direction: creativeDirection, reply, question_topic: questionTopic, idea_ready: ideaReady, missing_topics: missingTopics, suggested_answers: suggestedAnswers, next_step: nextStep, coverage, covered_topics: coveredTopics };
+  return { response_mode: responseMode, creative_direction: creativeDirection, reply, question_topic: questionTopic, idea_ready: ideaReady, missing_topics: missingTopics, suggested_answers: suggestedAnswers, next_step: nextStep, coverage, covered_topics: coveredTopics, cast_intent: castIntent };
 }
 
 function validateRaw(raw = '', { accumulatedIdea = '', completedTopics = [], history = [], contentMode = '', requireCreativeDirection = false } = {}) {
@@ -351,9 +382,16 @@ function buildResponse({ parsed = {}, modelResult = {}, body = {} } = {}) {
     ? (body.specifications_confirmed !== true ? 'specifications'
       : (!body.reference_attached && !body.reference_skipped ? 'reference' : 'review'))
     : 'idea_details';
-  const dialogueReply = value.creative_direction
+  const contentReply = value.creative_direction
     ? `大概会这样呈现：${value.creative_direction}${value.reply ? `\n${value.reply}` : ''}`
     : value.reply;
+  const output = body.content_mode === 'commercial_subject' ? '广告脚本' : '剧情';
+  const readyNotice = value.idea_ready
+    ? (nextStep === 'review' ? `需要的内容已经确认，可以去生成${output}了。`
+      : (nextStep === 'reference' ? `内容与成片规格已经齐全，决定是否使用参考材料后就可以生成${output}。`
+        : `需要的内容已经齐全，可以进入${output}生成；先确认成片规格。`))
+    : '';
+  const dialogueReply = [contentReply, readyNotice].filter(Boolean).join('\n');
   return {
     dialogue_reply: dialogueReply,
     creative_direction: value.creative_direction,
@@ -362,6 +400,7 @@ function buildResponse({ parsed = {}, modelResult = {}, body = {} } = {}) {
     suggested_answers: value.suggested_answers,
     question_topic: value.question_topic,
     covered_topics: value.covered_topics,
+    cast_intent: value.cast_intent,
     response_mode: value.response_mode,
     next_step: nextStep,
     coverage: value.coverage,
@@ -445,6 +484,7 @@ module.exports = {
   normalizeParsed,
   normalizeCoverage,
   normalizeCoveredTopics,
+  normalizeCastIntent,
   impliedDecisionGap,
   inferQuestionTopic,
   knowledgeContext,

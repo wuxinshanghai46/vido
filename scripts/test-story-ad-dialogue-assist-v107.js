@@ -267,6 +267,7 @@ async function main() {
           reply: '', question_topic: '', idea_ready: false, missing_topics: [], suggested_answers: [],
           next_step: 'idea_details', coverage: {},
           covered_topics: [{ topic: 'audience_intent', evidence: '背景人物' }],
+          cast_intent: { status: 'explicit', decision: 'background_only', expected_people: 0, participants: [], evidence: '背景人物' },
         }), used_model: 'fixture', fallback_used: false, failed_models: [] };
       },
     },
@@ -274,8 +275,13 @@ async function main() {
   assert.equal(answeredModelCalls, 1, '回答达到旧问题数量时仍必须进入内容分析，不能静默跳过模型');
   assert.match(answered.dialogue_reply, /背景人物/);
   assert.match(answered.dialogue_reply, /不抢板材展示重点/);
+  assert.deepEqual(answered.cast_intent, {
+    confirmed: true, mode: 'auto', expected_people: 0, participants: [], source: 'semantic_dialogue', evidence: '背景人物', background_people: true,
+  });
+  assert.equal(service.normalizeCastIntent({ cast_intent: { status: 'explicit', decision: 'single', evidence: '设计师', participants: [{ role: '设计师' }] } }, '只展示板材'), null, '出镜安排证据不在用户原文中时不得写入结构化状态');
   const reviewResult = service.buildResponse({ parsed: JSON.parse(ready), body: { accumulated_idea: completeIdea, specifications_confirmed: true, reference_skipped: true } });
   assert.equal(reviewResult.next_step, 'review', '规格与参考都完成后下一步必须由状态机确定，不能听从模型重复插入阶段');
+  assert.match(reviewResult.dialogue_reply, /可以去生成剧情了/, '获取完所需内容后必须明确告诉用户可以生成剧情');
 
   const dialogueSource = read('public/story-ad/views/briefDialoguePanel.js');
   const referenceDialogueStateSource = read('public/story-ad/views/briefReferenceDialogueState.js');
@@ -309,6 +315,7 @@ async function main() {
   assert.match(dialogueSource, /const characters = \[\.\.\.value\]/, '流式展示必须按 Unicode 字符拆分');
   assert.match(dialogueSource, /index \+= 1/, '流式展示每帧只能追加一个字符');
   assert.doesNotMatch(dialogueSource, /prefers-reduced-motion/, '逐字回复不得退化为整段瞬间显示');
+  assert.match(dialogueSource, /result\?\.cast_intent\?\.confirmed === true/, '自然语言中明确的出镜安排必须进入结构化状态，不能再强迫用户选择固定人物预设');
   assert.ok(dialogueSource.indexOf('routeReferenceInput({') < dialogueSource.indexOf('completedTopics.add(answeredTopic)'), '参考链接或视频意图必须先路由，不能误标当前创作问题已完成');
   assert.match(guidedResumeSource, /answers: \['真人实拍', '国风二维动画', '电影级三维动画'\]/);
   assert.doesNotMatch(guidedResumeSource, /克制而写实|诗意留白|宏大奇幻/);

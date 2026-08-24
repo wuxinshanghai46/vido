@@ -362,6 +362,10 @@ export function bindBriefDialogue(host, { form, referenceState={}, referenceAtta
         history: history.slice(-8),
         completed_topics: [...completedTopics],
       });
+      if (result?.cast_intent?.confirmed === true) {
+        castIntent = result.cast_intent;
+        if (control('cast_intent')) control('cast_intent').value = JSON.stringify(castIntent);
+      }
       ideaReady = result?.idea_ready === true;
       sanitizeDialogueTopics(result?.covered_topics,mode).forEach(topic=>completedTopics.add(topic));
       activeQuestionTopic = ideaReady ? '' : (sanitizeDialogueTopics([String(result?.question_topic || '').trim()], mode)[0] || '');

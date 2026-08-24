@@ -349,7 +349,7 @@ async function main() {
       document.body.innerHTML = `<main class="view-host" id="qa-answer-flow"></main><form id="qa-answer-form">
         <input name="project_name" value="板材广告"><select name="content_mode"><option value="commercial_subject" selected>广告</option></select>
         <textarea name="brief">为同系列板材制作三段场景广告</textarea><input name="target_duration" value="30"><input name="output_ratio" value="9:16"><input name="video_resolution" value="1080p">
-        <input name="completed_dialogue_topics" value="subject_identity"><input name="active_dialogue_topic" value="audience_intent">
+        <input name="completed_dialogue_topics" value="subject_identity"><input name="active_dialogue_topic" value="audience_intent"><input name="cast_intent" value="{}">
       </form>`;
       window.matchMedia = () => ({ matches: true, addEventListener() {}, removeEventListener() {} });
       const module = await import(`/story-ad/views/briefDialoguePanel.js?v=${build}&answerQa=${Date.now()}`);
@@ -364,12 +364,13 @@ async function main() {
           return {
             idea_ready: true, next_step: 'specifications',
             dialogue_reply: '可以不设置设计师主角，背景人物只负责带出三种板材的使用氛围，画面重点仍放在产品本身。',
+            cast_intent: { confirmed: true, mode: 'auto', expected_people: 0, participants: [], source: 'semantic_dialogue', evidence: '背景人物', background_people: true },
           };
         },
       });
       new MutationObserver(() => {
-        const nodes = document.querySelectorAll('.brief-message.is-assistant .brief-bubble p');
-        const length = [...String(nodes[nodes.length - 1]?.textContent || '')].length;
+        const node = document.querySelector('.brief-message.is-assistant.is-streaming .brief-bubble p');
+        const length = [...String(node?.textContent || '')].length;
         if (length > 0 && window.__answerQa.lengths.at(-1) !== length) window.__answerQa.lengths.push(length);
       }).observe(document.querySelector('[data-brief-conversation]'), { subtree: true, childList: true, characterData: true });
     }, BUILD);
@@ -380,11 +381,17 @@ async function main() {
       modelCalls: window.__answerQa.modelCalls,
       completed: window.__answerQa.payload.completed_topics,
       lengths: window.__answerQa.lengths,
-      text: [...document.querySelectorAll('.brief-message.is-assistant .brief-bubble p')].at(-1)?.textContent || '',
+      texts: [...document.querySelectorAll('.brief-message.is-assistant .brief-bubble p')].map(node => node.textContent),
+      castIntent: JSON.parse(document.querySelector('[name="cast_intent"]').value),
+      repeatedCastQuestion: Boolean(document.querySelector('[data-cast-question]')),
+      specificationQuestion: Boolean(document.querySelector('[data-specification-question]')),
     }));
     assert.equal(answerFlow.modelCalls, 1, '达到旧问题数量的回答不得在前端静默返回');
     assert.deepEqual(answerFlow.completed.sort(), ['audience_intent', 'subject_identity']);
-    assert.match(answerFlow.text, /背景人物/);
+    assert.ok(answerFlow.texts.some(text => /背景人物/.test(text)), '当前反馈的语义回复必须保留并显示');
+    assert.equal(answerFlow.castIntent.background_people, true, '背景人物语义必须写入出镜方案状态');
+    assert.equal(answerFlow.repeatedCastQuestion, false, '用户已明确背景人物后不得再展示固定出镜问题');
+    assert.equal(answerFlow.specificationQuestion, true, '内容与出镜方案齐全后应继续到规格确认');
     assert.ok(answerFlow.lengths.length > 10, '回复应产生连续可见的逐字更新');
     assert.ok(answerFlow.lengths.every((value, index, rows) => index === 0 || value - rows[index - 1] === 1), '每次可见更新必须只增加一个 Unicode 字符');
 
