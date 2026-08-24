@@ -1,5 +1,5 @@
-import { request } from '../api.js?v=20260824-production-v201aj';
-import { setButtonBusy, toast } from '../components/ui.js?v=20260824-production-v201aj';
+import { request } from '../api.js?v=20260824-production-v201ak';
+import { setButtonBusy, toast } from '../components/ui.js?v=20260824-production-v201ak';
 
 export function visualGenerationState(bundle, missingSubjectCount, missingSceneCount) {
   const progress = bundle.generation?.progress || {};
@@ -21,7 +21,7 @@ export function visualGenerationState(bundle, missingSubjectCount, missingSceneC
 
 let billingReviewDialogPromise;
 function billingReviewDialog() {
-  billingReviewDialogPromise ||= import('./assetCenterBillingReviewDialog.js?v=20260824-production-v201aj');
+  billingReviewDialogPromise ||= import('./assetCenterBillingReviewDialog.js?v=20260824-production-v201ak');
   return billingReviewDialogPromise;
 }
 export async function loadBillingReviews(options = {}) {
