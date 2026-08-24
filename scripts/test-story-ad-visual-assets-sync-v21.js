@@ -70,14 +70,15 @@ assert(ui.includes("前往资产中心${ready ? '继续缺失图片' : '更新�
 assert(ui.includes("currentView !== 'assets'"), '已在资产中心时不得重复显示无效跳转');
 
 const route = read('src/routes/newStoryAd.js');
+const productionAssetOrchestrator = read('src/services/newStoryAd/productionAssetOrchestratorService.js');
 const billingRoutes = read('src/routes/newStoryAd/visualAssetBillingRoutes.js');
-assert(route.includes("queueTaskStage(req, res, 'visual_assets'"));
-assert(route.includes('Promise.allSettled([subjectLane, sceneLane])'));
-assert(route.includes('deferCommit: true'));
-assert(route.includes('deferPublish: true'));
-assert(route.includes('existingSceneAssets: sceneAssets'));
-assert(route.includes('sceneFailures.push({'), 'scene failures must be collected without aborting the remaining scene targets');
-assert(route.includes('continue;') && route.includes('error.partial_scene_assets = sceneAssets'), 'completed scenes must survive while later independent scenes continue');
+assert(route.includes("queueTaskStage(req, res, 'production_assets'"), 'the unified production-assets route must own visual generation');
+assert(productionAssetOrchestrator.includes('Promise.allSettled([subjectLane, sceneLane])'));
+assert(productionAssetOrchestrator.includes('deferCommit: true'));
+assert(productionAssetOrchestrator.includes('deferPublish: true'));
+assert(productionAssetOrchestrator.includes('existingSceneAssets: sceneAssets'));
+assert(productionAssetOrchestrator.includes('failures.push({'), 'scene failures must be collected without aborting the remaining scene targets');
+assert(productionAssetOrchestrator.includes('error.partial_scene_assets = sceneAssets'), 'completed scenes must survive while later independent scenes continue');
 assert(billingRoutes.includes("'/tasks/:id/visual-assets/retry-authorization'"), 'billing-unknown visual recovery must retain the owned one-time compatibility endpoint');
 assert(billingRoutes.includes("'/tasks/:id/visual-assets/retry-authorizations'"), 'multi-unit billing recovery must expose one atomic batch authorization endpoint');
 assert(billingRetryView.includes("? '核对并继续'"), '计费未知状态的主按钮必须先表达核对，再继续缺失项');
