@@ -49,6 +49,10 @@ const member = subjectBundle.humanMemberSpecs({}, { cast_profiles: [{ ...base, g
 const providerPrompt = subjectBundle.humanPrompt(member, 1);
 assert(providerPrompt.includes(modelPrompt), '人物图片生成必须使用用户看到的最终提示词');
 assert(!providerPrompt.includes('白色针织衫'), '权威最终提示词存在时不得混入历史分散字段');
+assert.equal(subjectBundle.personProfileResumeCompatible(
+  { ...base, negativeText: '禁止文字；禁止水印；禁止多余人物' },
+  { ...base, negativeText: '禁止文字；禁止水印' },
+), true, '只移除旧负面限制时必须复用已付费成功资产');
 
 const casualPrompt = promptService.fallbackPrompt({
   ...base, active_look_id: 'casual', wardrobeText: '米白亚麻衬衫与直筒长裤',
@@ -64,4 +68,4 @@ assert(!form.includes('renderPersonLookEditors') && !form.includes('renderPerson
 assert(!planning.includes('data-owned-prop-form') && !planning.includes('由模型生成道具'), '不得再渲染独立随身道具表单');
 assert(view.includes("generation_prompt_source: 'user'") && view.includes('item.profile = savedProfile'), '保存后必须用服务器回读结果进入定向生成');
 
-console.log(JSON.stringify({ passed: true, assertions: 34, props_empty: true, props_present: true, stale_wardrobe_blocked: true, multi_look_isolated: true, single_prompt_ui: true }));
+console.log(JSON.stringify({ passed: true, assertions: 35, props_empty: true, props_present: true, stale_wardrobe_blocked: true, negative_rebase_safe: true, multi_look_isolated: true, single_prompt_ui: true }));

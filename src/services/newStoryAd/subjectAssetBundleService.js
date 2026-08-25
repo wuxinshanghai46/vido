@@ -204,9 +204,21 @@ function personProfileResumeCompatibility(previous = {}, current = {}) {
   if (!explicitConsistent(current, next, ['wardrobeText', 'wardrobe'], 'wardrobeText')) add('wardrobeText', 'projection_inconsistent', current.wardrobeText || current.wardrobe, next.wardrobeText);
   if (!explicitConsistent(current, next, ['hairMakeupText', 'hairMakeup'], 'hairMakeupText')) add('hairMakeupText', 'projection_inconsistent', current.hairMakeupText || current.hairMakeup, next.hairMakeupText);
   const priorNegative = prior.negativeText, nextNegative = next.negativeText;
+  const splitGenerationPrompt = value => {
+    let negative = '';
+    const positive = personGenerationPrompt.clean(value || '', 8000).split('\n').filter(line => {
+      const match = line.match(/^\s*视觉限制\s*[:：]\s*(.*)$/u);
+      if (!match) return true;
+      negative = match[1].trim();
+      return false;
+    }).join('\n').replace(/\n{3,}/gu, '\n\n').trim();
+    return { positive, negative };
+  };
+  const priorPrompt = splitGenerationPrompt(prior.generation_prompt), nextPrompt = splitGenerationPrompt(next.generation_prompt);
   const priorLooks = Array.isArray(prior.look_profiles) ? prior.look_profiles : [];
   const nextLooks = Array.isArray(next.look_profiles) ? next.look_profiles : [];
   delete prior.negativeText; delete next.negativeText;
+  delete prior.generation_prompt; delete next.generation_prompt;
   delete prior.look_profiles; delete next.look_profiles;
   const priorPositive = normalizePositiveFields(prior), nextPositive = normalizePositiveFields(next);
   [...new Set([...Object.keys(priorPositive), ...Object.keys(nextPositive)])].forEach((field) => {
@@ -214,6 +226,9 @@ function personProfileResumeCompatibility(previous = {}, current = {}) {
   });
   const personNegative = negativeRelation(priorNegative, nextNegative, 'person');
   if (!personNegative.compatible) add('negativeText', personNegative.relation, priorNegative, nextNegative);
+  if (priorPrompt.positive !== nextPrompt.positive) add('generation_prompt', 'positive_prompt_changed', priorPrompt.positive, nextPrompt.positive);
+  const promptNegative = negativeRelation(priorPrompt.negative, nextPrompt.negative, 'generation_prompt');
+  if (!promptNegative.compatible) add('generation_prompt.视觉限制', promptNegative.relation, priorPrompt.negative, nextPrompt.negative);
   if (priorLooks.length !== nextLooks.length) add('look_profiles', 'look_count_changed', priorLooks.length, nextLooks.length);
   priorLooks.forEach((look, index) => {
     const before = { ...look }, after = { ...nextLooks[index] };
