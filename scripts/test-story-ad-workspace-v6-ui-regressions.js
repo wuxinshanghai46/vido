@@ -61,9 +61,10 @@ assert.match(assetDossierSections, /参考档案预览/);
 assert.match(assetPlanningDetails, /查看原始四视图/);
 assert.match(assetPersonForm, /data-person-prompt-workbench/u, '点击人物后必须直接显示单一提示词工作台');
 assert.match(assetPersonForm, /保存提示词/u);
-assert.match(assetPersonForm, /名称与身份[\s\S]*描述[\s\S]*特征与表演[\s\S]*一致性与构图规范[\s\S]*视觉限制/u);
+assert.match(assetPersonForm, /name="generation_prompt"[\s\S]*GPT Image 2[\s\S]*2:1[\s\S]*高画质[\s\S]*2K[\s\S]*1张/u);
+assert.doesNotMatch(assetPersonForm, /名称与身份|renderPersonLookEditors|renderPersonEvolutionEditor/u, '人物弹窗不得再拆成分段表单');
 assert.doesNotMatch(assetPlanningDetails.slice(0, assetPlanningDetails.indexOf('export function productDetails')), /type="file"|上传参考并生成/u, '随身道具不得继续要求上传参考图');
-assert.match(assetPlanningDetails, /由模型生成道具/u);
+assert.doesNotMatch(assetPlanningDetails, /data-owned-prop-form|由模型生成道具/u, '随身道具必须并入完整人物提示词，不再保留第二套表单');
 assert.match(sceneDossierCard, /function assetCardMedia/);
 assert.match(sceneDossierCard, /const portrait = item\.native_masters\?\.face\?\.image_url/, '人物主卡必须优先显示单人物标准人像');
 assert.match(sceneDossierCard, /asset-people-portraits/, '人物主卡必须使用独立人像预览组，而不是完整档案拼图');
@@ -637,13 +638,12 @@ assert.match(completeCard, /完整档案/);
 assert.match(completeCard, /查看完整视图/);
 assert.doesNotMatch(completeCard, /重生成完整人物档案|data-generate-asset="legacy-person"/);
 assert.doesNotMatch(completeCard, /重生成高清服装与配饰档案/);
-const readableProfile = { ...completePerson, profile: { displayName: '苏晚', roleName: '美学策展人', age: 'match_brief', appearanceText: '年龄约28岁，东方古典气质的现代女性' } };
+const readableProfile = { ...completePerson, profile: { displayName: '苏晚', roleName: '美学策展人', age: 'match_brief', appearanceText: '年龄约28岁，东方古典气质的现代女性', generation_prompt: '名称：苏晚\n\n描述：年龄约28岁，东方古典气质的现代女性\n\n随身道具：无' } };
 const personEdit = personFormModule.personEditForm(readableProfile);
-assert.match(personEdit, /name="age"/u, '人物编辑区必须提供确切年龄或区间的独立权威字段');
 assert.doesNotMatch(personEdit, /value="match_brief"/u, '人物编辑区不得暴露内部年龄枚举');
 assert.match(personEdit, /人物生成提示词/u);
-assert.match(personEdit, /名称与身份/u);
-assert.match(personEdit, /人物描述/u);
+assert.match(personEdit, /name="generation_prompt"/u);
+assert.match(personEdit, /随身道具：无/u);
 assert.match(personEdit, /年龄约28岁/);
 const personProfileDetails = assetModule.profileDetails(readableProfile, 'people');
 assert.doesNotMatch(personProfileDetails, /年龄范围|match_brief/);
@@ -653,9 +653,7 @@ const multiLookProfile = { ...readableProfile, profile: { ...readableProfile.pro
   { id: 'modern', name: '现代造型', scene_names: ['金属展厅'], wardrobeText: '米白亚麻衬衫与长裤' },
 ] } };
 const multiLookEdit = personFormModule.personEditForm(multiLookProfile);
-assert.match(multiLookEdit, /2 套/);
-assert.match(multiLookEdit, /古代造型/);
-assert.match(multiLookEdit, /现代造型/);
+assert.match(multiLookEdit, /完整人物生成提示词/);
 assert.match(assetModule.assetCard(multiLookProfile, 'people'), /person-look-tiles/);
 assert.match(assetModule.assetCard(multiLookProfile, 'people'), /古代造型/);
 assert.match(assetModule.assetCard(multiLookProfile, 'people'), /现代造型/);
@@ -666,13 +664,11 @@ const collectedLooks = personLookModule.collectPersonLookValues({
 assert.equal(collectedLooks.look_profiles.length, 2);
 assert.equal(collectedLooks.wardrobeText, '淡青宋式长衫');
 assert.equal(collectedLooks.age, 'match_brief', '年龄留空必须按服务器规范保存为按剧情分析，避免回读误报不一致');
-assert.match(multiLookEdit, /适用场景 \/ 剧情状态/u);
 const sameSceneAcrossEras = personFormModule.personEditForm({ ...readableProfile, profile: { ...readableProfile.profile, look_profiles: [
   { id: 'ancient-bamboo', name: '古代造型', story_state: '古代', scene_names: ['千年竹海'], wardrobeText: '古代长衫' },
   { id: 'modern-bamboo', name: '现代造型', story_state: '现代', scene_names: ['千年竹海'], wardrobeText: '现代衬衫' },
 ] } });
-assert.match(sameSceneAcrossEras, /古代 · 千年竹海/u, '同一空间跨时代时必须显示古代剧情状态');
-assert.match(sameSceneAcrossEras, /现代 · 千年竹海/u, '同一空间跨时代时必须显示现代剧情状态');
+assert.match(sameSceneAcrossEras, /name="generation_prompt"/u, '多年代造型也必须由单一最终提示词承载，不再回退分段编辑器');
 assert.doesNotThrow(() => assetPersonStateModule.assertSavedPerson({ assets: { people: [{ profile: {
   id: readableProfile.profile.id, age: 'match_brief', appearanceText: readableProfile.profile.appearanceText,
   look_profiles: collectedLooks.look_profiles,

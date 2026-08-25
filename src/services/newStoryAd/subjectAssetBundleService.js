@@ -15,6 +15,7 @@ const visualVerification = require('./visualVerificationService');
 const personDossierCompiler = require('./personDossierCompiler');
 const dossierComposites = require('./dossierCompositeService');
 const generationSpecCompletion = require('./generationSpecCompletionService');
+const personGenerationPrompt = require('./personGenerationPromptService');
 const assetGenerationCheckpoint = require('./assetGenerationCheckpointService');
 const knowledgePolicyRuntime = require('./knowledgePolicyRuntimeService');
 const wearableEvidence = require('./wearableEvidencePolicyService');
@@ -148,6 +149,9 @@ function personGenerationProfile(source = {}) {
     wardrobeText: cleanText(resolved.wardrobeText || '', 600),
     hairMakeupText: cleanText(resolved.hairMakeupText || '', 500),
     negativeText: cleanText(resolved.negativeText || '', 600),
+    generation_prompt: personGenerationPrompt.compile(source),
+    generation_settings: personGenerationPrompt.normalizeSettings(source.generation_settings || source.generationSettings),
+    owned_props: personGenerationPrompt.normalizeOwnedProps(source),
     look_profiles: withLooks.look_profiles,
   };
 }
@@ -442,6 +446,9 @@ function humanMemberSpecs(spec = {}, body = {}, count = 1) {
       story_state: cleanText(primary?.story_state || '', 240),
       wardrobe_contract: primary?.wardrobe_contract || null,
       style_richness: primary?.style_richness || 'auto',
+      generation_prompt: personGenerationPrompt.compile(source),
+      generation_settings: personGenerationPrompt.normalizeSettings(source.generation_settings || source.generationSettings),
+      owned_props: personGenerationPrompt.normalizeOwnedProps(source),
     };
   });
 }
@@ -731,6 +738,7 @@ function humanPrompt(member, count) {
   };
   const medium = member.visual_medium || 'auto';
   const liveAction = medium === 'live_action';
+  const approvedPrompt = personGenerationPrompt.clean(member.generation_prompt || '', 8000);
   return [
     'Create one production-ready reusable character identity for a complete 20-item dossier.',
     worldSetting.visualMediumPrompt(medium, 'character identity dossier'),
@@ -743,19 +751,20 @@ function humanPrompt(member, count) {
     member.ethnicity ? `Original regional appearance design: ${member.ethnicity}.` : '',
     member.relationship ? `Story relationship and identity function: ${member.relationship}.` : '',
     personAgeContract.promptLock(member.age_contract || member.age),
-    member.appearanceText ? `Appearance: ${member.appearanceText}.` : '',
-    member.wardrobeText ? `Locked wardrobe: ${member.wardrobeText}.` : '',
-    member.look_name || member.story_state ? `Current look and story state: ${[member.look_name, member.story_state].filter(Boolean).join('; ')}.` : '',
-    member.wardrobe_contract ? `Structured wardrobe asset contract (all declared items must be visible and mutually consistent): ${JSON.stringify(member.wardrobe_contract)}.` : '',
-    richnessRules[member.style_richness] || '',
-    member.hairMakeupText ? `Locked hair/makeup: ${member.hairMakeupText}.` : '',
-    member.performanceText ? `Performance and body-language direction: ${member.performanceText}.` : '',
-    member.continuityText ? `Cross-shot identity continuity lock: ${member.continuityText}.` : '',
+    approvedPrompt ? `User-approved complete character prompt (authoritative visual wording):\n${approvedPrompt}` : '',
+    !approvedPrompt && member.appearanceText ? `Appearance: ${member.appearanceText}.` : '',
+    !approvedPrompt && member.wardrobeText ? `Locked wardrobe: ${member.wardrobeText}.` : '',
+    !approvedPrompt && (member.look_name || member.story_state) ? `Current look and story state: ${[member.look_name, member.story_state].filter(Boolean).join('; ')}.` : '',
+    !approvedPrompt && member.wardrobe_contract ? `Structured wardrobe asset contract (all declared items must be visible and mutually consistent): ${JSON.stringify(member.wardrobe_contract)}.` : '',
+    !approvedPrompt ? (richnessRules[member.style_richness] || '') : '',
+    !approvedPrompt && member.hairMakeupText ? `Locked hair/makeup: ${member.hairMakeupText}.` : '',
+    !approvedPrompt && member.performanceText ? `Performance and body-language direction: ${member.performanceText}.` : '',
+    !approvedPrompt && member.continuityText ? `Cross-shot identity continuity lock: ${member.continuityText}.` : '',
     historicalYouthStyling(member),
     /古代|古装|汉服|襦裙|唐制|宋制|明制|民国|武侠|仙侠|朝代/.test([member.roleName, member.wardrobeText].join(' '))
       ? 'Historical wardrobe finish: preserve period-appropriate layered construction, tailored silhouette, fabric weave, embroidery scale, footwear, hair ornaments and restrained accessories as separate readable details; avoid a plain one-layer costume or generic studio cosplay.'
       : '',
-    member.negativeText ? `Negative continuity rules: ${member.negativeText}.` : '',
+    !approvedPrompt && member.negativeText ? `Negative continuity rules: ${member.negativeText}.` : '',
   ].filter(Boolean).join('\n');
 }
 
@@ -1166,6 +1175,7 @@ async function generateSubjectBundle(options = {}, deps = {}) {
       },
       concurrency: Math.max(0, Number(options.personDossierConcurrency || 0)) || undefined,
       knowledgePolicy: personKnowledgePolicy,
+      generationSettings: member.generation_settings,
     }, {
       mediaAdapter,
     });
@@ -1241,7 +1251,11 @@ async function generateSubjectBundle(options = {}, deps = {}) {
     }];
     for (const look of declaredLooks.slice(1)) {
       cancellation.throwIfCancelled();
-      const variantProfile = personLooks.profileWithLook(member, look);
+      const variantProfile = personGenerationPrompt.project({
+        ...personLooks.profileWithLook(member, look),
+        generation_prompt: '',
+        generation_prompt_source: 'compiled_for_look',
+      });
       const lookAssetId = `${actorId}_${crypto.createHash('sha256').update(look.id).digest('hex').slice(0, 10)}`;
       const variantCompiled = await personDossierCompiler.compilePersonDossier({
         taskId: taskId || options.generationId,
@@ -1261,6 +1275,7 @@ async function generateSubjectBundle(options = {}, deps = {}) {
         },
         concurrency: Math.max(0, Number(options.personDossierConcurrency || 0)) || undefined,
         knowledgePolicy: personKnowledgePolicy,
+        generationSettings: member.generation_settings,
       }, { mediaAdapter });
       const variantAccessoryEvidence = await wearableEvidence.resolve({
         taskId: taskId || options.generationId, assetId: lookAssetId,

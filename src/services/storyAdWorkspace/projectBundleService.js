@@ -155,6 +155,20 @@ function peopleAssets(context = {}, projectedProps = []) {
     const dossierUrl = mediaUrl(item.dossier_sheet || {});
     const coverUrl = clean(item.cover_image_url, 1200) || dossierUrl || mediaUrl(item) || views[0]?.image_url || '';
     const assetId = clean(item.id || item.actor_asset_id || item.person_id || canonical.id || `person-${index + 1}`, 120);
+    const ownerIdentities = [canonical.id, item.actor_id, item.actor_asset_id, item.id].map(value => clean(value, 120)).filter(Boolean);
+    const authoredProps = list(canonical.owned_props).map((prop, propIndex) => ({
+      id: clean(prop.id || `${canonical.id}_prop_${propIndex + 1}`, 120), owner_id: canonical.id,
+      name: clean(prop.name, 160), description: clean(prop.description || prop.appearance, 600),
+      material: clean(prop.material, 160), scale: clean(prop.scale || prop.size, 160), status: 'planned',
+    }));
+    const generatedProps = list(projectedProps).filter((prop) => {
+      const owner = clean(prop.owner_id, 120);
+      return owner ? ownerIdentities.includes(owner) : index === 0;
+    });
+    const ownedProps = [...authoredProps, ...generatedProps].filter((prop, propIndex, source) => {
+      const key = clean(prop.id || prop.name, 180);
+      return key && source.findIndex(candidate => clean(candidate.id || candidate.name, 180) === key) === propIndex;
+    });
     return {
       id: assetId,
       asset_id: assetId,
@@ -191,10 +205,7 @@ function peopleAssets(context = {}, projectedProps = []) {
       provider_asset_id: clean(item.deyunai_asset_id || item.provider_asset_id, 160),
       provider_asset_status: clean(item.deyunai_asset_status || item.provider_asset_status, 40),
       provider_asset_group_id: clean(item.deyunai_asset_group_id || '', 160),
-      owned_props: list(projectedProps).filter((prop) => {
-        const owner = clean(prop.owner_id, 120), identities = [canonical.id, item.actor_id, item.actor_asset_id, item.id].map(value => clean(value, 120)).filter(Boolean);
-        return owner ? identities.includes(owner) : index === 0;
-      }),
+      owned_props: ownedProps,
       status: clean(item.person_contract?.status || item.verification_status || context.person_contract?.status || 'draft', 50),
       revision: Number(item.person_revision || item.revision || context.person_contract?.person_revision || 0) || 0,
       source: clean(item.source || master?.source, 100), knowledge_policy: knowledgePolicyRuntime.trace(item.knowledge_policy || item.knowledge_policy_trace || {}),

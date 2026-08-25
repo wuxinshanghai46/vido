@@ -124,7 +124,7 @@ function nativeMasterPrompt(spec, personPrompt = '', knowledgePrompt = '', visua
   ].filter(Boolean).join('\n');
 }
 
-function checkpointIdentity({ taskId, assetId, revision, spec, anchorUrl, personPrompt, visualMedium = 'auto', knowledgeGenerationFingerprint = '' }) {
+function checkpointIdentity({ taskId, assetId, revision, spec, anchorUrl, personPrompt, visualMedium = 'auto', generationSettings = {}, knowledgeGenerationFingerprint = '' }) {
   return {
     taskId,
     assetType: 'person_dossier',
@@ -137,6 +137,7 @@ function checkpointIdentity({ taskId, assetId, revision, spec, anchorUrl, person
       anchor_url: anchorUrl,
       person_prompt: personPrompt,
       visual_medium: visualMedium,
+      generation_settings: generationSettings,
       knowledge_generation_fingerprint: knowledgeGenerationFingerprint,
     },
   };
@@ -164,6 +165,7 @@ async function generateCategory({
   anchorUrl,
   personPrompt,
   visualMedium,
+  generationSettings,
   requireReferences,
   spec,
   loadCheckpoint,
@@ -174,7 +176,7 @@ async function generateCategory({
   knowledgePolicy = {},
 }) {
   const identity = checkpointIdentity({
-    taskId, assetId, revision, spec, anchorUrl, personPrompt, visualMedium,
+    taskId, assetId, revision, spec, anchorUrl, personPrompt, visualMedium, generationSettings,
     knowledgeGenerationFingerprint: knowledgePolicy.generation_fingerprint,
   });
   return checkpointService.runCheckpointedUnit({
@@ -191,6 +193,8 @@ async function generateCategory({
         prompt: categoryPrompt(spec, personPrompt, knowledgePolicy.prompt_block, visualMedium),
         filename: personAtlasFilename({ taskId, assetId, kind: spec.kind, revision }),
         aspectRatio: spec.aspectRatio,
+        imageModel: generationSettings.model || 'gpt-image-2',
+        resolution: generationSettings.resolution || '2K',
         referenceImages: anchorUrl ? [anchorUrl] : [],
         requireReferences,
         inputFidelity: 'high',
@@ -229,12 +233,12 @@ async function generateCategory({
 }
 
 async function generateNativeMaster({
-  taskId, assetId, revision, anchorUrl, personPrompt, visualMedium, requireReferences, spec,
+  taskId, assetId, revision, anchorUrl, personPrompt, visualMedium, generationSettings, requireReferences, spec,
   loadCheckpoint, saveCheckpoint, onEvent, mediaAdapter, checkpointService, knowledgePolicy = {},
 }) {
   const checkpointSpec = { ...spec, keys: [spec.key] };
   const identity = checkpointIdentity({
-    taskId, assetId, revision, spec: checkpointSpec, anchorUrl, personPrompt, visualMedium,
+    taskId, assetId, revision, spec: checkpointSpec, anchorUrl, personPrompt, visualMedium, generationSettings,
     knowledgeGenerationFingerprint: knowledgePolicy.generation_fingerprint,
   });
   return checkpointService.runCheckpointedUnit({
@@ -249,6 +253,8 @@ async function generateNativeMaster({
         prompt: nativeMasterPrompt(spec, personPrompt, knowledgePolicy.prompt_block, visualMedium),
         filename: personAtlasFilename({ taskId, assetId, kind: spec.kind, revision }).replace('_atlas_', '_'),
         aspectRatio: spec.aspectRatio,
+        imageModel: generationSettings.model || 'gpt-image-2',
+        resolution: generationSettings.resolution || '2K',
         referenceImages: anchorUrl ? [anchorUrl] : [],
         requireReferences,
         inputFidelity: 'high',
@@ -280,6 +286,7 @@ async function compilePersonDossier(options = {}, deps = {}) {
     anchorUrl = '',
     personPrompt = '',
     visualMedium = 'auto',
+    generationSettings = {},
     requireReferences = Boolean(anchorUrl),
     loadCheckpoint = async () => null,
     saveCheckpoint = async () => {},
@@ -314,6 +321,7 @@ async function compilePersonDossier(options = {}, deps = {}) {
         anchorUrl,
         personPrompt,
         visualMedium,
+        generationSettings,
         requireReferences,
         spec: unit.spec,
         loadCheckpoint,

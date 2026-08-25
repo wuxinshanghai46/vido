@@ -58,6 +58,20 @@ function canonicalText(value = '') {
     .map(part => part.replace(/\s+/gu, ' ').trim()).filter(Boolean))].join('；');
 }
 
+function canonicalPrompt(value = '') {
+  return String(value || '').replace(/\r\n?/gu, '\n').split('\n').map(line => line.trimEnd()).join('\n').trim();
+}
+
+function canonicalGenerationSettings(settings = {}) {
+  return {
+    model: String(settings.model || 'gpt-image-2'),
+    aspect_ratio: String(settings.aspect_ratio || '2:1'),
+    quality: 'high',
+    resolution: String(settings.resolution || '2K'),
+    count: Math.max(1, Number(settings.count || 1) || 1),
+  };
+}
+
 function canonicalServerProfile(profile = {}) {
   const looks = (profile.look_profiles || []).map(look => ({
     id: String(look.id || ''), name: canonicalText(look.name), story_state: canonicalText(look.story_state),
@@ -72,6 +86,12 @@ function canonicalServerProfile(profile = {}) {
     ethnicity: canonicalText(profile.ethnicity || profile.ethnic_appearance),
     appearanceText: canonicalText(profile.appearanceText), performanceText: canonicalText(profile.performanceText),
     continuityText: canonicalText(profile.continuityText), negativeText: canonicalText(profile.negativeText),
+    generation_prompt: canonicalPrompt(profile.generation_prompt),
+    generation_settings: canonicalGenerationSettings(profile.generation_settings),
+    owned_props: (profile.owned_props || []).map(prop => ({
+      id: String(prop.id || ''), name: canonicalText(prop.name), description: canonicalText(prop.description),
+      material: canonicalText(prop.material), scale: canonicalText(prop.scale),
+    })),
     aging_mode: String(profile.aging_mode || ''), looks, look_ids: looks.map(look => look.id),
   };
 }
@@ -89,7 +109,7 @@ export function assertSavedPerson(savedBundle = {}, item = {}, normalizedValues 
   const submitted = canonicalServerProfile({ ...normalizedValues, id: item.profile?.id || normalizedValues.id });
   const expectedIdentity = String(normalizedValues.identity_id || normalizedValues.id || item.profile?.id || '');
   const requestedAge = String(normalizedValues.age || 'match_brief').trim() || 'match_brief';
-  const textFields = ['displayName', 'roleName', 'ethnicity', 'appearanceText', 'performanceText', 'continuityText', 'negativeText'];
+  const textFields = ['displayName', 'roleName', 'ethnicity', 'appearanceText', 'performanceText', 'continuityText', 'negativeText', 'generation_prompt'];
   const submittedTextMismatch = textFields.some(field => submitted[field] !== acknowledged[field]);
   if (!savedProfile || !acknowledgedProfile
     || saved.id !== acknowledged.id
@@ -103,6 +123,10 @@ export function assertSavedPerson(savedBundle = {}, item = {}, normalizedValues 
     || saved.performanceText !== acknowledged.performanceText
     || saved.continuityText !== acknowledged.continuityText
     || saved.negativeText !== acknowledged.negativeText
+    || JSON.stringify(saved.generation_settings) !== JSON.stringify(acknowledged.generation_settings)
+    || JSON.stringify(submitted.generation_settings) !== JSON.stringify(acknowledged.generation_settings)
+    || JSON.stringify(saved.owned_props) !== JSON.stringify(acknowledged.owned_props)
+    || JSON.stringify(submitted.owned_props) !== JSON.stringify(acknowledged.owned_props)
     || saved.aging_mode !== acknowledged.aging_mode
     || JSON.stringify(saved.looks) !== JSON.stringify(acknowledged.looks)
     || JSON.stringify(submitted.looks) !== JSON.stringify(acknowledged.looks)

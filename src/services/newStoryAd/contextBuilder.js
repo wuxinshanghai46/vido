@@ -14,6 +14,7 @@ const capabilityPacks = require('./capabilityPackService');
 const personLooks = require('./personLookProfileService');
 const worldSetting = require('./worldSettingContractService');
 const personAgeContract = require('./personAgeContractService');
+const personGenerationPrompt = require('./personGenerationPromptService');
 const personEvolution = require('./personStateEvolutionService');
 const multilineTextContract = require('./multilineTextContractService');
 const briefDialogueHistory = require('./briefDialogueHistoryService');
@@ -202,6 +203,8 @@ function normalizeCharacter(item, idx = 0, seed = '') {
       on_screen: true,
       description: role,
       performanceText: '',
+      generation_prompt: '',
+      owned_props: [],
       name_generated: true,
     };
   }
@@ -223,6 +226,8 @@ function normalizeCharacter(item, idx = 0, seed = '') {
     source: cleanText(source.source || '', 40),
     description,
     performanceText,
+    generation_prompt: cleanMultilineText(source.generation_prompt || source.generationPrompt || '', 8000),
+    owned_props: personGenerationPrompt.normalizeOwnedProps(source),
     name_generated: source.name_generated === true || source.nameGenerated === true || shouldGenerateName || undefined,
   };
 }
@@ -771,6 +776,10 @@ function normalizeCastProfiles(input) {
       voice_tone: cleanText(profile.voice_tone || profile.voice?.direction || '', 300),
       performanceText: cleanText(profile.performanceText || profile.performance || '', 600),
       continuityText: cleanText(profile.continuityText || profile.continuity || '', 600),
+      generation_prompt: personGenerationPrompt.compile(profile),
+      generation_prompt_source: cleanText(profile.generation_prompt_source || profile.generationPromptSource || '', 40),
+      generation_settings: personGenerationPrompt.normalizeSettings(profile.generation_settings || profile.generationSettings),
+      owned_props: personGenerationPrompt.normalizeOwnedProps(profile),
     };
   }).filter(Boolean);
 }
@@ -1652,6 +1661,7 @@ module.exports = {
   normalizeReferenceVideoAnalysis,
   controlledProductionPrompt,
   cleanText,
+  cleanMultilineText,
   normalizeCharacters,
   backgroundPerformerCharacter,
   isGenericBackgroundName,

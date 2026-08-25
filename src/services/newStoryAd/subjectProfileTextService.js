@@ -33,7 +33,7 @@ const ASSIST_PROFILE_FIELDS = [
   'displayName', 'roleName', 'appearanceText', 'wardrobeText', 'hairMakeupText', 'negativeText',
 ];
 const ASSIST_DETAIL_FIELDS = ['appearanceText', 'wardrobeText', 'hairMakeupText', 'negativeText'];
-const PROFILE_EDITABLE_FIELDS = [...ASSIST_PROFILE_FIELDS, 'performanceText', 'continuityText'];
+const PROFILE_EDITABLE_FIELDS = [...ASSIST_PROFILE_FIELDS, 'performanceText', 'continuityText', 'generation_prompt'];
 const REPLACEABLE_AUTHORITIES = new Set(['reference_direction', 'reference_safety', 'system_default']);
 
 const ROBOT_PROFILE_PATTERN = /(?:机器人|机械人|仿生人|机械体|智能机器|安防机器|陪伴机器|android\b|\brobot\b|\bdroid\b|\bmecha\b)/iu;

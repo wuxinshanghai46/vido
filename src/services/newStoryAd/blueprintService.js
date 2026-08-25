@@ -681,6 +681,7 @@ async function generateBlueprint(ctx, {
     'The important rule is completeness relative to the user request, not a fixed set of columns.',
     'characters.name must be a task-local formal person name when a person appears. If the user did not provide a name, generate a fresh stable name for this task; never use role placeholders or descriptions such as "elegant woman", "customer", "presenter" as final names.',
     'Every on-screen character must include a stable id, formal name, gender, age_range, role, relationship and description. When the confirmed cast contract says a customer or procurement representative appears, create that person as a separate character; audience targeting alone must never create a customer character.',
+    'Every on-screen character must also include generation_prompt: a complete Simplified-Chinese image-generation prompt already usable when the user enters the person stage. It must contain labelled sections 名称、描述、服装、发型妆造、特征、随身道具、构图规范、视觉限制、视觉风格. Do not leave placeholders. owned_props must be an array of actual portable story props; use an empty array and write 随身道具：无 when there is none. Clothing, shoes, jewelry and fixed wearables belong to 服装, not owned_props.',
     ctx.brief_intake?.cast_intent?.background_people === true
       ? 'The confirmed cast contract requires exactly one background performer. This person performs the requested touch, walk-by or pause actions for visual scale and material proof, but the film must not introduce a name, occupation, personal backstory, customer decision or protagonist arc. Keep product and material effects as the subject.'
       : '',
@@ -725,7 +726,7 @@ Return JSON in this shape:
     "beat_refs": {"setup":[1],"trigger":[2],"progression":[2,3],"result":[4]}
   },
   "segment_plan": [{"segment_id":"seg_1","name":"section","space_anchor":"fixed space or carrier","fixed_subjects":"fixed subjects/relationships","continuity_rules":["rules"]}],
-  "characters": [{"id":"stable character id","name":"fresh stable formal person name for this task when a human appears; empty array for no_human mode","role":"story function","gender":"female/male/unknown","age_range":"specific age or range such as 32岁 or 28~35岁","relationship":"relationship to other characters or audience","on_screen":true,"description":"appearance, identity, behavior"}],
+  "characters": [{"id":"stable character id","name":"fresh stable formal person name for this task when a human appears; empty array for no_human mode","role":"story function","gender":"female/male/unknown","age_range":"specific age or range such as 32岁 or 28~35岁","relationship":"relationship to other characters or audience","on_screen":true,"description":"appearance, identity, behavior","generation_prompt":"名称、描述、服装、发型妆造、特征、随身道具、构图规范、视觉限制、视觉风格全部写好的中文人物生图提示词","owned_props":[{"id":"stable prop id","name":"portable prop name","description":"appearance, color, wear and use","material":"material","scale":"size"}]}],
   "beats": [{
     "beat_index": 1,
     "role": "story function label",

@@ -127,7 +127,8 @@ async function main() {
   });
   assert(!ui.includes("['props', '道具']"), '道具不得作为顶级资产分组');
   assert(!ui.includes("mediaSection('可复用原子素材'"), '不得展示底层可复用原子素材');
-  assert(personFormUi.includes('data-person-edit') && planningUi.includes('data-owned-prop-form'), '人物编辑和随身道具入口必须存在');
+  assert(personFormUi.includes('data-person-edit') && personFormUi.includes('name="generation_prompt"'), '人物点击后必须直接打开完整提示词编辑器');
+  assert(!planningUi.includes('data-owned-prop-form'), '随身道具不得保留提示词之外的第二套表单');
   assert(personSourceUi.includes('rights_confirmed') && personSourceUi.includes('adult_confirmed'), '真人上传必须携带授权与成年确认');
   assert(ui.includes("store.runStage('person-plan'") && ui.includes("store.runStage('product-assets'") && ui.includes("store.runStage('scene-assets'"), '人物必须先走可轮询的真实规划任务，商品和场景保持独立后台任务');
   ['基本信息', '形象展示', '表情记录', '服装拆解', '配饰与鞋履单品', '人物细节', '动作档案', '角色介绍'].forEach(label => assert(dossierShowcase.includes(label), `参考版人物档案缺少 ${label}`));

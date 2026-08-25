@@ -471,7 +471,7 @@ function harness({ cancelAt = 0 } = {}) {
   assert(scoped.prompts[0].includes('白色亚麻长裙'), 'the selected person prompt must contain the exact edited wardrobe');
   assert(scoped.prompts[0].includes('Four-view continuity is a hard identity contract'), 'the paid image prompt must enforce one invariant visible state across all four views');
   assert(scoped.prompts[0].includes('Never add, remove, swap, recolor, resize or reposition'), 'the paid image prompt must forbid accessory and wardrobe drift between cells');
-  assert(scoped.prompts[0].includes('Negative continuity rules:'), 'the paid image prompt must include the selected person-specific negative rules');
+  assert(scoped.prompts[0].includes('视觉限制：'), 'the paid image prompt must include the selected person-specific negative rules in the authoritative final prompt');
   assert(!scoped.prompts[0].includes('爸爸周屿'), 'the selected person prompt must remain isolated from unselected cast members');
 
   const invalidScope = harness();

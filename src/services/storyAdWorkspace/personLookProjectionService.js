@@ -2,6 +2,7 @@ const personLooks = require('../newStoryAd/personLookProfileService');
 const { normalizeAppearanceAgeText } = require('./personTextProjectionService');
 const { projectedDossierItems } = require('./dossierItemProjectionService');
 const personEvolution = require('../newStoryAd/personStateEvolutionService');
+const personGenerationPrompt = require('../newStoryAd/personGenerationPromptService');
 
 function clean(value = '', max = 240) {
   return String(value || '').replace(/\s+/g, ' ').trim().slice(0, max);
@@ -19,7 +20,7 @@ function mediaUrl(value = {}) {
 function personProfile(source = {}, index = 0) {
   const evolved = personEvolution.normalizeProfile(source, { index });
   const withLooks = personLooks.normalizeProfileLooks(evolved);
-  return {
+  return personGenerationPrompt.project({
     id: clean(source.id || source.cast_id || source.castId || `cast_${index + 1}`, 80),
     displayName: clean(source.displayName || source.display_name || source.name, 120),
     identity_name: clean(source.identity_name || source.identityName || source.displayName || source.name, 120),
@@ -46,7 +47,11 @@ function personProfile(source = {}, index = 0) {
     aging_mode: evolved.aging_mode,
     apparent_age: evolved.apparent_age,
     age_states: evolved.age_states,
-  };
+    generation_prompt: personGenerationPrompt.clean(source.generation_prompt || source.generationPrompt, 8000),
+    generation_prompt_source: clean(source.generation_prompt_source || source.generationPromptSource, 40),
+    generation_settings: personGenerationPrompt.normalizeSettings(source.generation_settings || source.generationSettings),
+    owned_props: personGenerationPrompt.normalizeOwnedProps(source),
+  });
 }
 
 function lookAssets(source = [], personId = '') {

@@ -1017,12 +1017,13 @@ async function generateImage({
   throw error;
 }
 
-async function generateActorReference({
+  async function generateActorReference({
   taskId = '',
   prompt = '',
   filename = '',
   aspectRatio = '3:4',
-  imageModel = 'auto',
+    imageModel = 'auto',
+    resolution = '2K',
   referenceImages = [],
   requireReferences = false,
   inputFidelity = 'high',
@@ -1038,7 +1039,8 @@ async function generateActorReference({
     prompt,
     filename: filename || `new_story_actor_${Date.now()}`,
     aspectRatio,
-    imageModel,
+      imageModel,
+      resolution,
     referenceImages,
     requireReferences,
     inputFidelity,

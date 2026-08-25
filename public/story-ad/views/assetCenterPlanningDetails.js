@@ -2,15 +2,6 @@ import { escapeHtml, mediaPreview } from '../components/ui.js?v=20260825-product
 import { bindMediaLightbox } from './mediaLightbox.js?v=20260825-production-v227b';
 import { personDossierShowcase } from './personDossierShowcase.js?v=20260825-production-v227b';
 import { bindSceneDossierCard, renderSceneDossierCard } from './sceneDossierCard.js?v=20260825-production-v227b';
-import { bindPersonLookForm } from './assetCenterPersonLooks.js?v=20260825-production-v227b';
-import { bindPersonEvolutionForm } from './assetCenterPersonEvolution.js?v=20260825-production-v227b';
-
-export function ownedPropDetails(item = {}) {
-  const rows = Array.isArray(item.owned_props) ? item.owned_props : [];
-  return `<section class="drawer-owned-props"><div class="drawer-section-head"><h3>人物随身道具</h3><span>${rows.length}</span></div><p class="drawer-section-note">只需写清道具名称和外观，系统将通过模型生成并绑定当前人物；不再要求上传参考图。</p>
-    <div class="owned-prop-list">${rows.map(prop => `<article>${mediaPreview(prop, { label: prop.name, width: 480, symbol: '道具' })}<div><b>${escapeHtml(prop.name)}</b><span>${escapeHtml(prop.status || '待生成')}</span></div><button class="btn small" type="button" data-generate-owned-prop="${escapeHtml(prop.id)}">${prop.image_url ? '重新生成' : '生成道具'}</button></article>`).join('') || '<div class="mini-empty">当前人物还没有随身道具。</div>'}</div>
-    <form class="owned-prop-form" data-owned-prop-form><input name="name" placeholder="道具名称" required><input name="description" placeholder="外观、颜色、磨损和用途" required><input name="material" placeholder="材质（可选）"><input name="scale" placeholder="尺寸/比例（可选）"><button class="btn small primary" type="submit">由模型生成道具</button></form></section>`;
-}
 
 export function productDetails(item = {}) {
   const presentation = item.presentation || {};
@@ -112,7 +103,7 @@ export function sceneEditForm(item = {}) {
 }
 
 export function openAssetDrawer(item, group, handlers = {}, renderers = {}) {
-  const { readOnly = false, onGenerate, onVerifyProduct, onSavePerson, onAssistPerson, onSaveProduct, onSaveScene, onAssistScene, onGenerateScene, onGenerateProp, onGenerateProduct, onUploadProduct, returnFocus } = handlers;
+  const { readOnly = false, onGenerate, onVerifyProduct, onSavePerson, onSaveProduct, onSaveScene, onAssistScene, onGenerateScene, onGenerateProduct, onUploadProduct, returnFocus } = handlers;
   const { groupLabel, generatable, mediaSection, profileDetails, legacyDossierBoard, dossierDetails, checkpointDetails = () => '', knowledgePolicyTrace = () => '', personEditForm } = renderers;
   const views = Array.isArray(item.view_images) ? item.view_images : [];
   const dossier = item.dossier_sheet?.image_url ? { image_url: item.dossier_sheet.image_url } : null;
@@ -140,7 +131,7 @@ export function openAssetDrawer(item, group, handlers = {}, renderers = {}) {
     ${group === 'people' && !dossier && !retainedDossier && views.length ? legacyDossierBoard(item, views) : ''}
     ${group === 'scenes' ? sceneDetails(item) : ''}
     ${views.length ? (group === 'people' && !dossier ? `<details class="raw-view-details"><summary>查看原始四视图</summary>${mediaSection('原始人物视图', views, 'is-portrait-grid')}</details>` : (group === 'scenes' ? `<details class="raw-view-details"><summary>查看场景原始图集（${views.length} 张）</summary>${mediaSection('场景视角图集', views)}</details>` : mediaSection('完整视图', views, group === 'people' || group === 'animals' ? 'is-portrait-grid' : ''))) : ''}
-    ${group === 'people' ? dossierDetails(item) : ''}${group === 'products' ? productDetails(item) : ''}${editablePerson ? '' : profileDetails(item, group)}${knowledgePolicyTrace(item)}${readOnly ? '<p class="drawer-section-note" data-historical-drawer-readonly>当前为已确认步骤，只展示已保存内容；如需修改文字方案，请先在页面顶部开启编辑。</p>' : `${group === 'products' ? productEditForm(item) : ''}${group === 'scenes' ? sceneEditForm(item) : ''}${group === 'people' ? ownedPropDetails(item) : ''}`}
+    ${group === 'people' ? dossierDetails(item) : ''}${group === 'products' ? productDetails(item) : ''}${editablePerson ? '' : profileDetails(item, group)}${knowledgePolicyTrace(item)}${readOnly ? '<p class="drawer-section-note" data-historical-drawer-readonly>当前为已确认步骤，只展示已保存内容；如需修改文字方案，请先在页面顶部开启编辑。</p>' : `${group === 'products' ? productEditForm(item) : ''}${group === 'scenes' ? sceneEditForm(item) : ''}`}
     ${editablePerson ? '' : `<div class="meta-list">${metadata.map(([label, value]) => `<div class="meta-row"><span>${escapeHtml(label)}</span><b>${escapeHtml(value)}</b></div>`).join('')}</div>`}</div>
     ${group === 'scenes' && !readOnly ? '<footer class="drawer-actions"><span>保存后可在场景卡片上单独生成该场景。</span></footer>' : ''}
     ${group === 'products' ? `<footer class="drawer-actions product-reference-actions"><span>上传或更换主体图片后，可单独验证和生成商品资产。</span><div>${readOnly ? '' : `<button class="btn" type="button" data-drawer-upload-product>${item.image_url ? '更换主体图片' : '上传主体图片'}</button>`}</div></footer>` : ''}
@@ -170,26 +161,10 @@ export function openAssetDrawer(item, group, handlers = {}, renderers = {}) {
   });
   drawer.querySelector('[data-drawer-verify-product]')?.addEventListener('click', async event => { if (await onVerifyProduct?.(item, event.currentTarget) === true) close(); });
   bindSubmit('[data-person-edit]', onSavePerson);
-  bindPersonLookForm(drawer.querySelector('[data-person-edit]'));
-  bindPersonEvolutionForm(drawer.querySelector('[data-person-edit]'));
-  drawer.querySelector('[data-jump-person-looks]')?.addEventListener('click', () => {
-    const editor = drawer.querySelector('[data-person-look-editor]');
-    editor?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
-    editor?.querySelector('[name$="_wardrobeText"]')?.focus?.({ preventScroll: true });
-  });
   bindSubmit('[data-product-edit]', onSaveProduct);
   bindSubmit('[data-scene-edit]', onSaveScene);
-  drawer.querySelector('[data-ai-assist-person]')?.addEventListener('click', event => onAssistPerson?.(item, drawer.querySelector('[data-person-edit]'), event.currentTarget));
   drawer.querySelector('[data-ai-assist-scene]')?.addEventListener('click', event => onAssistScene?.(item, drawer.querySelector('[data-scene-edit]'), event.currentTarget));
   drawer.querySelector('[data-drawer-upload-product]')?.addEventListener('click', () => { close(); onUploadProduct?.(item); });
-  drawer.querySelectorAll('[data-generate-owned-prop]').forEach(button => button.addEventListener('click', async () => {
-    const prop = (item.owned_props || []).find(row => String(row.id) === button.dataset.generateOwnedProp);
-    if (prop) await onGenerateProp?.(item, prop, button);
-  }));
-  drawer.querySelector('[data-owned-prop-form]')?.addEventListener('submit', async event => {
-    event.preventDefault(); const values = Object.fromEntries(new FormData(event.currentTarget).entries());
-    await onGenerateProp?.(item, values, event.currentTarget.querySelector('button[type="submit"]'));
-  });
   document.body.append(backdrop, drawer);
   bindMediaLightbox(drawer);
   if (group === 'scenes') bindSceneDossierCard(drawer, item);
