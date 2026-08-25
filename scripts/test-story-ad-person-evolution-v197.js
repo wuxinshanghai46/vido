@@ -41,11 +41,12 @@ assert.equal(wardrobe.age_state_id, 'young');
 const cardSource = fs.readFileSync(path.join(__dirname, '../public/story-ad/views/sceneDossierCard.js'), 'utf8');
 const editorSource = fs.readFileSync(path.join(__dirname, '../public/story-ad/views/assetCenterPersonEvolution.js'), 'utf8');
 const assetSource = fs.readFileSync(path.join(__dirname, '../public/story-ad/views/assetCenterView.js'), 'utf8');
+const personFormSource = fs.readFileSync(path.join(__dirname, '../public/story-ad/views/assetCenterPersonForm.js'), 'utf8');
 assert(cardSource.includes('单人物标准人像'));
-assert(editorSource.includes('人物状态演化'));
+assert(editorSource.includes('高级：年龄与剧情状态演化'));
 assert(editorSource.includes('同一人物自然变老'));
 assert(editorSource.includes('时间经过但容颜不老'));
-assert(assetSource.includes('renderPersonEvolutionEditor'));
+assert(personFormSource.includes('renderPersonEvolutionEditor'));
 assert(assetSource.includes('collectPersonEvolutionValues'));
 
 console.log('story-ad person evolution and wardrobe assets: ok');

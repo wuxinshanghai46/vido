@@ -41,21 +41,22 @@ function quarantinedBillingUnknown(run = {}) {
     && run.automatic_retry_allowed !== true;
 }
 
-function ownedProductionGraphRun(run = {}, options = {}) {
+function ownedAuthorityRun(run = {}, options = {}) {
   const generationId = clean(options.generation_id || options.generationId, 160);
-  return options.production_graph_authority === true
-    && generationId
-    && clean(run.domain, 80) === 'production_assets'
-    && clean(run.orchestration_job_id, 160) === generationId;
+  if (!generationId || clean(run.orchestration_job_id, 160) !== generationId) return false;
+  const domain = clean(run.domain, 80);
+  return (options.production_graph_authority === true && domain === 'production_assets')
+    || (options.person_plan_authority === true && domain === 'person_plan');
 }
 
 function promotionBlockers(taskId, options = {}) {
   const runs = storage.listGenerationRuns({ work_id: taskId });
   return runs.filter(run => {
-    if (ownedProductionGraphRun(run, options)) return false;
+    if (ownedAuthorityRun(run, options)) return false;
     const state = clean(run.state, 40).toLowerCase();
     const billingUnknown = state === 'billing_unknown' || clean(run.billing_state, 40).toLowerCase() === 'unknown';
-    if (billingUnknown && options.production_graph_authority === true && quarantinedBillingUnknown(run)) return false;
+    const ownedPromotion = options.production_graph_authority === true || options.person_plan_authority === true;
+    if (billingUnknown && ownedPromotion && quarantinedBillingUnknown(run)) return false;
     return ACTIVE_RUN_STATES.has(state) || billingUnknown;
   });
 }
@@ -139,7 +140,7 @@ function disablePrevious(taskId, nextAuthority, at, options = {}) {
 
   storage.listGenerationRuns({ work_id: taskId }).forEach(run => {
     if (run.authority_id === nextAuthority.authority_id) return;
-    if (ownedProductionGraphRun(run, options)) {
+    if (ownedAuthorityRun(run, options)) {
       storage.updateGenerationRun(run.id, {
         authority_id: nextAuthority.authority_id,
         execution_identity: nextAuthority.execution_identity,

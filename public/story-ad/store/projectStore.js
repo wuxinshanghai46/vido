@@ -131,7 +131,8 @@ export function createProjectStore() {
         const data = await request(`/api/new-story-ad/tasks/${encodeURIComponent(taskId)}`, { method: 'PUT', body, timeoutMs: 120000 });
         applyMutationResult(data);
         const bundle = await refreshSections(options.refreshSections || 'summary');
-        set({ saving: false }); return bundle;
+        set({ saving: false });
+        return options.returnMutationResult === true ? { bundle, mutation: data } : bundle;
       } catch (error) {
         set({ saving: false, error: error.message });
         throw error;

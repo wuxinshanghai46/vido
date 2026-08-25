@@ -86,6 +86,7 @@ function registerPersonPlanGenerationRoute(router, deps = {}) {
       updatePersonPlanProgress(storage, req.params.id, job.generationId, { percent: 3, total: personTotal, completed: 0, phase: 'planning', message: '正在并行启动独立人物方案' });
       const personPlan = await service.updatePersonPlan(req.params.id, {
         generation_id: job.generationId,
+        person_plan_authority: true,
         user,
         onProgress: event => {
           if (event.completed_index) completedPeople.add(event.completed_index);

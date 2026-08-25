@@ -151,12 +151,13 @@ const completeDrawer = drawerHtml({
   id: 'person-1', name: '人物1', dossier_sheet: { image_url: '/assets/person-1-canonical-dossier.png' },
   view_images: [{ image_url: '/assets/person-1-raw-face.png' }], profile: {}, status: 'verified',
 });
-verify('complete person drawer starts with its canonical large dossier board', () => {
+verify('editable person drawer starts with its prompt editor and keeps the canonical dossier behind it', () => {
   assert.match(completeDrawer, /person-canonical-dossier-board[^>]*is-large|is-large[^>]*person-canonical-dossier-board/);
   assert.match(completeDrawer, /data-person-dossier-board/);
   const canonical = completeDrawer.indexOf('/assets/person-1-canonical-dossier.png');
+  assert.ok(completeDrawer.indexOf('data-person-edit') >= 0 && completeDrawer.indexOf('data-person-edit') < canonical);
   assert.ok(canonical >= 0 && canonical < completeDrawer.indexOf('data-raw-person-views'));
-  assert.ok(canonical < completeDrawer.indexOf('data-person-text-profile'));
+  assert.doesNotMatch(completeDrawer, /data-person-text-profile/);
   assert.doesNotMatch(completeDrawer.slice(0, canonical), /person-1-raw-face|person-2/);
 });
 const partialDrawer = drawerHtml({

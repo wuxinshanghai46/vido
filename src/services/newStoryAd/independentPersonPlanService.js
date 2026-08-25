@@ -14,7 +14,9 @@ async function complete(taskId, options = {}, deps = {}) {
   const ctx = assertContextConsistent(storage.getOutput(taskId, 'context') || task.request || {});
   const profiles = Array.isArray(ctx.cast_profiles) ? ctx.cast_profiles : [];
   if (!profiles.length) return assetPlan.persistIndependentPersonProfiles(taskId, [], {
-    generation_id: options.generation_id || options.generationId || '', model_meta: { model_call_count: 0 },
+    generation_id: options.generation_id || options.generationId || '',
+    person_plan_authority: options.person_plan_authority === true,
+    model_meta: { model_call_count: 0 },
   }).cast_profiles || [];
   const checkpointKind = 'person_plan_character_checkpoints';
   const checkpoints = storage.getOutput(taskId, checkpointKind) || {};
@@ -93,6 +95,7 @@ async function complete(taskId, options = {}, deps = {}) {
   const saved = assetPlan.persistIndependentPersonProfiles(taskId, completedProfiles, {
     generation_id: options.generation_id || options.generationId || '',
     production_graph_authority: options.production_graph_authority === true,
+    person_plan_authority: options.person_plan_authority === true,
     model_meta: { model_call_count: completedProfiles.length, concurrency: Math.min(2, profiles.length), stage: 'new_story_ad.person_plan_character' },
   });
   storage.deleteOutput(taskId, checkpointKind);

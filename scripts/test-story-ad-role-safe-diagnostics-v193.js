@@ -55,9 +55,8 @@ const ordinaryHtml = ui.personPlanBlockedView(eligibility, false, { isAdmin: fal
 assert.doesNotMatch(ordinaryHtml, /技术详情|support-secret|apismile|gpt-5\.5|TIMEOUT_OR_NETWORK/);
 assert.doesNotMatch(ordinaryHtml, /系统会根据|人物方案暂未完成|已保存的人物身份|不是系统找不到同一个人物/);
 const adminHtml = ui.personPlanBlockedView(eligibility, false, { isAdmin: true, diagnostics: admin.technical_diagnostics });
-assert.match(adminHtml, /<details class="asset-plan-admin-diagnostics">/);
-assert.doesNotMatch(adminHtml, /<details[^>]+open/);
-assert.match(adminHtml, /技术详情（仅超管）|系统会根据|人物方案暂未完成|support-secret|gpt-5\.5/);
+assert.match(adminHtml, /<section class="asset-plan-admin-diagnostics is-visible"[^>]*data-admin-failure-details/);
+assert.match(adminHtml, /具体失败原因（仅超管）|系统会根据|support-secret|gpt-5\.5/);
 const activeHtml = ui.personPlanBlockedView(eligibility, true, { isAdmin: false });
 assert.match(activeHtml, /disabled>正在生成人物方案/);
 assert.doesNotMatch(activeHtml, /data-person-plan-inline-progress|role="progressbar"/);
@@ -71,4 +70,4 @@ const bundleProjection = read('src/services/storyAdWorkspace/projectBundleServic
 assert.match(bundleProjection, /technical_diagnostics/);
 assert.match(bundleProjection, /is_admin:\s*isAdmin/);
 
-console.log(JSON.stringify({ passed: true, assertions: 27, ordinary_server_redaction: true, admin_collapsed_diagnostics: true, progress_redaction: true, person_plan_progress_persisted: true, top_progress_visible: true, inline_progress_removed: true }));
+console.log(JSON.stringify({ passed: true, assertions: 26, ordinary_server_redaction: true, admin_visible_diagnostics: true, progress_redaction: true, person_plan_progress_persisted: true, top_progress_visible: true, inline_progress_removed: true }));

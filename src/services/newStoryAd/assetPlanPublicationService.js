@@ -201,7 +201,7 @@ function planIssues({ task = {}, context = {}, plan = {}, fingerprint = '' } = {
 }
 
 function publish(taskId, rawPlan = {}, { fingerprint = '', source = '', model_meta = null, scope = 'all',
-  production_graph_authority = false, generation_id = '', generationId = '' } = {}) {
+  production_graph_authority = false, person_plan_authority = false, generation_id = '', generationId = '' } = {}) {
   const task = storage.getTask(taskId);
   if (!task) throw new Error('任务不存在');
   const context = storage.getOutput(taskId, 'context') || task.request || {};
@@ -272,6 +272,7 @@ function publish(taskId, rawPlan = {}, { fingerprint = '', source = '', model_me
   storage.withWriteBatch(() => {
     const authority = authorityLifecycle.activate(taskId, activePlan, nextActive, validatedCandidate, {
       production_graph_authority: production_graph_authority === true,
+      person_plan_authority: person_plan_authority === true,
       generation_id: generation_id || generationId,
     });
     Object.assign(activePlan, {

@@ -344,9 +344,9 @@ export async function mount(host, context) {
     ));
     try {
       setButtonBusy(button, true, '正在保存…', { elapsed: true });
-      const savedBundle = await store.updateRequest({ cast_profiles: profiles }, { refreshSections: 'summary,assets' });
-      assertSavedPerson(savedBundle, item, normalizedValues);
-      item.profile = { ...(item.profile || {}), ...normalizedValues };
+      const receipt = await store.updateRequest({ cast_profiles: profiles }, { refreshSections: 'summary,assets', returnMutationResult: true });
+      const savedProfile = assertSavedPerson(receipt.bundle, item, normalizedValues, receipt.mutation);
+      item.profile = savedProfile;
       await context.refreshCurrentView?.();
       toast('人物信息已保存；下次生成会使用最新设定。', 'success');
       return true;
@@ -402,17 +402,12 @@ export async function mount(host, context) {
     } catch (error) { toast(error.message, 'danger'); return false; } finally { setButtonBusy(button, false); }
   };
 
-  const generateProp = async (owner, prop, button = null, referenceFile = null) => {
+  const generateProp = async (owner, prop, button = null) => {
     const input = { ...prop };
     if (!String(input.name || '').trim() || !String(input.description || '').trim()) return toast('请填写道具名称和外观描述。', 'warning');
     if (!await confirmDialog(`道具“${input.name}”会绑定到人物“${owner.name}”，生成身份视图和必要状态图。`, { title: '生成人物随身道具', confirmText: '确认生成' })) return false;
     try {
       setButtonBusy(button, true, '正在提交道具生成…', { elapsed: true });
-      if (referenceFile instanceof File && referenceFile.size) {
-        const uploaded = await store.upload(referenceFile, 'prop_reference');
-        const media = uploaded.asset || uploaded.data || {};
-        input.reference_image_url = media.image_url || media.url || media.file_url || '';
-      }
       await store.runStage('prop-assets', {
         ...input,
         id: input.id || `prop_${Date.now()}`,
@@ -469,7 +464,7 @@ export async function mount(host, context) {
   const showAsset = button => {
     const group = button.dataset.assetGroup;
     const item = (assets[group] || []).find(asset => String(asset.id) === button.dataset.assetId);
-    if (item) openDrawer(item, group, { readOnly: historicalReadOnly, onVerifyProduct: verifyProduct, onSavePerson: savePerson, onAssistPerson: assistPerson, onSaveProduct: saveProduct, onSaveScene: saveScene, onAssistScene: assistScene, onUploadProduct: () => openUpload('products'), returnFocus: button });
+    if (item) openDrawer(item, group, { readOnly: historicalReadOnly, onGenerate: generate, onGenerateProp: generateProp, onGenerateScene: generateScene, onVerifyProduct: verifyProduct, onSavePerson: savePerson, onAssistPerson: assistPerson, onSaveProduct: saveProduct, onSaveScene: saveScene, onAssistScene: assistScene, onUploadProduct: () => openUpload('products'), returnFocus: button });
   };
   host.querySelectorAll('[data-asset-id]').forEach(button => button.addEventListener('click', () => showAsset(button)));
   host.querySelectorAll('[data-verify-product]').forEach(button => button.addEventListener('click', event => {

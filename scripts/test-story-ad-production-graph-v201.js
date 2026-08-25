@@ -113,12 +113,17 @@ const originalUpdateTask = storage.updateTask;
 try {
   storage.listGenerationRuns = () => [
     { id: 'owned-production-run', domain: 'production_assets', state: 'running', billing_state: 'not_submitted', orchestration_job_id: 'generation-v201' },
+    { id: 'owned-person-run', domain: 'person_plan', state: 'running', billing_state: 'not_submitted', orchestration_job_id: 'person-generation-v227' },
     { id: 'old-unknown', domain: 'person_plan', state: 'billing_unknown', billing_state: 'unknown', retry_blocked: true, automatic_retry_allowed: false },
     { id: 'unrelated-running', domain: 'video', state: 'running', billing_state: 'not_submitted', orchestration_job_id: 'other-generation' },
   ];
-  equal(authorityLifecycle.promotionBlockers(taskId).length, 3, 'ordinary authority promotion remains blocked by active or unknown runs');
+  equal(authorityLifecycle.promotionBlockers(taskId).length, 4, 'ordinary authority promotion remains blocked by active or unknown runs');
   const graphBlockers = authorityLifecycle.promotionBlockers(taskId, { production_graph_authority: true, generation_id: 'generation-v201' });
-  equal(graphBlockers.map(item => item.id), ['unrelated-running'], 'graph promotion ignores only its owned run and quarantined historical unknown billing');
+  equal(graphBlockers.map(item => item.id), ['owned-person-run', 'unrelated-running'], 'graph promotion ignores only its owned run and quarantined historical unknown billing');
+  const personBlockers = authorityLifecycle.promotionBlockers(taskId, { person_plan_authority: true, generation_id: 'person-generation-v227' });
+  equal(personBlockers.map(item => item.id), ['owned-production-run', 'unrelated-running'], 'person-plan promotion ignores its exact owned run and quarantined historical unknown billing');
+  const mismatchedPersonBlockers = authorityLifecycle.promotionBlockers(taskId, { person_plan_authority: true, generation_id: 'different-person-generation' });
+  ok(mismatchedPersonBlockers.some(item => item.id === 'owned-person-run'), 'a different generation id cannot claim another person-plan run');
   storage.listGenerationRuns = () => [
     { id: 'owned-production-run', domain: 'production_assets', state: 'running', billing_state: 'not_submitted', orchestration_job_id: 'generation-v201' },
     { id: 'old-unknown', domain: 'person_plan', state: 'billing_unknown', billing_state: 'unknown', retry_blocked: true, automatic_retry_allowed: false },
@@ -149,6 +154,18 @@ try {
   equal(runUpdates.get(ownedRun.id).execution_disabled, false, 'owned production graph run remains executable after authority promotion');
   equal(runUpdates.get(ownedRun.id).authority_id, promoted.authority_id, 'owned production graph run is rebound to the promoted authority');
   equal(runUpdates.get(historicalRun.id).execution_disabled, true, 'quarantined historical run remains disabled after authority promotion');
+
+  const ownedPersonRun = { id: 'owned-person-run', domain: 'person_plan', state: 'running', unit_version: 5,
+    billing_state: 'not_submitted', orchestration_job_id: 'person-generation-v227', execution_disabled: false };
+  runUpdates.clear();
+  storage.listGenerationRuns = () => [ownedPersonRun];
+  const personPromoted = authorityLifecycle.activate(taskId,
+    { candidate_id: 'person-plan-v227', content_revision: 7 },
+    { plan_id: 'person-plan-v227', content_revision: 7, release_bundle_id: 'bundle-v227' },
+    null,
+    { person_plan_authority: true, generation_id: 'person-generation-v227' });
+  equal(runUpdates.get(ownedPersonRun.id).execution_disabled, false, 'owned person-plan run remains executable after authority promotion');
+  equal(runUpdates.get(ownedPersonRun.id).authority_id, personPromoted.authority_id, 'owned person-plan run is rebound to the promoted authority');
 } finally {
   storage.listGenerationRuns = originalListGenerationRuns;
   storage.updateGenerationRun = originalUpdateGenerationRun;
@@ -180,6 +197,9 @@ ok(productionAction.includes("spatial_mode: 'multi_view'"), 'UI defaults unified
 ok(productionAction.includes('generate_panoramas: false'), 'UI does not silently request panorama generation');
 ok(!productionAction.includes('maximum_confirmable_cost_rmb') && !productionAction.includes('视觉费用上限'), 'generation confirmation does not impose a fixed user spending ceiling');
 const routeSource = fs.readFileSync(path.join(__dirname, '../src/routes/newStoryAd.js'), 'utf8');
+const personPlanRouteSource = fs.readFileSync(path.join(__dirname, '../src/routes/newStoryAd/personPlanGenerationRoute.js'), 'utf8');
+const independentPersonPlanSource = fs.readFileSync(path.join(__dirname, '../src/services/newStoryAd/independentPersonPlanService.js'), 'utf8');
+const planPublicationSource = fs.readFileSync(path.join(__dirname, '../src/services/newStoryAd/assetPlanPublicationService.js'), 'utf8');
 const orchestratorSource = fs.readFileSync(path.join(__dirname, '../src/services/newStoryAd/productionAssetOrchestratorService.js'), 'utf8');
 const subjectBundleSource = fs.readFileSync(path.join(__dirname, '../src/services/newStoryAd/subjectAssetBundleService.js'), 'utf8');
 ok(orchestratorSource.includes('PRODUCTION_GRAPH_IMAGE_PRICE_UNKNOWN'), 'unpriced image routes are blocked before paid generation');
@@ -205,6 +225,9 @@ const panoramaSceneSpec = contextBuilder.normalizeSceneSpec({ sceneExperienceCon
 equal(panoramaSceneSpec.sceneExperienceContract.required_authority, 'panorama_3dof', 'explicit panorama scene authority is preserved');
 equal(panoramaSceneSpec.sceneExperienceContract.rotation_required, true, 'explicit panorama authority retains rotation requirement');
 ok(orchestratorSource.includes('production_graph_authority: true'), 'person and scene planning are published under the owned graph generation');
+ok(personPlanRouteSource.includes('person_plan_authority: true'), 'the person-plan route explicitly claims only its own authority run');
+ok(independentPersonPlanSource.includes('person_plan_authority: options.person_plan_authority === true'), 'person-plan ownership propagates through independent profile persistence');
+ok(planPublicationSource.includes('person_plan_authority: person_plan_authority === true'), 'person-plan ownership reaches authority activation');
 ok(subjectBundleSource.includes('dossierComposites.composeWardrobeDetails'), 'unified person dossiers derive wardrobe detail panels locally from paid high-resolution contact sheets');
 ok(!routeSource.includes("assertLegacyMutationAllowed(req.params.id, 'scene_asset_repair')"), 'current scene repair remains available independently');
 const transition = fs.readFileSync(path.join(__dirname, '../public/story-ad/views/briefAssetPlanTransition.js'), 'utf8');

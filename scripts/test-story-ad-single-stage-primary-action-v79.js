@@ -9,7 +9,7 @@ const root = path.resolve(__dirname, '..');
 const read = file => fs.readFileSync(path.join(root, file), 'utf8');
 const stageSource = read('public/story-ad/views/assetCenterStageView.js')
   .replace(/^import\s+.*?;\s*$/gm, '').replace(/\bexport\s+/g, '');
-const sandbox = {};
+const sandbox = { personPlanTechnicalDetails: () => '' };
 vm.runInNewContext(`${stageSource}\nglobalThis.__stage=assetPlanStageView;`, sandbox);
 
 const pending = sandbox.__stage({ generationActive: false, counts: { people: 2, scenes: 1 }, missingSubjectCount: 2 });

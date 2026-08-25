@@ -55,11 +55,15 @@ const assetDossierSections = read('public/story-ad/views/assetCenterDossierSecti
 const sceneDossierCard = read('public/story-ad/views/sceneDossierCard.js');
 const sceneWorldPage = read('public/story-ad/views/sceneWorldPage.js');
 const assetPlanningDetails = read('public/story-ad/views/assetCenterPlanningDetails.js');
+const assetPersonForm = read('public/story-ad/views/assetCenterPersonForm.js');
 assert.match(assetDossierSections, /reference-dossier-board/);
 assert.match(assetDossierSections, /参考档案预览/);
 assert.match(assetPlanningDetails, /查看原始四视图/);
-assert.match(assetPlanningDetails, /form="personEditForm"/u, '人物抽屉固定操作栏必须始终提供文字保存入口');
-assert.match(assetPlanningDetails, /保存人物文字设定/u);
+assert.match(assetPersonForm, /data-person-prompt-workbench/u, '点击人物后必须直接显示单一提示词工作台');
+assert.match(assetPersonForm, /保存提示词/u);
+assert.match(assetPersonForm, /名称与身份[\s\S]*描述[\s\S]*特征与表演[\s\S]*一致性与构图规范[\s\S]*视觉限制/u);
+assert.doesNotMatch(assetPlanningDetails.slice(0, assetPlanningDetails.indexOf('export function productDetails')), /type="file"|上传参考并生成/u, '随身道具不得继续要求上传参考图');
+assert.match(assetPlanningDetails, /由模型生成道具/u);
 assert.match(sceneDossierCard, /function assetCardMedia/);
 assert.match(sceneDossierCard, /const portrait = item\.native_masters\?\.face\?\.image_url/, '人物主卡必须优先显示单人物标准人像');
 assert.match(sceneDossierCard, /asset-people-portraits/, '人物主卡必须使用独立人像预览组，而不是完整档案拼图');
@@ -637,8 +641,9 @@ const readableProfile = { ...completePerson, profile: { displayName: '苏晚', r
 const personEdit = personFormModule.personEditForm(readableProfile);
 assert.match(personEdit, /name="age"/u, '人物编辑区必须提供确切年龄或区间的独立权威字段');
 assert.doesNotMatch(personEdit, /value="match_brief"/u, '人物编辑区不得暴露内部年龄枚举');
-assert.match(personEdit, /确切年龄或年龄区间/u);
-assert.match(personEdit, /外貌与气质（年龄请填写在上方独立字段）/u);
+assert.match(personEdit, /人物生成提示词/u);
+assert.match(personEdit, /名称与身份/u);
+assert.match(personEdit, /人物描述/u);
 assert.match(personEdit, /年龄约28岁/);
 const personProfileDetails = assetModule.profileDetails(readableProfile, 'people');
 assert.doesNotMatch(personProfileDetails, /年龄范围|match_brief/);
@@ -672,6 +677,26 @@ assert.doesNotThrow(() => assetPersonStateModule.assertSavedPerson({ assets: { p
   id: readableProfile.profile.id, age: 'match_brief', appearanceText: readableProfile.profile.appearanceText,
   look_profiles: collectedLooks.look_profiles,
 } }] } }, readableProfile, { ...collectedLooks, age: '', appearanceText: readableProfile.profile.appearanceText }), '空年龄与服务器 match_brief 必须视为同一自动分析语义');
+const canonicalSavedProfile = {
+  id: 'char-canonical', identity_id: 'char-canonical', displayName: '陈默', roleName: '背景出镜人物', age: '25岁',
+  ethnicity: '东亚外貌设计', appearanceText: '短发；自然肤色', performanceText: '自然站立；不说台词',
+  continuityText: '保持同一人物', negativeText: '禁止首饰', aging_mode: 'fixed',
+  look_profiles: [{ id: 'look-1', name: '默认造型', story_state: '', scene_ids: [], wardrobeText: '黑色晚礼服；黑色高跟鞋', hairMakeupText: '微乱短发', negativeText: '禁止帽子', style_richness: 'auto' }],
+};
+const canonicalSubmittedProfile = { ...canonicalSavedProfile,
+  displayName: '陈默  ', appearanceText: '短发；\n自然肤色', performanceText: '自然站立；  不说台词',
+  look_profiles: [{ ...canonicalSavedProfile.look_profiles[0], wardrobeText: '黑色晚礼服；\n黑色高跟鞋' }],
+};
+assert.doesNotThrow(() => assetPersonStateModule.assertSavedPerson(
+  { assets: { people: [{ profile: canonicalSavedProfile }] } },
+  { profile: { id: 'char-canonical' } }, canonicalSubmittedProfile,
+  { context: { cast_profiles: [canonicalSavedProfile] } },
+), '服务器仅规范化空白时必须接受保存回执，不能误报保存失败');
+assert.throws(() => assetPersonStateModule.assertSavedPerson(
+  { assets: { people: [{ profile: { ...canonicalSavedProfile, appearanceText: '错误旧值' } }] } },
+  { profile: { id: 'char-canonical' } }, canonicalSubmittedProfile,
+  { context: { cast_profiles: [canonicalSavedProfile] } },
+), /服务器回读不一致/u, '项目投影与服务器保存回执不一致时仍必须阻止继续生成');
 const dossierDetails = dossierModule.personDossierShowcase(readableProfile);
 assert.doesNotMatch(dossierDetails, /match_brief/, '人物档案风格关键词不得泄漏内部年龄占位值');
 

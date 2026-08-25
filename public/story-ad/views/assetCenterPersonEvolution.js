@@ -26,14 +26,13 @@ export function renderPersonEvolutionEditor(profile = {}) {
   const agingMode = String(profile.aging_mode || (continuity === 'reincarnation' ? 'reincarnation' : 'fixed'));
   const option = (value, label, current) => `<option value="${value}" ${current === value ? 'selected' : ''}>${label}</option>`;
   const states = ageRows(profile);
-  return `<section class="person-evolution-editor" data-person-evolution-editor>
-    <div class="drawer-section-head"><div><h3>人物状态演化</h3><p>身份、服装、年龄和剧情状态分别管理；换装不会重建身份母版。</p></div><span>${states.length} 个年龄状态</span></div>
+  return `<details class="person-evolution-editor person-prompt-advanced" data-person-evolution-editor><summary>高级：年龄与剧情状态演化 <span>${states.length} 个年龄状态</span></summary><div class="person-evolution-body">
     <input type="hidden" name="identity_id" value="${escapeHtml(profile.identity_id || profile.id || '')}">
     <input type="hidden" name="lineage_identity_id" value="${escapeHtml(profile.lineage_identity_id || profile.source_identity_id || profile.id || '')}">
     <div class="form-grid two"><label><span>身份关系</span><select name="identity_continuity">${option('same_person', '同一人物', continuity)}${option('reincarnation', '转世新身份', continuity)}${option('independent', '独立人物', continuity)}</select></label><label><span>年龄变化方式</span><select name="aging_mode">${option('fixed', '固定外观年龄', agingMode)}${option('natural_aging', '同一人物自然变老', agingMode)}${option('ageless', '时间经过但容颜不老', agingMode)}${option('reincarnation', '转世为新身份', agingMode)}</select></label></div>
     <div data-age-state-list>${states.map(ageEditor).join('')}</div>
     <button class="btn small" type="button" data-add-age-state>添加年龄状态</button>
-  </section>`;
+  </div></details>`;
 }
 
 function reindex(list) {
@@ -42,7 +41,7 @@ function reindex(list) {
     card.querySelector('legend span').textContent = `状态 ${index + 1}`;
     card.querySelectorAll('[name]').forEach(field => { field.name = field.name.replace(/^age_state_\d+_/, `age_state_${index}_`); });
   });
-  const badge = list.closest('[data-person-evolution-editor]')?.querySelector('.drawer-section-head>span');
+  const badge = list.closest('[data-person-evolution-editor]')?.querySelector('summary>span');
   if (badge) badge.textContent = `${list.querySelectorAll('[data-age-state]').length} 个年龄状态`;
 }
 

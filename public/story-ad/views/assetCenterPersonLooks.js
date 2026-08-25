@@ -20,22 +20,19 @@ function lookEditor(look = {}, index = 0) {
     <input type="hidden" name="look_${index}_id" value="${escapeHtml(look.id || '')}">
     <input type="hidden" name="look_${index}_scene_ids" value="${escapeHtml((look.scene_ids || []).join(','))}">
     <input type="hidden" name="look_${index}_scene_names" value="${escapeHtml((look.scene_names || []).join(','))}">
-    <div class="form-grid two"><label><span>造型名称</span><input name="look_${index}_name" value="${escapeHtml(look.name || '')}" required></label><label><span>时代 / 剧情状态</span><input name="look_${index}_story_state" value="${escapeHtml(look.story_state || '')}"></label></div>
-    <label><span>华丽程度（AI 帮写和图片生成都会遵守）</span><select name="look_${index}_style_richness">${richnessOption('auto', '根据人物与剧情自动判断')}${richnessOption('restrained', '朴素克制')}${richnessOption('refined', '精致雅致')}${richnessOption('ornate_luxurious', '华丽华贵')}</select></label>
+    <div class="form-grid two"><label><span>造型名称</span><input name="look_${index}_name" value="${escapeHtml(look.name || '')}" required></label><label><span>剧情状态</span><input name="look_${index}_story_state" value="${escapeHtml(look.story_state || '')}"></label></div>
     <p class="person-look-scenes"><span>适用场景 / 剧情状态</span><b>${escapeHtml(sceneLabels.join('、') || storyState || '未限定场景，将按剧情分析')}</b></p>
-    <label><span>服装 / 鞋 / 配饰</span><textarea name="look_${index}_wardrobeText" rows="3" required>${escapeHtml(look.wardrobeText || '')}</textarea></label>
-    <div class="form-grid two"><label><span>服装单品（用、分隔）</span><input name="look_${index}_garments" value="${escapeHtml((look.garments || []).join('、'))}"></label><label><span>鞋履（用、分隔）</span><input name="look_${index}_footwear" value="${escapeHtml((look.footwear || []).join('、'))}"></label></div>
-    <label><span>独立配饰（用、分隔）</span><input name="look_${index}_accessories" value="${escapeHtml((look.accessories || []).join('、'))}"></label>
-    <div class="form-grid two"><label><span>季节 / 天气</span><input name="look_${index}_season_weather" value="${escapeHtml(look.season_weather || '')}"></label><label><span>动作适用性</span><input name="look_${index}_action_suitability" value="${escapeHtml(look.action_suitability || '')}"></label></div>
-    <div class="form-grid two"><label><span>年龄状态 ID</span><input name="look_${index}_age_state_id" value="${escapeHtml(look.age_state_id || '')}" placeholder="为空时按场景分配"></label><label><span>剧情状态 ID</span><input name="look_${index}_story_state_id" value="${escapeHtml(look.story_state_id || '')}"></label></div>
-    <label><span>该造型发型 / 妆造</span><textarea name="look_${index}_hairMakeupText" rows="2">${escapeHtml(look.hairMakeupText || '')}</textarea></label>
-    <label><span>该造型禁止项</span><textarea name="look_${index}_negativeText" rows="2">${escapeHtml(look.negativeText || '')}</textarea></label>
+    <label><span>服装</span><textarea name="look_${index}_wardrobeText" rows="3" required>${escapeHtml(look.wardrobeText || '')}</textarea></label>
+    <label><span>发型 / 妆造</span><textarea name="look_${index}_hairMakeupText" rows="2">${escapeHtml(look.hairMakeupText || '')}</textarea></label>
+    <details class="person-look-advanced"><summary>服装拆分与适用条件</summary><label><span>风格丰富度</span><select name="look_${index}_style_richness">${richnessOption('auto', '根据人物与剧情自动判断')}${richnessOption('restrained', '朴素克制')}${richnessOption('refined', '精致雅致')}${richnessOption('ornate_luxurious', '华丽华贵')}</select></label><div class="form-grid two"><label><span>服装单品（用、分隔）</span><input name="look_${index}_garments" value="${escapeHtml((look.garments || []).join('、'))}"></label><label><span>鞋履（用、分隔）</span><input name="look_${index}_footwear" value="${escapeHtml((look.footwear || []).join('、'))}"></label></div>
+    <label><span>独立配饰（用、分隔）</span><input name="look_${index}_accessories" value="${escapeHtml((look.accessories || []).join('、'))}"></label><div class="form-grid two"><label><span>季节 / 天气</span><input name="look_${index}_season_weather" value="${escapeHtml(look.season_weather || '')}"></label><label><span>动作适用性</span><input name="look_${index}_action_suitability" value="${escapeHtml(look.action_suitability || '')}"></label></div>
+    <input type="hidden" name="look_${index}_age_state_id" value="${escapeHtml(look.age_state_id || '')}"><input type="hidden" name="look_${index}_story_state_id" value="${escapeHtml(look.story_state_id || '')}"><label><span>该造型禁止项</span><textarea name="look_${index}_negativeText" rows="2">${escapeHtml(look.negativeText || '')}</textarea></label></details>
     <button class="btn small person-look-remove" type="button" data-remove-person-look>删除该造型</button>
   </fieldset>`;
 }
 
 export function renderPersonLookEditors(profile = {}) {
-  return `<section class="person-look-editor" data-person-look-editor><div class="drawer-section-head"><div><h3>人物造型</h3><p>同一时代可有多套造型；古今人物分别建档。</p></div><span>${rows(profile).length} 套</span></div><div data-person-look-list>${rows(profile).map(lookEditor).join('')}</div><button class="btn small" type="button" data-add-person-look>添加造型</button></section>`;
+  return `<section class="person-look-editor person-prompt-block" data-person-look-editor><div class="drawer-section-head"><div><h3>服装与造型</h3><p>直接修改模型使用的服装、发型和妆造提示词。</p></div><span>${rows(profile).length} 套</span></div><div data-person-look-list>${rows(profile).map(lookEditor).join('')}</div><button class="btn small" type="button" data-add-person-look>添加另一套造型</button></section>`;
 }
 
 export function renderPersonLookTiles(item = {}) {

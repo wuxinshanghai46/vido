@@ -53,24 +53,61 @@ export function personLookSummary(looks = []) {
     : '';
 }
 
-export function assertSavedPerson(savedBundle = {}, item = {}, normalizedValues = {}) {
+function canonicalText(value = '') {
+  return [...new Set(String(value || '').split(/[；;]/u)
+    .map(part => part.replace(/\s+/gu, ' ').trim()).filter(Boolean))].join('；');
+}
+
+function canonicalServerProfile(profile = {}) {
+  const looks = (profile.look_profiles || []).map(look => ({
+    id: String(look.id || ''), name: canonicalText(look.name), story_state: canonicalText(look.story_state),
+    wardrobeText: canonicalText(look.wardrobeText), hairMakeupText: canonicalText(look.hairMakeupText),
+    negativeText: canonicalText(look.negativeText), style_richness: String(look.style_richness || 'auto'),
+    scene_ids: (look.scene_ids || []).map(String),
+  }));
+  return {
+    id: String(profile.id || ''), identity_id: String(profile.identity_id || profile.id || ''),
+    displayName: canonicalText(profile.displayName), roleName: canonicalText(profile.roleName),
+    age: String(profile.age_contract?.value || profile.age || 'match_brief').trim() || 'match_brief',
+    ethnicity: canonicalText(profile.ethnicity || profile.ethnic_appearance),
+    appearanceText: canonicalText(profile.appearanceText), performanceText: canonicalText(profile.performanceText),
+    continuityText: canonicalText(profile.continuityText), negativeText: canonicalText(profile.negativeText),
+    aging_mode: String(profile.aging_mode || ''), looks, look_ids: looks.map(look => look.id),
+  };
+}
+
+export function assertSavedPerson(savedBundle = {}, item = {}, normalizedValues = {}, mutation = {}) {
   const savedProfile = (savedBundle?.assets?.people || [])
     .map(row => row.profile || {})
     .find(profile => String(profile.id || '') === String(item.profile?.id || ''));
+  const mutationProfiles = mutation?.context?.cast_profiles;
+  const acknowledgedProfile = (Array.isArray(mutationProfiles) ? mutationProfiles : [savedProfile])
+    .find(profile => String(profile?.id || '') === String(item.profile?.id || ''));
   const expectedLookIds = (normalizedValues.look_profiles || []).map(look => String(look.id || ''));
-  const savedLookIds = (savedProfile?.look_profiles || []).map(look => String(look.id || ''));
-  const canonicalAge = value => String(value || '').trim() || 'match_brief';
-  if (!savedProfile
-    || canonicalAge(savedProfile.age) !== canonicalAge(normalizedValues.age)
-    || String(savedProfile.displayName || '') !== String(normalizedValues.displayName || '')
-    || String(savedProfile.roleName || '') !== String(normalizedValues.roleName || '')
-    || String(savedProfile.ethnicity || '') !== String(normalizedValues.ethnicity || '')
-    || String(savedProfile.appearanceText || '') !== String(normalizedValues.appearanceText || '')
-    || String(savedProfile.performanceText || '') !== String(normalizedValues.performanceText || '')
-    || String(savedProfile.continuityText || '') !== String(normalizedValues.continuityText || '')
-    || expectedLookIds.some(id => !savedLookIds.includes(id))
-    || String(savedProfile.identity_id || savedProfile.id || '') !== String(normalizedValues.identity_id || normalizedValues.id || item.profile?.id || '')
-    || String(savedProfile.aging_mode || '') !== String(normalizedValues.aging_mode || '')) {
+  const saved = canonicalServerProfile(savedProfile);
+  const acknowledged = canonicalServerProfile(acknowledgedProfile);
+  const submitted = canonicalServerProfile({ ...normalizedValues, id: item.profile?.id || normalizedValues.id });
+  const expectedIdentity = String(normalizedValues.identity_id || normalizedValues.id || item.profile?.id || '');
+  const requestedAge = String(normalizedValues.age || 'match_brief').trim() || 'match_brief';
+  const textFields = ['displayName', 'roleName', 'ethnicity', 'appearanceText', 'performanceText', 'continuityText', 'negativeText'];
+  const submittedTextMismatch = textFields.some(field => submitted[field] !== acknowledged[field]);
+  if (!savedProfile || !acknowledgedProfile
+    || saved.id !== acknowledged.id
+    || saved.identity_id !== acknowledged.identity_id
+    || acknowledged.identity_id !== expectedIdentity
+    || saved.age !== acknowledged.age || acknowledged.age !== requestedAge
+    || saved.displayName !== acknowledged.displayName
+    || saved.roleName !== acknowledged.roleName
+    || saved.ethnicity !== acknowledged.ethnicity
+    || saved.appearanceText !== acknowledged.appearanceText
+    || saved.performanceText !== acknowledged.performanceText
+    || saved.continuityText !== acknowledged.continuityText
+    || saved.negativeText !== acknowledged.negativeText
+    || saved.aging_mode !== acknowledged.aging_mode
+    || JSON.stringify(saved.looks) !== JSON.stringify(acknowledged.looks)
+    || JSON.stringify(submitted.looks) !== JSON.stringify(acknowledged.looks)
+    || submittedTextMismatch
+    || expectedLookIds.some(id => !acknowledged.look_ids.includes(id) || !saved.look_ids.includes(id))) {
     throw new Error('人物信息服务器回读不一致，已停止显示保存成功；请勿继续生成。');
   }
   return savedProfile;
