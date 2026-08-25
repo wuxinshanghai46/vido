@@ -718,6 +718,18 @@ async function main() {
   settingsService.saveSettings({
     providers: [
       {
+        id: 'apismile',
+        preset: 'apismile',
+        name: 'Apismile',
+        api_url: 'https://example.invalid/v1',
+        api_key: 'test-apismile-key',
+        enabled: true,
+        models: [
+          { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', type: 'chat', use: 'story', enabled: true },
+          { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro', type: 'chat', use: 'story', enabled: true },
+        ],
+      },
+      {
         id: 'deyunai',
         preset: 'deyunai',
         name: 'DeyunAI',
@@ -770,11 +782,13 @@ async function main() {
   assert.deepStrictEqual(routedVisionModels, [
     'deyunai/gemini-2.5-flash',
     'zhipu/glm-4.6v-flash',
+    'apismile/gemini-2.5-flash',
     'webang-maas/gemini-2.5-flash',
+    'apismile/gemini-2.5-pro',
   ], 'reference video analysis must use only its explicit VLM route');
   const routedAvailability = modelGateway.visionAvailability('new_story_ad.reference_video_vision');
   assert.strictEqual(routedAvailability.source, 'model_call_management');
-  assert.strictEqual(routedAvailability.available_count, 3);
+  assert.strictEqual(routedAvailability.available_count, 5);
   assert.ok(!routedAvailability.models.some(item => item.provider_id === 'openai'));
   assert.strictEqual(modelGateway.classifyError(new Error('401 该令牌已过期')).code, 'AUTH_CONFIG');
   assert.strictEqual(modelGateway.classifyError(new Error('Connection error.')).code, 'TIMEOUT_OR_NETWORK');
@@ -1094,6 +1108,8 @@ async function main() {
   });
   const authError = new Error('test auth failure');
   authError.code = 'AUTH_CONFIG';
+  modelGateway.recordHealth({ provider_id: 'apismile', model_id: 'gemini-2.5-flash' }, { ok: false, error: authError });
+  modelGateway.recordHealth({ provider_id: 'apismile', model_id: 'gemini-2.5-pro' }, { ok: false, error: authError });
   modelGateway.recordHealth({ provider_id: 'deyunai', model_id: 'gemini-2.5-flash' }, { ok: false, error: authError });
   modelGateway.recordHealth({ provider_id: 'zhipu', model_id: 'glm-4.6v-flash' }, { ok: false, error: authError });
   modelGateway.recordHealth({ provider_id: 'webang-maas', model_id: 'gemini-2.5-flash' }, { ok: false, error: authError });
@@ -1434,9 +1450,10 @@ async function main() {
     userPrompt: 'test',
     imageUrls: ['https://example.com/reference-frame.jpg'],
     imageDataUrls: ['data:image/jpeg;base64,YWJj'],
-    maxCandidates: 2,
+    maxCandidates: 3,
     _candidateModels: [
       { provider_id: 'rate-limited-provider', model_id: 'primary-vision' },
+      { provider_id: 'rate-limited-provider', model_id: 'sibling-vision' },
       { provider_id: 'backup-provider', model_id: 'backup-vision' },
     ],
     _generateText: async ({ model }) => {
@@ -1444,6 +1461,7 @@ async function main() {
       if (model.model_id === 'primary-vision') {
         const error = new Error('HTTP 429 rate limit');
         error.code = 'RATE_LIMIT';
+        error.response = { status: 429, headers: { 'retry-after': '17' } };
         throw error;
       }
       return {
@@ -1453,18 +1471,55 @@ async function main() {
     },
     validateText: text => String(text || '').length >= 80,
   });
-  process.env.NEW_STORY_AD_MOCK_LLM = previousMock;
   assert.deepStrictEqual(rateLimitAttempts, [
     'rate-limited-provider/primary-vision',
     'backup-provider/backup-vision',
   ]);
   assert.strictEqual(rateLimitFallback.fallback_used, true);
   assert.strictEqual(rateLimitFallback.used_model, 'backup-provider/backup-vision');
-  assert.deepStrictEqual(rateLimitFallback.failed_models.map(item => item.code), ['RATE_LIMIT']);
+  assert.deepStrictEqual(rateLimitFallback.failed_models.map(item => item.code), ['RATE_LIMIT', 'RATE_LIMIT']);
+  assert.equal(rateLimitFallback.failed_models[1].skipped, true,
+    '同一次候选回退也不得立即请求同供应商的第二个模型');
   assert.ok(
-    rateLimitFallback.failed_models[0].retry_after_ms >= 4 * 60 * 1000,
-    'rate-limited vision candidates must expose their circuit cooldown instead of returning retry_after_ms=0',
+    rateLimitFallback.failed_models[0].retry_after_ms >= 16 * 1000
+      && rateLimitFallback.failed_models[0].retry_after_ms <= 17 * 1000,
+    'rate-limited vision candidates must expose the provider Retry-After window',
   );
+  const deferredAttempts = [];
+  const deferredFallback = await modelGateway.generateVision({
+    taskId: 'reference-video-rate-limit-deferred-fallback',
+    stage: 'new_story_ad.reference_video_vision',
+    systemPrompt: 'test',
+    userPrompt: 'test',
+    imageUrls: ['https://example.com/reference-frame.jpg'],
+    imageDataUrls: ['data:image/jpeg;base64,YWJj'],
+    maxCandidates: 3,
+    _candidateModels: [
+      { provider_id: 'rate-limited-provider', model_id: 'primary-vision' },
+      { provider_id: 'rate-limited-provider', model_id: 'sibling-vision' },
+      { provider_id: 'backup-provider', model_id: 'backup-vision' },
+    ],
+    _generateText: async ({ model }) => {
+      deferredAttempts.push(`${model.provider_id}/${model.model_id}`);
+      return {
+        text: '备用视觉模型在首选供应商冷却期间返回完整广告证据：画面展示门窗产品、客厅空间、金属边框、玻璃材质、自然光线、人物动作、品牌文字、产品特写、景别变化和结尾行动号召，并逐帧说明主体位置、环境布局、动作起点、过程结果以及真实可见的转场变化。',
+        adapter: 'test',
+      };
+    },
+    validateText: text => String(text || '').length >= 80,
+  });
+  assert.deepStrictEqual(deferredAttempts, ['backup-provider/backup-vision'],
+    'Retry-After 未到期时不得再次提交同一供应商的任何模型');
+  assert.equal(deferredFallback.failed_models[0].skipped, true);
+  assert.equal(deferredFallback.failed_models[1].skipped, true);
+  assert.equal(modelGateway.healthState({ provider_id: 'rate-limited-provider', model_id: 'sibling-vision' }).rate_limit_domain_cooldown, true,
+    '429 冷却必须覆盖同一端点和账号下的其它模型');
+  assert.equal(
+    modelGateway.providerRetryDelayMs({ response: { headers: { 'retry-after': 'Thu, 01 Jan 2026 00:00:09 GMT' } } }, Date.parse('2026-01-01T00:00:00Z')),
+    9000,
+    'Retry-After HTTP-date 必须转换为相对等待时间',
+  );
+  process.env.NEW_STORY_AD_MOCK_LLM = previousMock;
 
   const originalGenerateVision = modelGateway.generateVision;
   const originalGenerateText = modelGateway.generateText;

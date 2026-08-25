@@ -126,6 +126,10 @@ function failureDomainKey(model = {}) {
   return `endpoint=${endpointIdentity || `provider:${providerId || 'unknown'}`}|wallet=${wallet || 'default'}|credential=${credential || 'none'}`;
 }
 
+function rateLimitDomainHealthKey(model = {}) {
+  return `rate_limit_domain:${crypto.createHash('sha256').update(failureDomainKey(model)).digest('hex').slice(0, 32)}`;
+}
+
 function storyUseMatches(model) {
   return ['story', 'chat', 'llm'].includes(String(model?.use || '').toLowerCase());
 }
@@ -238,10 +242,8 @@ function settingsStoryCandidates() {
 }
 
 function getHealthScore(model) {
-  const health = storage.readHealth();
-  const key = modelKey(model);
-  const row = health[key] || {};
-  if (row.cooldown_until && new Date(row.cooldown_until).getTime() > Date.now()) return -10000;
+  const row = healthState(model);
+  if (row.circuit_open) return -10000;
   const success = Number(row.success_count || 0);
   const failure = Number(row.failure_count || 0);
   const consecutiveFailure = Number(row.consecutive_failure_count || 0);
@@ -250,13 +252,25 @@ function getHealthScore(model) {
 }
 
 function healthState(model) {
-  const row = storage.readHealth()[modelKey(model)] || {};
-  const cooldownUntil = row.cooldown_until ? new Date(row.cooldown_until).getTime() : 0;
+  const health = storage.readHealth();
+  const row = health[modelKey(model)] || {};
+  const domain = health[rateLimitDomainHealthKey(model)] || {};
+  const modelCooldownUntil = row.cooldown_until ? new Date(row.cooldown_until).getTime() : 0;
+  const domainCooldownUntil = domain.cooldown_until ? new Date(domain.cooldown_until).getTime() : 0;
+  const cooldownUntil = Math.max(
+    Number.isFinite(modelCooldownUntil) ? modelCooldownUntil : 0,
+    Number.isFinite(domainCooldownUntil) ? domainCooldownUntil : 0,
+  );
+  const domainRateLimited = Number.isFinite(domainCooldownUntil) && domainCooldownUntil > Date.now();
   return {
     ...row,
     circuit_open: row.blocked_until_config_change === true
-      || (Number.isFinite(cooldownUntil) && cooldownUntil > Date.now()),
-    cooldown_remaining_ms: Number.isFinite(cooldownUntil) ? Math.max(0, cooldownUntil - Date.now()) : 0,
+      || cooldownUntil > Date.now(),
+    cooldown_remaining_ms: Math.max(0, cooldownUntil - Date.now()),
+    rate_limit_domain_cooldown: domainRateLimited,
+    last_error_code: row.blocked_until_config_change === true
+      ? String(row.last_error_code || 'AUTH_CONFIG')
+      : (domainRateLimited ? 'RATE_LIMIT' : String(row.last_error_code || '')),
   };
 }
 
@@ -283,6 +297,29 @@ function preferReliableTextCandidates(candidates = [], stage = '', at = Date.now
     .map((model, index) => ({ model, index, tier: textReliabilityTier(model, at) }))
     .sort((left, right) => left.tier - right.tier || left.index - right.index)
     .map(item => item.model);
+}
+
+function providerRetryDelayMs(error = {}, at = Date.now()) {
+  const headers = error?.response?.headers || error?.headers || {};
+  const header = (name) => {
+    if (typeof headers?.get === 'function') return String(headers.get(name) || '').trim();
+    const key = Object.keys(headers || {}).find(item => String(item).toLowerCase() === name);
+    return String(key ? headers[key] : '').trim();
+  };
+  const explicit = Number(error?.provider_retry_after_ms || error?.retryAfterMs
+    || error?.response?.data?.retry_after_ms || 0);
+  let delay = Number.isFinite(explicit) && explicit > 0 ? explicit : 0;
+  const retryAfter = header('retry-after');
+  if (!delay && /^\d+(?:\.\d+)?$/.test(retryAfter)) delay = Number(retryAfter) * 1000;
+  if (!delay && retryAfter) {
+    const retryAt = Date.parse(retryAfter);
+    if (Number.isFinite(retryAt)) delay = retryAt - Number(at || Date.now());
+  }
+  if (!delay) {
+    const bodySeconds = Number(error?.response?.data?.retry_after || error?.response?.data?.error?.retry_after || 0);
+    if (Number.isFinite(bodySeconds) && bodySeconds > 0) delay = bodySeconds * 1000;
+  }
+  return delay > 0 ? Math.max(1000, Math.min(24 * 60 * 60 * 1000, Math.ceil(delay))) : 0;
 }
 
 function recordHealth(model, { ok, error = null, latencyMs = 0 } = {}) {
@@ -332,8 +369,9 @@ function recordHealth(model, { ok, error = null, latencyMs = 0 } = {}) {
     } else if (code === 'PROVIDER_REQUEST_REJECTED') {
       row.cooldown_until = new Date(Date.now() + 30 * 60 * 1000).toISOString();
     } else if (/TIMEOUT|RATE_LIMIT|NETWORK|PROVIDER_5XX/.test(code)) {
-      row.cooldown_until = new Date(Date.now() + 5 * 60 * 1000).toISOString();
-      if (code === 'PROVIDER_5XX') row.sticky_cooldown_until = row.cooldown_until;
+      const retryDelayMs = code === 'RATE_LIMIT' ? providerRetryDelayMs(error) : 0;
+      row.cooldown_until = new Date(Date.now() + (retryDelayMs || 5 * 60 * 1000)).toISOString();
+      if (code === 'RATE_LIMIT' || code === 'PROVIDER_5XX') row.sticky_cooldown_until = row.cooldown_until;
     }
   }
   if (latencyMs) {
@@ -342,6 +380,23 @@ function recordHealth(model, { ok, error = null, latencyMs = 0 } = {}) {
   }
   row.updated_at = new Date().toISOString();
   health[key] = row;
+  if (!ok && classified?.code === 'RATE_LIMIT') {
+    const domainKey = rateLimitDomainHealthKey(model);
+    const currentDomain = health[domainKey] || {};
+    const currentUntil = Date.parse(currentDomain.cooldown_until || '');
+    const nextUntil = Date.parse(row.cooldown_until || '');
+    health[domainKey] = {
+      kind: 'rate_limit_domain',
+      provider_id: model.provider_id,
+      state: 'cooldown',
+      cooldown_until: new Date(Math.max(
+        Number.isFinite(currentUntil) ? currentUntil : 0,
+        Number.isFinite(nextUntil) ? nextUntil : Date.now() + 5 * 60 * 1000,
+      )).toISOString(),
+      last_error_code: 'RATE_LIMIT',
+      updated_at: new Date().toISOString(),
+    };
+  }
   storage.writeHealth(health);
 }
 
@@ -669,6 +724,19 @@ async function generateText({
     cancellation.throwIfCancelled(taskId);
     if (Date.now() - stageStarted >= Math.max(5000, Number(stageBudgetMs) || TEXT_STAGE_BUDGET_MS)) break;
     const model = attemptCandidates[i];
+    const liveHealth = healthState(model);
+    if (liveHealth.circuit_open) {
+      failed.push({
+        provider_id: model.provider_id,
+        model_id: model.model_id,
+        code: String(liveHealth.last_error_code || 'RATE_LIMIT'),
+        message: 'provider cooldown active; request not submitted',
+        response_diagnostics: null,
+        retry_after_ms: Math.max(0, Number(liveHealth.cooldown_remaining_ms || 0)),
+        skipped: true,
+      });
+      continue;
+    }
     const start = Date.now();
     let candidateText = '';
     let candidateParsed = null;
@@ -930,6 +998,19 @@ async function generateVision({
     });
     if (attemptTimeoutMs <= 0) break;
     const model = attemptCandidates[i];
+    const liveHealth = healthState(model);
+    if (liveHealth.circuit_open) {
+      failed.push({
+        provider_id: model.provider_id,
+        model_id: model.model_id,
+        code: String(liveHealth.last_error_code || 'RATE_LIMIT'),
+        message: 'provider cooldown active; request not submitted',
+        response_diagnostics: null,
+        retry_after_ms: Math.max(0, Number(liveHealth.cooldown_remaining_ms || 0)),
+        skipped: true,
+      });
+      continue;
+    }
     const start = Date.now();
     let candidateText = '';
     let candidateParsedJson = null;
@@ -1102,6 +1183,7 @@ function mockResponse(stage, userPrompt = '') {
 module.exports = {
   candidatesForStage,
   failureDomainKey,
+  rateLimitDomainHealthKey,
   diversifyTextCandidates,
   candidatesForVisionStage,
   visionAvailability,
@@ -1117,6 +1199,7 @@ module.exports = {
   parseStructuredJson,
   classifyError,
   textCallBillingEvidence,
+  providerRetryDelayMs,
   isConfiguredAndUsable,
   recordHealth,
   getHealthScore,
