@@ -1,8 +1,8 @@
-import { request, uploadAsset, uploadReferenceVideo } from '../api.js?v=20260825-production-v212';
-import { beginReferenceReplacement, referenceSyncInterrupted, replacementCurrent, removeProjectReference, restoreReferenceReplacement } from './referenceReplacementState.js?v=20260825-production-v212';
-import { cancelReferenceAnalysisRequest, retryReferenceAnalysisRequest, retryReferenceImportRequest } from './referenceRetryStore.js?v=20260825-production-v212';
-import { loadProjectList } from './projectListStore.js?v=20260825-production-v212';
-import { loadProjectBundle, refreshProjectBundle } from './projectBundleStore.js?v=20260825-production-v212';
+import { request, uploadAsset, uploadReferenceVideo } from '../api.js?v=20260825-production-v213';
+import { beginReferenceReplacement, referenceSyncInterrupted, replacementCurrent, removeProjectReference, restoreReferenceReplacement } from './referenceReplacementState.js?v=20260825-production-v213';
+import { cancelReferenceAnalysisRequest, retryReferenceAnalysisRequest, retryReferenceImportRequest } from './referenceRetryStore.js?v=20260825-production-v213';
+import { loadProjectList } from './projectListStore.js?v=20260825-production-v213';
+import { loadProjectBundle, refreshProjectBundle } from './projectBundleStore.js?v=20260825-production-v213';
 export function createProjectStore() {
   const state = {
     projects: [],
@@ -55,7 +55,7 @@ export function createProjectStore() {
     hydrateReferenceFailure();
     return bundle;
   }
-  const mediaStore = () => import('./mediaCatalogStore.js?v=20260825-production-v212'), loadMediaPage = async options => (await mediaStore()).loadMediaPage({ request, state }, options);
+  const mediaStore = () => import('./mediaCatalogStore.js?v=20260825-production-v213'), loadMediaPage = async options => (await mediaStore()).loadMediaPage({ request, state }, options);
   const loadMoreMedia = async (kind = 'keyframes', limit = 24) => (await mediaStore()).loadMoreMedia({ request, state, set }, kind, limit);
 
   async function refreshSections(sections) {
