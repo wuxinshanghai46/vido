@@ -168,6 +168,8 @@ function profileDetails(item = {}, group = '') {
     ['年龄', personAgeDisplay(profile)],
     ['原创族裔外貌设定', profile.ethnicity || profile.ethnic_appearance],
     ['外貌与气质', profile.appearanceText],
+    ['表演与动作', profile.performanceText],
+    ['跨镜一致性', profile.continuityText],
     ...(looks.length ? looks.map((look, index) => [`造型 ${index + 1} · ${look.name || '未命名'}`, `${(look.scene_names || look.scene_ids || []).join('、') || '未限定场景'}｜${look.wardrobeText || ''}`]) : [['服装 / 鞋 / 配饰', profile.wardrobeText]]),
     ['发型 / 妆造', profile.hairMakeupText],
     ['禁止项', profile.negativeText],
@@ -336,7 +338,7 @@ export async function mount(host, context) {
       ...collectPersonLookValues(values, item.profile || {}),
       ...collectPersonEvolutionValues(values, item.profile || {}),
     };
-    const userFields = ['displayName', 'roleName', 'appearanceText', 'wardrobeText', 'hairMakeupText', 'negativeText']; normalizedValues.field_authority = { ...(item.profile?.field_authority || {}), ...Object.fromEntries(userFields.map(field => [field, 'user'])) }; normalizedValues.user_edited_fields = [...new Set([...(item.profile?.user_edited_fields || []), ...userFields])];
+    const userFields = ['displayName', 'roleName', 'appearanceText', 'wardrobeText', 'hairMakeupText', 'performanceText', 'continuityText', 'negativeText']; normalizedValues.field_authority = { ...(item.profile?.field_authority || {}), ...Object.fromEntries(userFields.map(field => [field, 'user'])) }; normalizedValues.user_edited_fields = [...new Set([...(item.profile?.user_edited_fields || []), ...userFields])];
     const profiles = (assets.people || []).map(row => row.profile || {}).map(profile => (
       String(profile.id || '') === String(item.profile?.id || '') ? { ...profile, ...normalizedValues } : profile
     ));

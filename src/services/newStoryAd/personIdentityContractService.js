@@ -95,7 +95,7 @@ function buildPersonContract(asset = {}, spec = {}, options = {}) {
       age_range: cleanText(spec.age || spec.age_range || asset.age || '', 80),
       gender: cleanText(spec.gender || asset.gender || '', 40),
       origin: cleanText(spec.origin || asset.origin || '', 120),
-      face_description: cleanText(spec.appearanceText || spec.appearance || spec.face_description || asset.description || '', 600),
+      face_description: cleanText(spec.appearanceText || spec.appearance || spec.face_description || '', 600),
       body_type: cleanText(spec.bodyType || spec.body_type || '', 120),
       height_impression: cleanText(spec.height || spec.height_impression || '', 120),
     },

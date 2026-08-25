@@ -59,6 +59,7 @@ function outputSchema() {
     cast_profiles: [{
       id: '稳定且唯一的 cast ID', subject_kind: 'human/robot', displayName: '主体姓名或关系称呼', roleName: '独立身份、关系或职责',
       appearanceText: '人类写年龄、脸型、体型、气质和识别特征；机器人写尺寸比例、壳体结构、材质、传感器和稳定识别特征', wardrobeText: '人类写穿搭配饰；机器人写外壳护板、关节驱动、挂载配件、配色与材质',
+      performanceText: '人物在画面中的动作和表演要求；不得写入 appearanceText',
       look_profiles: [{
         id: '稳定且唯一的造型ID', name: '用户可理解的造型名称', story_state: '时代或剧情状态',
         scene_ids: ['适用场景ID'], scene_names: ['适用场景名称'], wardrobeText: '60-160 字；该造型固定上装、下装或连衣裙、鞋履、颜色、材质、配饰及佩戴位置',
@@ -117,7 +118,10 @@ function modelDraftQuality(parsed = {}, target = null, replaceableFields = [], c
   const profiles = Array.isArray(parsed.cast_profiles || parsed.castProfiles)
     ? (parsed.cast_profiles || parsed.castProfiles)
     : [];
-  const candidate = profiles.find(profile => cleanText(profile?.id || '', 80) === target.id) || profiles[0] || {};
+  const candidate = normalizeCastProfiles(parsed, context, target)[0]
+    || profiles.find(profile => cleanText(profile?.id || '', 80) === target.id)
+    || profiles[0]
+    || {};
   const detailed = replaceableFields.filter(field => subjectProfileText.ASSIST_DETAIL_FIELDS.includes(field));
   const quality = subjectProfileText.assistedProfileQuality(candidate, detailed);
   const missing = replaceableFields.filter(field => !cleanText(candidate[field] || '', 1200));
@@ -151,9 +155,10 @@ function normalizeCastProfiles(parsed = {}, context = {}, target = null) {
     );
     const canonical = subjectProfileText.canonicalProfile(profile || {}, { age: profileAge });
     const withLooks = personLooks.normalizeProfileLooks({ ...profile, ...canonical });
-    const wardrobeText = preferDetailedField('wardrobeText', canonical.wardrobeText, withLooks.wardrobeText);
-    const hairMakeupText = preferDetailedField('hairMakeupText', canonical.hairMakeupText, withLooks.hairMakeupText);
-    const negativeText = preferDetailedField('negativeText', canonical.negativeText, withLooks.negativeText);
+    const firstLook = withLooks.look_profiles?.[0] || {};
+    const wardrobeText = preferDetailedField('wardrobeText', canonical.wardrobeText, withLooks.wardrobeText || firstLook.wardrobeText);
+    const hairMakeupText = preferDetailedField('hairMakeupText', canonical.hairMakeupText, withLooks.hairMakeupText || firstLook.hairMakeupText);
+    const negativeText = preferDetailedField('negativeText', canonical.negativeText, withLooks.negativeText || firstLook.negativeText);
     const lookProfiles = (withLooks.look_profiles || []).map((look, lookIndex) => lookIndex ? look : ({
       ...look,
       wardrobeText: preferDetailedField('wardrobeText', look.wardrobeText, wardrobeText),
@@ -227,7 +232,7 @@ function buildResponse({
       roleName: cleanText(spec.roleName || spec.role_name || '', 100),
       displayName: cleanText(spec.displayName || spec.display_name || '', 60),
       expectedPeople: Math.max(0, Math.min(12, Math.round(Number(spec.expectedPeople || spec.expected_people || 0) || 0))),
-      appearanceText: cleanText(spec.appearanceText || spec.appearance || spec.description || '', 360),
+      appearanceText: cleanText(spec.appearanceText || spec.appearance || '', 360),
       wardrobeText: cleanText(spec.wardrobeText || spec.wardrobe || spec.outfit || '', 420),
       hairMakeupText: cleanText(spec.hairMakeupText || spec.hair_makeup || spec.hair || '', 280),
       negativeText: cleanText(spec.negativeText || spec.negative || '', 420),

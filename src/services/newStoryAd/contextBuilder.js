@@ -201,12 +201,14 @@ function normalizeCharacter(item, idx = 0, seed = '') {
       relationship: '',
       on_screen: true,
       description: role,
+      performanceText: '',
       name_generated: true,
     };
   }
   const source = item && typeof item === 'object' ? item : {};
   const role = cleanText(source.role || source.relationship || source.identity || source.job || '', 80);
   const description = cleanText(source.description || source.appearance || source.profile || source.desc || '', 360);
+  const performanceText = cleanText(source.performanceText || source.performance || source.acting_direction || source.action_direction || '', 500);
   const gender = cleanText(source.gender || inferGenderFromText(`${source.name || ''} ${role} ${description}`), 30);
   const rawName = cleanText(source.name || source.character_name || source.displayName || source.label || '', 40);
   const shouldGenerateName = looksLikeDescriptorName(rawName);
@@ -220,6 +222,7 @@ function normalizeCharacter(item, idx = 0, seed = '') {
     on_screen: source.on_screen !== false && source.onScreen !== false,
     source: cleanText(source.source || '', 40),
     description,
+    performanceText,
     name_generated: source.name_generated === true || source.nameGenerated === true || shouldGenerateName || undefined,
   };
 }
@@ -240,6 +243,8 @@ function backgroundPerformerCharacter(source = {}) {
   const input = source && typeof source === 'object' ? source : {};
   const suppliedName = cleanText(input.name || input.character_name || input.displayName || '', 40);
   const assignedName = isGenericBackgroundName(suppliedName) ? '背景出镜人物' : suppliedName;
+  const performanceText = cleanText(input.performanceText || input.performance || input.description
+    || '不介绍身份，只承担触摸、走过、驻足等画面动作', 500);
   return {
     id: cleanText(input.id || input.character_id || 'background_performer', 80),
     name: assignedName,
@@ -249,7 +254,8 @@ function backgroundPerformerCharacter(source = {}) {
     relationship: cleanText(input.relationship || input.relation || '', 120),
     on_screen: true,
     source: cleanText(input.source || (assignedName === '背景出镜人物' ? 'confirmed_background_cast' : 'assigned_background_cast'), 40),
-    description: cleanText(input.description || input.appearance || '不介绍身份，只承担触摸、走过、驻足等画面动作', 360),
+    description: cleanText(input.description || performanceText, 360),
+    performanceText,
     name_generated: input.name_generated === true || input.nameGenerated === true || undefined,
   };
 }
@@ -763,6 +769,8 @@ function normalizeCastProfiles(input) {
       relationship: cleanText(profile.relationship || '', 240),
       voice_id: cleanText(profile.voice_id || profile.voice?.voice_id || '', 160),
       voice_tone: cleanText(profile.voice_tone || profile.voice?.direction || '', 300),
+      performanceText: cleanText(profile.performanceText || profile.performance || '', 600),
+      continuityText: cleanText(profile.continuityText || profile.continuity || '', 600),
     };
   }).filter(Boolean);
 }
@@ -1060,9 +1068,9 @@ function buildContext(body = {}, user = {}) {
   const animalOnly = castMode === 'animal';
   const petRequired = ['animal', 'human_pet'].includes(castMode);
   const normalizedPersonSpec = { ...personSpec };
-  if (normalizedPersonSpec.appearanceText || normalizedPersonSpec.appearance || normalizedPersonSpec.description) {
+  if (normalizedPersonSpec.appearanceText || normalizedPersonSpec.appearance) {
     normalizedPersonSpec.appearanceText = subjectProfileText.alignAgeDescription(
-      normalizedPersonSpec.appearanceText || normalizedPersonSpec.appearance || normalizedPersonSpec.description,
+      normalizedPersonSpec.appearanceText || normalizedPersonSpec.appearance,
       normalizedPersonSpec.age,
       800,
     );

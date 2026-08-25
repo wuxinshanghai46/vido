@@ -26,6 +26,9 @@ function projectCharacters(context = {}, blueprint = {}) {
       roleName: cleanText(character.role || prior.roleName || prior.role || '', 120),
       relationship: cleanText(character.relationship || prior.relationship || '', 240),
       description: cleanText(character.description || prior.description || '', 1000),
+      performanceText: cleanText(character.performanceText || character.performance
+        || prior.performanceText || prior.performance
+        || (/背景出镜人物/u.test(character.role || prior.role || '') ? character.description : ''), 600),
       voice_id: cleanText(character.voice?.voice_id || character.voice_id || prior.voice_id || '', 160),
       voice_tone: cleanText(character.voice?.direction || character.voice_tone || prior.voice_tone || '', 300),
     };

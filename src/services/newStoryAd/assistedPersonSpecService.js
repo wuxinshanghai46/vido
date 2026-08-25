@@ -39,8 +39,8 @@ function enforceAssistedPersonSpec(spec = {}, current = {}, context = {}) {
   petIdentity.preserveAssistedFields(output, source);
   const defaults = fallback(output, source, context);
   output.appearanceText = alignPersonAgeDescription(
-    output.appearanceText || output.appearance || output.description
-      || source.appearanceText || source.appearance || source.description || defaults.appearanceText,
+    output.appearanceText || output.appearance
+      || source.appearanceText || source.appearance || defaults.appearanceText,
     output.age,
   );
   output.wardrobeText = cleanText(

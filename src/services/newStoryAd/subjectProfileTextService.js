@@ -33,6 +33,7 @@ const ASSIST_PROFILE_FIELDS = [
   'displayName', 'roleName', 'appearanceText', 'wardrobeText', 'hairMakeupText', 'negativeText',
 ];
 const ASSIST_DETAIL_FIELDS = ['appearanceText', 'wardrobeText', 'hairMakeupText', 'negativeText'];
+const PROFILE_EDITABLE_FIELDS = [...ASSIST_PROFILE_FIELDS, 'performanceText', 'continuityText'];
 const REPLACEABLE_AUTHORITIES = new Set(['reference_direction', 'reference_safety', 'system_default']);
 
 const ROBOT_PROFILE_PATTERN = /(?:机器人|机械人|仿生人|机械体|智能机器|安防机器|陪伴机器|android\b|\brobot\b|\bdroid\b|\bmecha\b)/iu;
@@ -62,14 +63,14 @@ function profileFieldAuthority(profile = {}) {
   const source = profile.field_authority || profile.fieldAuthority;
   if (!source || typeof source !== 'object' || Array.isArray(source)) return {};
   return Object.fromEntries(Object.entries(source)
-    .filter(([key]) => ASSIST_PROFILE_FIELDS.includes(key))
+    .filter(([key]) => PROFILE_EDITABLE_FIELDS.includes(key))
     .map(([key, value]) => [key, text(value, 40)]));
 }
 
 function userEditedFields(profile = {}) {
   return stringList(
     profile.user_edited_fields || profile.userEditedFields || profile._userEditedFields,
-    ASSIST_PROFILE_FIELDS,
+    PROFILE_EDITABLE_FIELDS,
   );
 }
 
@@ -217,7 +218,6 @@ function profileTexts(profile = {}, options = {}) {
     profile.appearance?.description,
     contract.identity?.face_description,
     profile.face_description,
-    profile.description,
   ], 800);
   return {
     appearanceText: alignAgeDescription(rawAppearance, options.age || profile.age || '', 800),

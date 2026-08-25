@@ -51,7 +51,7 @@ async function complete(taskId, options = {}, deps = {}) {
           cast_profiles: profiles.map((item, itemIndex) => itemIndex === index ? forcedProfile : item),
           assist_subject_target: { kind: 'human', index, id: profile.id },
           assist_subject_kind: subjectKind,
-          assist_replaceable_fields: subjectProfileText.ASSIST_PROFILE_FIELDS,
+          assist_replaceable_fields: subjectProfileText.ASSIST_DETAIL_FIELDS,
           _internal_model_stage: 'new_story_ad.person_plan_character',
         }, options.user || {});
         const generated = response.cast_profiles?.[0] || {};

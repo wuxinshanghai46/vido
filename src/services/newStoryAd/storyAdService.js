@@ -3545,7 +3545,7 @@ async function assistBrief(body = {}, user = {}) {
     '当 mode 是 style_control 时，只补写画面风格方向，不要写剧本、分镜、卖点或执行步骤。',
     '当 mode 是 negative_control 时，只整理画面禁止项，每条都必须是明确不能出现的内容。',
     assistCreativeDirection.systemRule(),
-    '当 mode 是 person_spec 时，必须先根据当前项目和该主体自身证据识别 subject_kind，不得沿用旧任务或其他主体的类型。human 必须补齐外貌体态、穿搭配饰、发型妆造和禁止项；robot 必须补齐尺寸比例、壳体结构与材质、关节驱动、传感器/面板/指示灯、挂载配件、机械动作与结构禁止项，不得要求机器人提供族裔或妆容。动物或人物+宠物模式还必须包含独立宠物数量、类型/品种和跨镜头识别特征。',
+    '当 mode 是 person_spec 时，必须先根据当前项目和该主体自身证据识别 subject_kind，不得沿用旧任务或其他主体的类型。human 必须补齐外貌体态、穿搭配饰、发型妆造和禁止项；robot 必须补齐尺寸比例、壳体结构与材质、关节驱动、传感器/面板/指示灯、挂载配件、机械动作与结构禁止项，不得要求机器人提供族裔或妆容。description、performanceText、动作、走位、触摸、驻足和“不介绍身份”只属于表演要求，绝不能复制或改写成 appearanceText。动物或人物+宠物模式还必须包含独立宠物数量、类型/品种和跨镜头识别特征。',
     '同一时代内的换装可保留为多个 look_profiles；同一姓名同时存在古代与现代、前世与今生等跨时代状态时，必须拆成独立人物档案，并分别命名为“人名（古代）”“人名（现代）”，人物数量随拆分结果增加。',
     isPersonSpec ? worldSetting.promptBlock(ctx.world_setting) : '',
     assistSubjectTarget ? 'person_spec 单人物辅助模式只能输出目标人物的一条 cast_profiles 记录，pet_profiles 必须为空；不得重写或评价其他人物与宠物。' : 'person_spec 模式还必须按精确人数输出 cast_profiles，并按精确宠物数量输出 pet_profiles。每个数组成员只能描述一个主体；禁止复制同一套外貌、服装、发型或宠物特征给不同成员。',
@@ -3653,7 +3653,7 @@ ${outputSchema}`;
     stage: internalModelStage,
     systemPrompt,
     userPrompt,
-    maxTokens: 3000,
+    maxTokens: 3000, structuredOutput: assistSubjectTarget ? { mode: 'json_object', name: 'person_spec' } : undefined,
     validateText: isBriefGoal ? raw => briefGoalAssist.validateRaw(raw, ctx) : (assistSubjectTarget ? raw => {
       try {
         const draft = jsonRepair.parseJson(raw, 'object');

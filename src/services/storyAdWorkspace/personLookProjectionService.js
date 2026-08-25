@@ -33,7 +33,10 @@ function personProfile(source = {}, index = 0) {
     age: clean(source.age || source.ageRange || source.age_range || 'match_brief', 40),
     ethnicity: clean(source.ethnicity || source.ethnic_appearance, 120),
     ethnicity_source: clean(source.ethnicity_source || source.ethnicitySource, 80),
-    appearanceText: normalizeAppearanceAgeText(source.appearanceText || source.appearance?.userPrompt || source.appearance?.description || source.description),
+    appearanceText: normalizeAppearanceAgeText(source.appearanceText || source.appearance?.userPrompt || source.appearance?.description),
+    performanceText: clean(source.performanceText || source.performance
+      || (/背景出镜人物/u.test(source.roleName || source.role || '') ? source.description : ''), 600),
+    continuityText: clean(source.continuityText || source.continuity, 600),
     wardrobeText: clean(withLooks.wardrobeText || source.wardrobe?.userPrompt || source.wardrobe?.description || source.outfit, 1200),
     hairMakeupText: clean(withLooks.hairMakeupText || source.hairMakeup?.userPrompt || source.hairMakeup?.description || source.hair_style, 600),
     negativeText: clean(source.negativeText || source.negative, 600),

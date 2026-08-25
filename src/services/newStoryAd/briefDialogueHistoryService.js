@@ -48,6 +48,7 @@ function normalizeCastIntent(value = {}) {
     gender: clean(item?.gender || 'unknown', 30),
     age_range: clean(item?.age_range || item?.age || '', 40),
     description: clean(item?.description || '', 360),
+    performanceText: clean(item?.performanceText || item?.performance || item?.description || '', 360),
     on_screen: item?.on_screen !== false,
   })).filter(item => item.name || item.role || item.description);
   // V124-V211 encoded an explicitly requested background performer as
@@ -73,6 +74,7 @@ function normalizeCastIntent(value = {}) {
       gender: assignedBackground?.gender || 'unknown',
       age_range: assignedBackground?.age_range || '25~45岁',
       description: assignedBackground?.description || '不介绍身份，只承担触摸、走过、驻足等画面动作',
+      performanceText: assignedBackground?.performanceText || assignedBackground?.description || '不介绍身份，只承担触摸、走过、驻足等画面动作',
       on_screen: true,
     }]
     : rawParticipants;

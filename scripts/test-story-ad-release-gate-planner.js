@@ -51,6 +51,23 @@ assert.deepEqual(
 assert.equal(plan(['src/services/storyAdWorkspace/briefProjectionService.js']).profile, 'ui');
 assert.equal(plan(['src/services/newStoryAd/briefDialogueHistoryService.js', 'scripts/test-story-ad-dialogue-cast-blueprint-v151.js']).profile, 'ui');
 assert.equal(plan(['src/services/newStoryAd/contextBuilder.js']).profile, 'asset_plan');
+const personPromptPlan = planner.createPlan({
+  root: process.cwd(), baseRevision: 'a'.repeat(40), targetRevision: 'b'.repeat(40), sourceTree: 'c'.repeat(40),
+  files: [
+    'src/services/newStoryAd/assistSubjectProfileService.js',
+    'src/services/newStoryAd/assistedPersonSpecService.js',
+    'src/services/newStoryAd/independentPersonPlanService.js',
+    'src/services/newStoryAd/personIdentityContractService.js',
+    'src/services/newStoryAd/subjectProfileTextService.js',
+    'src/services/storyAdWorkspace/personLookProjectionService.js',
+    'scripts/test-story-ad-person-prompt-separation-v226.js',
+    'src/services/newStoryAd/blueprintCharacterProjectionService.js',
+  ],
+  reliable: true, targetedHome: true,
+});
+assert.equal(personPromptPlan.profile, 'story_content_asset_plan');
+assert.deepEqual(personPromptPlan.gates.map(row => row.id), ['story_content', 'asset_plan', 'workspace_ui', 'release_core'],
+  '人物外貌/表演分离属于内容、人物资产方案和工作台定向门禁，不得回退全平台或跨版本回归');
 assert.equal(plan(['AGENTS.md']).profile, 'ui');
 assert.equal(plan(['src/services/newStoryAd/storageService.js']).profile, 'systemic');
 assert.equal(plan(['src/services/voicePackEnrollmentService.js']).profile, 'systemic');

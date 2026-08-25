@@ -117,7 +117,10 @@ const DOMAIN_RULES = [
     risk: 'asset_plan',
     patterns: [
       /(?:assetPlan|PlanningDetails|PlanRelease|PlanMigration|scenePlanStatus|contextBuilder|subjectAssetBundle)/i,
+      /^src\/services\/newStoryAd\/(?:assistSubjectProfileService|assistedPersonSpecService|independentPersonPlanService|personIdentityContractService|subjectProfileTextService)\.js$/i,
+      /^src\/services\/storyAdWorkspace\/personLookProjectionService\.js$/i,
       /^scripts\/test-story-ad-person-plan/i,
+      /^scripts\/test-story-ad-person-prompt-separation-v\d+\.js$/i,
       /^scripts\/test-new-story-ad-asset-contracts\.js$/i,
     ],
   },

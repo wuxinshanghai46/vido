@@ -20,6 +20,7 @@ export function personAssetState(item = {}) {
   const profileSnapshot = profile => JSON.stringify({
     displayName: String(profile?.displayName || ''), roleName: String(profile?.roleName || ''),
     age: ageValue(profile), appearanceText: String(profile?.appearanceText || ''),
+    performanceText: String(profile?.performanceText || ''), continuityText: String(profile?.continuityText || ''),
     ethnicity: String(profile?.ethnicity || profile?.ethnic_appearance || ''),
     negativeText: String(profile?.negativeText || ''), looks: lookSnapshot(profile),
     identity_id: String(profile?.identity_id || profile?.id || ''),
@@ -65,6 +66,8 @@ export function assertSavedPerson(savedBundle = {}, item = {}, normalizedValues 
     || String(savedProfile.roleName || '') !== String(normalizedValues.roleName || '')
     || String(savedProfile.ethnicity || '') !== String(normalizedValues.ethnicity || '')
     || String(savedProfile.appearanceText || '') !== String(normalizedValues.appearanceText || '')
+    || String(savedProfile.performanceText || '') !== String(normalizedValues.performanceText || '')
+    || String(savedProfile.continuityText || '') !== String(normalizedValues.continuityText || '')
     || expectedLookIds.some(id => !savedLookIds.includes(id))
     || String(savedProfile.identity_id || savedProfile.id || '') !== String(normalizedValues.identity_id || normalizedValues.id || item.profile?.id || '')
     || String(savedProfile.aging_mode || '') !== String(normalizedValues.aging_mode || '')) {
