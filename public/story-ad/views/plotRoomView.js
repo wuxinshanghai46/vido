@@ -34,11 +34,11 @@ export async function mount(host, context) {
   const expectedCharacters = castIntent.confirmed === true ? Number(castIntent.expected_people || 0) : characters.length;
   const castMismatch = castIntent.confirmed === true && characters.filter(item => item?.on_screen !== false).length !== expectedCharacters;
   host.innerHTML = `
-    <section class="view-head">
+    <section class="view-head plot-view-head">
       <div><h1>${bundle.brief?.content_mode === 'narrative_story' ? '剧情与对白' : '广告剧情与对白'}</h1><p>第 2 步先把创作设想展开为详细分段、动作、旁白和对白；确认后才从剧情提取人物与场景。</p>${isReferenceDraft ? '<span class="status-tag is-neutral">参考视频提取草稿 · 待优化</span>' : ''}</div>
-      <div class="view-actions">
+      <div class="view-actions plot-view-actions">
         <button class="btn" type="button" data-import-script>导入脚本</button>
-        ${blueprint ? `${isReferenceDraft ? `<button class="btn" type="button" data-save-story>保存当前草稿</button><button class="btn primary" type="button" data-generate-story>${draftNeedsGeneration ? 'AI 补全剧情、动作与对白' : 'AI 生成完整剧情与对白'}</button>` : `<button class="btn" type="button" data-save-story>保存剧情</button><button class="btn" type="button" ${savedQualityDraft ? 'data-recheck-story' : 'data-regenerate-story'}>${savedQualityDraft ? '重新检查已保存初稿' : (castMismatch ? `按 ${expectedCharacters} 人设定重新生成` : '重新生成剧情')}</button><button class="btn primary" type="button" data-open-storyboard>确认剧情，进入人物</button>`}` : '<button class="btn primary" type="button" data-generate-story>生成详细剧情与对白</button>'}
+        ${blueprint ? `${isReferenceDraft ? `<button class="btn" type="button" data-save-story>保存草稿</button><button class="btn primary" type="button" data-generate-story>${draftNeedsGeneration ? 'AI 补全剧情' : 'AI 完善剧情'}</button>` : `<button class="btn" type="button" data-save-story>保存剧情</button><button class="btn" type="button" ${savedQualityDraft ? 'data-recheck-story' : 'data-regenerate-story'}>${savedQualityDraft ? '重新检查初稿' : (castMismatch ? `按 ${expectedCharacters} 人重新生成` : '重新生成')}</button><button class="btn primary" type="button" data-open-storyboard>确认并进入人物</button>`}` : '<button class="btn primary" type="button" data-generate-story>生成剧情蓝图</button>'}
       </div>
     </section>
     <input class="hidden-input" hidden type="file" accept=".txt,.md,text/plain,text/markdown" data-script-file>
@@ -53,7 +53,7 @@ export async function mount(host, context) {
       <section class="card story-characters-card"><div class="card-head"><div><h2>角色设定</h2><p>修改后自动保存，并同步到下一步人物资产和配音。</p></div><div class="story-character-save-actions"><span data-character-save-status data-state="idle" aria-live="polite">修改后自动保存</span><button class="btn small" type="button" data-save-characters>保存角色设置</button><span class="status-tag ${castMismatch ? 'is-warning' : 'is-info'}">${castMismatch ? `已确认 ${expectedCharacters} 人，当前剧情仅 ${characters.length} 人` : `${characters.length} 个角色`}</span></div></div><div class="card-body story-character-grid">${characters.length ? characters.map(characterEditor).join('') : '<span class="chip">当前蓝图没有独立角色记录</span>'}</div></section>
       <section class="card plot-sequence-card">
         <div class="card-head"><div><h2>剧情、动作与对白</h2><p>点击任意单元格编辑，人物、场景和后续分镜沿用同一份数据。</p></div><div class="plot-sequence-actions"><span data-production-completeness></span><button class="btn small" type="button" data-add-beat>＋ 新增镜头</button></div></div>
-        <div class="beat-table-scroll"><div class="beat-table-head" aria-hidden="true"><span>镜号</span><span>时长</span><span>场景</span><span>画面描述 / 动作</span><span>景别</span><span>光影氛围</span><span>对白 / 旁白</span><span>音效</span><span>运镜</span><span>镜头提示</span><span>操作</span></div>
+        <div class="beat-table-scroll"><div class="beat-table-head" aria-hidden="true"><span>镜号</span><span>时长</span><span>场景</span><span>画面描述 / 动作</span><span>景别</span><span>光影氛围</span><span>声音内容（旁白 / 对白）</span><span>音效</span><span>运镜</span><span>镜头提示</span><span>操作</span></div>
         <div class="card-body beat-list" data-beat-list>${(blueprint.beats || []).map(beatEditor).join('')}</div></div>
       </section>
     </div><div class="beat-floating-editor" data-beat-floating-editor role="dialog" popover="auto"></div>` : `<section class="card">${emptyState({
@@ -61,7 +61,7 @@ export async function mount(host, context) {
       body: savedQualityDraft
         ? '上次初稿没有进入后续制作。系统会复用已经保存的初稿，重新按统一的时长与口播标准检查。'
         : '系统会根据当前对话确认单生成详细剧情、动作、旁白与对白；不会引用其他项目内容。',
-      action: savedQualityDraft ? '重新检查已保存初稿' : '生成详细剧情与对白',
+      action: savedQualityDraft ? '重新检查已保存初稿' : '生成剧情蓝图',
       actionId: 'generate-story',
     })}</section>`}`;
 
@@ -181,7 +181,7 @@ export async function mount(host, context) {
     if (cellEditorModule?.handleCameraPreset(pop, event.target)) { syncPop(); return; }
     if (cellEditorModule?.handleDialogueAction(pop, event.target, collectBlueprint(host, blueprint).characters)) { syncPop(); return; }
     if (event.target.closest('[data-close-beat-floating]')) closeAll();
-    if (event.target.closest('[data-save-beat-floating]')) { syncPop(); closeAll(); }
+    if (event.target.closest('[data-save-beat-floating]')) { const message = cellEditorModule?.validateDialogueEditor?.(pop) || ''; if (message) { toast(message, 'warning'); return; } syncPop(); closeAll(); }
   });
   pop?.addEventListener('change', event => {
     if (cellEditorModule?.handleDialogueAction(pop, event.target, collectBlueprint(host, blueprint).characters)) syncPop();

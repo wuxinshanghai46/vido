@@ -757,6 +757,15 @@ assert.match(plot, /creative_direction:\s*\{ raw: text\.slice\(0, 12000\), sourc
 assert.match(plot, /setButtonBusy\(button, false\)[\s\S]*button\.dataset\.previousText/, '脚本导入完成后必须恢复按钮可操作状态');
 assert.match(plot, /data-open-storyboard/, '正式剧情蓝图保存后必须提供进入分镜台的入口');
 assert.match(plot, /重新检查已保存初稿/, '质量审核失败后必须提供复用初稿的恢复入口，不能只显示空白蓝图');
+assert.match(plot, /plot-view-head/, '剧情页标题与操作区必须使用紧凑的剧情专属排版');
+assert.match(plot, /声音内容（旁白 \/ 对白）/, '声音列必须明确区分旁白与人物对白');
+assert.match(plotEditor, /对白 · 说话人待确认/, '人物对白缺少说话人时不得渲染为空白冒号');
+assert.match(plotEditor, /beat-speech-label/, '声音摘要必须显示明确的声音类型标签');
+const plotDialogue = read('public/story-ad/views/plotBeatDialoguePopover.js');
+assert.match(plotDialogue, /选择说话人物（必填）/, '人物对白编辑必须明确要求选择说话人');
+assert.match(plotDialogue, /validateDialogueEditor/, '缺少说话人的人物对白必须在保存前拦截');
+assert.match(plotDialogue, /＋ 人物对白[\s\S]*＋ 旁白/, '声音编辑入口必须分别命名为人物对白与旁白');
+assert.match(read('public/story-ad/workspace-ux.css'), /\.plot-view-head h1\{font-size:22px/, '剧情页主标题必须使用紧凑字号');
 
 const storyboard = read('public/story-ad/views/storyboardView.js');
 assert.match(storyboard, /sketch-action-bar/);

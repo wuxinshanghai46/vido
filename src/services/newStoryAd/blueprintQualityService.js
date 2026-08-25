@@ -174,6 +174,7 @@ function assessDialogueNarrative(blueprint = {}) {
     return { pass: true, issues: [], enforced: false, metrics: {} };
   }
   const beats = Array.isArray(blueprint.beats) ? blueprint.beats : [];
+  const characters = Array.isArray(blueprint.characters) ? blueprint.characters : [];
   const targetDuration = Math.max(1, Number(blueprint.target_duration || 0)
     || beats.reduce((sum, beat) => sum + Math.max(0, Number(beat.duration || beat.duration_sec || 0) || 0), 0)
     || 30);
@@ -194,9 +195,29 @@ function assessDialogueNarrative(blueprint = {}) {
 
   beats.forEach((beat, index) => {
     const n = index + 1;
+    const spoken = lines[index];
     const duration = Math.max(1, Number(beat.duration || beat.duration_sec || targetDuration / Math.max(1, beats.length)) || 1);
     const fn = clean(beat.dialogue_function || beat.dialogue_intent);
     const speechMode = clean(beat.speech_mode).toLowerCase().replace(/[\s-]+/g, '_');
+    const dialogueLines = (Array.isArray(beat.dialogue_lines) ? beat.dialogue_lines : []).map(line => ({
+      speech_mode: clean(line?.speech_mode || line?.kind).toLowerCase().replace(/[\s-]+/g, '_'),
+      speaker: clean(line?.speaker),
+      speaker_id: clean(line?.speaker_id),
+      line: clean(line?.line || line?.text),
+    })).filter(line => line.line);
+    const firstDialogueLine = dialogueLines[0];
+    if (dialogueLines.length && ['silent', 'ambient_only'].includes(speechMode)) issues.push(`第 ${n} 镜存在声音内容但顶层被标记为静默`);
+    if (firstDialogueLine && (speechMode !== firstDialogueLine.speech_mode || spoken !== firstDialogueLine.line)) issues.push(`第 ${n} 镜声音摘要与声音明细不一致`);
+    dialogueLines.forEach((line, lineIndex) => {
+      if (line.speech_mode === 'voiceover') {
+        if (line.speaker !== '旁白' || line.speaker_id !== 'narrator') issues.push(`第 ${n} 镜第 ${lineIndex + 1} 条旁白标识不正确`);
+      } else if (line.speech_mode === 'dialogue') {
+        const character = characters.find(item => clean(item?.name) === line.speaker || clean(item?.id) === line.speaker_id);
+        if (!character || clean(character?.name) !== line.speaker || clean(character?.id) !== line.speaker_id) issues.push(`第 ${n} 镜第 ${lineIndex + 1} 条人物对白未绑定明确说话人`);
+      } else {
+        issues.push(`第 ${n} 镜第 ${lineIndex + 1} 条声音内容类型无效`);
+      }
+    });
     const silent = ['silent', 'ambient_only'].includes(speechMode) || (sparse && !lines[index]);
     const maximum = Math.max(18, Math.ceil(duration * 5.2));
     if (!silent && counts[index] > maximum) issues.push(`第 ${n} 镜台词超过镜头口播容量：${duration} 秒最多约 ${maximum} 个有效字，当前 ${counts[index]} 个`);
@@ -337,6 +358,20 @@ function assessBlueprintQuality(blueprint = {}, ctx = {}) {
     if (!action) issues.push(`第 ${n} 镜缺少独立动作设计`);
     if (visual && action && similarity(visual, action) >= 0.72) issues.push(`第 ${n} 镜画面与动作重复`);
     const speechMode = clean(beat.speech_mode).toLowerCase().replace(/[\s-]+/g, '_');
+    const detailedLines = (Array.isArray(beat.dialogue_lines) ? beat.dialogue_lines : []).map(line => ({
+      speech_mode: clean(line?.speech_mode || line?.kind).toLowerCase().replace(/[\s-]+/g, '_'),
+      speaker: clean(line?.speaker), speaker_id: clean(line?.speaker_id), line: clean(line?.line || line?.text),
+    })).filter(line => line.line);
+    if (detailedLines.length && ['silent', 'ambient_only'].includes(speechMode)) issues.push(`第 ${n} 镜存在声音内容但顶层被标记为静默`);
+    if (detailedLines[0] && (speechMode !== detailedLines[0].speech_mode || spoken !== detailedLines[0].line)) issues.push(`第 ${n} 镜声音摘要与声音明细不一致`);
+    detailedLines.forEach((line, lineIndex) => {
+      if (line.speech_mode === 'voiceover' && (line.speaker !== '旁白' || line.speaker_id !== 'narrator')) issues.push(`第 ${n} 镜第 ${lineIndex + 1} 条旁白标识不正确`);
+      if (line.speech_mode === 'dialogue') {
+        const bound = characters.find(item => clean(item?.name) === line.speaker || clean(item?.id) === line.speaker_id);
+        if (!bound || clean(bound?.name) !== line.speaker || clean(bound?.id) !== line.speaker_id) issues.push(`第 ${n} 镜第 ${lineIndex + 1} 条人物对白未绑定明确说话人`);
+      }
+      if (!['dialogue', 'voiceover'].includes(line.speech_mode)) issues.push(`第 ${n} 镜第 ${lineIndex + 1} 条声音内容类型无效`);
+    });
     if (!spoken && !['silent', 'ambient_only'].includes(speechMode)) issues.push(`第 ${n} 镜未说明使用对白、旁白还是静默画面`);
     const spokenWithoutDirections = spoken.replace(/^[（(][^）)]*[）)]\s*/g, '').replace(/^[…。.，,、\s]+|[…。.，,、\s]+$/g, '');
     if (spoken && !spokenWithoutDirections) issues.push(`第 ${n} 镜台词只有表演提示，没有实际对白`);

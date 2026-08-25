@@ -360,6 +360,22 @@ function compactBeatsByPacing(beats = [], limit = productionLimits.MAX_AUTO_BLUE
   return groups.filter(group => group.length).map((group, idx) => mergeBeatGroup(group, idx));
 }
 
+function isBackgroundOnlyCast(ctx = {}) {
+  const cast = ctx.brief_intake?.cast_intent || ctx.cast_intent || {};
+  return cast.background_people === true || cast.presentation === 'background_only' || cast.decision === 'background_only';
+}
+
+function normalizeBackgroundActorText(value, modelCharacterNames = []) {
+  let result = clean(value || '', 180);
+  modelCharacterNames.forEach(name => {
+    if (name && !['背景人物', '背景出镜人物', '参观者', '体验者', '人物'].includes(name)) {
+      result = result.replace(new RegExp(name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), '背景出镜人物');
+    }
+  });
+  return result.replace(/(^|[，。；、\s])([\u3400-\u9fff]{2,4})(?=(?:走进|走到|走过|抬手|伸手|触摸|驻足|停下|站在|点头|微笑|用手|手指|手掌))/g,
+    (match, prefix, name) => ['背景人物', '背景出镜人物', '参观者', '体验者', '人物'].includes(name) ? match : `${prefix}背景出镜人物`);
+}
+
 function normalizeBlueprint(blueprint, ctx) {
   const bp = blueprint && typeof blueprint === 'object' ? blueprint : {};
   const beats = Array.isArray(bp.beats) ? bp.beats : [];
@@ -369,29 +385,24 @@ function normalizeBlueprint(blueprint, ctx) {
   const beatLimit = profile.maxReasonable;
   const characterSeed = `${ctx.request_id || ''}|${ctx.brief || ''}|${ctx.product_subject || ''}`;
   const noHuman = ctx.cast_mode === 'no_human';
+  const backgroundOnly = isBackgroundOnlyCast(ctx);
+  const modelCharacterNames = (Array.isArray(bp.characters) ? bp.characters : []).map(character => clean(character?.name, 80)).filter(Boolean);
   const normalizedCharacters = noHuman ? [] : normalizeCharacters(
-    Array.isArray(bp.characters) && bp.characters.length ? bp.characters : ctx.characters,
+    backgroundOnly ? ctx.characters : (Array.isArray(bp.characters) && bp.characters.length ? bp.characters : ctx.characters),
     characterSeed,
   );
   const characterIdByName = new Map(normalizedCharacters.map(character => [clean(character.name, 80), clean(character.id, 80)]));
   const speechPlan = authoredSpeechPlan(ctx);
   const normalizedBeats = beats.map((beat, idx) => {
     const dialogueFunction = inferDialogueFunction(beat, idx, beats.length);
-    const explicitSpeech = cleanSpeech(beat.spoken_line || beat.voiceover || beat.copy || '', 100);
+    const topLevelSpeech = cleanSpeech(beat.spoken_line || beat.voiceover || beat.copy || '', 100);
     const speechMode = clean(beat.speech_mode || '', 30).toLowerCase().replace(/[\s-]+/g, '_');
-    const silent = ['silent', 'ambient_only'].includes(speechMode)
-      || (speechPlan.policy === 'authored_sparse' && !explicitSpeech);
-    const resolvedSpeechMode = silent ? (speechMode === 'ambient_only' ? 'ambient_only' : 'silent')
-      : (speechMode === 'dialogue' ? 'dialogue' : 'voiceover');
     const rawSpeaker = clean(beat.speaker || beat.character || beat.speaker_name || '', 80);
-    const resolvedSpeaker = silent ? '' : (resolvedSpeechMode === 'voiceover' ? '旁白' : rawSpeaker);
-    const resolvedSpeakerId = silent ? '' : (resolvedSpeechMode === 'voiceover'
-      ? 'narrator'
-      : (characterIdByName.get(resolvedSpeaker) || clean(beat.speaker_id || '', 80)));
-    const dialogueLines = Array.isArray(beat.dialogue_lines) && beat.dialogue_lines.length
+    let dialogueLines = Array.isArray(beat.dialogue_lines) && beat.dialogue_lines.length
       ? beat.dialogue_lines.map(line => {
         const lineMode = clean(line?.speech_mode || line?.kind || 'dialogue', 30).toLowerCase() === 'voiceover' ? 'voiceover' : 'dialogue';
-        const lineSpeaker = lineMode === 'voiceover' ? '旁白' : clean(line?.speaker || '', 80);
+        const suppliedSpeaker = clean(line?.speaker || '', 80);
+        const lineSpeaker = lineMode === 'voiceover' ? '旁白' : (suppliedSpeaker || (normalizedCharacters.length === 1 ? clean(normalizedCharacters[0]?.name, 80) : ''));
         return {
           speech_mode: lineMode,
           speaker: lineSpeaker,
@@ -399,7 +410,29 @@ function normalizeBlueprint(blueprint, ctx) {
           line: cleanSpeech(line?.line || line?.text || '', 100),
         };
       }).filter(line => line.line)
-      : (explicitSpeech ? [{ speech_mode: resolvedSpeechMode, speaker: resolvedSpeaker, speaker_id: resolvedSpeakerId, line: explicitSpeech }] : []);
+      : [];
+    if (!dialogueLines.length && topLevelSpeech) {
+      const topMode = speechMode === 'dialogue' ? 'dialogue' : 'voiceover';
+      const topSpeaker = topMode === 'voiceover' ? '旁白' : (rawSpeaker || (normalizedCharacters.length === 1 ? clean(normalizedCharacters[0]?.name, 80) : ''));
+      dialogueLines = [{
+        speech_mode: topMode,
+        speaker: topSpeaker,
+        speaker_id: topMode === 'voiceover' ? 'narrator' : (characterIdByName.get(topSpeaker) || clean(beat.speaker_id || '', 80)),
+        line: topLevelSpeech,
+      }];
+    }
+    const firstDialogueLine = dialogueLines[0] || null;
+    const explicitSpeech = firstDialogueLine?.line || topLevelSpeech;
+    const silent = !firstDialogueLine && (['silent', 'ambient_only'].includes(speechMode)
+      || (speechPlan.policy === 'authored_sparse' && !explicitSpeech));
+    const resolvedSpeechMode = firstDialogueLine?.speech_mode || (silent
+      ? (speechMode === 'ambient_only' ? 'ambient_only' : 'silent')
+      : (speechMode === 'dialogue' ? 'dialogue' : 'voiceover'));
+    const resolvedSpeaker = firstDialogueLine?.speaker || (silent ? '' : (resolvedSpeechMode === 'voiceover' ? '旁白' : rawSpeaker));
+    const resolvedSpeakerId = firstDialogueLine?.speaker_id || (silent ? '' : (resolvedSpeechMode === 'voiceover'
+      ? 'narrator'
+      : (characterIdByName.get(resolvedSpeaker) || clean(beat.speaker_id || '', 80))));
+    const normalizeActorText = value => backgroundOnly ? normalizeBackgroundActorText(value, modelCharacterNames) : clean(value || '', 180);
     return {
       beat_index: Number(beat.beat_index || beat.index || idx + 1),
       role: clean(beat.role || beat.story_role || 'story', 50),
@@ -426,17 +459,17 @@ function normalizeBlueprint(blueprint, ctx) {
       keyframe_prompt_override: clean(beat.keyframe_prompt_override || '', 1600),
       video_prompt_override: clean(beat.video_prompt_override || '', 1600),
       negative_prompt_override: clean(beat.negative_prompt_override || '', 800),
-      plot: clean(beat.plot || beat.event || beat.description || '', 180),
+      plot: normalizeActorText(beat.plot || beat.event || beat.description || ''),
       visual_layers: Array.isArray(beat.visual_layers) ? beat.visual_layers.map(layer => ({
         type: clean(layer?.type || layer?.kind || '', 40),
         content: clean(layer?.content || layer?.visual || layer?.description || '', 180),
       })).filter(layer => layer.type || layer.content) : [],
-      story_visual: clean(beat.story_visual || beat.story_moment || '', 180),
-      promo_visual: clean(beat.promo_visual || beat.product_visual || '', 180),
+      story_visual: normalizeActorText(beat.story_visual || beat.story_moment || ''),
+      promo_visual: normalizeActorText(beat.promo_visual || beat.product_visual || ''),
       emotional_turn: clean(beat.emotional_turn || beat.emotion || beat.character_reaction || '', 120),
       selling_point: clean(beat.selling_point || beat.benefit || beat.value_point || '', 120),
-      visual_proof: clean(beat.visual_proof || beat.evidence || beat.promo_visual || '', 180),
-      action: clean(beat.action || beat.solution_step || '', 120),
+      visual_proof: normalizeActorText(beat.visual_proof || beat.evidence || beat.promo_visual || ''),
+      action: normalizeActorText(beat.action || beat.solution_step || ''),
       state_before: cleanList(beat.state_before || beat.entry_state, 12, 180),
       state_after: cleanList(beat.state_after || beat.exit_state, 12, 180),
       intended_changes: cleanList(beat.intended_changes || beat.intended_change || beat.changes, 12, 180),

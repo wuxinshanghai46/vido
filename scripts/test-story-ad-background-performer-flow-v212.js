@@ -91,6 +91,28 @@ assert.equal(review.pass, true, review.issues.join('；'));
 assert.equal(blueprint.characters.length, 1);
 assert.doesNotThrow(() => assertBlueprintCastContract(ctx, blueprint));
 
+const conflictingModelBlueprint = JSON.parse(JSON.stringify(rawBlueprint));
+conflictingModelBlueprint.characters = [{ id: 'invented_designer', name: '陈默', role: '设计师', gender: 'male', age_range: '30~35岁', on_screen: true }];
+conflictingModelBlueprint.beats.forEach((beat, index) => {
+  beat.plot = `${index ? '陈默' : '和映恒'}走进展厅，${beat.plot}`;
+  beat.action = `${index ? '陈默' : '和映恒'}抬手触摸样板，${beat.action}`;
+  beat.dialogue_lines = [{ speech_mode: 'dialogue', speaker: '', speaker_id: '', line: beat.spoken_line }];
+  beat.speech_mode = index === 0 ? 'ambient_only' : 'silent';
+  beat.speaker = '';
+  beat.speaker_id = '';
+  beat.spoken_line = '';
+});
+const rejectedConflict = assessBlueprintQuality(conflictingModelBlueprint, ctx);
+assert.equal(rejectedConflict.pass, false, '未规范化的声音冲突与空说话人必须被质量门禁拒绝');
+assert(rejectedConflict.issues.some(issue => issue.includes('顶层被标记为静默')));
+assert(rejectedConflict.issues.some(issue => issue.includes('未绑定明确说话人')));
+const repairedConflict = normalizeBlueprint(conflictingModelBlueprint, { ...ctx, require_causal_contract: true });
+assert.equal(repairedConflict.characters[0].name, performer.name, '背景人物合同必须覆盖模型编造的人名');
+assert(repairedConflict.beats.every(beat => !/和映恒|陈默/.test(`${beat.plot} ${beat.action}`)), '任意模型临时姓名都不得残留在背景人物动作中');
+assert(repairedConflict.beats.every(beat => beat.speech_mode === 'dialogue' && beat.speaker === performer.name && beat.speaker_id === performer.id), '内层人物对白必须成为权威摘要并自动绑定唯一已确认人物');
+const repairedReview = assessBlueprintQuality(repairedConflict, ctx);
+assert.equal(repairedReview.pass, true, repairedReview.issues.join('；'));
+
 const storyboard = normalizeShots(blueprint.beats.map((beat, index) => ({
   index: index + 1, title: beat.role, visual: beat.story_visual, action: beat.action,
   dialogue: beat.spoken_line, speaker: beat.speaker, duration: beat.duration,
