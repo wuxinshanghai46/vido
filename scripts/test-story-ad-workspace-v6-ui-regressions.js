@@ -765,7 +765,7 @@ const plotDialogue = read('public/story-ad/views/plotBeatDialoguePopover.js');
 assert.match(plotDialogue, /选择说话人物（必填）/, '人物对白编辑必须明确要求选择说话人');
 assert.match(plotDialogue, /validateDialogueEditor/, '缺少说话人的人物对白必须在保存前拦截');
 assert.match(plotDialogue, /＋ 人物对白[\s\S]*＋ 旁白/, '声音编辑入口必须分别命名为人物对白与旁白');
-assert.match(read('public/story-ad/workspace-ux.css'), /\.plot-view-head h1\{font-size:22px/, '剧情页主标题必须使用紧凑字号');
+assert.match(read('public/story-ad/workspace-ux.css'), /\.view-head\.plot-view-head h1\{font-size:22px/, '剧情页主标题必须以高于通用响应式规则的优先级使用紧凑字号');
 
 const storyboard = read('public/story-ad/views/storyboardView.js');
 assert.match(storyboard, /sketch-action-bar/);
