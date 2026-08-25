@@ -41,7 +41,7 @@
     "video-canvas:migrate:dry": "node scripts/migrate-video-canvas-v1.js",
     "video-canvas:migrate": "node scripts/migrate-video-canvas-v1.js --apply",
     "video-canvas:boundaries": "node scripts/check-video-canvas-boundaries.js",
-    "video-canvas:test": "node scripts/test-video-canvas-v2.js",
+    "video-canvas:test": "node scripts/test-video-canvas-v2.js && node scripts/test-video-canvas-worker-lifecycle.js",
     "platform:navigation:test": "node scripts/test-platform-module-navigation.js",
     "platform:loading:test": "node scripts/test-media-delivery.js && node scripts/test-platform-loading-optimization.js && npm run platform:navigation:test",
     "platform:capability:audit": "node scripts/audit-pipeline-capabilities.js",

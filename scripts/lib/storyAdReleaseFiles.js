@@ -33,6 +33,7 @@ const BASE_FILES = [
   'scripts/test-story-ad-dialogue-intake-v100.js',
   'scripts/test-story-ad-dialogue-assist-v107.js',
   'scripts/test-story-ad-background-performer-flow-v212.js',
+  'scripts/test-video-canvas-worker-lifecycle.js',
   'scripts/test-story-ad-platform-responsive-v108.js',
   'scripts/test-story-ad-brief-modal-auto-blueprint-v103.js',
   'scripts/test-story-ad-lightweight-bundle-v100.js',
