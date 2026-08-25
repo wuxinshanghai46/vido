@@ -725,7 +725,7 @@ async function generateText({
     if (Date.now() - stageStarted >= Math.max(5000, Number(stageBudgetMs) || TEXT_STAGE_BUDGET_MS)) break;
     const model = attemptCandidates[i];
     const liveHealth = healthState(model);
-    if (liveHealth.circuit_open) {
+    if (liveHealth.rate_limit_domain_cooldown) {
       failed.push({
         provider_id: model.provider_id,
         model_id: model.model_id,
@@ -999,7 +999,7 @@ async function generateVision({
     if (attemptTimeoutMs <= 0) break;
     const model = attemptCandidates[i];
     const liveHealth = healthState(model);
-    if (liveHealth.circuit_open) {
+    if (liveHealth.rate_limit_domain_cooldown) {
       failed.push({
         provider_id: model.provider_id,
         model_id: model.model_id,
