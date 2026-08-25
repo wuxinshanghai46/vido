@@ -1,4 +1,4 @@
-import { escapeHtml } from '../components/ui.js?v=20260825-production-v210';
+import { escapeHtml } from '../components/ui.js?v=20260825-production-v211';
 export function personPlanTechnicalDetails({ migration=false, failed=false, isAdmin=false, diagnostics={} }={}) {
   if(!isAdmin)return '';
   const copy=migration?'系统会复用兼容方案并生成缺失的人物图片，不重复修改已确认的人物设定。':'系统会根据已确认剧情和现有人物资产补全详细人物方案，并继续生成缺失的人物图片。';
