@@ -44,6 +44,9 @@ assert.equal(legacy.expected_people, 1);
 assert.equal(legacy.characters.length, 1);
 
 const performer = ctx.characters[0];
+assert.equal(performer.name, '背景出镜人物', '不介绍身份的背景人物不得进入通用正式姓名生成器');
+const pollutedContext = assertContextConsistent({ ...ctx, characters: [{ ...performer, name: '和映恒' }] });
+assert.equal(pollutedContext.characters[0].name, '背景出镜人物', '历史上下文中的临时姓名必须在权威合同入口清除');
 const rawBlueprint = {
   story_title: '光线里的金属层次',
   logline: '一位不介绍身份的背景人物通过触摸、走过和驻足，让四种不锈钢纹理在不同光线下形成清楚可见的空间效果。',

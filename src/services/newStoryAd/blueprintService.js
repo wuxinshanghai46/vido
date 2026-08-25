@@ -1,6 +1,6 @@
 ﻿const modelGateway = require('./modelGateway');
 const jsonRepair = require('./jsonRepairService');
-const { contextPrompt, normalizeCharacters } = require('./contextBuilder');
+const { contextPrompt, normalizeCharacters, backgroundPerformerCharacter } = require('./contextBuilder');
 
 const { ensureChineseOutput } = require('./outputLanguageService');
 const { polishBlueprint } = require('./blueprintQualityService');
@@ -387,10 +387,9 @@ function normalizeBlueprint(blueprint, ctx) {
   const noHuman = ctx.cast_mode === 'no_human';
   const backgroundOnly = isBackgroundOnlyCast(ctx);
   const modelCharacterNames = (Array.isArray(bp.characters) ? bp.characters : []).map(character => clean(character?.name, 80)).filter(Boolean);
-  const normalizedCharacters = noHuman ? [] : normalizeCharacters(
-    backgroundOnly ? ctx.characters : (Array.isArray(bp.characters) && bp.characters.length ? bp.characters : ctx.characters),
-    characterSeed,
-  );
+  const normalizedCharacters = noHuman ? [] : (backgroundOnly
+    ? [backgroundPerformerCharacter()]
+    : normalizeCharacters(Array.isArray(bp.characters) && bp.characters.length ? bp.characters : ctx.characters, characterSeed));
   const characterIdByName = new Map(normalizedCharacters.map(character => [clean(character.name, 80), clean(character.id, 80)]));
   const speechPlan = authoredSpeechPlan(ctx);
   const normalizedBeats = beats.map((beat, idx) => {

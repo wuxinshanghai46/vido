@@ -231,6 +231,21 @@ function normalizeCharacters(input, seed = '') {
     .filter(x => x.name || x.role || x.description);
 }
 
+function backgroundPerformerCharacter() {
+  return {
+    id: 'background_performer',
+    name: '背景出镜人物',
+    role: '背景出镜人物',
+    gender: 'unknown',
+    age_range: '25~45岁',
+    relationship: '',
+    on_screen: true,
+    source: 'confirmed_background_cast',
+    description: '不介绍姓名与身份，只承担触摸、走过、驻足等画面动作',
+    name_generated: false,
+  };
+}
+
 function normalizePetProfiles(input, fallback = {}) {
   const raw = Array.isArray(input) ? input : [];
   const profiles = raw.map((item, idx) => ({
@@ -986,7 +1001,9 @@ function buildContext(body = {}, user = {}) {
   const dialogueHistory = briefDialogueHistory.normalizeHistory(body.brief_intake?.dialogue_history || body.briefIntake?.dialogueHistory);
   const characterInput = body.characters || body.cast || body.people
     || (castIntent.confirmed ? castIntent.participants : []);
-  const characters = normalizeCharacters(characterInput, `${requestId}|${brief}|${productSubject}`);
+  const characters = castIntent.background_people === true
+    ? [backgroundPerformerCharacter()]
+    : normalizeCharacters(characterInput, `${requestId}|${brief}|${productSubject}`);
   const assets = normalizeAssets(body.assets || body.references || body.images);
   const durationContract = resolveTargetDuration(body, brief);
   const targetDuration = durationContract.value;
@@ -1549,12 +1566,14 @@ function normalizeContextCastContract(ctx = {}) {
     && String(rawIntent.mode || '') === 'auto'
     && Math.max(0, Number(rawIntent.expected_people || 0) || 0) === 0
     && (!Array.isArray(rawIntent.participants) || rawIntent.participants.length === 0);
-  if (!legacyBackground) return source;
   const intent = briefDialogueHistory.normalizeCastIntent(rawIntent);
-  const characters = normalizeCharacters(
-    intent.participants,
-    `${source.request_id || ''}|${source.brief || ''}|${source.product_subject || ''}`,
-  );
+  const backgroundPeople = intent?.background_people === true || legacyBackground;
+  if (!backgroundPeople) return source;
+  const existingCharacter = Array.isArray(source.characters) && source.characters.length === 1 ? source.characters[0] : null;
+  const existingParticipant = Array.isArray(rawIntent.participants) && rawIntent.participants.length === 1 ? rawIntent.participants[0] : null;
+  if (existingCharacter?.id === 'background_performer' && existingCharacter?.name === '背景出镜人物'
+    && existingParticipant?.id === 'background_performer' && existingParticipant?.name === '背景出镜人物') return source;
+  const characters = [backgroundPerformerCharacter()];
   return {
     ...source,
     cast_mode: 'single',
@@ -1587,6 +1606,7 @@ module.exports = {
   controlledProductionPrompt,
   cleanText,
   normalizeCharacters,
+  backgroundPerformerCharacter,
   normalizePetProfiles,
   inferExpectedPeopleCount,
   inferExpectedAnimalCount,
