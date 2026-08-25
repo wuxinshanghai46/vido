@@ -50,7 +50,7 @@ assert.equal(namedContext.characters[0].name, '陈默', '背景人物一旦拥�
 assert.equal(namedContext.cast_profiles[0].name, '陈默', '人物档案必须与背景人物的权威姓名保持一致');
 const rawBlueprint = {
   story_title: '光线里的金属层次',
-  logline: '一位不介绍身份的背景人物通过触摸、走过和驻足，让四种不锈钢纹理在不同光线下形成清楚可见的空间效果。',
+  logline: '一位不介绍身份的背景人物在展厅里，通过触摸、走过和驻足，让四种不锈钢纹理在不同光线下形成清楚可见的空间效果。',
   target_duration: 30,
   narrative_contract: {
     version: 'causal-story-v1', arc_type: 'demonstration',
