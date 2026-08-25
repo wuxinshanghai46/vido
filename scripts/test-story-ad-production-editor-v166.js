@@ -139,12 +139,14 @@ async function main() {
     await page.click('.view-head h1');
     await page.click('[data-beat-index="0"] [data-open-beat-cell="spoken_line"]');
     await page.waitForFunction(() => document.querySelector('[data-beat-floating-editor]')?.dataset.group === 'spoken_line'
-      && document.querySelectorAll('[data-dialogue-speaker] option').length === 2);
+      && document.querySelectorAll('[data-dialogue-speaker] option:not([value=""])').length === 2);
     const dialogueUi = await page.$eval('[data-beat-floating-editor]', node => ({
       text: node.textContent,
-      speakers: [...node.querySelectorAll('[data-dialogue-speaker] option')].map(option => option.textContent.trim()),
+      placeholder: node.querySelector('[data-dialogue-speaker] option[value=""]')?.textContent.trim() || '',
+      speakers: [...node.querySelectorAll('[data-dialogue-speaker] option:not([value=""])')].map(option => option.textContent.trim()),
     }));
     assert.doesNotMatch(dialogueUi.text, /说话人 ID|对白时间/, '不得暴露内部 ID 或模糊的对白时间字段');
+    assert.equal(dialogueUi.placeholder, '选择说话人物（必填）', '人物对白必须保留未选择占位，不能默认绑定错误人物');
     assert.deepEqual(dialogueUi.speakers, ['林岚', '陈先生'], `说话人必须只来自剧情人物：${JSON.stringify(dialogueUi.speakers)}`);
     await page.click('[data-add-dialogue-line="voiceover"]');
     assert.equal(await page.$$eval('[data-dialogue-line]', lines => lines.length), 2, '同镜头必须允许新增台词或旁白');
