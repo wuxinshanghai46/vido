@@ -98,6 +98,7 @@ const conflictingModelBlueprint = JSON.parse(JSON.stringify(rawBlueprint));
 conflictingModelBlueprint.characters = [{ id: 'invented_designer', name: '陈默', role: '设计师', gender: 'male', age_range: '30~35岁', on_screen: true }];
 conflictingModelBlueprint.narrative_contract.setup = '和映恒走进展厅，陈默停下观察墙面。';
 conflictingModelBlueprint.segment_plan = [{ fixed_subjects: '和映恒', continuity_rules: ['陈默的服装保持一致'] }];
+conflictingModelBlueprint.beats[0].story_visual = '背景出镜人物走进展厅，保持背景尺度。';
 conflictingModelBlueprint.beats.forEach((beat, index) => {
   beat.plot = `${index ? '陈默' : '和映恒'}走进展厅，${beat.plot}`;
   beat.action = `${index ? '陈默' : '和映恒'}抬手触摸样板，${beat.action}`;
@@ -116,6 +117,8 @@ const repairedConflict = normalizeBlueprint(conflictingModelBlueprint, { ...ctx,
 assert.equal(repairedConflict.characters[0].name, performer.name, '背景人物合同必须覆盖模型编造的人名');
 assert(repairedConflict.beats.every(beat => !/和映恒|陈默/.test(`${beat.plot} ${beat.action}`)), '任意模型临时姓名都不得残留在背景人物动作中');
 assert.equal(/和映恒|陈默/.test(JSON.stringify(repairedConflict)), false, '背景人物临时姓名不得残留在叙事合同、连续性、运镜或任何标准化文本字段中');
+assert.equal(/背景背景出镜人物/.test(JSON.stringify(repairedConflict)), false, '中性出镜人物标签不得被别名清理二次替换');
+assert.equal(repairedConflict.characters[0].name, '背景出镜人物');
 assert(repairedConflict.beats.every(beat => beat.speech_mode === 'dialogue' && beat.speaker === performer.name && beat.speaker_id === performer.id), '内层人物对白必须成为权威摘要并自动绑定唯一已确认人物');
 const repairedReview = assessBlueprintQuality(repairedConflict, ctx);
 assert.equal(repairedReview.pass, true, repairedReview.issues.join('；'));
