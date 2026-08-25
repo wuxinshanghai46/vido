@@ -15,6 +15,7 @@ const OUTPUT_DIR = process.env.OUTPUT_DIR
 const BACKUP_PATH = path.join(OUTPUT_DIR, `${MIGRATION_ID}-backup.json`);
 const DESIRED = [
   { provider_id: 'apismile', model_id: 'gpt-5.5', enabled: true },
+  { provider_id: 'webang-maas', model_id: 'gpt-5.6-terra', enabled: true },
   { provider_id: 'deyunai', model_id: 'gemini-2.5-pro', enabled: true },
   { provider_id: 'apismile', model_id: 'gemini-2.5-pro', enabled: true },
   { provider_id: 'deyunai', model_id: 'gpt-4o', enabled: true },
@@ -27,7 +28,10 @@ function routeHash(route = []) {
 
 function configuredRoute() {
   const settings = loadSettings();
-  const providers = new Map((settings.providers || []).map(provider => [String(provider.id), provider]));
+  const providers = new Map();
+  for (const provider of settings.providers || []) {
+    for (const key of [provider?.id, provider?.preset].filter(Boolean)) providers.set(String(key), provider);
+  }
   return DESIRED.filter(candidate => {
     const provider = providers.get(candidate.provider_id);
     if (!provider || provider.enabled === false || !String(provider.api_key || '').trim()) return false;

@@ -122,8 +122,8 @@ assert.match(referenceProgressSource, /'重新整理内容'/,
   '恢复按钮必须使用用户可理解的简短动作名称');
 assert.match(briefReferenceRecovery, /可能新增一次模型费用|可能产生一次新费用/,
   '费用风险必须在真正发起重试前的确认对话中明确说明');
-assert.match(referenceProgressSource, /failedUserCopy/,
-  '失败状态必须通过用户化映射展示，不能直接暴露供应商错误原文');
+assert.doesNotMatch(referenceProgressSource, /reference\.error\?\.message|reference\.error \|\|/,
+  '恢复操作区不得再次展示或直接暴露供应商错误原文');
 assert.ok(
   briefView.indexOf('data-brief-settings-anchor') < briefView.indexOf('data-reference-understanding-host'),
   '没有可用报告时，广告目标与启动材料必须保留在报告挂载点上方',
@@ -135,7 +135,8 @@ assert.match(briefView, /store\.subscribe\([\s\S]*querySelectorAll\('\[data-brie
 assert.match(briefView, /unsubscribeProgress\(\)/, '离开目标页时必须注销进度订阅');
 assert.match(briefView, /placeholder="请输入便于识别的项目名称"/);
 assert.doesNotMatch(briefView, /新标门窗|全景窗剧情广告/, '项目名称提示不得暗示特定行业');
-assert.match(referenceProgressSource, /elapsedTimeTag\(\{ startedAt: reference\.started_at/);
+assert.match(referenceProgressSource, /reference-recovery-actions/, '重复进度卡移除后只保留紧凑恢复操作');
+assert.doesNotMatch(referenceProgressSource, /return `<section class="reference-progress-card/, '旧进度卡不得继续参与正常渲染');
 assert.match(referenceActionStateSource, /contentMode === 'commercial_subject' \? '广告脚本' : '剧情与对白'/, '第一步完成后的主操作必须按广告或剧情内容域进入对应脚本');
 assert.match(briefView, /data-ai-brief>AI 帮写/, '未添加参考视频时必须提供广告目标 AI 帮写入口');
 assert.match(briefFormPayload, /brief_source:\s*'user'/, '正式表单载荷必须把手填或 AI 帮写后的内容目标标记为用户权威，参考材料不得覆盖');
@@ -158,8 +159,8 @@ assert.match(briefWorldSettings, /国家 \/ 地区 <em>AI 可识别<\/em>/, '国
 assert.match(briefWorldSettings, /formOwner = settings\.formId/, '移动到右侧的字段必须通过 form owner 参与保存');
 const briefStyles = read('public/story-ad/styles.css');
 const workspaceStyles = read('public/story-ad/workspace.css');
-assert.match(workspaceStyles, /\.brief-reference-progress-slot \.reference-progress-card\.is-recovery \{ width: min\(760px/,
-  '失败恢复卡必须使用对话式紧凑宽度，不能继续铺满工作区');
+assert.match(workspaceStyles, /\.reference-recovery-actions \{[^}]*width: min\(760px/,
+  '失败恢复操作必须使用对话式紧凑宽度，不能继续铺满工作区');
 assert.match(workspaceStyles, /\.material-list\[hidden\] \{ display: none; \}/, '选择不使用参考材料时，上传入口不得被 grid 样式重新显示');
 assert.match(briefStyles, /\.brief-form \.field:not\(\.full\) \{ grid-template-rows: auto minmax\(48px, auto\) auto;/, '目标页字段网格必须为中文下拉框保留足够行高');
 assert.match(briefStyles, /\.brief-form \.field:not\(\.full\) > \.select \{[\s\S]*height: 48px;[\s\S]*padding-block: 8px;[\s\S]*line-height: 1\.5;/, '目标页下拉框必须显式避免中文文字下缘裁切');
@@ -205,42 +206,30 @@ const runningReference = briefModule.referenceProgress({
   started_at: '2026-08-01T00:00:00.000Z',
   phase: '证据帧与语音已提取', filename: 'reference.mp4',
 });
-assert.match(runningReference, /role="progressbar"/);
-assert.match(runningReference, /aria-valuenow="42"/);
-assert.match(runningReference, /width:42%/);
-assert.match(runningReference, /已耗时 1分05秒/);
-assert.match(runningReference, /证据帧与语音已提取/);
-assert.doesNotMatch(runningReference, /故事结构|人物分析|场景分析|逐镜分析/);
+assert.equal(runningReference, '', '对话文本已显示实时阶段和百分比，不得重复渲染进度卡');
 const interruptedReference = briefModule.referenceProgress({
   analysis_id: 'analysis-sync-interrupted', status: 'sync_interrupted', progress: 42,
   started_at: '2026-08-01T00:00:00.000Z', sync_interrupted_at: '2026-08-01T00:01:05.000Z',
 });
-assert.match(interruptedReference, /状态同步暂时中断/);
-assert.match(interruptedReference, /已停止本地耗时计数/);
-assert.doesNotMatch(interruptedReference, /data-reference-retry/);
-assert.match(briefModule.referenceProgress({ analysis_id: 'done', status: 'completed', progress: 90, analysis_valid: true }), /aria-valuenow="100"/);
+assert.equal(interruptedReference, '', '同步中断说明由对话文本唯一展示');
+assert.equal(briefModule.referenceProgress({ analysis_id: 'done', status: 'completed', progress: 90, analysis_valid: true }), '');
 const invalidCompletedProgress = briefModule.referenceProgress({
   analysis_id: 'done-invalid', status: 'completed', progress: 100, analysis_valid: false,
   phase: '深度理解报告已就绪',
 });
-assert.match(invalidCompletedProgress, /视频画面已保存，内容整理未通过/);
-assert.match(invalidCompletedProgress, /原视频和已校验画面都已保留/);
 assert.match(invalidCompletedProgress, /重新识别当前视频/);
 assert.match(invalidCompletedProgress, /data-reference-retry/);
-assert.match(invalidCompletedProgress, /内容整理未通过完整性检查/);
+assert.match(invalidCompletedProgress, /reference-recovery-actions/);
+assert.doesNotMatch(invalidCompletedProgress, /reference-progress-card|内容整理未通过完整性检查/);
 assert.doesNotMatch(invalidCompletedProgress, /role="progressbar"/);
-assert.doesNotMatch(invalidCompletedProgress, /深度理解报告已就绪。请核对/);
 const partialFailureProgress = briefModule.referenceProgress({
   analysis_id: 'partial-failure', status: 'failed',
   error: '备用模型访问量过大',
   evidence_batch_progress: { total: 5, completed: 4, remaining: 1, failed: 1 },
   retry_after_ms: 300000,
 });
-assert.match(partialFailureProgress, /已完成 4\/5 批/);
-assert.match(partialFailureProgress, /剩余 1 批/);
 assert.match(partialFailureProgress, /继续读取缺失镜头（4\/5 批）/);
-assert.match(partialFailureProgress, /系统当前处理较忙，建议约 5 分钟后再继续/);
-assert.doesNotMatch(partialFailureProgress, /备用模型|访问量过大/);
+assert.doesNotMatch(partialFailureProgress, /已完成 4\/5 批|剩余 1 批|建议约 5 分钟|备用模型|访问量过大/);
 assert.deepStrictEqual(
   JSON.parse(JSON.stringify(briefModule.referenceActionState({ analysis_id: 'done', status: 'completed', analysis_valid: true }))),
   { blocked: false, label: '下一步：生成剧情与对白' },
@@ -282,10 +271,9 @@ const failedReference = briefModule.referenceProgress({
   analysis_id: 'failed', status: 'failed',
   error: '参考视频识别结果不完整：场景位置重复',
 });
-assert.match(failedReference, /这次参考视频没有完整读完/);
-assert.doesNotMatch(failedReference, /场景位置重复/);
 assert.match(failedReference, /data-reference-retry/);
 assert.match(failedReference, /重新读取镜头证据/);
+assert.doesNotMatch(failedReference, /这次参考视频没有完整读完|场景位置重复|reference-progress-card/);
 assert.match(briefModule.referenceProgress({
   analysis_id: 'failed-reusable', status: 'failed', visual_evidence_reusable: true,
 }), />重新整理内容<\/button>/);
@@ -301,13 +289,7 @@ const semanticFailureProgress = briefModule.referenceProgress({
   },
 });
 assert.doesNotMatch(semanticFailureProgress, /82%/);
-assert.match(semanticFailureProgress, /镜头画面已完成 8\/8 批/);
-assert.match(semanticFailureProgress, /内容整理已完成 4\/5 项/);
-assert.match(semanticFailureProgress, /视频画面已保存，内容整理未完成/);
-assert.match(semanticFailureProgress, /镜头证据<\/b><small>8\/8 批已完整保留/);
-assert.match(semanticFailureProgress, /内容主线<\/b><small>已完成并保留/);
-assert.match(semanticFailureProgress, /场景安排<\/b><small>待定向补齐/);
-assert.match(semanticFailureProgress, /不会重新读取，只补未完成的内容整理/);
+assert.doesNotMatch(semanticFailureProgress, /镜头画面已完成|内容整理已完成|镜头证据|内容主线|场景安排|reference-progress-card/);
 assert.doesNotMatch(semanticFailureProgress, /重新读取镜头证据/);
 const completedEvidenceWithStaleFlag = briefModule.referenceProgress({
   analysis_id: 'failed-semantic-stale-flag', status: 'failed', progress: 55, visual_evidence_reusable: false,
@@ -359,9 +341,8 @@ const extendedConfirmationCard = briefModule.referenceProgress({
   error_code: 'REFERENCE_VIDEO_EXTENDED_ANALYSIS_CONFIRMATION_REQUIRED',
   analysis_preflight: { segment_count: 42, batch_count: 11, extra_batch_count: 1 },
 });
-assert.match(extendedConfirmationCard, /等待确认分批读取/);
 assert.match(extendedConfirmationCard, /确认分批分析（11 批）/);
-assert.match(extendedConfirmationCard, /尚未启动任何收费分析/);
+assert.doesNotMatch(extendedConfirmationCard, /等待确认分批读取|尚未启动任何收费分析|reference-progress-card/);
 assert.match(briefView, /bindBriefReferenceRecovery\(host, \{ store, context \}\)/,
   '目标页必须绑定独立参考恢复控制器，避免主视图再次超过结构上限');
 assert.match(briefReferenceRecovery, /可能产生新的模型费用/, '证据不完整时必须在确认框明确提醒会重新调用视觉模型');

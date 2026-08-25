@@ -13,7 +13,7 @@ export function referenceDialogueStatus(reference = {}) {
   if (status === 'completed' && reference.analysis_valid === true) return '参考视频分析完成，已把识别结果同步到当前项目。请先核对参考理解，再继续生成。';
   if (status === 'completed') return '参考视频已读取完成，但分析结果不完整。请重新识别或更换参考视频。';
   if (status === 'failed' && errorCode === 'REFERENCE_VIDEO_EXTENDED_ANALYSIS_CONFIRMATION_REQUIRED') {
-    return `参考视频已免费预检：检测到 ${Number(preflight.segment_count || 0)} 个片段，需要 ${Number(preflight.batch_count || 0)} 批完整读取；尚未启动付费模型，请在分析卡确认后继续。`;
+    return `参考视频已免费预检：检测到 ${Number(preflight.segment_count || 0)} 个片段，需要 ${Number(preflight.batch_count || 0)} 批完整读取；尚未启动付费模型，请使用下方确认按钮继续。`;
   }
   if (status === 'failed') return `参考视频分析失败：${error || '未取得可用结果，请重试或更换链接。'}`;
   if (status === 'cancelled') return '参考视频分析已停止。如仍需使用，请重新添加链接或上传视频。';

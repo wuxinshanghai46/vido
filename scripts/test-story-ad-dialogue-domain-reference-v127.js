@@ -69,10 +69,12 @@ async function main() {
   assert.match(failedProgress, /跳过这个参考/);
   assert.match(failedProgress, />重新整理内容<\/button>/);
   assert.doesNotMatch(failedProgress, /重新整理内容（可能计费）/);
-  assert.match(failedProgress, /系统没有自动重复请求，避免可能产生两次费用/);
+  assert.doesNotMatch(failedProgress, /镜头证据|批已完整保留|%/,
+    '导演对话已经显示进度，恢复区不得重复展示进度或批次卡');
   assert.doesNotMatch(failedProgress, /new_story_ad|apismile|gpt-5\.5|TIMEOUT_OR_NETWORK|语义合同/,
     '失败卡默认视图不得暴露模型、供应商、内部阶段或合同术语');
-  assert.match(failedProgress, /is-recovery/);
+  assert.match(failedProgress, /reference-recovery-actions/);
+  assert.doesNotMatch(failedProgress, /reference-progress-card/);
   assert.doesNotMatch(failedProgress, /role="progressbar"/, '终态恢复卡不得继续占用大面积进度条');
   const importFailureProgress = progressModule.namespace.referenceProgress({
     analysis_id: 'failed-import-reference',
@@ -81,7 +83,7 @@ async function main() {
     error: { code: 'REFERENCE_VIDEO_TOO_LARGE' },
   });
   assert.match(importFailureProgress, />重新读取链接<\/button>/);
-  assert.match(importFailureProgress, /尚未调用识别模型/);
+  assert.doesNotMatch(importFailureProgress, /尚未调用识别模型|reference-progress-card/);
   const recoveryMarkup = briefDialogueMarkup({
     brief: { content_mode: 'commercial_subject', content_mode_source: 'user', text: '不锈钢板材广告' },
     reference: { analysis_id: 'failed-billing-reference', status: 'failed' },

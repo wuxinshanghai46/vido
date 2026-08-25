@@ -192,7 +192,9 @@ const NEW_STORY_AD_DIALOGUE_DEFAULTS = [
 const NEW_STORY_AD_REFERENCE_VISION_DEFAULTS = [
   { provider_id: 'deyunai', model_id: 'gemini-2.5-flash', priority: 1, enabled: true },
   { provider_id: 'zhipu', model_id: 'glm-4.6v-flash', priority: 2, enabled: true },
-  { provider_id: 'webang-maas', model_id: 'gemini-2.5-flash', priority: 3, enabled: true },
+  { provider_id: 'apismile', model_id: 'gemini-2.5-pro', priority: 3, enabled: true },
+  { provider_id: 'apismile', model_id: 'gemini-2.5-flash', priority: 4, enabled: true },
+  { provider_id: 'webang-maas', model_id: 'gemini-2.5-flash', priority: 5, enabled: true },
 ];
 const NEW_STORY_AD_CONSISTENCY_VISION_DEFAULTS = [
   { provider_id: 'zhipu', model_id: 'glm-4.6v-flash', priority: 1, enabled: true },

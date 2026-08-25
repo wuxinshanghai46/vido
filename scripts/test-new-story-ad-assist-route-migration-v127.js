@@ -30,6 +30,10 @@ const settings = {
         { id: 'gemini-2.5-flash', enabled: true, use: 'story' },
       ],
     },
+    {
+      id: 'webang-maas', enabled: true, api_key: 'fixture-key',
+      models: [{ id: 'gpt-5.6-terra', enabled: true, use: 'story' }],
+    },
   ],
 };
 fs.writeFileSync(path.join(outputDir, 'settings.json'), JSON.stringify(settings, null, 2));
@@ -47,12 +51,13 @@ pipeline.saveConfig({
 try {
   const dry = migration.applyMigration({ dryRun: true });
   assert.equal(dry.changed, true);
-  assert.equal(dry.provider_count, 2);
+  assert.equal(dry.provider_count, 3);
+  assert(dry.route.includes('webang-maas/gpt-5.6-terra'), '发布迁移必须保留微众 Terra，不能被旧 V127 路由覆盖');
   assert.equal(pipeline.pickAllEnabled(migration.STAGE).length, 1, 'dry-run 不得写配置');
 
   const applied = migration.applyMigration({ dryRun: false });
   assert.equal(applied.changed, true);
-  assert.equal(new Set(applied.route.map(item => item.split('/')[0])).size, 2);
+  assert.equal(new Set(applied.route.map(item => item.split('/')[0])).size, 3);
   assert.deepEqual(
     pipeline.pickAllEnabled(migration.STAGE).map(item => `${item.provider_id}/${item.model_id}`),
     applied.route,
