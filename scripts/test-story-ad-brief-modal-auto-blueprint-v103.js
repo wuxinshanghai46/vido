@@ -364,7 +364,7 @@ async function main() {
           return {
             idea_ready: true, next_step: 'specifications',
             dialogue_reply: '可以不设置设计师主角，背景人物只负责带出三种板材的使用氛围，画面重点仍放在产品本身。',
-            cast_intent: { confirmed: true, mode: 'auto', expected_people: 0, participants: [], source: 'semantic_dialogue', evidence: '背景人物', background_people: true },
+            cast_intent: { confirmed: true, mode: 'single', expected_people: 1, participants: [{ id: 'background_performer', role: '背景出镜人物', gender: 'unknown', age_range: '25~45岁', on_screen: true }], source: 'semantic_dialogue', evidence: '背景人物', background_people: true, presentation: 'background_only' },
           };
         },
       });
@@ -390,6 +390,7 @@ async function main() {
     assert.deepEqual(answerFlow.completed.sort(), ['audience_intent', 'subject_identity']);
     assert.ok(answerFlow.texts.some(text => /背景人物/.test(text)), '当前反馈的语义回复必须保留并显示');
     assert.equal(answerFlow.castIntent.background_people, true, '背景人物语义必须写入出镜方案状态');
+    assert.equal(answerFlow.castIntent.expected_people, 1, '实际承担触摸动作的背景人物必须计入出镜人数');
     assert.equal(answerFlow.repeatedCastQuestion, false, '用户已明确背景人物后不得再展示固定出镜问题');
     assert.equal(answerFlow.specificationQuestion, true, '内容与出镜方案齐全后应继续到规格确认');
     assert.ok(answerFlow.lengths.length > 10, '回复应产生连续可见的逐字更新');

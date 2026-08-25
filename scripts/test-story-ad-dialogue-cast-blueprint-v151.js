@@ -57,6 +57,23 @@ const audienceOnly = buildContext({
   brief_intake: { ...ctx.brief_intake, cast_intent: { confirmed: true, mode: 'no_human', expected_people: 0, participants: [], source: 'user_dialogue' } },
 });
 assert.ok(revisions.changeDomains(audienceOnly, ctx).includes('person'), '出镜选择变化必须进入人物域并失效旧蓝图');
+const legacyBackground = {
+  request_id: 'legacy-background-task', project_name: '背景人物旧任务', brief: '需要出现人物，用来演出触摸效果，但不介绍身份。',
+  product_subject: '不锈钢墙面', content_mode: 'commercial_subject', cast_mode: 'auto', expected_people: 0,
+  characters: [], cast_profiles: [], planning_cast_count: 0, visual_asset_count: 0,
+  brief_intake: {
+    dialogue_history: [{ role: 'user', content: '要有个背景人物但是可以不介绍，只要出现在场景中并触摸材料。', topic: 'commercial_evidence' }],
+    cast_intent: { confirmed: true, mode: 'auto', expected_people: 0, participants: [], source: 'semantic_dialogue' },
+  },
+};
+const repairedBackground = require('../src/services/newStoryAd/contextBuilder').assertContextConsistent(legacyBackground);
+assert.equal(repairedBackground.cast_mode, 'single', '旧版背景人物 auto+0 合同必须在阶段入口恢复为单人');
+assert.equal(repairedBackground.expected_people, 1, '背景人物实际出镜并执行动作，必须计为 1 人');
+assert.equal(repairedBackground.characters.length, 1, '背景人物必须形成可供蓝图和视觉一致性使用的人物合同');
+assert.equal(repairedBackground.brief_intake.cast_intent.presentation, 'background_only', '不介绍身份只影响呈现方式，不能删除人物');
+const repairedProjection = projection.project(legacyBackground, { title: '背景人物旧任务' });
+assert.equal(repairedProjection.expected_people, 1, '旧任务页面投影不得继续显示 0 人');
+assert.equal(repairedProjection.brief_intake.cast_intent.expected_people, 1, '前端人物合同必须与生成阶段一致');
 const historyOnly = buildContext({ ...ctx, brief_intake: { ...ctx.brief_intake, dialogue_history: [...normalizedHistory, { id: 'q2', role: 'assistant', content: '确认规格', topic: 'specifications' }] } });
 assert.deepEqual(revisions.changeDomains(ctx, historyOnly), [], '仅补存对话记录不得触发蓝图失效或重复生成');
 

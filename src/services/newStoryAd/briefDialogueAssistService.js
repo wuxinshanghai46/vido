@@ -111,9 +111,12 @@ function normalizeCastIntent(parsed = {}, accumulatedIdea = '') {
   const decision = cleanInline(raw.decision || raw.mode, 40);
   if (raw.status !== 'explicit' || evidence.length < 2 || !source.includes(evidence)
     || !['no_human', 'background_only', 'single', 'dual', 'multi'].includes(decision)) return null;
-  const fixedCount = { no_human: 0, background_only: 0, single: 1, dual: 2 }[decision];
+  const fixedCount = { no_human: 0, background_only: 1, single: 1, dual: 2 }[decision];
   const expectedPeople = fixedCount ?? Math.max(3, Math.min(12, Number(raw.expected_people) || 3));
-  const participants = decision === 'background_only' || decision === 'no_human' ? []
+  const participants = decision === 'no_human' ? []
+    : decision === 'background_only' ? [{
+      id: 'background_performer', role: '背景出镜人物', gender: 'unknown', age_range: '25~45岁', on_screen: true,
+    }]
     : (Array.isArray(raw.participants) ? raw.participants : []).slice(0, expectedPeople).map((item, index) => ({
       id: cleanInline(item?.id || `participant_${index + 1}`, 80),
       role: cleanInline(item?.role || item?.description || `出镜人物 ${index + 1}`, 120),
@@ -121,15 +124,16 @@ function normalizeCastIntent(parsed = {}, accumulatedIdea = '') {
       age_range: cleanInline(item?.age_range || '', 40),
       on_screen: true,
     }));
-  if (!['background_only', 'no_human'].includes(decision) && participants.length !== expectedPeople) return null;
+  if (decision !== 'no_human' && participants.length !== expectedPeople) return null;
   return {
     confirmed: true,
-    mode: decision === 'background_only' ? 'auto' : decision,
+    mode: decision === 'background_only' ? 'single' : decision,
     expected_people: expectedPeople,
     participants,
     source: 'semantic_dialogue',
     evidence,
     background_people: decision === 'background_only',
+    presentation: decision === 'background_only' ? 'background_only' : '',
   };
 }
 
@@ -209,7 +213,7 @@ function systemPrompt(dynamicKnowledge = '', contentMode = '') {
       : '当前是剧情短片。问询顺序必须连贯：先理清人物、关系、动机与对立，再理清触发、发展和结局，然后确认受众与表达目标，再确认时空规则和跨时代连续性，最后确认视觉媒介与气质。用户原话已明确的部分直接跳过，只问该顺序中最早的真实缺口，不能在不同层级之间来回跳。',
     '“古代”“现代”“好看”“电影感”这类宽泛词不能单独算 world_context 或 visual_direction 已明确；应结合用户内容给出 2 至 3 个专业选项帮助选择。用户说“由你建议/你来定”时，先给出具体建议并请用户确认，确认后才能标为 explicit。',
     '用户说“帮我完善”“你来补充”“由你决定”等委托创作时，必须根据当前累计设想给出一项具体、可直接采用的完善建议；如果用户同时给出了具体场景或动作顺序，本轮只解释会怎样呈现，不再请用户重复确认。只有设想仍很简略时才用一个短问题确认建议。不得沉默、不得跳过回复，也不得套用与当前题材无关的古代、爱情、权贵、秘宝或穿越案例。',
-    '出镜安排必须按用户自然语言语义判断，不得强迫用户套用设计师、客户等预设角色。用户明确选择无人、只用背景人物、单人、双人或多人时，在 cast_intent 返回原文证据和对应决定；背景人物属于环境表演，不建立需要身份连续性的人物资产。没有明确证据时 status 必须为 missing。',
+    '出镜安排必须按用户自然语言语义判断，不得强迫用户套用设计师、客户等预设角色。用户明确选择无人、只用背景人物、单人、双人或多人时，在 cast_intent 返回原文证据和对应决定。只要背景人物会实际出镜并承担触摸、走过、驻足等动作，background_only 就必须计为 1 位出镜人物并建立最小一致性人物合同；“不介绍身份”只影响画面呈现，绝不能改写成 0 人。没有明确证据时 status 必须为 missing。',
     'coverage 的每个 evidence 必须是从当前累计设想中原样摘取的短语，不能改写或编造。未明确的项 status 必须为 missing。只有五类均为 explicit，idea_ready 才能为 true；否则必须继续 idea_details。',
     '用户一次已经讲完整时不得重复询问已经有直接证据的内容；completed_topics 和 covered_topics 中的决策均已经回答，禁止换一种说法再次询问。covered_topics 必须逐项返回稳定 topic 和用户原文 evidence，证据不是累计设想原文子串时无效。五类均明确后 next_step 才进入 specifications。时长、画幅和清晰度必须作为一组简洁确认，不能把系统默认值说成用户已经确认。',
     '规格确认后 next_step 才能进入 reference。参考提问必须结合当前剧情或商业内容说明可能有价值的参考类型；参考材料不是必填项，但必须由用户明确选择提供或不提供。',

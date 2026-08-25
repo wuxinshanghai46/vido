@@ -485,6 +485,9 @@ async function polishBlueprint(ctx, blueprint, { taskId = '', force = false, att
       'narrative_contract 必须使用 causal-story-v1，并填写 setup、trigger、progression、result 及对应 beat_refs。每镜 causal_role 必须使用 setup、trigger、development、evidence、transformation、resolution、brand_closure 之一。',
       '每镜用 state_before、state_after、intended_changes、visible_evidence 记录真实可拍的变化；这些内容只能来自当前用户需求、人物、宠物、产品和场景合同。',
       '所有行业通用：只依据当前任务内容创作，不套用固定行业、固定场景、固定人物或固定故事模板。',
+      ctx.brief_intake?.cast_intent?.background_people === true
+        ? '本任务明确为 1 位背景出镜人物：必须保留其触摸、走过、驻足等画面动作和人物一致性，但广告中不得介绍姓名、职业、个人故事，不得把背景人物升级为主角、客户决策者或产品讲解者。'
+        : '',
       '每个卖点必须由人物选择、可见动作、界面/产品反馈或结果变化证明；不要让人物直接念卖点。',
       '台词必须像真人会说的话，简短、自然、有上下文；避免“宇宙般、行业领先、为您赋能、最大化预算、更快更智能、一站式”等广告套话。',
       '台词必须承担故事推进，不能把人物目标、阻力、发现、可见证据、价值变化和最终决定只写在 plot、visual、action 或 why_next 中。',

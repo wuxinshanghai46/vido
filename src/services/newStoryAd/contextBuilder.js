@@ -1542,9 +1542,35 @@ function taskTitle(ctx = {}) {
   return cleanText(ctx.project_name || ctx.product_subject || ctx.brief || '剧情广告任务', 120);
 }
 
+function normalizeContextCastContract(ctx = {}) {
+  const source = ctx && typeof ctx === 'object' ? ctx : {};
+  const rawIntent = source.brief_intake?.cast_intent || source.cast_intent || {};
+  const legacyBackground = rawIntent.source === 'semantic_dialogue'
+    && String(rawIntent.mode || '') === 'auto'
+    && Math.max(0, Number(rawIntent.expected_people || 0) || 0) === 0
+    && (!Array.isArray(rawIntent.participants) || rawIntent.participants.length === 0);
+  if (!legacyBackground) return source;
+  const intent = briefDialogueHistory.normalizeCastIntent(rawIntent);
+  const characters = normalizeCharacters(
+    intent.participants,
+    `${source.request_id || ''}|${source.brief || ''}|${source.product_subject || ''}`,
+  );
+  return {
+    ...source,
+    cast_mode: 'single',
+    expected_people: 1,
+    planning_cast_count: 1,
+    visual_asset_count: Math.max(1, Number(source.visual_asset_count || 0) || 0),
+    characters,
+    cast_intent: intent,
+    brief_intake: { ...(source.brief_intake || {}), cast_intent: intent },
+  };
+}
+
 function assertContextConsistent(ctx = {}) {
-  const conflicts = contextConflicts(ctx);
-  if (!conflicts.length) return ctx;
+  const normalized = normalizeContextCastContract(ctx);
+  const conflicts = contextConflicts(normalized);
+  if (!conflicts.length) return normalized;
   const error = new Error(`广告需求约束冲突：${conflicts.join('；')}。请修改需求或禁止项后重试。`);
   error.status = 422;
   error.code = 'INPUT_CONSTRAINT_CONFLICT';
@@ -1568,6 +1594,7 @@ module.exports = {
   looksLikeDescriptorName,
   normalizeSceneSpec,
   normalizeCreativeDirection,
+  normalizeContextCastContract,
   normalizeSceneAssets,
   normalizePropAssets,
   normalizeBrandOverlay,

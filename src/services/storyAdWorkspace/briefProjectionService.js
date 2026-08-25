@@ -6,6 +6,9 @@ const multilineTextContract = require('../newStoryAd/multilineTextContractServic
 const briefDialogueHistory = require('../newStoryAd/briefDialogueHistoryService');
 
 function project(context = {}, task = {}, clean = value => String(value || '').trim(), options = {}) {
+  const castIntent = briefDialogueHistory.normalizeCastIntent(context.brief_intake?.cast_intent || context.cast_intent);
+  const projectedCastMode = castIntent.background_people ? 'single' : clean(context.cast_mode || context.person_spec?.castMode || 'auto', 40);
+  const projectedPeople = castIntent.background_people ? 1 : Math.max(0, Number(context.expected_people || 0) || 0);
   const presentation = options.includeAssetPresentation === false
     ? { mode: String(context.content_mode || ''), subject: null }
     : productAssetResolver.productPresentation(context);
@@ -25,8 +28,8 @@ function project(context = {}, task = {}, clean = value => String(value || '').t
     output_size: clean(context.output_size || 'standard', 30),
     video_resolution: clean(context.video_resolution || '1080p', 30),
     video_quality: clean(context.video_quality || 'final', 30),
-    cast_mode: clean(context.cast_mode || context.person_spec?.castMode || 'auto', 40),
-    expected_people: Math.max(0, Number(context.expected_people || 0) || 0),
+    cast_mode: projectedCastMode,
+    expected_people: projectedPeople,
     expected_animals: Math.max(0, Number(context.expected_animals || 0) || 0),
     brief_source: clean(context.brief_source, 40),
     brief_intake: {
@@ -38,7 +41,7 @@ function project(context = {}, task = {}, clean = value => String(value || '').t
         ? context.brief_intake.completed_dialogue_topics : []).map(value => clean(value, 40)).filter(Boolean))].slice(0, 20),
       active_dialogue_topic: clean(context.brief_intake?.active_dialogue_topic, 40),
       dialogue_history: briefDialogueHistory.normalizeHistory(context.brief_intake?.dialogue_history),
-      cast_intent: briefDialogueHistory.normalizeCastIntent(context.brief_intake?.cast_intent || context.cast_intent),
+      cast_intent: castIntent,
     },
     asset_setup_confirmed: context.asset_setup_confirmed === true,
     shot_design_confirmed: context.shot_design_confirmed === true,

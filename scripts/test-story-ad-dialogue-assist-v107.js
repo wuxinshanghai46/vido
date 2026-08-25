@@ -295,7 +295,9 @@ async function main() {
   assert.match(answered.dialogue_reply, /背景人物/);
   assert.match(answered.dialogue_reply, /不抢板材展示重点/);
   assert.deepEqual(answered.cast_intent, {
-    confirmed: true, mode: 'auto', expected_people: 0, participants: [], source: 'semantic_dialogue', evidence: '背景人物', background_people: true,
+    confirmed: true, mode: 'single', expected_people: 1,
+    participants: [{ id: 'background_performer', role: '背景出镜人物', gender: 'unknown', age_range: '25~45岁', on_screen: true }],
+    source: 'semantic_dialogue', evidence: '背景人物', background_people: true, presentation: 'background_only',
   });
   assert.equal(service.normalizeCastIntent({ cast_intent: { status: 'explicit', decision: 'single', evidence: '设计师', participants: [{ role: '设计师' }] } }, '只展示板材'), null, '出镜安排证据不在用户原文中时不得写入结构化状态');
   const reviewResult = service.buildResponse({ parsed: JSON.parse(ready), body: { accumulated_idea: completeIdea, specifications_confirmed: true, reference_skipped: true } });
