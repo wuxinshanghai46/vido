@@ -18,6 +18,9 @@ const chrome = [
 
 async function main() {
   let step = 'startup';
+  const releaseSource = read('public/story-ad/release.js');
+  const candidateBuild = releaseSource.match(/CLIENT_BUILD_ID\s*=\s*"([^"]+)"/)?.[1] || '';
+  const candidateContract = releaseSource.match(/CLIENT_CONTRACT_VERSION\s*=\s*"([^"]+)"/)?.[1] || '';
   assert.ok(chrome, '制作表交互回归需要可用的 Chrome/Chromium');
   const source = read('public/story-ad/views/plotRoomView.js');
   const editor = read('public/story-ad/views/plotBeatEditor.js');
@@ -40,11 +43,13 @@ async function main() {
     for (const relative of ['public/story-ad/styles.css', 'public/story-ad/workspace.css', 'public/story-ad/workspace-ux.css']) {
       await page.addStyleTag({ content: read(relative) });
     }
-    await page.evaluate(async () => {
+    await page.evaluate(async ({ candidateBuild, candidateContract }) => {
       document.body.innerHTML = '<main class="view-host" id="qa-host"></main>';
       const nativeFetch = window.fetch.bind(window);
       window.fetch = (input, init) => String(input).includes('/api/avatar/voice-list')
         ? Promise.resolve(new Response(JSON.stringify({ voices: [] }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+        : String(input).includes('/api/story-ad/version')
+          ? Promise.resolve(new Response(JSON.stringify({ build_id: candidateBuild, contract_version: candidateContract, release_bundle_id: 'qa-candidate-bundle', runtime_hash: 'qa-candidate-runtime', release_control: { allowed: true, epoch: 1 } }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
         : String(input).includes('/prompt-preview')
           ? Promise.resolve(new Response(JSON.stringify({ success: true, shot_index: 1, keyframe_prompt: '主体：人物走入展厅\n光影与氛围：自然侧光', motion_prompt: '时间段 0-3 秒：缓慢推镜\n声音设计：脚步声' }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
           : nativeFetch(input, init);
@@ -65,7 +70,7 @@ async function main() {
         store: { async runStage(stage, body) { window.__qa.stageRuns.push({ stage, body }); }, async updateRequest() {}, async saveBlueprint(blueprint) { window.__qa.saves.push(structuredClone(blueprint)); return { blueprint }; } },
         async refreshShell() {}, navigate(url) { window.__qa.navigations.push(url); },
       });
-    });
+    }, { candidateBuild, candidateContract });
 
     step = 'initial-assertions';
     assert.equal(await page.$$eval('[data-beat-index]', rows => rows.length), 2, '必须显示原有两镜');
@@ -110,6 +115,7 @@ async function main() {
     await page.click('[data-camera-preset="推镜"]');
     assert.equal(await page.$eval('[data-floating-field="camera_movement"]', input => input.value), '推镜', '快捷运镜必须写入真实运镜字段');
     await page.click('[data-save-beat-floating]');
+    await page.waitForFunction(() => !document.querySelector('[data-beat-floating-editor]')?.matches(':popover-open'));
     await page.click('[data-beat-index="0"] [data-open-beat-cell="prompt_notes"]');
     await page.waitForFunction(() => document.querySelector('[data-beat-floating-editor]')?.textContent.includes('关键帧实际输入'));
     const promptPreview = await page.$eval('[data-beat-floating-editor]', node => node.textContent);
