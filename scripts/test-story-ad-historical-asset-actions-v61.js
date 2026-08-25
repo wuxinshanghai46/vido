@@ -144,15 +144,15 @@ assert.doesNotMatch(narrativeDom, /data-generate-product-main|商品 \/ 展示�
 const viewHead = assets.match(/<section class="view-head">[\s\S]*?<\/section>/)?.[0] || '';
 assert.doesNotMatch(viewHead, /data-generate-product-main|添加商品|生成展示主体/, '商品主体操作不得与顶部人物动作并列');
 
-// 已完成第一步时，下一步卡和参考进度卡必须同时不渲染。
+// 已完成第一步时不再重复下一步引导，但失败/运行中的参考操作必须始终可达。
 assert.match(
   brief,
   /showReferenceStepGuidance\s*=\s*referenceStepVisible\s*&&\s*bundle\.navigation\?\.steps\?\.brief\?\.completed\s*!==\s*true/,
-  'brief 完成态必须作为两张引导卡的共同显示门禁',
+  'brief 完成态必须继续阻止重复的下一步引导卡',
 );
 assert.match(brief, /\$\{showReferenceStepGuidance && !referenceAction\.blocked \? `<section[^`]*data-brief-inline-action/s, '下一步卡必须受完成态门禁控制');
-assert.match(brief, /referenceProgressMarkup:\s*showReferenceStepGuidance\s*\?\s*referenceProgress\(bundle\.reference\)\s*:\s*''/,
-  '对话内参考进度卡必须受完成态门禁控制');
+assert.match(brief, /referenceProgressMarkup:\s*referenceProgress\(bundle\.reference\)/,
+  '对话内停止与失败恢复动作不得受历史完成态门禁控制');
 
 // 视觉规范：默认低调，只有 hover/focus/busy 才突出；disabled 必须清楚但不能伪装成高亮。
 const primaryDefault = cssRule(styles, '.btn.primary');
