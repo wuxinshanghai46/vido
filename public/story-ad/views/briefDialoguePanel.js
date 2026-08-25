@@ -1,15 +1,12 @@
 import { escapeHtml } from '../components/ui.js?v=20260825-production-v210';
 import { createReferenceLinkDialogueHandler, referenceDialogueStatus, referenceNextStepDescription, routeReferenceInput, syncReferenceDialogueStatus } from './briefReferenceDialogueState.js?v=20260825-production-v210';
-import { referenceDialoguePhase,sanitizeDialogueTopics } from './briefDialoguePolicy.js?v=20260825-production-v210';
+import { allowedDialogueTopics,referenceDialoguePhase,sanitizeDialogueTopics } from './briefDialoguePolicy.js?v=20260825-production-v210';
 import { followConversationAfter } from './briefConversationScroll.js?v=20260825-production-v210';
 import { appendDialogueSuggestions,briefIdeaPreview,contextualDialogueFallback,dialogueHistoryMarkup,ideaMarkup,modeLabel,normalizedDialogueHistory,recordDialogueHistory } from './briefDialogueProjection.js?v=20260825-production-v210';
 import { dialogueIntakeState, dialogueProgressState } from './briefDialogueReadiness.js?v=20260825-production-v210';
 export { referenceDialogueStatus, referenceNextStepDescription, syncReferenceDialogueStatus };
 export { briefIdeaPreview,dialogueIntakeState,dialogueProgressState };
-export function presentedDirectionAccepted({ confirmation = false, next = '', activeTopic = '', history = [] } = {}) {
-  const previous = [...history].reverse().find(item => item?.role === 'assistant');
-  return Boolean(confirmation && next === 'idea_details' && !activeTopic && /^大概会这样呈现[：:]/.test(String(previous?.content || '').trim()));
-}
+export const acceptsDirection=(ok,next,active,h=[])=>ok&&next==='idea_details'&&!active&&/^大概会这样呈现[：:]/.test(h.findLast(x=>x?.role==='assistant')?.content||'');
 export function briefDialogueMarkup(bundle={}, _route={}, options={}) {
   const brief = bundle.brief || {};
   const commercial = brief.content_mode_source === 'user' && brief.content_mode === 'commercial_subject';
@@ -72,7 +69,8 @@ export function bindBriefDialogue(host, { form, referenceState={}, referenceAtta
   let activeQuestionTopic = sanitizeDialogueTopics([String(control('active_dialogue_topic')?.value || '')], modeAtMount)[0] || '';
   let disposed = false;
   let sending = false;
-  let ideaReady = String(control('creative_brief_confirmed')?.value || '') === 'true';
+  let ideaReady = String(control('creative_brief_confirmed')?.value || '') === 'true'
+    || [...allowedDialogueTopics(modeAtMount)].every(topic => completedTopics.has(topic));
   let specificationsConfirmed = String(control('specifications_confirmed')?.value || '') === 'true';
   let currentReference = referenceState || {};
   let referencePresent = referenceAttached || Boolean(currentReference.analysis_id);
@@ -306,7 +304,7 @@ export function bindBriefDialogue(host, { form, referenceState={}, referenceAtta
       if (intake.next === 'reference') await appendReferenceQuestion();
       input.focus();
     };
-    if (presentedDirectionAccepted({ confirmation: explicitSettings.isBriefConfirmationReply(text), next: intakeBefore.next, activeTopic: activeQuestionTopic, history })) {
+    if (acceptsDirection(explicitSettings.isBriefConfirmationReply(text), intakeBefore.next, activeQuestionTopic, history)) {
       ideaReady = true;
       await finishImmediate('已确认这个方向。有缺项我会继续问；信息齐全后即可生成广告脚本。');
       return;
@@ -382,7 +380,7 @@ export function bindBriefDialogue(host, { form, referenceState={}, referenceAtta
       await streamMessage(reply, pending, { topic: activeQuestionTopic || answeredTopic });
       appendSuggestions(pending, result?.suggested_answers);
     } catch {
-      ideaReady = false;
+      ideaReady = [...allowedDialogueTopics(mode)].every(topic => completedTopics.has(topic));
       const reply = contextualDialogueFallback(mode, ideaReady);
       pending.article.classList.remove('is-thinking');
       await streamMessage(reply, pending, { topic: activeQuestionTopic || answeredTopic });

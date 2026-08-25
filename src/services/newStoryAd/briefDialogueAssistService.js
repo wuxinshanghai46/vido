@@ -415,13 +415,27 @@ function buildResponse({ parsed = {}, modelResult = {}, body = {} } = {}) {
 function recoveryResponse(body = {}, failedModels = []) {
   const completed = cleanTopicsForMode(body.completed_topics, body.content_mode);
   const profile = topicProfile(body.content_mode);
-  const topic = nextQuestionTopic(profile, completed) || profile.order[0];
+  const topic = nextQuestionTopic(profile, completed);
+  if (!topic) return completedTopicsResponse(body, failedModels, 'all_dialogue_topics_completed');
   const fallback = contextualQuestion(profile, topic, body.accumulated_idea || body.brief || '', body.content_mode);
   return {
     dialogue_reply: fallback[0], idea_ready: false, missing_topics: [topic], question_topic: topic,
     suggested_answers: fallback[1], next_step: 'idea_details',
     coverage: normalizeCoverage({}, body.accumulated_idea || body.brief || ''),
     model_meta: { used_model: null, fallback_used: true, failed_models: failedModels, deterministic: true, recovery_reason: 'provider_response_invalid' },
+  };
+}
+
+function completedTopicsResponse(body = {}, failedModels = [], reason = 'all_dialogue_topics_completed') {
+  const nextStep = body.specifications_confirmed !== true ? 'specifications'
+    : (!body.reference_attached && !body.reference_skipped ? 'reference' : 'review');
+  const output = body.content_mode === 'commercial_subject' ? '广告脚本' : '剧情';
+  const dialogueReply = nextStep === 'specifications' ? `需要的内容已经齐全，先确认成片规格后即可生成${output}。`
+    : (nextStep === 'reference' ? `内容与成片规格已经齐全，决定是否使用参考材料后即可生成${output}。` : `需要的内容已经确认，可以生成${output}了。`);
+  return {
+    dialogue_reply: dialogueReply, idea_ready: true, missing_topics: [], question_topic: '', suggested_answers: [],
+    response_mode: 'ready', next_step: nextStep, coverage: normalizeCoverage({}, body.accumulated_idea || body.brief || ''),
+    model_meta: { used_model: null, fallback_used: true, failed_models: failedModels, deterministic: true, recovery_reason: reason },
   };
 }
 
@@ -439,6 +453,10 @@ async function run({ body = {}, modelGateway, taskId = '' } = {}) {
     coverage: normalizeCoverage({}, accumulatedIdea),
     model_meta: { used_model: null, fallback_used: false, failed_models: [], deterministic: true },
   };
+  const completed = cleanTopicsForMode(body.completed_topics, body.content_mode);
+  if (completed.length && !nextQuestionTopic(topicProfile(body.content_mode), completed)) {
+    return completedTopicsResponse(body, [], 'all_dialogue_topics_completed');
+  }
   let result;
   try {
     result = await modelGateway.generateText({
@@ -489,6 +507,7 @@ module.exports = {
   inferQuestionTopic,
   knowledgeContext,
   recoveryResponse,
+  completedTopicsResponse,
   displayableReply,
   cleanTopics,
   cleanTopicsForMode,

@@ -199,6 +199,25 @@ async function main() {
   assert.equal(commercialRecovered.question_topic, 'subject_motivation');
   assert.match(commercialRecovered.dialogue_reply, /核心卖点/);
   assert.doesNotMatch(JSON.stringify(commercialRecovered), /两人的关系|感情|相爱|反派|秘宝|穿越/);
+  const completedCommercialTopics = service.topicProfile('commercial_subject').order;
+  let repeatedCommercialModelCalls = 0;
+  const completedCommercial = await service.run({
+    body: {
+      accumulated_idea: commercialIdea,
+      user_message: '记住不锈钢蚀刻纹理、装饰墙面和拉丝质感',
+      content_mode: 'commercial_subject',
+      completed_topics: completedCommercialTopics,
+    },
+    modelGateway: { async generateText() { repeatedCommercialModelCalls += 1; throw new Error('全部问题完成后不得再调用模型'); } },
+  });
+  assert.equal(repeatedCommercialModelCalls, 0, '全部商业问题完成后必须由确定性状态机直接收口，不得再让模型决定是否重复追问');
+  assert.equal(completedCommercial.idea_ready, true);
+  assert.equal(completedCommercial.question_topic, '');
+  assert.equal(completedCommercial.next_step, 'specifications');
+  assert.doesNotMatch(completedCommercial.dialogue_reply, /最希望观众|核心卖点|主要给谁看/);
+  const completedRecovery = service.recoveryResponse({ content_mode: 'commercial_subject', completed_topics: completedCommercialTopics });
+  assert.equal(completedRecovery.idea_ready, true, '模型候选全部失效时，已完成问题也必须直接进入下一阶段');
+  assert.equal(completedRecovery.question_topic, '');
   const leakedCommercial = service.buildResponse({
     parsed: {
       reply: '冲突升级后，两人的关系怎么变化？',
@@ -310,6 +329,8 @@ async function main() {
   assert.match(dialogueSource, /result\?\.suggested_answers/);
   assert.match(dialogueSource, /completed_topics: \[\.\.\.completedTopics\]/);
   assert.match(dialogueSource, /completedTopics\.add\(answeredTopic\)/);
+  assert.match(dialogueSource, /allowedDialogueTopics\(modeAtMount\)[\s\S]*completedTopics\.has/, '恢复旧项目时必须从已完成问题确定性恢复创意完成态');
+  assert.match(dialogueSource, /catch \{[\s\S]*allowedDialogueTopics\(mode\)[\s\S]*completedTopics\.has/, '前端异常兜底不得清空已完成状态并重复固定问题');
   assert.doesNotMatch(dialogueSource, /dialogueBudgetReached\(\[\.\.\.completedTopics\]/, '达到旧问题数量后也必须先分析并回复当前内容，不能在前端静默返回');
   assert.doesNotMatch(dialogueSource, /pending\.article\.remove\(\)/, '内容分析判定可以进入下一阶段时也必须先展示本轮回复');
   assert.match(dialogueSource, /const characters = \[\.\.\.value\]/, '流式展示必须按 Unicode 字符拆分');
@@ -333,7 +354,7 @@ async function main() {
   assert.match(storyService, /briefDialogueAssist\.run\(\{ body, modelGateway, taskId \}\)/);
   assert.doesNotMatch(storyService, /briefDialogueAssist\.validateRaw/, '对话模型与 JSON 修复接线必须下沉到独立服务');
 
-  console.log(JSON.stringify({ passed: true, checks: 82, scope: 'story-ad-dialogue-assist-v107', real_model_calls: 0 }));
+  console.log(JSON.stringify({ passed: true, checks: 91, scope: 'story-ad-dialogue-assist-v107', real_model_calls: 0 }));
 }
 
 main().catch(error => { console.error(error); process.exit(1); });
