@@ -8,6 +8,7 @@ const multilineTextContract = require('../newStoryAd/multilineTextContractServic
 const briefProjection = require('./briefProjectionService'), failureProjection = require('../newStoryAd/publicFailureProjectionService');
 const sceneLineage = require('../newStoryAd/sceneLineageContractService'), mediaCatalog = require('../newStoryAd/mediaCatalogService');
 const { projectedDossierItems } = require('./dossierItemProjectionService'), personLookProjection = require('./personLookProjectionService');
+const personOwnedPropProjection = require('./personOwnedPropProjectionService');
 const { projectSceneWorldAssets } = require('./sceneWorldAssetProjectionService'), { projectSceneDossier } = require('./sceneDossierProjectionService'), subjectCheckpointProjection = require('../newStoryAd/subjectCheckpointProjectionService');
 const MAX_MEDIA_ITEMS = 120;
 function clean(value = '', max = 240) { return String(value || '').replace(/\s+/g, ' ').trim().slice(0, max); }
@@ -155,20 +156,7 @@ function peopleAssets(context = {}, projectedProps = []) {
     const dossierUrl = mediaUrl(item.dossier_sheet || {});
     const coverUrl = clean(item.cover_image_url, 1200) || dossierUrl || mediaUrl(item) || views[0]?.image_url || '';
     const assetId = clean(item.id || item.actor_asset_id || item.person_id || canonical.id || `person-${index + 1}`, 120);
-    const ownerIdentities = [canonical.id, item.actor_id, item.actor_asset_id, item.id].map(value => clean(value, 120)).filter(Boolean);
-    const authoredProps = list(canonical.owned_props).map((prop, propIndex) => ({
-      id: clean(prop.id || `${canonical.id}_prop_${propIndex + 1}`, 120), owner_id: canonical.id,
-      name: clean(prop.name, 160), description: clean(prop.description || prop.appearance, 600),
-      material: clean(prop.material, 160), scale: clean(prop.scale || prop.size, 160), status: 'planned',
-    }));
-    const generatedProps = list(projectedProps).filter((prop) => {
-      const owner = clean(prop.owner_id, 120);
-      return owner ? ownerIdentities.includes(owner) : index === 0;
-    });
-    const ownedProps = [...authoredProps, ...generatedProps].filter((prop, propIndex, source) => {
-      const key = clean(prop.id || prop.name, 180);
-      return key && source.findIndex(candidate => clean(candidate.id || candidate.name, 180) === key) === propIndex;
-    });
+    const ownedProps = personOwnedPropProjection.ownedProps(canonical, item, projectedProps, index, { clean, list });
     return {
       id: assetId,
       asset_id: assetId,

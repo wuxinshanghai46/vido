@@ -118,7 +118,7 @@ const DOMAIN_RULES = [
     patterns: [
       /(?:assetPlan|PlanningDetails|PlanRelease|PlanMigration|scenePlanStatus|contextBuilder|subjectAssetBundle)/i,
       /^src\/services\/newStoryAd\/(?:assistSubjectProfileService|assistedPersonSpecService|independentPersonPlanService|personIdentityContractService|personDossierCompiler|personGenerationPromptService|subjectProfileTextService)\.js$/i,
-      /^src\/services\/storyAdWorkspace\/(?:personLookProjectionService|projectBundleService)\.js$/i,
+      /^src\/services\/storyAdWorkspace\/(?:personLookProjectionService|personOwnedPropProjectionService|projectBundleService)\.js$/i,
       /^scripts\/test-story-ad-person-plan/i,
       /^scripts\/test-story-ad-person-prompt-separation-v\d+\.js$/i,
       /^scripts\/test-story-ad-person-prompt(?:-|$)/i,

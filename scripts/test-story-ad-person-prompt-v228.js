@@ -8,6 +8,7 @@ const promptService = require('../src/services/newStoryAd/personGenerationPrompt
 const projection = require('../src/services/newStoryAd/blueprintCharacterProjectionService');
 const contextBuilder = require('../src/services/newStoryAd/contextBuilder');
 const subjectBundle = require('../src/services/newStoryAd/subjectAssetBundleService');
+const propProjection = require('../src/services/storyAdWorkspace/personOwnedPropProjectionService');
 
 const base = {
   id: 'char_chenmo', displayName: '陈默', roleName: '背景出镜人物', gender: '女性', age: '25岁',
@@ -31,6 +32,7 @@ assert(withProp.generation_prompt.includes('随身道具：黑色手机，磨砂
 assert.equal(withProp.generation_settings.model, 'gpt-image-2');
 assert.equal(withProp.generation_settings.quality, 'high');
 assert.equal(withProp.generation_settings.resolution, '2K');
+assert.deepEqual(propProjection.ownedProps(withProp, {}, [], 0).map(prop => prop.name), ['黑色手机']);
 
 const modelPrompt = '名称：陈默\n\n描述：模型已完成描述\n\n服装：紫色晚礼服\n\n发型妆造：短发淡妆\n\n特征：自然驻足\n\n随身道具：无\n\n构图规范：专业人物设定图\n\n视觉限制：无文字水印\n\n视觉风格：电影级写实';
 const projected = projection.projectCharacters({ cast_profiles: [base] }, {
@@ -62,4 +64,4 @@ assert(!form.includes('renderPersonLookEditors') && !form.includes('renderPerson
 assert(!planning.includes('data-owned-prop-form') && !planning.includes('由模型生成道具'), '不得再渲染独立随身道具表单');
 assert(view.includes("generation_prompt_source: 'user'") && view.includes('item.profile = savedProfile'), '保存后必须用服务器回读结果进入定向生成');
 
-console.log(JSON.stringify({ passed: true, assertions: 33, props_empty: true, props_present: true, stale_wardrobe_blocked: true, multi_look_isolated: true, single_prompt_ui: true }));
+console.log(JSON.stringify({ passed: true, assertions: 34, props_empty: true, props_present: true, stale_wardrobe_blocked: true, multi_look_isolated: true, single_prompt_ui: true }));
