@@ -119,6 +119,7 @@ const repairedConflict = normalizeBlueprint(conflictingModelBlueprint, { ...ctx,
 assert.equal(repairedConflict.characters[0].name, '陈默', '模型已为唯一背景人物赋予稳定姓名时必须沿用该姓名');
 assert(repairedConflict.beats.every(beat => !/和映恒/.test(`${beat.plot} ${beat.action}`)), '同一人物的其他临时别名不得残留在背景人物动作中');
 assert.equal(/和映恒/.test(JSON.stringify(repairedConflict)), false, '背景人物的非权威别名不得残留在叙事合同、连续性、运镜或任何标准化文本字段中');
+assert.match(repairedConflict.logline, /通过触摸、走过和驻足/, '“通过触摸”等语法连接词不得被误识别成人名并替换');
 assert.equal(/背景背景出镜人物|(?:背景出镜人物){2,}/.test(JSON.stringify(repairedConflict)), false, '中性出镜人物标签不得被别名清理二次替换');
 assert.equal(repairedConflict.characters[0].name, '陈默');
 assert(repairedConflict.beats.every(beat => /陈默/.test(`${beat.plot} ${beat.action}`)), '人物已有姓名时，画面与动作应直接使用姓名而不是继续显示背景人物占位标签');

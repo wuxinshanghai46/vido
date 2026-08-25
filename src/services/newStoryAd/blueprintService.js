@@ -372,6 +372,11 @@ function conversationalSpeech(value = '') {
     || /(?:感觉|觉得|没想到|原来|是不是|怎么|为什么|谁|有点|应该.{0,8}(?:吧|了)|吧[。！？]?|吗[？?]?|呢[？?]?)/.test(spoken);
 }
 
+function looksLikeChinesePersonName(value = '') {
+  const name = clean(value || '', 10);
+  return /^[赵钱孙李周吴郑王冯陈褚卫蒋沈韩杨朱秦尤许何吕施张孔曹严华金魏陶姜戚谢邹喻柏水窦章云苏潘葛奚范彭郎鲁韦昌马苗凤花方俞任袁柳鲍史唐费廉岑薛雷贺倪汤滕殷罗毕郝邬安常乐于时傅皮卞齐康伍余元卜顾孟平黄和穆萧尹姚邵汪祁毛禹狄米贝明臧计伏成戴宋茅庞熊纪舒屈项祝董梁杜阮蓝闵席季麻强贾路娄危江童颜郭梅盛林刁钟徐邱骆高夏蔡田樊胡凌霍虞万支柯昝管卢莫经房裘缪干解应宗丁宣邓郁单杭洪包诸左石崔吉龚程嵇邢裴陆荣翁荀羊甄家封芮储靳汲邴糜松井段富巫乌焦巴弓牧隗山谷车侯宓蓬全郗班仰秋仲伊宫宁仇栾暴甘钭厉戎祖武符刘景詹束龙叶幸司韶黎乔苍双闻莘党翟谭贡劳逄姬申扶堵冉宰郦雍却璩桑桂濮牛寿通边扈燕冀浦尚农温别庄晏柴瞿阎充慕连茹习宦艾鱼容向古易慎戈廖庾终暨居衡步都耿满弘匡国文寇广禄阙东欧殳沃利蔚越夔隆师巩厍聂晁勾敖融冷訾辛阚那简饶曾毋沙乜养鞠须丰巢关蒯相查后荆红游竺权逯盖益桓公][\u3400-\u9fff]{1,3}$/.test(name);
+}
+
 function normalizeBackgroundActorText(value, modelCharacterNames = [], maxText = 180, canonicalName = '背景出镜人物', replaceGenericLabel = false) {
   const neutralToken = '__VIDO_BACKGROUND_PERFORMER__';
   let result = clean(value || '', maxText).replace(new RegExp(canonicalName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), neutralToken);
@@ -383,7 +388,7 @@ function normalizeBackgroundActorText(value, modelCharacterNames = [], maxText =
   });
   const canonicalPattern = canonicalName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   return result.replace(/(^|[，。；、\s])([\u3400-\u9fff]{2,4})(?=(?:走进|走到|走过|抬手|伸手|触摸|驻足|停下|站在|点头|微笑|用手|手指|手掌))/g,
-    (match, prefix, name) => isGenericBackgroundName(name) || name === canonicalName ? match : `${prefix}${canonicalName}`)
+    (match, prefix, name) => isGenericBackgroundName(name) || name === canonicalName || !looksLikeChinesePersonName(name) ? match : `${prefix}${canonicalName}`)
     .replaceAll(neutralToken, canonicalName)
     .replace(/背景背景出镜人物/g, canonicalName)
     .replace(/(?:背景出镜人物){2,}/g, canonicalName)
@@ -393,7 +398,8 @@ function normalizeBackgroundActorText(value, modelCharacterNames = [], maxText =
 
 function backgroundActorAliases(blueprint = {}, modelCharacterNames = []) {
   const serialized = JSON.stringify(blueprint || {});
-  const actionNames = [...serialized.matchAll(/(?:^|["，。；、\s])([\u3400-\u9fff]{2,4})(?=(?:走进|走到|走过|抬手|伸手|触摸|驻足|停下|站在|点头|微笑|用手|手指|手掌))/g)].map(match => match[1]);
+  const actionNames = [...serialized.matchAll(/(?:^|["，。；、\s])([\u3400-\u9fff]{2,4})(?=(?:走进|走到|走过|抬手|伸手|触摸|驻足|停下|站在|点头|微笑|用手|手指|手掌))/g)]
+    .map(match => match[1]).filter(looksLikeChinesePersonName);
   return [...new Set([...modelCharacterNames, ...actionNames])]
     .filter(name => name && !['背景人物', '背景出镜人物', '出镜人物', '参观者', '体验者', '人物'].includes(name));
 }
