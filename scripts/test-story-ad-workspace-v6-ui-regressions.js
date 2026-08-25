@@ -78,6 +78,20 @@ const briefMaterials = read('public/story-ad/views/briefMaterials.js');
 const briefAdvancedConfig = read('public/story-ad/views/briefAdvancedConfig.js');
 const briefWorldSettings = read('public/story-ad/views/briefWorldSettings.js');
 const referenceProgressSource = read('public/story-ad/views/referenceProgressCard.js');
+const addReferenceLinkSource = projectStoreSource.slice(
+  projectStoreSource.indexOf('async function addReferenceLink'),
+  projectStoreSource.indexOf('const referenceRetryDeps'),
+);
+assert.ok(
+  addReferenceLinkSource.indexOf('syncReferencePolling(true)') < addReferenceLinkSource.indexOf("await refreshSections('summary,reference')"),
+  '链接任务返回分析 ID 后必须先启动轮询，不能被较慢的任务投影刷新阻塞在初始 3%',
+);
+const referencePollingSource = projectStoreSource.slice(
+  projectStoreSource.indexOf('function syncReferencePolling'),
+  projectStoreSource.indexOf('function clearProject'),
+);
+assert.match(referencePollingSource, /if \(terminal\) \{[\s\S]*try \{[\s\S]*await refreshSections\('all'\)[\s\S]*catch \(error\)[\s\S]*applyReferenceLiveState\(analysis\)/,
+  '终态项目刷新即使失败或返回迟到投影，也必须重新应用直接分析终态');
 assert.doesNotMatch(briefView, /<h2>高级配置<\/h2>|<aside class="brief-side-column">/, '目标页不得保留独立高级配置侧栏');
 assert.match(briefAdvancedConfig, /data-reference-material-choice/, '可选精调区必须保留参考材料选择');
 assert.match(briefAdvancedConfig, /<option value="yes"/, '用户必须能明确选择使用参考材料');

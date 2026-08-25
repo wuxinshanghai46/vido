@@ -58,6 +58,25 @@ function mockLinkService(sourcePath, delayMs = 0) {
   };
 }
 
+function mockUnknownLengthHeartbeatService(sourcePath) {
+  const service = mockLinkService(sourcePath);
+  service.downloadVideo = async (_url, directory, options = {}) => {
+    options.onProgress?.(128 * 1024, 0);
+    options.onProgress?.(768 * 1024, 0);
+    options.onProgress?.(1536 * 1024, 0);
+    const target = path.join(directory, 'source.mp4');
+    fs.copyFileSync(sourcePath, target);
+    return {
+      file_path: target,
+      original_name: 'unknown-length-reference.mp4',
+      mimetype: 'video/mp4',
+      size_bytes: fs.statSync(target).size,
+      method: 'test-unknown-length',
+    };
+  };
+  return service;
+}
+
 async function main() {
   const user = { id: 'reference-link-test-user' };
   const input = path.join(tempRoot, 'linked-input.mp4');
@@ -340,6 +359,17 @@ async function main() {
   assert.ok(!JSON.stringify(uploaded).includes('must-not-leak'));
   assert.strictEqual(uploaded.downstream_generation_triggered, false);
 
+  const heartbeatImport = await analysisService.createFromUrl({
+    body: { video_url: 'https://video.example.com/work/heartbeat', rights_confirmed: 'true' },
+    user,
+    linkService: mockUnknownLengthHeartbeatService(input),
+  });
+  const heartbeatUploaded = await waitFor(heartbeatImport.id, user, ['uploaded', 'failed']);
+  assert.strictEqual(heartbeatUploaded.status, 'uploaded', JSON.stringify(heartbeatUploaded.error || {}));
+  const heartbeatRecord = analysisService._private.readRecord(user.id, heartbeatImport.id);
+  assert.ok(heartbeatRecord.checkpoints.some(item => /已读取 0\.8 MB/.test(item.phase)), '未知总大小的下载必须按已读取字节持续更新心跳');
+  assert.ok(heartbeatRecord.checkpoints.some(item => /已读取 1\.5 MB/.test(item.phase)), '未知总大小下载的后续心跳不得被相同百分比吞掉');
+
   const started = analysisService.start(uploaded.id, user);
   assert.strictEqual(started.accepted, true);
   const completed = await waitFor(uploaded.id, user, ['completed', 'failed']);
@@ -410,10 +440,11 @@ async function main() {
   analysisService.remove(created.id, user);
   analysisService.remove(cancellable.id, user);
   analysisService.remove(failing.id, user);
+  analysisService.remove(heartbeatImport.id, user);
 
   console.log(JSON.stringify({
     passed: true,
-    checks: 73,
+    checks: 76,
     public_url_input: 'pass',
     liblib_share_api_resolution: 'pass',
     liblib_project_api_resolution: 'pass',
@@ -423,6 +454,7 @@ async function main() {
     failed_progress_terminal: true,
     oversized_analysis_proxy: 'pass',
     failed_import_retry: 'pass',
+    unknown_length_progress_heartbeat: 'pass',
     chinese_autofill_source: 'pass',
     downstream_generation_triggered: false,
   }));

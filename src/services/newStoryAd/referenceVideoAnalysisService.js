@@ -428,6 +428,8 @@ async function runLinkImport(initialRecord, linkService, inspected) {
     record = checkpoint(record, '正在安全读取公开视频链接', 8, { status: 'importing', error: null });
     const active = activeImports.get(record.id);
     let lastImportProgress = 8;
+    let lastImportHeartbeatAt = 0;
+    let lastImportHeartbeatBytes = 0;
     const downloaded = await linkService.downloadVideo(
       record.source.input_url,
       analysisDir(record.user_id, record.id),
@@ -439,9 +441,19 @@ async function runLinkImport(initialRecord, linkService, inspected) {
           if (latest.cancelled) return;
           const ratio = total > 0 ? Math.min(1, received / total) : 0;
           const progress = total > 0 ? 10 + Math.round(ratio * 55) : 15;
-          if (progress <= lastImportProgress) return;
-          lastImportProgress = progress;
-          record = checkpoint(latest, '正在读取链接视频', progress);
+          const heartbeatAt = Date.now();
+          const progressAdvanced = progress > lastImportProgress;
+          const byteHeartbeat = Number(received || 0) - lastImportHeartbeatBytes >= 512 * 1024;
+          const timeHeartbeat = heartbeatAt - lastImportHeartbeatAt >= 2500;
+          if (!progressAdvanced && !byteHeartbeat && !timeHeartbeat) return;
+          lastImportProgress = Math.max(lastImportProgress, progress);
+          lastImportHeartbeatAt = heartbeatAt;
+          lastImportHeartbeatBytes = Number(received || 0);
+          const megabytes = Number(received || 0) / (1024 * 1024);
+          const phase = total > 0
+            ? '正在读取链接视频'
+            : `正在读取链接视频（已读取 ${megabytes >= 10 ? megabytes.toFixed(0) : megabytes.toFixed(1)} MB）`;
+          record = checkpoint(latest, phase, lastImportProgress);
         },
       },
     );

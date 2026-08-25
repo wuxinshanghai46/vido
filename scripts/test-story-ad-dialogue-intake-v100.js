@@ -69,6 +69,19 @@ async function main() {
   );
   assert.deepEqual(referenceState.referenceInputIntent('我有视频可以上传'), { kind: 'material', preferred: 'upload' }, '明确表示有视频时必须显示参考材料入口');
   assert.deepEqual(referenceState.referenceInputIntent('帮我做一个30秒产品视频'), { kind: '' }, '普通视频制作需求不得误判成参考材料');
+  const liveArticle = { dataset: {} };
+  const liveText = { textContent: '' };
+  const referenceHandler = referenceState.createReferenceLinkDialogueHandler({
+    message: (_role, text) => { liveText.textContent = text; return { article: liveArticle, textNode: liveText }; },
+    onReferenceLink: async ({ onStart }) => {
+      onStart();
+      liveArticle.dataset.referenceStatus = 'failed';
+      liveText.textContent = '服务器已返回失败终态';
+      return { analysis: { analysis_id: 'stale-initial', status: 'importing', progress: 3, phase: '正在检查视频链接' } };
+    },
+  });
+  await referenceHandler({ url: 'https://www.liblib.tv/detail/example', echoUser: false });
+  assert.equal(liveText.textContent, '服务器已返回失败终态', '迟到的初始 3% 响应不得覆盖轮询已经取得的终态');
   assert.equal(policy.referenceDialoguePhase({ analysis_id: 'ref', status: 'running' }), 'active', '参考分析运行期间必须进入独占门禁');
   assert.equal(policy.referenceDialoguePhase({ analysis_id: 'ref', status: 'failed' }), 'blocked', '参考分析失败后不得自动恢复创意追问');
   assert.equal(policy.referenceDialoguePhase({ analysis_id: 'ref', status: 'completed', analysis_valid: true }), 'ready', '只有有效分析结果才能解除参考门禁');
@@ -158,7 +171,7 @@ async function main() {
   assert.match(briefView, /<dialog class="brief-settings-modal"[\s\S]*参考材料与识别信息[\s\S]*<\/dialog>/, '可选精调项必须收进手动设置 modal');
   assert.doesNotMatch(briefView, /<details[^>]*data-brief-settings/, '手动设置不得继续以内联 details 占用页面高度');
 
-  console.log(JSON.stringify({ passed: true, checks: 53, scope: 'story-ad-dialogue-intake-v100', model_calls: 0 }));
+  console.log(JSON.stringify({ passed: true, checks: 54, scope: 'story-ad-dialogue-intake-v100', model_calls: 0 }));
 }
 
 main().catch(error => {
