@@ -96,6 +96,8 @@ assert.doesNotThrow(() => assertBlueprintCastContract(ctx, blueprint));
 
 const conflictingModelBlueprint = JSON.parse(JSON.stringify(rawBlueprint));
 conflictingModelBlueprint.characters = [{ id: 'invented_designer', name: '陈默', role: '设计师', gender: 'male', age_range: '30~35岁', on_screen: true }];
+conflictingModelBlueprint.narrative_contract.setup = '和映恒走进展厅，陈默停下观察墙面。';
+conflictingModelBlueprint.segment_plan = [{ fixed_subjects: '和映恒', continuity_rules: ['陈默的服装保持一致'] }];
 conflictingModelBlueprint.beats.forEach((beat, index) => {
   beat.plot = `${index ? '陈默' : '和映恒'}走进展厅，${beat.plot}`;
   beat.action = `${index ? '陈默' : '和映恒'}抬手触摸样板，${beat.action}`;
@@ -104,6 +106,7 @@ conflictingModelBlueprint.beats.forEach((beat, index) => {
   beat.speaker = '';
   beat.speaker_id = '';
   beat.spoken_line = '';
+  beat.camera_movement_notes = `镜头最终停在${index ? '陈默' : '和映恒'}中景`;
 });
 const rejectedConflict = assessBlueprintQuality(conflictingModelBlueprint, ctx);
 assert.equal(rejectedConflict.pass, false, '未规范化的声音冲突与空说话人必须被质量门禁拒绝');
@@ -112,6 +115,7 @@ assert(rejectedConflict.issues.some(issue => issue.includes('未绑定明确说�
 const repairedConflict = normalizeBlueprint(conflictingModelBlueprint, { ...ctx, require_causal_contract: true });
 assert.equal(repairedConflict.characters[0].name, performer.name, '背景人物合同必须覆盖模型编造的人名');
 assert(repairedConflict.beats.every(beat => !/和映恒|陈默/.test(`${beat.plot} ${beat.action}`)), '任意模型临时姓名都不得残留在背景人物动作中');
+assert.equal(/和映恒|陈默/.test(JSON.stringify(repairedConflict)), false, '背景人物临时姓名不得残留在叙事合同、连续性、运镜或任何标准化文本字段中');
 assert(repairedConflict.beats.every(beat => beat.speech_mode === 'dialogue' && beat.speaker === performer.name && beat.speaker_id === performer.id), '内层人物对白必须成为权威摘要并自动绑定唯一已确认人物');
 const repairedReview = assessBlueprintQuality(repairedConflict, ctx);
 assert.equal(repairedReview.pass, true, repairedReview.issues.join('；'));

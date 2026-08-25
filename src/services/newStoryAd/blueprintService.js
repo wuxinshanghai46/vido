@@ -365,8 +365,8 @@ function isBackgroundOnlyCast(ctx = {}) {
   return cast.background_people === true || cast.presentation === 'background_only' || cast.decision === 'background_only';
 }
 
-function normalizeBackgroundActorText(value, modelCharacterNames = []) {
-  let result = clean(value || '', 180);
+function normalizeBackgroundActorText(value, modelCharacterNames = [], maxText = 180) {
+  let result = clean(value || '', maxText);
   modelCharacterNames.forEach(name => {
     if (name && !['背景人物', '背景出镜人物', '参观者', '体验者', '人物'].includes(name)) {
       result = result.replace(new RegExp(name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), '背景出镜人物');
@@ -374,6 +374,21 @@ function normalizeBackgroundActorText(value, modelCharacterNames = []) {
   });
   return result.replace(/(^|[，。；、\s])([\u3400-\u9fff]{2,4})(?=(?:走进|走到|走过|抬手|伸手|触摸|驻足|停下|站在|点头|微笑|用手|手指|手掌))/g,
     (match, prefix, name) => ['背景人物', '背景出镜人物', '参观者', '体验者', '人物'].includes(name) ? match : `${prefix}背景出镜人物`);
+}
+
+function backgroundActorAliases(blueprint = {}, modelCharacterNames = []) {
+  const serialized = JSON.stringify(blueprint || {});
+  const actionNames = [...serialized.matchAll(/([\u3400-\u9fff]{2,4})(?=(?:走进|走到|走过|抬手|伸手|触摸|驻足|停下|站在|点头|微笑|用手|手指|手掌))/g)].map(match => match[1]);
+  return [...new Set([...modelCharacterNames, ...actionNames])]
+    .filter(name => name && !['背景人物', '背景出镜人物', '参观者', '体验者', '人物'].includes(name));
+}
+
+function sanitizeBackgroundBlueprintValue(value, actorAliases = []) {
+  if (typeof value === 'string') return normalizeBackgroundActorText(value, actorAliases, 4000);
+  if (Array.isArray(value)) return value.map(item => sanitizeBackgroundBlueprintValue(item, actorAliases));
+  if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value)
+    .map(([key, item]) => [key, sanitizeBackgroundBlueprintValue(item, actorAliases)]));
+  return value;
 }
 
 function normalizeBlueprint(blueprint, ctx) {
@@ -387,6 +402,7 @@ function normalizeBlueprint(blueprint, ctx) {
   const noHuman = ctx.cast_mode === 'no_human';
   const backgroundOnly = isBackgroundOnlyCast(ctx);
   const modelCharacterNames = (Array.isArray(bp.characters) ? bp.characters : []).map(character => clean(character?.name, 80)).filter(Boolean);
+  const actorAliases = backgroundActorAliases(bp, modelCharacterNames);
   const normalizedCharacters = noHuman ? [] : (backgroundOnly
     ? [backgroundPerformerCharacter()]
     : normalizeCharacters(Array.isArray(bp.characters) && bp.characters.length ? bp.characters : ctx.characters, characterSeed));
@@ -435,7 +451,7 @@ function normalizeBlueprint(blueprint, ctx) {
     const resolvedSpeakerId = firstDialogueLine?.speaker_id || (silent ? '' : (resolvedSpeechMode === 'voiceover'
       ? 'narrator'
       : (characterIdByName.get(resolvedSpeaker) || clean(beat.speaker_id || '', 80))));
-    const normalizeActorText = value => backgroundOnly ? normalizeBackgroundActorText(value, modelCharacterNames) : clean(value || '', 180);
+    const normalizeActorText = value => backgroundOnly ? normalizeBackgroundActorText(value, actorAliases) : clean(value || '', 180);
     return {
       beat_index: Number(beat.beat_index || beat.index || idx + 1),
       role: clean(beat.role || beat.story_role || 'story', 50),
@@ -492,7 +508,7 @@ function normalizeBlueprint(blueprint, ctx) {
     ...beat,
     ad_phase: inferAdPhase(beat, index, timedBeats.length),
   }));
-  return {
+  const normalizedBlueprint = {
     story_title: bp.story_title || bp.title || (ctx.product_subject ? `${ctx.product_subject}剧情广告` : '原创故事短片'),
     logline: bp.logline || bp.synopsis || '',
     beat_style: bp.beat_style || 'content_driven_visual_beats',
@@ -527,6 +543,7 @@ function normalizeBlueprint(blueprint, ctx) {
     beats: structuredBeats,
     model_meta: bp.model_meta || {},
   };
+  return backgroundOnly ? sanitizeBackgroundBlueprintValue(normalizedBlueprint, actorAliases) : normalizedBlueprint;
 }
 
 async function repairExplicitBlueprintStructure(ctx, payload, { taskId = '' } = {}) {
