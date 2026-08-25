@@ -44,10 +44,10 @@ assert.equal(legacy.expected_people, 1);
 assert.equal(legacy.characters.length, 1);
 
 const performer = ctx.characters[0];
-assert.equal(performer.name, '背景出镜人物', '不介绍身份的背景人物不得进入通用正式姓名生成器');
-const pollutedContext = assertContextConsistent({ ...ctx, characters: [{ ...performer, name: '和映恒' }], cast_profiles: [{ id: 'invented', name: '陈默', displayName: '陈默', roleName: '设计师' }] });
-assert.equal(pollutedContext.characters[0].name, '背景出镜人物', '历史上下文中的临时姓名必须在权威合同入口清除');
-assert.equal(pollutedContext.cast_profiles[0].name, '背景出镜人物', '历史角色档案中的临时姓名必须同步清除');
+assert.equal(performer.name, '背景出镜人物', '尚未赋名的背景人物应保持中性标签');
+const namedContext = assertContextConsistent({ ...ctx, characters: [{ ...performer, id: 'char_chenmo', name: '陈默', source: 'assigned_background_cast' }], cast_profiles: [{ id: 'char_chenmo', name: '陈默', displayName: '陈默', roleName: '背景出镜人物' }] });
+assert.equal(namedContext.characters[0].name, '陈默', '背景人物一旦拥有权威姓名，合同入口必须保留该姓名');
+assert.equal(namedContext.cast_profiles[0].name, '陈默', '人物档案必须与背景人物的权威姓名保持一致');
 const rawBlueprint = {
   story_title: '光线里的金属层次',
   logline: '一位不介绍身份的背景人物通过触摸、走过和驻足，让四种不锈钢纹理在不同光线下形成清楚可见的空间效果。',
@@ -115,12 +115,13 @@ assert.equal(rejectedConflict.pass, false, '未规范化的声音冲突与空说
 assert(rejectedConflict.issues.some(issue => issue.includes('顶层被标记为静默')));
 assert(rejectedConflict.issues.some(issue => issue.includes('未绑定明确说话人')));
 const repairedConflict = normalizeBlueprint(conflictingModelBlueprint, { ...ctx, require_causal_contract: true });
-assert.equal(repairedConflict.characters[0].name, performer.name, '背景人物合同必须覆盖模型编造的人名');
-assert(repairedConflict.beats.every(beat => !/和映恒|陈默/.test(`${beat.plot} ${beat.action}`)), '任意模型临时姓名都不得残留在背景人物动作中');
-assert.equal(/和映恒|陈默/.test(JSON.stringify(repairedConflict)), false, '背景人物临时姓名不得残留在叙事合同、连续性、运镜或任何标准化文本字段中');
+assert.equal(repairedConflict.characters[0].name, '陈默', '模型已为唯一背景人物赋予稳定姓名时必须沿用该姓名');
+assert(repairedConflict.beats.every(beat => !/和映恒/.test(`${beat.plot} ${beat.action}`)), '同一人物的其他临时别名不得残留在背景人物动作中');
+assert.equal(/和映恒/.test(JSON.stringify(repairedConflict)), false, '背景人物的非权威别名不得残留在叙事合同、连续性、运镜或任何标准化文本字段中');
 assert.equal(/背景背景出镜人物|(?:背景出镜人物){2,}/.test(JSON.stringify(repairedConflict)), false, '中性出镜人物标签不得被别名清理二次替换');
-assert.equal(repairedConflict.characters[0].name, '背景出镜人物');
-assert(repairedConflict.beats.every(beat => beat.speech_mode === 'dialogue' && beat.speaker === performer.name && beat.speaker_id === performer.id), '内层人物对白必须成为权威摘要并自动绑定唯一已确认人物');
+assert.equal(repairedConflict.characters[0].name, '陈默');
+assert(repairedConflict.beats.every(beat => /陈默/.test(`${beat.plot} ${beat.action}`)), '人物已有姓名时，画面与动作应直接使用姓名而不是继续显示背景人物占位标签');
+assert(repairedConflict.beats.every(beat => beat.speech_mode === 'dialogue' && beat.speaker === '陈默' && beat.speaker_id === 'invented_designer'), '内层人物对白必须成为权威摘要并自动绑定唯一已赋名人物');
 const repairedReview = assessBlueprintQuality(repairedConflict, ctx);
 assert.equal(repairedReview.pass, true, repairedReview.issues.join('；'));
 

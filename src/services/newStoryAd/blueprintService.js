@@ -1,6 +1,6 @@
 ﻿const modelGateway = require('./modelGateway');
 const jsonRepair = require('./jsonRepairService');
-const { contextPrompt, normalizeCharacters, backgroundPerformerCharacter } = require('./contextBuilder');
+const { contextPrompt, normalizeCharacters, backgroundPerformerCharacter, isGenericBackgroundName } = require('./contextBuilder');
 
 const { ensureChineseOutput } = require('./outputLanguageService');
 const { polishBlueprint } = require('./blueprintQualityService');
@@ -365,19 +365,27 @@ function isBackgroundOnlyCast(ctx = {}) {
   return cast.background_people === true || cast.presentation === 'background_only' || cast.decision === 'background_only';
 }
 
-function normalizeBackgroundActorText(value, modelCharacterNames = [], maxText = 180) {
+function conversationalSpeech(value = '') {
+  const spoken = clean(value || '', 400);
+  return /[？?]/.test(spoken)
+    || /(?:^|[，。！？；])(?:我|我们|咱们|你|你们)/.test(spoken)
+    || /(?:感觉|觉得|没想到|原来|是不是|怎么|为什么|谁|有点|应该.{0,8}(?:吧|了)|吧[。！？]?|吗[？?]?|呢[？?]?)/.test(spoken);
+}
+
+function normalizeBackgroundActorText(value, modelCharacterNames = [], maxText = 180, canonicalName = '背景出镜人物', replaceGenericLabel = false) {
   const neutralToken = '__VIDO_BACKGROUND_PERFORMER__';
-  let result = clean(value || '', maxText).replace(/背景出镜人物/g, neutralToken);
+  let result = clean(value || '', maxText).replace(new RegExp(canonicalName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), neutralToken);
+  if (replaceGenericLabel && !isGenericBackgroundName(canonicalName)) result = result.replace(/背景出镜人物/g, neutralToken);
   modelCharacterNames.forEach(name => {
-    if (name && !['背景人物', '背景出镜人物', '出镜人物', '参观者', '体验者', '人物'].includes(name)) {
-      result = result.replace(new RegExp(name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), '背景出镜人物');
+    if (name && name !== canonicalName && !isGenericBackgroundName(name)) {
+      result = result.replace(new RegExp(name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), canonicalName);
     }
   });
   return result.replace(/(^|[，。；、\s])([\u3400-\u9fff]{2,4})(?=(?:走进|走到|走过|抬手|伸手|触摸|驻足|停下|站在|点头|微笑|用手|手指|手掌))/g,
-    (match, prefix, name) => ['背景人物', '背景出镜人物', '出镜人物', '参观者', '体验者', '人物'].includes(name) ? match : `${prefix}背景出镜人物`)
-    .replaceAll(neutralToken, '背景出镜人物')
-    .replace(/背景背景出镜人物/g, '背景出镜人物')
-    .replace(/(?:背景出镜人物){2,}/g, '背景出镜人物');
+    (match, prefix, name) => isGenericBackgroundName(name) || name === canonicalName ? match : `${prefix}${canonicalName}`)
+    .replaceAll(neutralToken, canonicalName)
+    .replace(/背景背景出镜人物/g, canonicalName)
+    .replace(/(?:背景出镜人物){2,}/g, canonicalName);
 }
 
 function backgroundActorAliases(blueprint = {}, modelCharacterNames = []) {
@@ -387,11 +395,11 @@ function backgroundActorAliases(blueprint = {}, modelCharacterNames = []) {
     .filter(name => name && !['背景人物', '背景出镜人物', '出镜人物', '参观者', '体验者', '人物'].includes(name));
 }
 
-function sanitizeBackgroundBlueprintValue(value, actorAliases = []) {
-  if (typeof value === 'string') return normalizeBackgroundActorText(value, actorAliases, 4000);
-  if (Array.isArray(value)) return value.map(item => sanitizeBackgroundBlueprintValue(item, actorAliases));
+function sanitizeBackgroundBlueprintValue(value, actorAliases = [], canonicalName = '背景出镜人物') {
+  if (typeof value === 'string') return normalizeBackgroundActorText(value, actorAliases, 4000, canonicalName);
+  if (Array.isArray(value)) return value.map(item => sanitizeBackgroundBlueprintValue(item, actorAliases, canonicalName));
   if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value)
-    .map(([key, item]) => [key, sanitizeBackgroundBlueprintValue(item, actorAliases)]));
+    .map(([key, item]) => [key, sanitizeBackgroundBlueprintValue(item, actorAliases, canonicalName)]));
   return value;
 }
 
@@ -406,10 +414,15 @@ function normalizeBlueprint(blueprint, ctx) {
   const noHuman = ctx.cast_mode === 'no_human';
   const backgroundOnly = isBackgroundOnlyCast(ctx);
   const modelCharacterNames = (Array.isArray(bp.characters) ? bp.characters : []).map(character => clean(character?.name, 80)).filter(Boolean);
-  const actorAliases = backgroundActorAliases(bp, modelCharacterNames);
+  const backgroundCharacterSource = (Array.isArray(bp.characters) ? bp.characters : []).find(character => !isGenericBackgroundName(character?.name))
+    || (Array.isArray(ctx.characters) ? ctx.characters : []).find(character => !isGenericBackgroundName(character?.name))
+    || (Array.isArray(bp.characters) ? bp.characters[0] : null)
+    || (Array.isArray(ctx.characters) ? ctx.characters[0] : null);
   const normalizedCharacters = noHuman ? [] : (backgroundOnly
-    ? [backgroundPerformerCharacter()]
+    ? [backgroundPerformerCharacter(backgroundCharacterSource)]
     : normalizeCharacters(Array.isArray(bp.characters) && bp.characters.length ? bp.characters : ctx.characters, characterSeed));
+  const canonicalBackgroundName = clean(normalizedCharacters[0]?.name || '背景出镜人物', 80);
+  const actorAliases = backgroundActorAliases(bp, modelCharacterNames).filter(name => name !== canonicalBackgroundName);
   const characterIdByName = new Map(normalizedCharacters.map(character => [clean(character.name, 80), clean(character.id, 80)]));
   const speechPlan = authoredSpeechPlan(ctx);
   const normalizedBeats = beats.map((beat, idx) => {
@@ -433,7 +446,10 @@ function normalizeBlueprint(blueprint, ctx) {
       }).filter(line => line.line)
       : [];
     if (!dialogueLines.length && topLevelSpeech) {
-      const topMode = speechMode === 'dialogue' ? 'dialogue' : 'voiceover';
+      const topMode = speechMode === 'dialogue'
+        || (!speechMode && normalizedCharacters.length === 1 && conversationalSpeech(topLevelSpeech))
+        ? 'dialogue'
+        : 'voiceover';
       const topSpeaker = topMode === 'voiceover' ? '旁白' : (backgroundOnly
         ? clean(normalizedCharacters[0]?.name, 80)
         : (rawSpeaker || (normalizedCharacters.length === 1 ? clean(normalizedCharacters[0]?.name, 80) : '')));
@@ -455,7 +471,7 @@ function normalizeBlueprint(blueprint, ctx) {
     const resolvedSpeakerId = firstDialogueLine?.speaker_id || (silent ? '' : (resolvedSpeechMode === 'voiceover'
       ? 'narrator'
       : (characterIdByName.get(resolvedSpeaker) || clean(beat.speaker_id || '', 80))));
-    const normalizeActorText = value => backgroundOnly ? normalizeBackgroundActorText(value, actorAliases) : clean(value || '', 180);
+    const normalizeActorText = value => backgroundOnly ? normalizeBackgroundActorText(value, actorAliases, 180, canonicalBackgroundName, true) : clean(value || '', 180);
     return {
       beat_index: Number(beat.beat_index || beat.index || idx + 1),
       role: clean(beat.role || beat.story_role || 'story', 50),
@@ -547,7 +563,7 @@ function normalizeBlueprint(blueprint, ctx) {
     beats: structuredBeats,
     model_meta: bp.model_meta || {},
   };
-  return backgroundOnly ? sanitizeBackgroundBlueprintValue(normalizedBlueprint, actorAliases) : normalizedBlueprint;
+  return backgroundOnly ? sanitizeBackgroundBlueprintValue(normalizedBlueprint, actorAliases, canonicalBackgroundName) : normalizedBlueprint;
 }
 
 async function repairExplicitBlueprintStructure(ctx, payload, { taskId = '' } = {}) {
@@ -633,6 +649,7 @@ async function generateBlueprint(ctx, {
     'Do not use a generic reaction such as “原来……可以这样做”“就是它了”“太棒了” as the whole line. Each line must add a concrete intention, question, product/material evidence, consequence or decision.',
     'Avoid repeating the same opening word or sentence pattern in adjacent beats. Concise means information-dense, not empty.',
     'Natural spoken-copy pass: preserve all facts, brand terms, numbers, claims and speaker intent; remove empty conclusions, overly symmetrical parallel phrasing, mechanical transition words and correct-but-useless filler. Vary sentence length and allow controlled spoken pauses, but never introduce mistakes, vague claims or deliberately broken language.',
+    'Speech ownership must match the wording, not merely a label. A firsthand reaction, subjective judgment, direct address or question is character dialogue and must bind the exact character id/name. Voiceover is an objective introduction, explanation or summary by 旁白; it must not sound like an on-screen person chatting or asking a question. If a planned voiceover sounds conversational, rewrite it into objective explanatory narration instead of only changing its label.',
     'The visual field describes what the audience sees; the action field describes what changes or what the subject does. Never duplicate the same sentence across visual and action.',
     'Do not use a fixed template, fixed large segments, or fixed shot count. The number of beats must follow the user brief content, event density and pacing.',
     'First extract concrete user-provided story events, actions, selling points, proof points, emotional turns, and call-to-action moments. Each real filmable event becomes one beat.',
@@ -733,7 +750,7 @@ Return JSON in this shape:
     "speech_mode": "dialogue/voiceover/silent/ambient_only",
     "speaker": "exact characters.name for dialogue; narrator for voiceover; empty for silent",
     "speaker_id": "exact matching characters.id for dialogue; narrator for voiceover; empty for silent",
-    "spoken_line": "natural line heard in final video, without label prefix",
+    "spoken_line": "natural line heard in final video, without label prefix; dialogue is character speech, voiceover is objective explanatory narration",
     "why_next": "why the next beat follows"
   }]
 }

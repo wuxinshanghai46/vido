@@ -63,8 +63,18 @@ function normalizeCastIntent(value = {}) {
     || clean(source.presentation || source.decision, 40) === 'background_only'
     || legacyBackground;
   const mode = backgroundPeople ? 'single' : rawMode;
+  const assignedBackground = rawParticipants.find(item => item.name && !['背景人物', '背景出镜人物', '出镜人物', '参观者', '体验者', '人物'].includes(item.name));
   const participants = backgroundPeople
-    ? [{ id: 'background_performer', name: '背景出镜人物', role: '背景出镜人物', gender: 'unknown', age_range: '25~45岁', description: '不介绍姓名与身份，只承担触摸、走过、驻足等画面动作', on_screen: true }]
+    ? [{
+      ...(assignedBackground || {}),
+      id: assignedBackground?.id || 'background_performer',
+      name: assignedBackground?.name || '背景出镜人物',
+      role: '背景出镜人物',
+      gender: assignedBackground?.gender || 'unknown',
+      age_range: assignedBackground?.age_range || '25~45岁',
+      description: assignedBackground?.description || '不介绍身份，只承担触摸、走过、驻足等画面动作',
+      on_screen: true,
+    }]
     : rawParticipants;
   const expectedPeople = mode === 'no_human' ? 0
     : (backgroundPeople ? 1 : Math.max(0, Number(source.expected_people ?? participants.length) || 0));

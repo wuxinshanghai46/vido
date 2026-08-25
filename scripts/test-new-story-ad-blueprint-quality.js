@@ -156,6 +156,20 @@ const invalidSpeakerBinding = mergePolishedBlueprint(speakerBindingOriginal, {
   beats: [{ speech_mode: 'dialogue', speaker: '陌生人', speaker_id: 'unknown_character' }],
 });
 assert.equal(invalidSpeakerBinding.beats[0].speaker, '旁白', '未在人物合同中的模型说话人不得写入');
+const conversationalVoiceover = {
+  story_title: '错误旁白语气', logline: '参观者在展厅观察材料差异。', target_duration: 15,
+  dialogue_contract: { version: 'dialogue-arc-v1', speech_policy: 'full_track' },
+  characters: [{ id: 'visitor', name: '陈默', role: '背景出镜人物', gender: 'male', age_range: '30~35岁', on_screen: true }],
+  beats: [{
+    role: '观察', plot: '陈默站在金属墙面前观察反光。', action: '陈默抬手触摸纹理。', duration: 5,
+    speech_mode: 'voiceover', speaker: '旁白', speaker_id: 'narrator', spoken_line: '这纹路是谁刻出来的？',
+    dialogue_lines: [{ speech_mode: 'voiceover', speaker: '旁白', speaker_id: 'narrator', line: '这纹路是谁刻出来的？' }],
+    dialogue_function: 'question',
+  }],
+};
+const conversationalVoiceoverReview = assessBlueprintQuality(conversationalVoiceover);
+assert.equal(conversationalVoiceoverReview.pass, false);
+assert(conversationalVoiceoverReview.issues.some(issue => /人物口语或现场提问/.test(issue)), '人物口语或现场提问不得只换成旁白标签通过质量门禁');
 const normalizedGeneratedBrandMark = normalizeAuthorizedBrandPresentation(rightsRisk);
 assert.match(
   normalizedGeneratedBrandMark.beats[1].plot,

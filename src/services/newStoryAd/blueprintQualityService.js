@@ -63,6 +63,14 @@ function genericReactionLine(value = '') {
     || (/^(?:嗯|哦|啊|咦|原来|没想到)/.test(spoken) && spoken.length <= 7);
 }
 
+function conversationalSpeech(value = '') {
+  const spoken = clean(value);
+  if (!spoken) return false;
+  return /[？?]/.test(spoken)
+    || /(?:^|[，。！？；])(?:我|我们|咱们|你|你们)/.test(spoken)
+    || /(?:感觉|觉得|没想到|原来|是不是|怎么|为什么|谁|有点|应该.{0,8}(?:吧|了)|吧[。！？]?|吗[？?]?|呢[？?]?)/.test(spoken);
+}
+
 function stringList(value, limit = 12) {
   return (Array.isArray(value) ? value : (value ? [value] : []))
     .map(clean)
@@ -211,6 +219,7 @@ function assessDialogueNarrative(blueprint = {}) {
     dialogueLines.forEach((line, lineIndex) => {
       if (line.speech_mode === 'voiceover') {
         if (line.speaker !== '旁白' || line.speaker_id !== 'narrator') issues.push(`第 ${n} 镜第 ${lineIndex + 1} 条旁白标识不正确`);
+        if (conversationalSpeech(line.line)) issues.push(`第 ${n} 镜第 ${lineIndex + 1} 条内容是人物口语或现场提问，不能标记为旁白；应改为人物对白，或重写成客观介绍式旁白`);
       } else if (line.speech_mode === 'dialogue') {
         const character = characters.find(item => clean(item?.name) === line.speaker || clean(item?.id) === line.speaker_id);
         if (!character || clean(character?.name) !== line.speaker || clean(character?.id) !== line.speaker_id) issues.push(`第 ${n} 镜第 ${lineIndex + 1} 条人物对白未绑定明确说话人`);
@@ -365,7 +374,10 @@ function assessBlueprintQuality(blueprint = {}, ctx = {}) {
     if (detailedLines.length && ['silent', 'ambient_only'].includes(speechMode)) issues.push(`第 ${n} 镜存在声音内容但顶层被标记为静默`);
     if (detailedLines[0] && (speechMode !== detailedLines[0].speech_mode || spoken !== detailedLines[0].line)) issues.push(`第 ${n} 镜声音摘要与声音明细不一致`);
     detailedLines.forEach((line, lineIndex) => {
-      if (line.speech_mode === 'voiceover' && (line.speaker !== '旁白' || line.speaker_id !== 'narrator')) issues.push(`第 ${n} 镜第 ${lineIndex + 1} 条旁白标识不正确`);
+      if (line.speech_mode === 'voiceover') {
+        if (line.speaker !== '旁白' || line.speaker_id !== 'narrator') issues.push(`第 ${n} 镜第 ${lineIndex + 1} 条旁白标识不正确`);
+        if (conversationalSpeech(line.line)) issues.push(`第 ${n} 镜第 ${lineIndex + 1} 条内容是人物口语或现场提问，不能标记为旁白；应改为人物对白，或重写成客观介绍式旁白`);
+      }
       if (line.speech_mode === 'dialogue') {
         const bound = characters.find(item => clean(item?.name) === line.speaker || clean(item?.id) === line.speaker_id);
         if (!bound || clean(bound?.name) !== line.speaker || clean(bound?.id) !== line.speaker_id) issues.push(`第 ${n} 镜第 ${lineIndex + 1} 条人物对白未绑定明确说话人`);

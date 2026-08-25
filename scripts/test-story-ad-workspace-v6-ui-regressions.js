@@ -759,8 +759,8 @@ assert.match(plot, /data-open-storyboard/, '正式剧情蓝图保存后必须提
 assert.match(plot, /重新检查已保存初稿/, '质量审核失败后必须提供复用初稿的恢复入口，不能只显示空白蓝图');
 assert.match(plot, /plot-view-head/, '剧情页标题与操作区必须使用紧凑的剧情专属排版');
 assert.match(plot, /声音内容（旁白 \/ 对白）/, '声音列必须明确区分旁白与人物对白');
-assert.match(plotEditor, /对白 · 说话人待确认/, '人物对白缺少说话人时不得渲染为空白冒号');
-assert.match(plotEditor, /beat-speech-label/, '声音摘要必须显示明确的声音类型标签');
+assert.match(plotEditor, /line\.speech_mode==='voiceover'\?'旁白':\(line\.speaker\|\|'说话人待确认'\)/, '声音摘要必须直接使用旁白或人物姓名作为前缀');
+assert.match(plotEditor, /\$\{escapeHtml\(dialogueLabel\(line\)\)\}：<\/b>/, '声音摘要必须按“旁白：内容”或“人物姓名：内容”连续显示');
 const plotDialogue = read('public/story-ad/views/plotBeatDialoguePopover.js');
 assert.match(plotDialogue, /选择说话人物（必填）/, '人物对白编辑必须明确要求选择说话人');
 assert.match(plotDialogue, /validateDialogueEditor/, '缺少说话人的人物对白必须在保存前拦截');

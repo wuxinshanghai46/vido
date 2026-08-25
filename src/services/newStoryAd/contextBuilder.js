@@ -231,18 +231,26 @@ function normalizeCharacters(input, seed = '') {
     .filter(x => x.name || x.role || x.description);
 }
 
-function backgroundPerformerCharacter() {
+function isGenericBackgroundName(value = '') {
+  const name = cleanText(value, 80);
+  return !name || ['背景人物', '背景出镜人物', '出镜人物', '参观者', '体验者', '人物'].includes(name);
+}
+
+function backgroundPerformerCharacter(source = {}) {
+  const input = source && typeof source === 'object' ? source : {};
+  const suppliedName = cleanText(input.name || input.character_name || input.displayName || '', 40);
+  const assignedName = isGenericBackgroundName(suppliedName) ? '背景出镜人物' : suppliedName;
   return {
-    id: 'background_performer',
-    name: '背景出镜人物',
+    id: cleanText(input.id || input.character_id || 'background_performer', 80),
+    name: assignedName,
     role: '背景出镜人物',
-    gender: 'unknown',
-    age_range: '25~45岁',
-    relationship: '',
+    gender: cleanText(input.gender || 'unknown', 30),
+    age_range: cleanText(input.age_range || input.ageRange || input.age || '25~45岁', 40),
+    relationship: cleanText(input.relationship || input.relation || '', 120),
     on_screen: true,
-    source: 'confirmed_background_cast',
-    description: '不介绍姓名与身份，只承担触摸、走过、驻足等画面动作',
-    name_generated: false,
+    source: cleanText(input.source || (assignedName === '背景出镜人物' ? 'confirmed_background_cast' : 'assigned_background_cast'), 40),
+    description: cleanText(input.description || input.appearance || '不介绍身份，只承担触摸、走过、驻足等画面动作', 360),
+    name_generated: input.name_generated === true || input.nameGenerated === true || undefined,
   };
 }
 
@@ -1001,8 +1009,9 @@ function buildContext(body = {}, user = {}) {
   const dialogueHistory = briefDialogueHistory.normalizeHistory(body.brief_intake?.dialogue_history || body.briefIntake?.dialogueHistory);
   const characterInput = body.characters || body.cast || body.people
     || (castIntent.confirmed ? castIntent.participants : []);
+  const backgroundCharacterInput = Array.isArray(characterInput) ? characterInput[0] : null;
   const characters = castIntent.background_people === true
-    ? [backgroundPerformerCharacter()]
+    ? [backgroundPerformerCharacter(backgroundCharacterInput)]
     : normalizeCharacters(characterInput, `${requestId}|${brief}|${productSubject}`);
   const assets = normalizeAssets(body.assets || body.references || body.images);
   const durationContract = resolveTargetDuration(body, brief);
@@ -1574,15 +1583,18 @@ function normalizeContextCastContract(ctx = {}) {
   const profileLists = [source.cast_profiles, source.narrative_cast_profiles].filter(Array.isArray);
   const profilesAreNeutral = profileLists.every(profiles => profiles.every(profile => [profile?.name, profile?.displayName, profile?.roleName]
     .filter(Boolean).every(value => value === '背景出镜人物')));
-  if (existingCharacter?.id === 'background_performer' && existingCharacter?.name === '背景出镜人物'
-    && existingParticipant?.id === 'background_performer' && existingParticipant?.name === '背景出镜人物' && profilesAreNeutral) return source;
-  const characters = [backgroundPerformerCharacter()];
+  const assignedSource = [existingCharacter, existingParticipant, ...(source.cast_profiles || []), ...(source.narrative_cast_profiles || [])]
+    .find(item => item && !isGenericBackgroundName(item.name || item.displayName));
+  const canonicalCharacter = backgroundPerformerCharacter(assignedSource || existingCharacter || existingParticipant || {});
+  if (existingCharacter?.id === canonicalCharacter.id && existingCharacter?.name === canonicalCharacter.name
+    && existingParticipant?.name === canonicalCharacter.name && profilesAreNeutral) return source;
+  const characters = [canonicalCharacter];
   const normalizeProfiles = profiles => (Array.isArray(profiles) ? profiles.slice(0, 1).map(profile => ({
     ...profile,
-    id: 'background_performer',
-    source_character_id: 'background_performer',
-    name: '背景出镜人物',
-    displayName: '背景出镜人物',
+    id: canonicalCharacter.id,
+    source_character_id: canonicalCharacter.id,
+    name: canonicalCharacter.name,
+    displayName: canonicalCharacter.name,
     roleName: '背景出镜人物',
   })) : profiles);
   return {
@@ -1620,6 +1632,7 @@ module.exports = {
   cleanText,
   normalizeCharacters,
   backgroundPerformerCharacter,
+  isGenericBackgroundName,
   normalizePetProfiles,
   inferExpectedPeopleCount,
   inferExpectedAnimalCount,
