@@ -13,6 +13,7 @@ const storage = require('../src/services/newStoryAd/storageService');
 const jobs = require('../src/services/newStoryAd/jobService');
 const units = require('../src/services/newStoryAd/generationUnitService');
 const releaseBundle = require('../src/services/storyAdReleaseBundleService');
+const storyAd = require('../src/services/newStoryAd/storyAdService');
 
 const waitFor = async (predicate, timeoutMs = 2500) => {
   const started = Date.now();
@@ -57,6 +58,30 @@ const waitFor = async (predicate, timeoutMs = 2500) => {
     assert.strictEqual(succeededTask.generation_progress.status, 'done', '后台成功必须把持久化进度收口为终态');
     assert.strictEqual(succeededTask.generation_progress.percent, 100, '后台成功不得把页面遗留在 99%');
     assert.strictEqual(succeededTask.generation_progress.phase, 'complete');
+
+    storage.createTask({ id: 'historical-job-success', content_revision: 1, request: { brief: 'historical job success' } });
+    storage.updateTask('historical-job-success', {
+      status: 'done',
+      stage: 'person_plan_done',
+      active_stage: '',
+      active_generation_id: '',
+      generation_finished_at: '2026-08-25T18:00:21.387Z',
+      generation_progress: {
+        schema_version: 1,
+        stage: 'person_plan',
+        generation_id: 'historical-person-generation',
+        status: 'running',
+        phase: 'finishing',
+        total: 1,
+        completed: 1,
+        processed: 1,
+        percent: 99,
+      },
+    });
+    const historicalProjection = storyAd.publicTaskBundle('historical-job-success').task.generation_progress;
+    assert.strictEqual(historicalProjection.status, 'done', '历史成功任务读取时必须收口终态');
+    assert.strictEqual(historicalProjection.percent, 100, '历史成功任务读取时不得继续显示 99%');
+    assert.strictEqual(historicalProjection.phase, 'complete');
     const duplicate = jobs.queueStage({
       taskId: 'job-success', stage: 'storyboard', expectedContentRevision: 1,
       inputFingerprint: 'storyboard-input-v1', idempotencyKey: 'job-success:storyboard:r1',

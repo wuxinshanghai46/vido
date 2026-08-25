@@ -69,7 +69,18 @@ function createTaskViewService(deps = {}) {
     const taskFailed = !!(task.error_code || task.error) || String(task.status || '').toLowerCase() === 'failed';
     const status = hasFinalOutput ? 'done'
       : (taskFailed || (total > 0 && completed >= total && failed > 0) ? 'failed' : (total > 0 && completed >= total ? 'done' : 'stopped'));
-    return { ...rawProgress, status, finished_at: rawProgress.finished_at || now, updated_at: now };
+    return {
+      ...rawProgress,
+      status,
+      ...(status === 'done' ? {
+        phase: 'complete',
+        percent: 100,
+        progress: 100,
+        ...(total > 0 ? { completed: total, processed: total } : {}),
+      } : {}),
+      finished_at: rawProgress.finished_at || now,
+      updated_at: now,
+    };
   }
 
   function publicTaskBundle(taskId, { diagnostics = false, includeVideoMonitor = false, sections = '', workspaceSections = [] } = {}) {
