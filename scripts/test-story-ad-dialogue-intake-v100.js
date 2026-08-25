@@ -60,6 +60,9 @@ async function main() {
     '用户明确写出的世界、媒介、真实度、时期和地区必须进入同一份确认数据',
   );
   assert.equal(explicitSettings.isBriefConfirmationReply('按这个'), true, '规格确认短回答必须本地立即识别');
+  assert.equal(explicitSettings.isBriefConfirmationReply('我觉得可以'), true, '自然表达的明确同意必须被识别为确认');
+  assert.equal(dialogue.presentedDirectionAccepted({ confirmation: true, next: 'idea_details', history: [{ role: 'assistant', content: '大概会这样呈现：开场展示材质，收尾定格品牌。' }] }), true, '接受上一轮呈现建议必须直接完成创意确认');
+  assert.equal(dialogue.presentedDirectionAccepted({ confirmation: true, next: 'idea_details', activeTopic: 'subject_identity', history: [{ role: 'assistant', content: '产品主体是什么？' }] }), false, '存在具体待答问题时不得误判为整体确认');
   assert.equal(explicitSettings.isNoReferenceReply('没有'), true, '无参考短回答必须本地立即识别');
   assert.equal(explicitSettings.isNoReferenceReply('女主没有选择复合'), false, '剧情内容中的否定句不得误判为无参考');
   assert.deepEqual(
@@ -134,6 +137,8 @@ async function main() {
   assert.match(dialogueSource, /referencePresent \|\| referenceSkipped/, '已附参考或已明确跳过时不得再次追问');
   assert.ok(dialogueSource.indexOf("intakeBefore.next === 'reference'") < dialogueSource.indexOf("const previous = String(control('brief')"), '参考阶段的短回答必须在写入核心创意和模型调用前处理');
   assert.match(dialogueSource, /isNoReferenceReply\(text\)/, '“没有参考”必须走本地即时判断');
+  assert.match(dialogueSource, /presentedDirectionAccepted\([\s\S]*ideaReady = true/, '接受上一轮呈现方案必须直接完成创意确认并继续下一缺项');
+  assert.ok(dialogueSource.indexOf('presentedDirectionAccepted({ confirmation') < dialogueSource.indexOf("const previous = String(control('brief')"), '呈现方案确认不得写回创意或再次调用模型');
   assert.ok(dialogueSource.indexOf('routeReferenceInput({') < dialogueSource.indexOf('await onAssist?.({'), '链接与上传意图必须在导演模型调用前完成路由');
   assert.match(dialogueSource, /routeReferenceInput\(\{/, '正文链接和上传意图必须复用正式参考输入路由');
   assert.match(dialogueSource, /showChoices: appendReferenceQuestion/, '明确表示有视频时必须在当前对话显示上传入口');
@@ -171,7 +176,7 @@ async function main() {
   assert.match(briefView, /<dialog class="brief-settings-modal"[\s\S]*参考材料与识别信息[\s\S]*<\/dialog>/, '可选精调项必须收进手动设置 modal');
   assert.doesNotMatch(briefView, /<details[^>]*data-brief-settings/, '手动设置不得继续以内联 details 占用页面高度');
 
-  console.log(JSON.stringify({ passed: true, checks: 54, scope: 'story-ad-dialogue-intake-v100', model_calls: 0 }));
+  console.log(JSON.stringify({ passed: true, checks: 59, scope: 'story-ad-dialogue-intake-v100', model_calls: 0 }));
 }
 
 main().catch(error => {

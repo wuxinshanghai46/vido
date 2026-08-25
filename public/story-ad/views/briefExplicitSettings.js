@@ -12,7 +12,7 @@ export function explicitOutputSettingKeys(settings = {}) {
 }
 
 export function isBriefConfirmationReply(text = '') {
-  return /^(?:好|好的|可以|行|确认|确定|就这样|按这个|按当前|按建议|用这个|没问题)[吧啊呀。！!，,\s]*$/.test(String(text || '').trim());
+  return /^(?:(?:我觉得|我认为|这个|这样|该方案)\s*)?(?:好|好的|可以|行|确认|确定|就这样|按这个|按当前|按建议|用这个|没问题)[吧啊呀。！!，,\s]*$/.test(String(text || '').trim());
 }
 
 export function isNoReferenceReply(text = '') {

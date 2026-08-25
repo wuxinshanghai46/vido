@@ -6,6 +6,10 @@ import { appendDialogueSuggestions,briefIdeaPreview,contextualDialogueFallback,d
 import { dialogueIntakeState, dialogueProgressState } from './briefDialogueReadiness.js?v=20260825-production-v209';
 export { referenceDialogueStatus, referenceNextStepDescription, syncReferenceDialogueStatus };
 export { briefIdeaPreview,dialogueIntakeState,dialogueProgressState };
+export function presentedDirectionAccepted({ confirmation = false, next = '', activeTopic = '', history = [] } = {}) {
+  const previous = [...history].reverse().find(item => item?.role === 'assistant');
+  return Boolean(confirmation && next === 'idea_details' && !activeTopic && /^大概会这样呈现[：:]/.test(String(previous?.content || '').trim()));
+}
 export function briefDialogueMarkup(bundle={}, _route={}, options={}) {
   const brief = bundle.brief || {};
   const commercial = brief.content_mode_source === 'user' && brief.content_mode === 'commercial_subject';
@@ -302,6 +306,11 @@ export function bindBriefDialogue(host, { form, referenceState={}, referenceAtta
       if (intake.next === 'reference') await appendReferenceQuestion();
       input.focus();
     };
+    if (presentedDirectionAccepted({ confirmation: explicitSettings.isBriefConfirmationReply(text), next: intakeBefore.next, activeTopic: activeQuestionTopic, history })) {
+      ideaReady = true;
+      await finishImmediate('已确认这个方向。有缺项我会继续问；信息齐全后即可生成广告脚本。');
+      return;
+    }
     if (intakeBefore.next === 'specifications' && (explicitOutputKeys.length > 0 || explicitSettings.isBriefConfirmationReply(text))) {
       applyExplicitSettings();
       explicitOutputKeys.forEach(key => explicitSpecificationKeys.add(key));
