@@ -1,7 +1,7 @@
-import { escapeHtml, mediaPreview } from '../components/ui.js?v=20260826-production-v228b';
-import { bindMediaLightbox } from './mediaLightbox.js?v=20260826-production-v228b';
-import { personDossierShowcase } from './personDossierShowcase.js?v=20260826-production-v228b';
-import { bindSceneDossierCard, renderSceneDossierCard } from './sceneDossierCard.js?v=20260826-production-v228b';
+import { escapeHtml, mediaPreview } from '../components/ui.js?v=20260826-production-v228c';
+import { bindMediaLightbox } from './mediaLightbox.js?v=20260826-production-v228c';
+import { personDossierShowcase } from './personDossierShowcase.js?v=20260826-production-v228c';
+import { bindSceneDossierCard, renderSceneDossierCard } from './sceneDossierCard.js?v=20260826-production-v228c';
 
 export function productDetails(item = {}) {
   const presentation = item.presentation || {};
