@@ -100,6 +100,7 @@ conflictingModelBlueprint.characters = [{ id: 'invented_designer', name: '陈默
 conflictingModelBlueprint.narrative_contract.setup = '和映恒走进展厅，陈默停下观察墙面。';
 conflictingModelBlueprint.segment_plan = [{ fixed_subjects: '和映恒', continuity_rules: ['陈默的服装保持一致'] }];
 conflictingModelBlueprint.beats[0].story_visual = '背景出镜人物走进展厅，保持背景尺度。';
+conflictingModelBlueprint.beats[1].plot = '他背景出镜人物走到墙前，背景出镜人物触摸纹理。';
 conflictingModelBlueprint.beats.forEach((beat, index) => {
   beat.plot = `${index ? '陈默' : '和映恒'}走进展厅，${beat.plot}`;
   beat.action = `${index ? '陈默' : '和映恒'}抬手触摸样板，${beat.action}`;
@@ -121,6 +122,7 @@ assert.equal(/和映恒/.test(JSON.stringify(repairedConflict)), false, '背景�
 assert.equal(/背景背景出镜人物|(?:背景出镜人物){2,}/.test(JSON.stringify(repairedConflict)), false, '中性出镜人物标签不得被别名清理二次替换');
 assert.equal(repairedConflict.characters[0].name, '陈默');
 assert(repairedConflict.beats.every(beat => /陈默/.test(`${beat.plot} ${beat.action}`)), '人物已有姓名时，画面与动作应直接使用姓名而不是继续显示背景人物占位标签');
+assert.equal(/他陈默|她陈默|陈默[^。！？；]{0,28}[，,]陈默/.test(JSON.stringify(repairedConflict)), false, '姓名替换不得产生代词粘连或同一句重复姓名');
 assert(repairedConflict.beats.every(beat => beat.speech_mode === 'dialogue' && beat.speaker === '陈默' && beat.speaker_id === 'invented_designer'), '内层人物对白必须成为权威摘要并自动绑定唯一已赋名人物');
 const repairedReview = assessBlueprintQuality(repairedConflict, ctx);
 assert.equal(repairedReview.pass, true, repairedReview.issues.join('；'));

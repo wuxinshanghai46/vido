@@ -381,11 +381,14 @@ function normalizeBackgroundActorText(value, modelCharacterNames = [], maxText =
       result = result.replace(new RegExp(name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), canonicalName);
     }
   });
+  const canonicalPattern = canonicalName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   return result.replace(/(^|[，。；、\s])([\u3400-\u9fff]{2,4})(?=(?:走进|走到|走过|抬手|伸手|触摸|驻足|停下|站在|点头|微笑|用手|手指|手掌))/g,
     (match, prefix, name) => isGenericBackgroundName(name) || name === canonicalName ? match : `${prefix}${canonicalName}`)
     .replaceAll(neutralToken, canonicalName)
     .replace(/背景背景出镜人物/g, canonicalName)
-    .replace(/(?:背景出镜人物){2,}/g, canonicalName);
+    .replace(/(?:背景出镜人物){2,}/g, canonicalName)
+    .replace(new RegExp(`[他她]${canonicalPattern}`, 'g'), canonicalName)
+    .replace(new RegExp(`(${canonicalPattern}[^。！？；]{0,28}[，,])${canonicalPattern}`, 'g'), '$1');
 }
 
 function backgroundActorAliases(blueprint = {}, modelCharacterNames = []) {
