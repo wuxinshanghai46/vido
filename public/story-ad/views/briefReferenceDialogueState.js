@@ -61,10 +61,7 @@ export function createReferenceLinkDialogueHandler({ onReferenceLink, message, o
       }
       onAttached?.();
       const text = referenceDialogueStatus(result.analysis || { analysis_id: 'pending', status: 'importing' });
-      // Store polling can advance to downloading, running, or even a terminal
-      // state while task binding/summary projection is still completing.  Once
-      // the live subscriber has touched this article, never overwrite it with
-      // the stale 202 response (typically the initial 3% importing snapshot).
+      // Keep the live subscriber authoritative over the initial 202 snapshot.
       if (pending && !pending.article.dataset.referenceStatus) pending.textNode.textContent = text;
       sync?.();
       return result;
