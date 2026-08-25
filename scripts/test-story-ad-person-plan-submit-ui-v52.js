@@ -7,8 +7,11 @@ const vm = require('vm');
 
 const root = path.resolve(__dirname, '..');
 const source = fs.readFileSync(path.join(root, 'public/story-ad/views/assetCenterView.js'), 'utf8');
-assert(source.includes('personPlanRequestGuard.run(async (requestKey)'), 'person plan click must enter the shared guard before loading the action');
-assert(source.includes("import('./assetCenterPlanMigrationAction.js"), 'person plan submission action must stay click-lazy');
+assert(source.includes('const subjectRequests = createKeyedRequestGuard()'), 'person plan click must use the current per-subject keyed request guard');
+assert(source.includes('subjectRequests.run(intent, recoveryKey, async requestKey'), 'person plan click must enter the keyed guard before creating the payload');
+assert(source.includes('const payload = subjectGenerationPayload(bundle, target, requestKey)'), 'the guarded request key must enter the current person generation payload');
+assert(source.includes("await store.runStage('person-plan', payload)"), 'the current person plan route must receive the guarded payload');
+assert.doesNotMatch(source, /assetCenterPlanMigrationAction/, 'retired plan migration action must not return to the current person generation path');
 
 const guardSource = fs.readFileSync(path.join(root, 'public/story-ad/views/assetCenterRequestGuard.js'), 'utf8').replace(/\bexport\s+/g, '');
 const statusSource = ['assetCenterInlineProgress.js', 'assetCenterTechnicalDetails.js', 'assetCenterPlanReleaseStatus.js']
@@ -36,10 +39,8 @@ assert.doesNotMatch(incompatible, /补全详细人物方案，并继续生成缺
 assert.doesNotMatch(incompatible, /人物方案需要更新|文字方案确认后，再单独生成图片/);
 assert.doesNotMatch(incompatible, /<button[^>]+disabled[^>]*>文字方案确认后/);
 assert.doesNotMatch(incompatible, /方案可安全升级/);
-const actionSource = fs.readFileSync(path.join(root, 'public/story-ad/views/assetCenterPlanMigrationAction.js'), 'utf8');
-assert(actionSource.includes("store.runStage('person-plan', { request_key: requestKey })"), 'person plan and subject image submission must send the guard request key');
-assert.doesNotMatch(actionSource, /人物方案和缺失图片已进入同一个生成任务/, '成功提交后页面进度已经提供反馈，不应再显示重复说明弹窗');
-assert.doesNotMatch(actionSource, /support_id|支持编号/, '普通用户提交成功提示不得暴露底层支持编号');
+assert.doesNotMatch(source, /人物方案和缺失图片已进入同一个生成任务/, '成功提交后页面进度已经提供反馈，不应再显示重复说明弹窗');
+assert.doesNotMatch(source, /support_id|支持编号/, '普通用户提交成功提示不得暴露底层支持编号');
 
 // Exercise the exact guard used by the event handler with a real store-shaped
 // runStage stub: two simultaneous events share one request and one key.
