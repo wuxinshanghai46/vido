@@ -101,7 +101,7 @@
 |---|---|---|---|
 | 分支 | `codex/story-ad-systemic-remediation` | 发布清单记录同分支 | 一致 |
 | 代码/发布清单 HEAD | `3ed2ca837ed48169059bccdbd0e5fd4b40a0ae61`（交接提交前） | 制品来源提交 `e495bc00b6eff58e89ef39faa06a85f54922fa2e`；后继提交只生成清单/文档 | 运行代码一致 |
-| ahead / behind | `0 / 0`（交接提交前） | 不适用 | Gitee 已同步 |
+| ahead / behind | 交接文件首次提交并推送后复核 `0 / 0`；最终以该分支远端 HEAD 为准 | 不适用 | Gitee 已同步 |
 | build | `20260826-production-v229a` | `20260826-production-v229a` | 一致 |
 | artifact | `d627059908703fdd6a3d3e490edcab0a8086eec7b258718a84ce901befd77cda` | 同值 | 一致 |
 | source tree | `87aa41684a88a0a7abdf9adb53ea6519dc90e3ad` | 同值 | 一致 |
