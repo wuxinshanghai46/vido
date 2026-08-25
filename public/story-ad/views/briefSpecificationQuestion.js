@@ -1,4 +1,4 @@
-import { BRIEF_DURATION_OPTIONS, durationLabel } from './briefDurationOptions.js?v=20260825-production-v206a';
+import { BRIEF_DURATION_OPTIONS, durationLabel } from './briefDurationOptions.js?v=20260825-production-v207';
 
 export function specificationQuestionText({ mode = '', duration = 30, ratio = '9:16', resolution = '1080p' } = {}) {
   const kind = mode === 'commercial_subject' ? '这条广告' : '这个故事';
