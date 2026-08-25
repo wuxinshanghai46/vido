@@ -343,6 +343,7 @@ function assessBlueprintQuality(blueprint = {}, ctx = {}) {
   const productionContractRequired = castIntent.confirmed === true;
   const expectedPeople = castIntent.mode === 'no_human' ? 0 : Math.max(0, Number(castIntent.expected_people || ctx.expected_people || 0));
   const sparse = blueprint.dialogue_contract?.speech_policy === 'authored_sparse';
+  const narrationOnly = clean(ctx.speech_presentation || blueprint.dialogue_contract?.speech_presentation || '').toLowerCase() === 'narration_only';
   const durationAwareDialogue = blueprint.dialogue_contract?.version === DIALOGUE_CONTRACT_VERSION;
   const issues = [];
   if (productionContractRequired && characters.filter(item => item?.on_screen !== false).length !== expectedPeople) {
@@ -373,6 +374,9 @@ function assessBlueprintQuality(blueprint = {}, ctx = {}) {
     })).filter(line => line.line);
     if (detailedLines.length && ['silent', 'ambient_only'].includes(speechMode)) issues.push(`第 ${n} 镜存在声音内容但顶层被标记为静默`);
     if (detailedLines[0] && (speechMode !== detailedLines[0].speech_mode || spoken !== detailedLines[0].line)) issues.push(`第 ${n} 镜声音摘要与声音明细不一致`);
+    if (narrationOnly && (speechMode === 'dialogue' || detailedLines.some(line => line.speech_mode === 'dialogue'))) {
+      issues.push(`第 ${n} 镜违反纯旁白合同：出镜人物不得说话，声音内容必须重写为客观介绍式旁白`);
+    }
     detailedLines.forEach((line, lineIndex) => {
       if (line.speech_mode === 'voiceover') {
         if (line.speaker !== '旁白' || line.speaker_id !== 'narrator') issues.push(`第 ${n} 镜第 ${lineIndex + 1} 条旁白标识不正确`);

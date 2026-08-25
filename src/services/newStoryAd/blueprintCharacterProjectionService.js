@@ -9,13 +9,19 @@ function projectCharacters(context = {}, blueprint = {}) {
     const id = cleanText(character.id || `character_${index + 1}`, 80);
     const name = cleanText(character.name || `角色${index + 1}`, 120);
     const prior = byId.get(id) || byName.get(name) || {};
+    const projectedAge = cleanText(character.age_range || character.age || prior.age || '', 60);
+    const declaredAgeSource = cleanText(character.age_source || character.age_contract?.source || '', 40);
+    const ageSource = projectedAge
+      ? (declaredAgeSource || (prior.age_source && projectedAge === cleanText(prior.age || prior.age_range || '', 60)
+        ? prior.age_source : 'blueprint_inference'))
+      : (prior.age_source || '');
     return {
       ...prior,
       id, source_character_id: id, name, displayName: name,
       gender: cleanText(character.gender || prior.gender || 'unspecified', 24),
-      age: cleanText(character.age_range || character.age || prior.age || '', 60),
+      age: projectedAge,
       age_range: cleanText(character.age_range || character.age || prior.age_range || prior.age || '', 60),
-      age_source: character.age_range || character.age ? 'user' : (prior.age_source || ''),
+      age_source: ageSource,
       role: cleanText(character.role || prior.role || '', 120),
       roleName: cleanText(character.role || prior.roleName || prior.role || '', 120),
       relationship: cleanText(character.relationship || prior.relationship || '', 240),

@@ -1112,9 +1112,15 @@ function buildContext(body = {}, user = {}) {
       .map(([speaker, assignedVoice]) => [cleanText(speaker, 100), cleanText(assignedVoice, 120)])
       .filter(([speaker, assignedVoice]) => speaker && assignedVoice)),
   };
-  const includeVoiceover = body.include_voiceover === false || body.includeVoiceover === false
-    ? false
-    : !!voiceId || Object.keys(voiceAssignments.speakers).length > 0;
+  const speechPresentationInput = cleanText(body.speech_presentation || body.speechPresentation
+    || body.voice_track_mode || body.voiceTrackMode || '', 40).toLowerCase().replace(/[\s-]+/g, '_');
+  const speechPresentation = ['narration_only', 'dialogue_only', 'mixed'].includes(speechPresentationInput)
+    ? speechPresentationInput : 'auto';
+  const includeVoiceover = speechPresentation === 'narration_only' || speechPresentation === 'mixed'
+    ? true
+    : (body.include_voiceover === false || body.includeVoiceover === false
+      ? false
+      : !!voiceId || !!voiceAssignments.narrator || Object.keys(voiceAssignments.speakers).length > 0);
   const rawSubtitleConfig = body.subtitle_config || body.subtitleConfig || {};
   const subtitleEnabled = body.subtitle !== false && rawSubtitleConfig.show !== false;
   const subtitleStyle = cleanText(body.subtitle_style || body.subtitleStyle || rawSubtitleConfig.style || 'popup', 60);
@@ -1221,6 +1227,7 @@ function buildContext(body = {}, user = {}) {
     voice_name: cleanText(body.voice_name || body.voiceName || '', 120),
     voice_assignments: voiceAssignments,
     include_voiceover: includeVoiceover,
+    speech_presentation: speechPresentation,
     voice_volume: Math.max(0, Math.min(1.5, Number(body.voice_volume ?? body.voiceVolume ?? 1) || 1)),
     bgm_volume: Math.max(0, Math.min(1, Number(body.bgm_volume ?? body.bgmVolume ?? 0.16) || 0)),
     bgm_profile: cleanText(body.bgm_profile || body.bgmProfile || 'auto', 60),
@@ -1462,6 +1469,13 @@ function contextPrompt(ctx) {
       : '',
     ctx.expected_animals ? `精确宠物/动物数量：${ctx.expected_animals}（与人物数量独立计数，人物不得替代宠物，宠物不得替代人物）` : '',
     `剧情呈现方式：${ctx.production_mode || 'auto'}（${productionModeDescription(ctx.production_mode)}）。该设置直接约束剧本叙事方式，但不得覆盖已确认人物、主体或场景。`,
+    ctx.speech_presentation === 'narration_only'
+      ? '声音权威合同：纯旁白介绍。所有出镜人物保持闭口且不得拥有对白；所有可听文案必须由“旁白/narrator”客观介绍、说明或总结，禁止把人物口语改贴旁白标签。'
+      : (ctx.speech_presentation === 'dialogue_only'
+        ? '声音权威合同：纯人物对白。不得生成旁白；每条声音必须绑定已确认人物的精确姓名和 ID。'
+        : (ctx.speech_presentation === 'mixed'
+          ? '声音权威合同：允许旁白与人物对白混合，但必须逐条明确类型；旁白只能客观介绍，人物开口必须绑定精确姓名和 ID。'
+          : '声音权威合同：自动判断，但旁白与人物对白必须逐条明确区分。')),
     `剧情生成设置：${ctx.story_setup_confirmed === true ? '已在人物与场景形象确认后完成' : '尚未确认'}`,
     ctx.cast_mode === 'no_human'
       ? '角色设定：本任务选择无人物模式，不得强行加入真人、手部、背影或人形主体，除非用户需求另有明确要求。'

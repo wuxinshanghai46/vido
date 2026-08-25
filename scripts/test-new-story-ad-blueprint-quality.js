@@ -351,6 +351,36 @@ assert.equal(normalizedStoryDialogue.beats.reduce((sum, beat) => sum + beat.dura
 assert(normalizedStoryDialogue.beats.every(beat => beat.dialogue_function));
 assert.equal(normalizedStoryDialogue.beats[0].dialogue_function, 'obstacle', '中文叙事职责必须归一为稳定枚举');
 assert.equal(assessBlueprintQuality(normalizedStoryDialogue).pass, true, '有冲突、证据、价值转折和决定的台词应通过');
+const narrationOnlyContext = {
+  brief: '背景人物只负责触摸和走过，声音全部使用客观介绍式旁白。',
+  product_subject: '不锈钢材料', target_duration: 18, cast_mode: 'single', speech_presentation: 'narration_only',
+  characters: [{ id: 'visitor', name: '陈默', role: '背景出镜人物', gender: 'female', age_range: '28~35岁' }],
+};
+const narrationOnlyDraft = normalizeBlueprint({
+  logline: '光线和触摸共同展示不锈钢的多种表面效果。',
+  characters: narrationOnlyContext.characters,
+  beats: [
+    { plot: '人物走进展厅。', action: '陈默走过金属墙面。', spoken_line: '这展厅里全是金属，感觉都差不多。', speech_mode: 'dialogue', speaker: '陈默' },
+    { plot: '侧光掠过蚀刻纹理。', action: '陈默触摸纹理。', spoken_line: '铂棕碎钻蚀刻纹理在侧光下呈现细密层次。', speech_mode: 'voiceover' },
+    { plot: '不同表面组成完整墙面。', action: '陈默驻足观察。', spoken_line: '多种纹理与色彩组合，拓展不锈钢在空间中的表现力。', speech_mode: 'voiceover' },
+  ],
+}, narrationOnlyContext);
+assert(narrationOnlyDraft.beats.every(beat => beat.speech_mode !== 'dialogue'), '纯旁白合同不得保留人物对白类型');
+assert(narrationOnlyDraft.beats.filter(beat => beat.spoken_line).every(beat => beat.speaker === '旁白' && beat.speaker_id === 'narrator'), '纯旁白必须绑定旁白/narrator');
+assert(assessBlueprintQuality(narrationOnlyDraft, narrationOnlyContext).issues.some(issue => /客观介绍式旁白/.test(issue)), '人物口语不能只改旁白标签，必须要求重写');
+const objectiveNarration = normalizeBlueprint({
+  ...narrationOnlyDraft,
+  beats: narrationOnlyDraft.beats.map((beat, index) => ({
+    ...beat,
+    spoken_line: [
+      '不锈钢通过不同表面处理，呈现从工业质感到精致空间的多种层次。',
+      '铂棕碎钻蚀刻纹理在侧光下呈现细密层次。',
+      '多种纹理与色彩组合，拓展不锈钢在空间中的表现力。',
+    ][index],
+    dialogue_lines: [], speech_mode: 'voiceover', speaker: '旁白', speaker_id: 'narrator',
+  })),
+}, narrationOnlyContext);
+assert.equal(assessBlueprintQuality(objectiveNarration, narrationOnlyContext).pass, true, '客观介绍式纯旁白应通过质量门禁');
 const alignedDialogueShots = alignShotsToBeats([
   { index: 1, visual: '设计师面对墙面。', action: '她停下思考。', voiceover: '短句被模型压薄。', speech_mode: 'offscreen_voiceover' },
 ], [normalizedStoryDialogue.beats[0]]);

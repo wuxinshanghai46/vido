@@ -423,6 +423,7 @@ function normalizeBlueprint(blueprint, ctx) {
   const characterSeed = `${ctx.request_id || ''}|${ctx.brief || ''}|${ctx.product_subject || ''}`;
   const noHuman = ctx.cast_mode === 'no_human';
   const backgroundOnly = isBackgroundOnlyCast(ctx);
+  const narrationOnly = clean(ctx.speech_presentation || '', 40) === 'narration_only';
   const modelCharacterNames = (Array.isArray(bp.characters) ? bp.characters : []).map(character => clean(character?.name, 80)).filter(Boolean);
   const backgroundCharacterSource = (Array.isArray(bp.characters) ? bp.characters : []).find(character => !isGenericBackgroundName(character?.name))
     || (Array.isArray(ctx.characters) ? ctx.characters : []).find(character => !isGenericBackgroundName(character?.name))
@@ -442,7 +443,8 @@ function normalizeBlueprint(blueprint, ctx) {
     const rawSpeaker = clean(beat.speaker || beat.character || beat.speaker_name || '', 80);
     let dialogueLines = Array.isArray(beat.dialogue_lines) && beat.dialogue_lines.length
       ? beat.dialogue_lines.map(line => {
-        const lineMode = clean(line?.speech_mode || line?.kind || 'dialogue', 30).toLowerCase() === 'voiceover' ? 'voiceover' : 'dialogue';
+        const lineMode = narrationOnly ? 'voiceover'
+          : (clean(line?.speech_mode || line?.kind || 'dialogue', 30).toLowerCase() === 'voiceover' ? 'voiceover' : 'dialogue');
         const suppliedSpeaker = clean(line?.speaker || '', 80);
         const lineSpeaker = lineMode === 'voiceover' ? '旁白' : (backgroundOnly
           ? clean(normalizedCharacters[0]?.name, 80)
@@ -456,10 +458,10 @@ function normalizeBlueprint(blueprint, ctx) {
       }).filter(line => line.line)
       : [];
     if (!dialogueLines.length && topLevelSpeech) {
-      const topMode = speechMode === 'dialogue'
+      const topMode = narrationOnly ? 'voiceover' : (speechMode === 'dialogue'
         || (!speechMode && normalizedCharacters.length === 1 && conversationalSpeech(topLevelSpeech))
         ? 'dialogue'
-        : 'voiceover';
+        : 'voiceover');
       const topSpeaker = topMode === 'voiceover' ? '旁白' : (backgroundOnly
         ? clean(normalizedCharacters[0]?.name, 80)
         : (rawSpeaker || (normalizedCharacters.length === 1 ? clean(normalizedCharacters[0]?.name, 80) : '')));
@@ -554,6 +556,7 @@ function normalizeBlueprint(blueprint, ctx) {
       target_chars_per_second: { min: 2.4, max: 4.8 },
       required_arc: ['setup_or_obstacle', 'development_or_proof', 'decision_or_resolution'],
       speech_policy: speechPlan.policy,
+      speech_presentation: narrationOnly ? 'narration_only' : clean(ctx.speech_presentation || 'auto', 40),
       authored_line_count: speechPlan.authored_line_count,
     },
     ad_structure_contract: {
@@ -637,6 +640,7 @@ async function generateBlueprint(ctx, {
   const recommendedCount = profile.recommended;
   const beatLimit = profile.maxReasonable;
   const speechPlan = authoredSpeechPlan(ctx);
+  const narrationOnly = clean(ctx.speech_presentation || '', 40) === 'narration_only';
   const narrativeOnly = ctx.content_mode === 'narrative_story' || ctx.product_presentation?.mode === 'narrative_story';
   const systemPrompt = [
     'You are the story blueprint writer for the New Story Ad module.',
@@ -660,6 +664,9 @@ async function generateBlueprint(ctx, {
     'Avoid repeating the same opening word or sentence pattern in adjacent beats. Concise means information-dense, not empty.',
     'Natural spoken-copy pass: preserve all facts, brand terms, numbers, claims and speaker intent; remove empty conclusions, overly symmetrical parallel phrasing, mechanical transition words and correct-but-useless filler. Vary sentence length and allow controlled spoken pauses, but never introduce mistakes, vague claims or deliberately broken language.',
     'Speech ownership must match the wording, not merely a label. A firsthand reaction, subjective judgment, direct address or question is character dialogue and must bind the exact character id/name. Voiceover is an objective introduction, explanation or summary by 旁白; it must not sound like an on-screen person chatting or asking a question. If a planned voiceover sounds conversational, rewrite it into objective explanatory narration instead of only changing its label.',
+    narrationOnly
+      ? 'The user explicitly requires narration only. Every heard line must use speech_mode voiceover, speaker 旁白 and speaker_id narrator. On-screen people never speak and must remain visibly non-speaking. Rewrite conversational, first-person, subjective or question-like drafts into objective explanatory narration; never convert them into character dialogue.'
+      : '',
     'The visual field describes what the audience sees; the action field describes what changes or what the subject does. Never duplicate the same sentence across visual and action.',
     'Do not use a fixed template, fixed large segments, or fixed shot count. The number of beats must follow the user brief content, event density and pacing.',
     'First extract concrete user-provided story events, actions, selling points, proof points, emotional turns, and call-to-action moments. Each real filmable event becomes one beat.',
