@@ -15,7 +15,12 @@ export function referenceDialogueStatus(reference = {}) {
   if (status === 'failed' && errorCode === 'REFERENCE_VIDEO_EXTENDED_ANALYSIS_CONFIRMATION_REQUIRED') {
     return `参考视频已免费预检：检测到 ${Number(preflight.segment_count || 0)} 个片段，需要 ${Number(preflight.batch_count || 0)} 批完整读取；尚未启动付费模型，请使用下方确认按钮继续。`;
   }
-  if (status === 'failed') return `参考视频分析失败：${error || '未取得可用结果，请重试或更换链接。'}`;
+  if (status === 'failed') {
+    const limitClarification = /访问量过大|RATE_LIMIT/i.test(error)
+      ? '这是视觉供应商限流，不是视频内容或信息量过大。'
+      : '';
+    return `参考视频分析失败：${error || '未取得可用结果，请重试或更换链接。'}${limitClarification}你仍可继续输入修改设想，或使用下方按钮停止、跳过、更换或稍后重试。`;
+  }
   if (status === 'cancelled') return '参考视频分析已停止。如仍需使用，请重新添加链接或上传视频。';
   if (status === 'sync_interrupted') return `参考分析仍在服务器继续，页面暂时无法取得最新进度：${error || '请稍后重试。'}`;
   return `${phase || '正在读取并分析参考视频'}${progress ? `（${progress}%）` : ''}。结果会继续显示在本对话中。`;

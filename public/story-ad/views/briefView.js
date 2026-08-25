@@ -32,7 +32,7 @@ export async function mount(host, context) {
   const showReferenceStepGuidance = referenceStepVisible && bundle.navigation?.steps?.brief?.completed !== true;
   host.innerHTML = `
     ${briefDialogueMarkup(bundle, route, {
-      referenceProgressMarkup: showReferenceStepGuidance ? referenceProgress(bundle.reference) : '',
+      referenceProgressMarkup: referenceProgress(bundle.reference),
     })}
     ${showReferenceStepGuidance && !referenceAction.blocked ? `<section class="card brief-reference-primary-action is-top-action" data-brief-inline-action aria-live="polite">
       <div class="brief-next-step-copy"><span class="status-tag is-info" data-brief-next-tag>下一步</span><div><h2>生成${escapeHtml(outputLabel)}</h2><p data-brief-next-description>${escapeHtml(referenceNextStepDescription(bundle.reference || {}, referenceAction, brief.content_mode))}</p></div></div>

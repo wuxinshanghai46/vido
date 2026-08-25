@@ -249,6 +249,7 @@ function publicVisionFailure(error = {}) {
         model_id: String(item?.model_id || ''),
         code: String(item?.code || 'UNKNOWN'),
         retry_after_ms: Math.max(0, Number(item?.retry_after_ms || 0)),
+        ...(item?.skipped === true ? { skipped: true } : {}),
         ...(billingState ? { billing_state: billingState } : {}),
         ...(submissionState ? { provider_submission_state: submissionState } : {}),
       };
@@ -259,18 +260,19 @@ function publicVisionFailure(error = {}) {
     PROVIDER_RESPONSE_INVALID: '返回格式不合法',
     REFERENCE_VIDEO_EVIDENCE_COVERAGE_INVALID: '逐帧内容不完整',
     PROVIDER_EMPTY_RESPONSE: '没有返回内容',
-    RATE_LIMIT: '当前访问量过大',
+    RATE_LIMIT: '供应商当前限流',
     TIMEOUT_OR_NETWORK: '连接超时或网络异常',
     PROVIDER_5XX: '供应商服务异常',
   };
   const summary = failedModels.length
-    ? failedModels.map(item => `${item.provider_id}/${item.model_id}：${failureLabels[item.code] || item.code}`).join('；')
+    ? failedModels.map(item => `${item.provider_id}/${item.model_id}：${item.skipped && item.code === 'RATE_LIMIT' ? '同供应商冷却中，未重复提交' : (failureLabels[item.code] || item.code)}`).join('；')
     : '';
   let message = String(error.message || error).slice(0, 500);
   if (code === 'VISION_CIRCUIT_OPEN') {
     message = '视觉模型当前不可用，系统已停止重复调用以避免浪费。请等待限流恢复或联系管理员修复模型配置。';
   } else if (code === 'VISION_QA_UNAVAILABLE') {
-    message = `参考视频的镜头证据没有全部读取成功${summary ? `（${summary}）` : ''}。已保留通过校验的批次；未生成或覆盖后续人物、场景和剧情数据。`;
+    const rateLimited = failedModels.some(item => item.code === 'RATE_LIMIT');
+    message = `${rateLimited ? '视觉供应商当前限流，这不是视频内容或信息量过大。' : ''}参考视频的镜头证据没有全部读取成功${summary ? `（${summary}）` : ''}。已保留通过校验的批次；未生成或覆盖后续人物、场景和剧情数据。`;
   }
   return {
     code,

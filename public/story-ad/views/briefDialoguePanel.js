@@ -34,7 +34,7 @@ export function briefDialogueMarkup(bundle={}, _route={}, options={}) {
       <footer class="brief-composer"><label><span data-dialogue-context>${hasIdea ? '继续补充或修改核心设想' : '直接说说你想做什么，由你发起对话'}</span><button type="button" data-dialogue-expand aria-expanded="false">展开输入</button></label><div><button type="button" class="brief-attach" data-dialogue-reference title="添加参考材料">参考</button><textarea rows="2" data-dialogue-input placeholder="输入你的想法；内容较多时可拖动右下角，或点击“展开输入”…"></textarea><button type="button" class="brief-send" data-dialogue-send>发送</button></div><small>仅问关键问题；参考完成后继续</small></footer>
     </div>
     <aside class="brief-contract-panel">
-      <header><div><small>实时结构化</small><h2>项目确认单</h2></div><span>草稿</span></header>
+      <header><div><small>实时结构化</small><h2>项目确认单</h2></div><div class="brief-contract-head-actions"><button class="brief-professional" type="button" data-dialogue-professional>手动编辑</button><span>草稿</span></div></header>
       <div class="brief-contract-progress"><i><b data-dialogue-progress></b></i><strong data-dialogue-progress-text>0%</strong></div>
       <ol class="brief-contract-checklist" aria-label="立项准备度依据"><li data-progress-item="mode">内容类型 15%</li><li data-progress-item="idea">核心内容 30%</li><li data-progress-item="name">项目名称 10%</li><li data-progress-item="cast">出镜人物 10%</li><li data-progress-item="specifications">成片规格 15%</li><li data-progress-item="reference">参考决定 10%</li><li data-progress-item="confirm">最终确认 10%</li></ol>
       <p class="brief-contract-hint">对话内容会自动同步到这里。这是立项准备度，不是高级设置完成度；系统建议的规格不算完成，必须由你明确确认。</p>
@@ -42,7 +42,6 @@ export function briefDialogueMarkup(bundle={}, _route={}, options={}) {
       <section><h3>成片规格</h3><dl class="triple"><div><dt>时长</dt><dd><span data-contract-duration>${Number(brief.target_duration || 30)}秒</span> <i data-contract-spec-source>${intake.specifications_confirmed === true ? '用户已确认' : '建议·待确认'}</i></dd></div><div><dt>画幅</dt><dd><span data-contract-ratio>${escapeHtml(brief.output_ratio || '9:16')}</span> <i data-contract-spec-source>${intake.specifications_confirmed === true ? '用户已确认' : '建议·待确认'}</i></dd></div><div><dt>清晰度</dt><dd><span data-contract-resolution>${escapeHtml(brief.video_resolution || '1080p')}</span> <i data-contract-spec-source>${intake.specifications_confirmed === true ? '用户已确认' : '建议·待确认'}</i></dd></div></dl></section>
       <section><h3>信息依据</h3><div class="brief-evidence"><span class="user">用户明确</span><b data-contract-user>${hasIdea ? 2 : 0} 项</b></div><div class="brief-evidence"><span class="ai">AI 建议</span><b>3 项</b></div><div class="brief-evidence"><span class="pending">等待确认</span><b data-contract-pending>${hasIdea ? 2 : 5} 项</b></div></section>
       <button class="brief-confirm-concept" type="button" data-dialogue-confirm disabled>确认设想，生成${outputLabel}</button>
-      <button class="brief-professional" type="button" data-dialogue-professional>手动编辑全部设置</button>
     </aside>
   </section>`;
 }
@@ -242,9 +241,9 @@ export function bindBriefDialogue(host, { form, referenceState={}, referenceAtta
     currentReference = reference || {};
     referencePresent = Boolean(currentReference.analysis_id);
     const phase = referenceDialoguePhase(currentReference);
-    const blocked = phase === 'active' || phase === 'blocked';
-    input.disabled = blocked;
-    send.disabled = blocked || sending;
+    const active = phase === 'active';
+    input.disabled = active;
+    send.disabled = active || sending;
     const context = panel.querySelector('[data-dialogue-context]');
     if (context) context.textContent = phase === 'active'
       ? '正在读取并分析参考视频，完成前无需回答其他问题'

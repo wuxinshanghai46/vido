@@ -100,7 +100,8 @@ assert.doesNotMatch(briefView, /referenceAnalysisSections/, '目标与材料页�
 assert.doesNotMatch(briefView, /故事结构|人物分析|动物分析|场景分析|逐镜分析/, '参考详情必须按制作环节分流');
 assert.match(briefView, /<dialog class="brief-settings-modal" data-brief-settings-modal/, '对话优先流程必须把专业表单放进默认关闭的 modal');
 assert.match(briefDialoguePanel, /对话内容会自动同步到这里/, '确认单必须说明对话会自动同步');
-assert.match(briefDialoguePanel, /手动编辑全部设置/, '对话中必须保留专业设置 modal 入口');
+assert.match(briefDialoguePanel, /brief-contract-head-actions[\s\S]*data-dialogue-professional>手动编辑<\/button>[\s\S]*<span>草稿<\/span>/,
+  '专业设置必须收敛为确认单标题旁的小按钮');
 assert.match(briefView, /durationOptionsMarkup/, '手动设置必须复用统一时长选项，避免与对话内规格漂移');
 assert.match(briefDurationOptions, /\[15, 30, 45, 60, 90, 120, 180, 240, 300, 360, 480, 600\]/, '新工作区必须提供 3、4、5、6、8、10 分钟的中长片选项');
 assert.match(read('public/story-ad/views/briefSettingsSummary.js'), /return remainder \? `\$\{minutes\} 分 \$\{remainder\} 秒` : `\$\{minutes\} 分钟`/, '折叠摘要必须把 300/600 秒显示为 5/10 分钟');
@@ -112,12 +113,14 @@ assert.match(briefView, /referenceStepVisible && bundle\.navigation\?\.steps\?\.
 assert.match(briefView, /form="storyAdBriefForm" data-brief-submit/, '折叠区外的下一步必须提交同一份可编辑表单');
 assert.match(briefView, /你可以直接修改，保存后将以你的版本为准/, '识别出的广告目标必须保持可编辑且以用户修改为准');
 assert.match(briefView, /data-brief-settings-anchor>[\s\S]*data-brief-settings-modal[\s\S]*data-brief-settings-layout/, '广告目标与启动材料必须保留在稳定 modal 内');
-assert.match(briefView, /referenceProgressMarkup:\s*showReferenceStepGuidance\s*\?\s*referenceProgress\(bundle\.reference\)/,
-  '目标页必须把参考状态卡注入对话内部，而不是继续渲染为固定高度容器外的兄弟节点');
+assert.match(briefView, /referenceProgressMarkup:\s*referenceProgress\(bundle\.reference\)/,
+  '参考恢复操作不得受已完成立项步骤控制，重新进入失败项目时也必须注入对话内部');
 assert.match(briefDialoguePanel, /data-brief-conversation[^>]*>[\s\S]*data-reference-progress-host[\s\S]*<\/div>\s*<footer class="brief-composer">/,
   '分析中或失败时，参考状态卡必须位于可滚动对话区内并在输入区上方');
 assert.match(referenceProgressSource, /data-reference-abandon/,
   '失败参考必须提供不使用参考继续的可见恢复动作');
+assert.match(referenceProgressSource, /data-reference-cancel>停止分析/,
+  '运行中的参考必须提供可见停止动作');
 assert.match(referenceProgressSource, /'重新整理内容'/,
   '恢复按钮必须使用用户可理解的简短动作名称');
 assert.match(briefReferenceRecovery, /可能新增一次模型费用|可能产生一次新费用/,
@@ -206,7 +209,10 @@ const runningReference = briefModule.referenceProgress({
   started_at: '2026-08-01T00:00:00.000Z',
   phase: '证据帧与语音已提取', filename: 'reference.mp4',
 });
-assert.equal(runningReference, '', '对话文本已显示实时阶段和百分比，不得重复渲染进度卡');
+assert.match(runningReference, /data-reference-cancel>停止分析<\/button>/,
+  '对话文本继续作为实时阶段和百分比的唯一展示，但运行态必须保留停止动作');
+assert.doesNotMatch(runningReference, /role="progressbar"|42%|证据帧与语音已提取/,
+  '停止操作区不得重新引入重复进度卡');
 const interruptedReference = briefModule.referenceProgress({
   analysis_id: 'analysis-sync-interrupted', status: 'sync_interrupted', progress: 42,
   started_at: '2026-08-01T00:00:00.000Z', sync_interrupted_at: '2026-08-01T00:01:05.000Z',
@@ -325,6 +331,11 @@ assert.match(briefModule.referenceProgress({
     `非失败任务不得暴露重复提交入口：${status}`,
   );
 });
+assert.match(
+  briefModule.referenceProgress({ analysis_id: 'running-current', status: 'running' }),
+  /data-reference-cancel>停止分析/,
+  '运行态必须提供停止按钮但不得提供重复提交入口',
+);
 assert.doesNotMatch(
   briefModule.referenceProgress({ analysis_id: 'valid-completed', status: 'completed', analysis_valid: true }),
   /data-reference-retry/,
@@ -354,11 +365,15 @@ assert.match(briefReferenceRecovery, /无需更换或重新上传|不需要更�
 assert.doesNotMatch(briefReferenceRecovery, /store\.getState\(\)/, '重试按钮不得调用 Store 未公开的 getState 接口');
 assert.match(briefReferenceRecovery, /const currentReference = store\.state\.bundle\?\.reference \|\| \{\};[\s\S]*currentReference\.visual_evidence_reusable/, '重试按钮必须从 Store 公开 state 读取当前任务证据状态');
 assert.match(briefReferenceRecovery, /removeEventListener\('click', handleReferenceRetry\)/, '离开页面必须注销重试事件，避免重复提交');
+assert.match(briefReferenceRecovery, /store\.cancelReferenceAnalysis\(\)/, '停止按钮必须调用当前分析 ID 的取消接口');
+assert.match(briefDialoguePanel, /const active = phase === 'active';[\s\S]*input\.disabled = active;[\s\S]*send\.disabled = active \|\| sending/,
+  '失败终态必须恢复文本输入，仅运行态锁定输入以避免并发状态覆盖');
 assert.match(briefReferenceRecovery, /referenceRetryPending \|\| button\.disabled/, '确认框打开与请求提交期间必须阻止重复点击');
 assert.match(briefReferenceRecovery, /referenceRetryPending = true;[\s\S]*setButtonBusy\(button, true, '正在确认…'\)/, '防重入锁必须在打开确认框前立即生效');
 
 const projectStore = read('public/story-ad/store/projectStore.js');
 assert.match(projectStore, /let requestMutationChain = Promise\.resolve\(\);/, '内容保存必须通过单一串行队列避免同一客户端并发版本冲突');
+assert.match(projectStore, /cancelReferenceAnalysis:\s*cancelReferenceAnalysis|cancelReferenceAnalysis,/, '项目 Store 必须公开参考分析停止能力');
 assert.match(projectStore, /requestMutationChain\.then\(execute, execute\)/, '内容保存队列必须在前一笔结束后才读取最新版本并提交');
 assert.match(projectStore, /content_mode: context\.content_mode/, '保存响应必须立即回写内容类型，不能等待后续刷新修正客户端状态');
 assert.match(projectStore, /function applyMutationResult\(data = \{\}\)/, '所有写接口必须先采用服务端返回的权威版本和规范化内容');

@@ -1,6 +1,6 @@
 import { request, uploadAsset, uploadReferenceVideo } from '../api.js?v=20260825-production-v206a';
 import { beginReferenceReplacement, referenceSyncInterrupted, replacementCurrent, removeProjectReference, restoreReferenceReplacement } from './referenceReplacementState.js?v=20260825-production-v206a';
-import { retryReferenceAnalysisRequest, retryReferenceImportRequest } from './referenceRetryStore.js?v=20260825-production-v206a';
+import { cancelReferenceAnalysisRequest, retryReferenceAnalysisRequest, retryReferenceImportRequest } from './referenceRetryStore.js?v=20260825-production-v206a';
 import { loadProjectList } from './projectListStore.js?v=20260825-production-v206a';
 import { loadProjectBundle, refreshProjectBundle } from './projectBundleStore.js?v=20260825-production-v206a';
 export function createProjectStore() {
@@ -266,6 +266,7 @@ export function createProjectStore() {
   const referenceRetryDeps = () => ({ request, state, set, applyReferenceLiveState, syncReferencePolling });
   const retryReferenceAnalysis = options => retryReferenceAnalysisRequest(referenceRetryDeps(), options);
   const retryReferenceImport = () => retryReferenceImportRequest(referenceRetryDeps());
+  const cancelReferenceAnalysis = () => cancelReferenceAnalysisRequest(referenceRetryDeps());
 
   function referenceTaskRecord(analysis = {}) {
     const result = analysis.result && typeof analysis.result === 'object' ? analysis.result : {};
@@ -569,6 +570,7 @@ export function createProjectStore() {
     addReferenceLink,
     retryReferenceImport,
     retryReferenceAnalysis,
+    cancelReferenceAnalysis,
     removeReference: () => removeProjectReference({ state, set, request, stopPolling: stopReferencePolling, applyMutationResult }),
     videoPreflight,
     startVideo,

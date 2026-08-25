@@ -2,6 +2,24 @@ import { setButtonBusy, toast } from '../components/ui.js?v=20260825-production-
 import { confirmDialog } from '../components/dialog.js?v=20260825-production-v206a';
 
 export function bindBriefReferenceRecovery(host, { store, context } = {}) {
+  const handleReferenceCancel = async event => {
+    const button = event.target.closest('[data-reference-cancel]');
+    if (!button || button.disabled) return;
+    const confirmed = await confirmDialog('停止后会保留已经读取成功的镜头证据，不会继续调用后续模型。之后可以选择继续分析、跳过参考或更换链接。', {
+      title: '停止参考视频分析？',
+      confirmText: '停止分析',
+    });
+    if (!confirmed) return;
+    try {
+      setButtonBusy(button, true, '正在停止…');
+      await store.cancelReferenceAnalysis();
+      toast('已提交停止请求，已读取成功的内容会保留。', 'success');
+    } catch (error) {
+      toast(error.message, 'danger');
+      setButtonBusy(button, false);
+    }
+  };
+
   const handleReferenceAbandon = async event => {
     const button = event.target.closest('[data-reference-abandon]');
     if (!button || button.disabled) return;
@@ -100,9 +118,11 @@ export function bindBriefReferenceRecovery(host, { store, context } = {}) {
     }
   };
 
+  host.addEventListener('click', handleReferenceCancel);
   host.addEventListener('click', handleReferenceAbandon);
   host.addEventListener('click', handleReferenceRetry);
   return () => {
+    host.removeEventListener('click', handleReferenceCancel);
     host.removeEventListener('click', handleReferenceAbandon);
     host.removeEventListener('click', handleReferenceRetry);
   };

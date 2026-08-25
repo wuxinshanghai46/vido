@@ -32,3 +32,24 @@ export function retryReferenceAnalysisRequest(deps, options = {}) {
 export function retryReferenceImportRequest(deps) {
   return runReferenceRetry(deps, 'reimport', {}, '当前没有可重新读取的参考链接。');
 }
+
+export async function cancelReferenceAnalysisRequest(deps) {
+  const { request, state, set, applyReferenceLiveState, syncReferencePolling } = deps;
+  const analysisId = state.bundle?.reference?.analysis_id || '';
+  if (!analysisId) throw new Error('当前没有可停止的参考视频分析。');
+  set({ saving: true });
+  try {
+    const data = await request(`/api/new-story-ad/reference-video-analyses/${encodeURIComponent(analysisId)}/cancel`, {
+      method: 'POST',
+      body: {},
+    });
+    const analysis = data.analysis || {};
+    applyReferenceLiveState(analysis);
+    syncReferencePolling(true);
+    set({ saving: false });
+    return analysis;
+  } catch (error) {
+    set({ saving: false });
+    throw error;
+  }
+}

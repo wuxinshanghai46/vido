@@ -1,5 +1,6 @@
 function statusState(reference = {}) {
   const status = String(reference.status || '').toLowerCase();
+  const active = ['uploading', 'importing', 'queued', 'running'].includes(status);
   const failed = status === 'failed';
   const cancelled = status === 'cancelled';
   const completedInvalid = status === 'completed' && reference.analysis_valid !== true;
@@ -31,7 +32,7 @@ function statusState(reference = {}) {
             : (batchCompleted > 0 && batchCompleted < batchTotal
               ? `继续读取缺失镜头（${batchCompleted}/${batchTotal} 批）`
               : '重新读取镜头证据')))));
-  return { recovery: failed || cancelled || completedInvalid, retryLabel };
+  return { active, recovery: failed || cancelled || completedInvalid, retryLabel };
 }
 
 export function referenceProgress(reference = {}) {
@@ -39,6 +40,9 @@ export function referenceProgress(reference = {}) {
   const state = statusState(reference);
   // 对话气泡是阶段、百分比和失败说明的唯一展示位置。此挂载点只保留
   // 必需的用户决策按钮，避免同一进度在文本和大卡片中重复出现。
+  if (state.active) return `<div class="reference-recovery-actions" aria-label="参考视频分析操作">
+    <button class="btn" type="button" data-reference-cancel>停止分析</button>
+  </div>`;
   if (!state.recovery) return '';
   return `<div class="reference-recovery-actions" aria-label="参考视频恢复操作">
     <button class="btn" type="button" data-reference-abandon>跳过这个参考</button>

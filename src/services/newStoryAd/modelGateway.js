@@ -130,6 +130,25 @@ function rateLimitDomainHealthKey(model = {}) {
   return `rate_limit_domain:${crypto.createHash('sha256').update(failureDomainKey(model)).digest('hex').slice(0, 32)}`;
 }
 
+const failureDomainSubmissionTails = new Map();
+
+async function acquireFailureDomainSubmission(model = {}) {
+  const key = rateLimitDomainHealthKey(model);
+  const previous = failureDomainSubmissionTails.get(key) || Promise.resolve();
+  let openNext;
+  const gate = new Promise(resolve => { openNext = resolve; });
+  const tail = previous.catch(() => {}).then(() => gate);
+  failureDomainSubmissionTails.set(key, tail);
+  await previous.catch(() => {});
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    openNext();
+    if (failureDomainSubmissionTails.get(key) === tail) failureDomainSubmissionTails.delete(key);
+  };
+}
+
 function storyUseMatches(model) {
   return ['story', 'chat', 'llm'].includes(String(model?.use || '').toLowerCase());
 }
@@ -990,31 +1009,34 @@ async function generateVision({
   const attemptCandidates = candidates.slice(0, Math.max(1, Math.min(VISION_MAX_CANDIDATES, Number(maxCandidates) || 1)));
   for (let i = 0; i < attemptCandidates.length; i += 1) {
     cancellation.throwIfCancelled(taskId);
-    const attemptTimeoutMs = visionAttemptTimeoutForBudget({
-      timeoutMs,
-      stageBudgetMs,
-      elapsedMs: Date.now() - stageStarted,
-      remainingCandidates: attemptCandidates.length - i,
-    });
-    if (attemptTimeoutMs <= 0) break;
     const model = attemptCandidates[i];
-    const liveHealth = healthState(model);
-    if (liveHealth.rate_limit_domain_cooldown) {
-      failed.push({
-        provider_id: model.provider_id,
-        model_id: model.model_id,
-        code: String(liveHealth.last_error_code || 'RATE_LIMIT'),
-        message: 'provider cooldown active; request not submitted',
-        response_diagnostics: null,
-        retry_after_ms: Math.max(0, Number(liveHealth.cooldown_remaining_ms || 0)),
-        skipped: true,
-      });
-      continue;
-    }
-    const start = Date.now();
-    let candidateText = '';
-    let candidateParsedJson = null;
+    const releaseFailureDomain = await acquireFailureDomainSubmission(model);
     try {
+      cancellation.throwIfCancelled(taskId);
+      const attemptTimeoutMs = visionAttemptTimeoutForBudget({
+        timeoutMs,
+        stageBudgetMs,
+        elapsedMs: Date.now() - stageStarted,
+        remainingCandidates: attemptCandidates.length - i,
+      });
+      if (attemptTimeoutMs <= 0) continue;
+      const liveHealth = healthState(model);
+      if (liveHealth.rate_limit_domain_cooldown) {
+        failed.push({
+          provider_id: model.provider_id,
+          model_id: model.model_id,
+          code: String(liveHealth.last_error_code || 'RATE_LIMIT'),
+          message: 'provider cooldown active; request not submitted',
+          response_diagnostics: null,
+          retry_after_ms: Math.max(0, Number(liveHealth.cooldown_remaining_ms || 0)),
+          skipped: true,
+        });
+        continue;
+      }
+      const start = Date.now();
+      let candidateText = '';
+      let candidateParsedJson = null;
+      try {
       const candidateImageUrls = embeddedUrls.length >= urls.length ? embeddedUrls : urls;
       const messages = [
         { role: 'system', content: systemPrompt },
@@ -1070,31 +1092,34 @@ async function generateVision({
         failed_models: failed,
         latency_ms: latency,
       };
-    } catch (err) {
-      if (cancellation.signal()?.aborted) cancellation.throwIfCancelled(taskId);
-      const latency = Date.now() - start;
-      const classified = classifyError(err);
-      const failure = {
-        provider_id: model.provider_id,
-        model_id: model.model_id,
-        code: classified.code,
-        message: String(err.message || err).slice(0, 300),
-        response_diagnostics: err.response_diagnostics || null,
-        retry_after_ms: 0,
-      };
-      if (candidateText) {
-        err.candidate_text = candidateText;
-        err.candidate_parsed_json = candidateParsedJson;
+      } catch (err) {
+        if (cancellation.signal()?.aborted) cancellation.throwIfCancelled(taskId);
+        const latency = Date.now() - start;
+        const classified = classifyError(err);
+        const failure = {
+          provider_id: model.provider_id,
+          model_id: model.model_id,
+          code: classified.code,
+          message: String(err.message || err).slice(0, 300),
+          response_diagnostics: err.response_diagnostics || null,
+          retry_after_ms: 0,
+        };
+        if (candidateText) {
+          err.candidate_text = candidateText;
+          err.candidate_parsed_json = candidateParsedJson;
+        }
+        recordHealth(model, { ok: false, error: err, latencyMs: latency });
+        failure.retry_after_ms = Math.max(0, Number(healthState(model).cooldown_remaining_ms || 0));
+        failed.push(failure);
+        storage.saveModelCall({
+          task_id: taskId, stage, provider_id: model.provider_id, model_id: model.model_id,
+          status: 'failed', error_code: classified.code,
+          error_message: String(err.message || err).slice(0, 500), latency_ms: latency,
+          fallback_rank: i + 1,
+        });
       }
-      recordHealth(model, { ok: false, error: err, latencyMs: latency });
-      failure.retry_after_ms = Math.max(0, Number(healthState(model).cooldown_remaining_ms || 0));
-      failed.push(failure);
-      storage.saveModelCall({
-        task_id: taskId, stage, provider_id: model.provider_id, model_id: model.model_id,
-        status: 'failed', error_code: classified.code,
-        error_message: String(err.message || err).slice(0, 500), latency_ms: latency,
-        fallback_rank: i + 1,
-      });
+    } finally {
+      releaseFailureDomain();
     }
   }
   const error = new Error(`${stage} 视觉模型全部失败：${failed.map(item => `${item.provider_id}/${item.model_id}:${item.code}`).join('；')}`);
@@ -1184,6 +1209,7 @@ module.exports = {
   candidatesForStage,
   failureDomainKey,
   rateLimitDomainHealthKey,
+  acquireFailureDomainSubmission,
   diversifyTextCandidates,
   candidatesForVisionStage,
   visionAvailability,

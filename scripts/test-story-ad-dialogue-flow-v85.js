@@ -40,7 +40,7 @@ const sceneView = read('public/story-ad/views/sceneWorldPage.js');
 assert.match(briefView, /runStage\('blueprint',\s*\{[\s\S]*expected_content_revision:[\s\S]*idempotency_key:[\s\S]*\}\);[\s\S]*view=plot/, 'brief confirmation should submit one versioned idempotent plot generation before navigation');
 assert.doesNotMatch(briefView, /createAssetPlanAndRefresh/, 'brief must not create asset plan before plot');
 assert.match(panel, /由你发起对话/, 'new dialogue must remain empty until the user initiates it');
-assert.match(panel, /手动编辑全部设置/, 'advanced settings must remain available');
+assert.match(panel, /data-dialogue-professional>手动编辑<\/button>/, 'compact advanced settings entry must remain available');
 assert.match(plotView, /确认剧情，进入人物/, 'plot should lead to people');
 assert.match(sceneView, /进入第 5 步：线稿与分镜/, 'scene should lead to storyboard');
 assert.equal(fs.existsSync(path.join(root, 'public/story-ad/dialogue-demo.html')), false, '旧对话 Demo 入口必须退役，不能与正式立项页并行');

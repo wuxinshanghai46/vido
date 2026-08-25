@@ -826,6 +826,16 @@ async function main() {
   }]);
   assert.deepStrictEqual(publicFailure.failures, ['scene_locations_duplicated']);
   assert.ok(!JSON.stringify(publicFailure).includes('private provider detail'));
+  const publicRateLimitFailure = service._private.publicVisionFailure({
+    code: 'VISION_QA_UNAVAILABLE',
+    failed_models: [
+      { provider_id: 'apismile', model_id: 'gemini-2.5-flash', code: 'RATE_LIMIT', retry_after_ms: 300000 },
+      { provider_id: 'apismile', model_id: 'gemini-2.5-pro', code: 'RATE_LIMIT', retry_after_ms: 299000, skipped: true },
+    ],
+  });
+  assert.match(publicRateLimitFailure.message, /不是视频内容或信息量过大/);
+  assert.match(publicRateLimitFailure.message, /gemini-2\.5-pro：同供应商冷却中，未重复提交/);
+  assert.strictEqual(publicRateLimitFailure.failed_models[1].skipped, true);
 
   const user = { id: 'reference-video-test-user' };
   const legacyAnalysisId = 'ref_video_legacy_semantic_contract';
@@ -1519,6 +1529,29 @@ async function main() {
     9000,
     'Retry-After HTTP-date 必须转换为相对等待时间',
   );
+  let parallelRateLimitSubmissions = 0;
+  const parallelRateLimitResults = await Promise.allSettled([1, 2].map(index => modelGateway.generateVision({
+    taskId: `reference-video-parallel-rate-limit-${index}`,
+    stage: 'new_story_ad.reference_video_vision',
+    systemPrompt: 'test',
+    userPrompt: 'test',
+    imageUrls: ['https://example.com/reference-frame.jpg'],
+    maxCandidates: 1,
+    _candidateModels: [{ provider_id: 'parallel-rate-limit-provider', model_id: 'shared-vision' }],
+    _generateText: async () => {
+      parallelRateLimitSubmissions += 1;
+      await new Promise(resolve => setTimeout(resolve, 30));
+      const error = new Error('HTTP 429 rate limit');
+      error.code = 'RATE_LIMIT';
+      error.response = { status: 429, headers: { 'retry-after': '20' } };
+      throw error;
+    },
+  })));
+  assert.equal(parallelRateLimitSubmissions, 1,
+    '并发证据批次必须按失败域串行首个供应商请求，首个 429 后不得让已排队批次再次提交');
+  assert.equal(parallelRateLimitResults.filter(item => item.status === 'rejected').length, 2);
+  assert.equal(parallelRateLimitResults.some(item => item.reason?.failed_models?.some(failure => failure.skipped === true)), true,
+    '等待同供应商许可的并发批次必须读到最新 429 冷却并记录为未提交');
   process.env.NEW_STORY_AD_MOCK_LLM = previousMock;
 
   const originalGenerateVision = modelGateway.generateVision;
