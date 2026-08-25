@@ -29,12 +29,12 @@ const completeProfile = { id: 'person_1', identity_id: 'person_1', displayName: 
 const missingProfile = { ...completeProfile, id: 'person_2', identity_id: 'person_2', displayName: '陈先生', roleName: '客户' };
 const task = { id: 'unified-person-plan', brief: '两人在展厅讨论材料', request: {} };
 const context = { brief: task.brief, cast_mode: 'dual', cast_profiles: [completeProfile, missingProfile], pet_profiles: [], person_spec: {}, world_setting: { visual_medium: 'live_action' } };
-const service = { publicTaskBundle: () => ({ assets: { people: [
-  { profile: completeProfile, generated_profile: JSON.parse(JSON.stringify(completeProfile)), dossier_sheet: { image_url: '/complete.png' }, visual_asset_contract_version: 2, look_assets: [{ id: 'look_1', image_url: '/look.png' }] },
+const projectBundleService = { buildProjectBundle: () => ({ assets: { people: [
+  { profile: completeProfile, generated_profile: JSON.parse(JSON.stringify(completeProfile)), dossier_sheet: { image_url: 'https://assets.example.test/complete.png' }, visual_asset_contract_version: 2, look_assets: [{ id: 'look_1', image_url: 'https://assets.example.test/look.png' }] },
   { profile: missingProfile },
 ], animals: [] } }) };
 const storage = { getTask: () => task, getOutput: (_taskId, kind) => (kind === 'context' ? context : null) };
-const body = personPlanRoute.currentPersonGenerationBody({ taskId: task.id, input: { request_key: 'one-click' }, service, storage });
+const body = personPlanRoute.currentPersonGenerationBody({ taskId: task.id, input: { request_key: 'one-click' }, projectBundleService, storage });
 assert.deepEqual(body.subject_targets, [{ kind: 'human', id: 'person_2', index: 1 }], '统一动作只生成缺失或已失配人物，不得重复收费生成已完成资产');
 assert.equal(body.cast_profiles[0].appearanceText, rich.appearanceText, '完整人物资产必须原样进入图片生成输入');
 assert.equal(body.request_key, 'one-click');

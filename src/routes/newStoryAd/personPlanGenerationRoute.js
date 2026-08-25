@@ -1,5 +1,8 @@
 'use strict';
 
+const projectBundles = require('../../services/storyAdWorkspace/projectBundleService');
+const keyframeFrameState = require('../../services/newStoryAd/keyframeFrameStateService');
+
 function ageValue(profile = {}) {
   return String(profile.age_contract?.value || profile.age || 'match_brief');
 }
@@ -14,6 +17,7 @@ function lookSnapshot(profile = {}) {
 }
 
 function profileSnapshot(profile = {}) {
+  profile = profile && typeof profile === 'object' ? profile : {};
   return JSON.stringify({
     displayName: String(profile.displayName || ''), roleName: String(profile.roleName || ''), age: ageValue(profile),
     appearanceText: String(profile.appearanceText || ''), ethnicity: String(profile.ethnicity || profile.ethnic_appearance || ''),
@@ -28,20 +32,21 @@ function profileSnapshot(profile = {}) {
 }
 
 function completePerson(item = {}) {
-  if (!item.dossier_sheet?.image_url || Number(item.visual_asset_contract_version || 0) < 2) return false;
+  if (!keyframeFrameState.localAssetExists(item.dossier_sheet?.image_url)
+    || Number(item.visual_asset_contract_version || 0) < 2) return false;
   if (!item.generated_profile || profileSnapshot(item.generated_profile) !== profileSnapshot(item.profile)) return false;
   const generatedLookIds = new Set((Array.isArray(item.look_assets) ? item.look_assets : [])
-    .filter(look => look?.dossier_sheet?.image_url || look?.image_url)
+    .filter(look => keyframeFrameState.localAssetExists(look?.dossier_sheet?.image_url || look?.image_url))
     .map(look => String(look.id || look.look_id || '')));
   return (item.profile?.look_profiles || []).every(look => generatedLookIds.has(String(look.id || '')));
 }
 
-function currentPersonGenerationBody({ taskId, input = {}, service, storage }) {
+function currentPersonGenerationBody({ taskId, input = {}, storage, projectBundleService = projectBundles }) {
   const task = storage.getTask(taskId) || {};
   const ctx = storage.getOutput(taskId, 'context') || task.request || {};
   const castProfiles = Array.isArray(ctx.cast_profiles) ? ctx.cast_profiles : [];
   const petProfiles = Array.isArray(ctx.pet_profiles) ? ctx.pet_profiles : [];
-  const bundle = service.publicTaskBundle(taskId, { sections: 'summary,assets' });
+  const bundle = projectBundleService.buildProjectBundle(taskId, { sections: 'summary,assets' });
   const people = bundle?.assets?.people || [], animals = bundle?.assets?.animals || [];
   const subjectTargets = [
     ...people.map((item, index) => ({ item, index, kind: 'human' })),

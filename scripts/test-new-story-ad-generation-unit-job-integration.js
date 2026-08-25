@@ -31,7 +31,21 @@ const waitFor = async (predicate, timeoutMs = 2500) => {
     const accepted = jobs.queueStage({
       taskId: 'job-success', stage: 'storyboard', expectedContentRevision: 1,
       inputFingerprint: 'storyboard-input-v1', idempotencyKey: 'job-success:storyboard:r1',
-      execute: async () => { executions += 1; },
+      execute: async job => {
+        executions += 1;
+        storage.updateTask('job-success', {
+          generation_progress: {
+            schema_version: 1,
+            stage: 'storyboard',
+            generation_id: job.generationId,
+            status: 'running',
+            phase: 'finishing',
+            total: 1,
+            completed: 1,
+            percent: 99,
+          },
+        });
+      },
     });
     assert.strictEqual(accepted.accepted, true);
     assert(accepted.job.generation_unit_id);
@@ -39,6 +53,10 @@ const waitFor = async (predicate, timeoutMs = 2500) => {
       && storage.getGenerationRun(accepted.job.generation_unit_id));
     assert.strictEqual(succeeded.billing_state, 'not_submitted');
     assert.strictEqual(succeeded.provider_submission_state, 'not_applicable');
+    const succeededTask = storage.getTask('job-success');
+    assert.strictEqual(succeededTask.generation_progress.status, 'done', '后台成功必须把持久化进度收口为终态');
+    assert.strictEqual(succeededTask.generation_progress.percent, 100, '后台成功不得把页面遗留在 99%');
+    assert.strictEqual(succeededTask.generation_progress.phase, 'complete');
     const duplicate = jobs.queueStage({
       taskId: 'job-success', stage: 'storyboard', expectedContentRevision: 1,
       inputFingerprint: 'storyboard-input-v1', idempotencyKey: 'job-success:storyboard:r1',

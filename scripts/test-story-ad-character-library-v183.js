@@ -78,7 +78,7 @@ const subjectBody = personPlanRoute.currentPersonGenerationBody({
     getTask: () => ({ id: 'task-two-people', request: context }),
     getOutput: (_id, kind) => kind === 'context' ? context : null,
   },
-  service: { publicTaskBundle: () => ({ assets: { people: [
+  projectBundleService: { buildProjectBundle: () => ({ assets: { people: [
     { id: 'asset-1', profile: context.cast_profiles[0] },
     { id: 'asset-2', profile: context.cast_profiles[1] },
   ], animals: [] } }) },
@@ -99,6 +99,7 @@ assert.match(styles, /\.actor-library-featured-grid/, '角色库独立样式必�
 const assetView = fs.readFileSync(path.join(root, 'public/story-ad/views/assetCenterView.js'), 'utf8');
 assert.match(assetView, /asset-card-person-entry/, '人物头像必须成为打开完整档案的主入口');
 const statusView = fs.readFileSync(path.join(root, 'public/story-ad/views/assetCenterPlanReleaseStatus.js'), 'utf8');
-assert.match(statusView, /不是系统找不到同一个人物/, '方案模型失败不得被误显示成人物身份缺失');
+assert.match(statusView, /personPlanTechnicalDetails/, '人物方案失败必须继续进入当前超管技术诊断投影');
+assert.doesNotMatch(statusView, /文字方案确认后，再单独生成图片/, '退役的两步式人物生成说明不得恢复');
 
 console.log('story-ad character library v183 tests passed');

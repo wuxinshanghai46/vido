@@ -638,12 +638,24 @@ function queueStage({
       if (String(current?.active_generation_id || '') === id) {
         const stageUnchanged = String(current?.stage || '') === String(stage);
         const needsTerminalStatus = ['queued', 'running'].includes(String(current?.status || ''));
+        const terminalProgress = terminalGenerationProgress(current, stage, id, {
+          status: 'done',
+          phase: 'complete',
+          percent: 100,
+          progress: 100,
+          ...(Number(current?.generation_progress?.total || 0) > 0
+            ? { completed: Number(current.generation_progress.total), processed: Number(current.generation_progress.total) }
+            : {}),
+          finished_at: job.finishedAt,
+          updated_at: job.finishedAt,
+        });
         storage.updateTask(taskId, {
           ...(stageUnchanged ? { stage: `${stage}_done` } : {}),
           ...(needsTerminalStatus ? { status: 'done' } : {}),
           active_stage: '',
           active_generation_id: '',
           generation_finished_at: job.finishedAt,
+          ...(terminalProgress ? { generation_progress: terminalProgress } : {}),
           error: '',
           error_code: '',
           support_id: '',
