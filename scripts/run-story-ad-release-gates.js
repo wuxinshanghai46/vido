@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 'use strict';
 
+const os = require('os');
 const path = require('path');
 const planner = require('./lib/storyAdReleaseGatePlanner');
 const runtimeManifest = require('../config/story-ad-runtime-manifest.json');
@@ -19,7 +20,8 @@ async function main() {
   const baseArtifactId = argument('base-artifact');
   const targetRevision = argument('target') || runtimeManifest.source_revision;
   const sourceTree = argument('tree') || runtimeManifest.source_tree;
-  const plan = planner.createPlan({ root, baseRevision, baseArtifactId, targetRevision, sourceTree });
+  const targetedHome = String(os.hostname() || '').toUpperCase() === 'LAPTOP-LDFOL0GT';
+  const plan = planner.createPlan({ root, baseRevision, baseArtifactId, targetRevision, sourceTree, targetedHome });
   const result = await planner.runPlan(root, plan);
   console.log(`RELEASE_GATE_SUMMARY=${JSON.stringify(result)}`);
 }

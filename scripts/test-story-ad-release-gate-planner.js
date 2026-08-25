@@ -6,6 +6,9 @@ const os = require('os');
 const path = require('path');
 const planner = require('./lib/storyAdReleaseGatePlanner');
 const recovery = require('./lib/immutableDeployRecovery');
+const releaseGateRunner = fs.readFileSync(path.join(__dirname, 'run-story-ad-release-gates.js'), 'utf8');
+assert.match(releaseGateRunner, /os\.hostname\(\)[\s\S]*LAPTOP-LDFOL0GT[\s\S]*targetedHome/u,
+  '发布门禁执行器必须在家庭电脑自动启用定向门禁，不能依赖调用者手工传参');
 
 function plan(files, options = {}) {
   return planner.createPlan({
