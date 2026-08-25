@@ -205,13 +205,13 @@ function personProfileResumeCompatibility(previous = {}, current = {}) {
   if (!explicitConsistent(current, next, ['hairMakeupText', 'hairMakeup'], 'hairMakeupText')) add('hairMakeupText', 'projection_inconsistent', current.hairMakeupText || current.hairMakeup, next.hairMakeupText);
   const priorNegative = prior.negativeText, nextNegative = next.negativeText;
   const splitGenerationPrompt = value => {
-    let negative = '';
-    const positive = personGenerationPrompt.clean(value || '', 8000).split('\n').filter(line => {
-      const match = line.match(/^\s*视觉限制\s*[:：]\s*(.*)$/u);
-      if (!match) return true;
-      negative = match[1].trim();
-      return false;
-    }).join('\n').replace(/\n{3,}/gu, '\n\n').trim();
+    const source = personGenerationPrompt.clean(value || '', 8000);
+    const section = source.match(/(?:^|\n)\s*视觉限制\s*[:：]\s*([\s\S]*?)(?=\n\s*(?:名称|描述|服装|发型妆造|特征|随身道具|构图规范|视觉风格)\s*[:：]|$)/u);
+    const negative = cleanText(section?.[1] || '', 1200);
+    const positive = (section ? source.replace(section[0], '') : source)
+      .replace(/\n{3,}/gu, '\n\n').trim().normalize('NFKC')
+      .replace(/\s*([;,:])\s*/gu, '$1')
+      .replace(/[.;]+$/gu, '');
     return { positive, negative };
   };
   const priorPrompt = splitGenerationPrompt(prior.generation_prompt), nextPrompt = splitGenerationPrompt(next.generation_prompt);
