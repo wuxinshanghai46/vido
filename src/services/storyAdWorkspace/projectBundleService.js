@@ -8,7 +8,7 @@ const multilineTextContract = require('../newStoryAd/multilineTextContractServic
 const briefProjection = require('./briefProjectionService'), failureProjection = require('../newStoryAd/publicFailureProjectionService');
 const sceneLineage = require('../newStoryAd/sceneLineageContractService'), mediaCatalog = require('../newStoryAd/mediaCatalogService');
 const { projectedDossierItems } = require('./dossierItemProjectionService'), personLookProjection = require('./personLookProjectionService');
-const personOwnedPropProjection = require('./personOwnedPropProjectionService');
+const personOwnedPropProjection = require('./personOwnedPropProjectionService'), personGenerationRuntime = require('../newStoryAd/personGenerationRuntimeContractService');
 const { projectSceneWorldAssets } = require('./sceneWorldAssetProjectionService'), { projectSceneDossier } = require('./sceneDossierProjectionService'), subjectCheckpointProjection = require('../newStoryAd/subjectCheckpointProjectionService');
 const MAX_MEDIA_ITEMS = 120;
 function clean(value = '', max = 240) { return String(value || '').replace(/\s+/g, ' ').trim().slice(0, max); }
@@ -194,6 +194,7 @@ function peopleAssets(context = {}, projectedProps = []) {
       provider_asset_status: clean(item.deyunai_asset_status || item.provider_asset_status, 40),
       provider_asset_group_id: clean(item.deyunai_asset_group_id || '', 160),
       owned_props: ownedProps,
+      generation_runtime: personGenerationRuntime.inspect({ look_count: canonical.look_profiles?.length || 1 }),
       status: clean(item.person_contract?.status || item.verification_status || context.person_contract?.status || 'draft', 50),
       revision: Number(item.person_revision || item.revision || context.person_contract?.person_revision || 0) || 0,
       source: clean(item.source || master?.source, 100), knowledge_policy: knowledgePolicyRuntime.trace(item.knowledge_policy || item.knowledge_policy_trace || {}),

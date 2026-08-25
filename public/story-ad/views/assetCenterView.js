@@ -338,13 +338,6 @@ export async function mount(host, context) {
       ...(item.profile || {}),
       generation_prompt: String(values.generation_prompt || '').trim(),
       generation_prompt_source: 'user',
-      generation_settings: {
-        model: 'gpt-image-2',
-        aspect_ratio: '2:1',
-        quality: 'high',
-        resolution: '2K',
-        count: 1,
-      },
     };
     const userFields = ['generation_prompt']; normalizedValues.field_authority = { ...(item.profile?.field_authority || {}), generation_prompt: 'user' }; normalizedValues.user_edited_fields = [...new Set([...(item.profile?.user_edited_fields || []), ...userFields])];
     const profiles = (assets.people || []).map(row => row.profile || {}).map(profile => (

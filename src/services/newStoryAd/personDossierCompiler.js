@@ -6,6 +6,10 @@ const concurrencyDefault = require('./generationConcurrencyService');
 const worldSetting = require('./worldSettingContractService');
 
 const PERSON_DOSSIER_SCHEMA_VERSION = 5;
+const PERSON_DOSSIER_STAGES = Object.freeze({
+  atlas: 'new_story_ad.person_dossier_atlas', expression: 'new_story_ad.person_dossier_expression',
+  action: 'new_story_ad.person_dossier_action', native_master: 'new_story_ad.person_dossier_native_master',
+});
 const BODY_VIEWS = ['front', 'three_quarter', 'side', 'back'];
 const IDENTITY_VIEWS = ['face_front', 'face_three_quarter', 'face_profile', 'hair_back'];
 const EXPRESSIONS = ['neutral', 'natural_smile', 'focused', 'doubtful', 'surprised', 'relaxed_approved'];
@@ -188,8 +192,8 @@ async function generateCategory({
       const atlas = controls.providerResult || await mediaAdapter.generateActorReference({
         taskId,
         stage: spec.kind === 'expression'
-          ? 'new_story_ad.person_dossier_expression'
-          : (spec.kind === 'action' ? 'new_story_ad.person_dossier_action' : 'new_story_ad.person_dossier_atlas'),
+          ? PERSON_DOSSIER_STAGES.expression
+          : (spec.kind === 'action' ? PERSON_DOSSIER_STAGES.action : PERSON_DOSSIER_STAGES.atlas),
         prompt: categoryPrompt(spec, personPrompt, knowledgePolicy.prompt_block, visualMedium),
         filename: personAtlasFilename({ taskId, assetId, kind: spec.kind, revision }),
         aspectRatio: spec.aspectRatio,
@@ -249,7 +253,7 @@ async function generateNativeMaster({
     execute: async controls => {
       const image = controls.providerResult || await mediaAdapter.generateActorReference({
         taskId,
-        stage: 'new_story_ad.person_dossier_native_master',
+        stage: PERSON_DOSSIER_STAGES.native_master,
         prompt: nativeMasterPrompt(spec, personPrompt, knowledgePolicy.prompt_block, visualMedium),
         filename: personAtlasFilename({ taskId, assetId, kind: spec.kind, revision }).replace('_atlas_', '_'),
         aspectRatio: spec.aspectRatio,
@@ -379,6 +383,7 @@ async function compilePersonDossier(options = {}, deps = {}) {
 
 module.exports = {
   PERSON_DOSSIER_SCHEMA_VERSION,
+  PERSON_DOSSIER_STAGES,
   BODY_VIEWS,
   IDENTITY_VIEWS,
   EXPRESSIONS,

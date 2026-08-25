@@ -110,6 +110,7 @@ assert.deepEqual(
     files: [
       'src/services/newStoryAd/blueprintService.js',
       'src/services/newStoryAd/personGenerationPromptService.js',
+      'src/services/newStoryAd/personGenerationRuntimeContractService.js',
       'src/services/newStoryAd/personDossierCompiler.js',
       'src/services/newStoryAd/mediaAdapter.js',
       'src/services/storyAdWorkspace/projectBundleService.js',

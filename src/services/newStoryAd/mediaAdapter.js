@@ -155,6 +155,7 @@ function sizeFor(config = {}, aspectRatio = '9:16') {
   if (ratio === '16:9') return sizes.landscape || '1536x1024';
   if (ratio === '2:1') return sizes.panorama || '2048x1024';
   if (ratio === '1:1') return sizes.square || '1024x1024';
+  if (ratio === '3:2') return sizes.three_two || sizes.landscape || '1536x1024';
   if (ratio === '4:3') return sizes.four_three || '1024x768';
   if (ratio === '3:4') return sizes.three_four || '768x1024';
   return sizes.portrait || '1024x1536';
@@ -1076,6 +1077,7 @@ module.exports = {
   isWebangMaasConfig,
   normalizeCompatibleImageResponse,
   createImageSubmissionTracker,
+  sizeFor,
   promptForImageCandidate,
   imageConfigStage,
   requiredImageModelForStage,

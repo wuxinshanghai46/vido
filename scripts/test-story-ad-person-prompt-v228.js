@@ -9,6 +9,8 @@ const projection = require('../src/services/newStoryAd/blueprintCharacterProject
 const contextBuilder = require('../src/services/newStoryAd/contextBuilder');
 const subjectBundle = require('../src/services/newStoryAd/subjectAssetBundleService');
 const propProjection = require('../src/services/storyAdWorkspace/personOwnedPropProjectionService');
+const runtimeContract = require('../src/services/newStoryAd/personGenerationRuntimeContractService');
+const mediaAdapter = require('../src/services/newStoryAd/mediaAdapter');
 
 const base = {
   id: 'char_chenmo', displayName: '陈默', roleName: '背景出镜人物', gender: '女性', age: '25岁',
@@ -33,6 +35,17 @@ assert.equal(withProp.generation_settings.model, 'gpt-image-2');
 assert.equal(withProp.generation_settings.quality, 'high');
 assert.equal(withProp.generation_settings.resolution, '2K');
 assert.deepEqual(propProjection.ownedProps(withProp, {}, [], 0).map(prop => prop.name), ['黑色手机']);
+
+const runtime = runtimeContract.inspect({ look_count: 1 }, { mediaAdapter: {
+  requiredImageModelForStage: () => 'gpt-image-2',
+  availableImageCandidates: () => ['smscrw', 'webang-maas', 'deyunai'].map(provider_id => ({ provider_id, model_id: 'gpt-image-2' })),
+} });
+assert.equal(runtime.model_label, 'GPT Image 2');
+assert.deepEqual(runtime.aspect_ratios, ['1:1', '3:2', '3:4']);
+assert.equal(runtime.estimated_provider_calls, 6);
+assert.equal(runtime.expected_output_assets, 22);
+assert.equal(runtime.available_route_count, 3);
+assert.equal(mediaAdapter.sizeFor({ provider: { adapter_config: { image: {} } } }, '3:2'), '1536x1024', '人物动作与表情的 3:2 合同必须形成横向供应商请求');
 
 const modelPrompt = '名称：陈默\n\n描述：模型已完成描述\n\n服装：紫色晚礼服\n\n发型妆造：短发淡妆\n\n特征：自然驻足\n\n随身道具：无\n\n构图规范：专业人物设定图\n\n视觉限制：无文字水印\n\n视觉风格：电影级写实';
 const projected = projection.projectCharacters({ cast_profiles: [base] }, {
@@ -63,9 +76,16 @@ assert(casualPrompt.includes('米白亚麻衬衫') && !casualPrompt.includes('�
 const form = read('public/story-ad/views/assetCenterPersonForm.js');
 const planning = read('public/story-ad/views/assetCenterPlanningDetails.js');
 const view = read('public/story-ad/views/assetCenterView.js');
-assert(form.includes('name="generation_prompt"') && form.includes('GPT Image 2') && form.includes('2:1') && form.includes('高画质') && form.includes('2K') && form.includes('1张'));
+const projectBundle = read('src/services/storyAdWorkspace/projectBundleService.js');
+assert(form.includes('name="generation_prompt"') && form.includes('runtime.model_label') && form.includes('runtime.aspect_ratios')
+  && form.includes('estimated_provider_calls') && form.includes('expected_output_assets') && form.includes('available_route_count'));
+assert(!form.includes('▭ 2:1') && !form.includes('高画质</span>') && !form.includes('>2K</span>') && !form.includes('>1张</span>'),
+  '人物工具栏不得复制竞品或展示未由实际人物流水线保证的固定参数');
 assert(!form.includes('renderPersonLookEditors') && !form.includes('renderPersonEvolutionEditor'), '人物界面必须是单一提示词编辑面');
 assert(!planning.includes('data-owned-prop-form') && !planning.includes('由模型生成道具'), '不得再渲染独立随身道具表单');
 assert(view.includes("generation_prompt_source: 'user'") && view.includes('item.profile = savedProfile'), '保存后必须用服务器回读结果进入定向生成');
+assert(!view.includes("aspect_ratio: '2:1'") && !view.includes("quality: 'high'") && !view.includes("count: 1"),
+  '保存提示词不得把竞品展示参数写回人物权威数据');
+assert(projectBundle.includes('generation_runtime: personGenerationRuntime.inspect'), '人物详情必须投影服务端实时生成合同');
 
-console.log(JSON.stringify({ passed: true, assertions: 35, props_empty: true, props_present: true, stale_wardrobe_blocked: true, negative_rebase_safe: true, multi_look_isolated: true, single_prompt_ui: true }));
+console.log(JSON.stringify({ passed: true, assertions: 46, props_empty: true, props_present: true, stale_wardrobe_blocked: true, negative_rebase_safe: true, multi_look_isolated: true, single_prompt_ui: true, runtime_contract: { provider_calls: 6, output_assets: 22, routes: 3 } }));

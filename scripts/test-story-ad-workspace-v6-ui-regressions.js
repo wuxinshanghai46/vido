@@ -61,7 +61,10 @@ assert.match(assetDossierSections, /参考档案预览/);
 assert.match(assetPlanningDetails, /查看原始四视图/);
 assert.match(assetPersonForm, /data-person-prompt-workbench/u, '点击人物后必须直接显示单一提示词工作台');
 assert.match(assetPersonForm, /保存提示词/u);
-assert.match(assetPersonForm, /name="generation_prompt"[\s\S]*GPT Image 2[\s\S]*2:1[\s\S]*高画质[\s\S]*2K[\s\S]*1张/u);
+assert.match(assetPersonForm, /name="generation_prompt"/u);
+['runtime.model_label', 'runtime.aspect_ratios', 'estimated_provider_calls', 'expected_output_assets', 'available_route_count']
+  .forEach(field => assert.match(assetPersonForm, new RegExp(field.replace('.', '\\.'))));
+assert.doesNotMatch(assetPersonForm, /▭ 2:1|高画质<\/span>|>2K<\/span>|>1张<\/span>/u, '人物工具栏必须展示 VIDO 实际人物档案合同，不得复制竞品固定参数');
 assert.doesNotMatch(assetPersonForm, /名称与身份|renderPersonLookEditors|renderPersonEvolutionEditor/u, '人物弹窗不得再拆成分段表单');
 assert.doesNotMatch(assetPlanningDetails.slice(0, assetPlanningDetails.indexOf('export function productDetails')), /type="file"|上传参考并生成/u, '随身道具不得继续要求上传参考图');
 assert.doesNotMatch(assetPlanningDetails, /data-owned-prop-form|由模型生成道具/u, '随身道具必须并入完整人物提示词，不再保留第二套表单');
