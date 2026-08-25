@@ -117,10 +117,11 @@ const DOMAIN_RULES = [
     risk: 'asset_plan',
     patterns: [
       /(?:assetPlan|PlanningDetails|PlanRelease|PlanMigration|scenePlanStatus|contextBuilder|subjectAssetBundle)/i,
-      /^src\/services\/newStoryAd\/(?:assistSubjectProfileService|assistedPersonSpecService|independentPersonPlanService|personIdentityContractService|subjectProfileTextService)\.js$/i,
-      /^src\/services\/storyAdWorkspace\/personLookProjectionService\.js$/i,
+      /^src\/services\/newStoryAd\/(?:assistSubjectProfileService|assistedPersonSpecService|independentPersonPlanService|personIdentityContractService|personDossierCompiler|personGenerationPromptService|subjectProfileTextService)\.js$/i,
+      /^src\/services\/storyAdWorkspace\/(?:personLookProjectionService|projectBundleService)\.js$/i,
       /^scripts\/test-story-ad-person-plan/i,
       /^scripts\/test-story-ad-person-prompt-separation-v\d+\.js$/i,
+      /^scripts\/test-story-ad-person-prompt(?:-|$)/i,
       /^scripts\/test-new-story-ad-asset-contracts\.js$/i,
     ],
   },
@@ -150,6 +151,7 @@ function sha256(value) { return crypto.createHash('sha256').update(String(value)
 
 function scopedDomainFromPatch(file = '', patch = '') {
   const normalized = normalizeFile(file);
+  if (normalized === 'src/services/newStoryAd/personGenerationPromptService.js') return 'asset_plan';
   const hunks = String(patch || '').split(/^@@/m).slice(1).filter(Boolean);
   if (!hunks.length) return '';
   if (normalized === 'src/routes/newStoryAd.js'
@@ -301,7 +303,7 @@ function classifyFiles(files = [], { reliable = true, scopedDomains = {} } = {})
   return { profile: 'ui', domains: [...domains], unknown_files: [], reasons: ['仅涉及已分类工作台展示或交互'] };
 }
 
-function gateIdsForProfile(profile = 'full', { fullPlatform = false, targetedHome = false } = {}) {
+function gateIdsForProfile(profile = 'full', { fullPlatform = false, targetedHome = false, domains = [] } = {}) {
   const profiles = {
     release_metadata: ['release_core'],
     ui: ['workspace_ui', 'release_core'],
@@ -315,8 +317,18 @@ function gateIdsForProfile(profile = 'full', { fullPlatform = false, targetedHom
     systemic: ['systemic', 'workspace_ui', 'narrative_v111', 'release_core'],
     full: ['systemic', 'workspace_ui', 'narrative_v111', 'release_core'],
   };
-  if (targetedHome && ['systemic', 'full'].includes(profile)) {
-    return ['systemic', 'workspace_ui', 'release_core'];
+  if (targetedHome) {
+    const scope = new Set(domains);
+    const selected = [];
+    if (scope.has('systemic_safety')) selected.push('systemic');
+    if (scope.has('story_content')) selected.push('story_content');
+    if (scope.has('asset_plan')) selected.push('asset_plan');
+    if (scope.has('upload_media')) selected.push('upload_media');
+    if (scope.has('reference')) selected.push('reference');
+    if (!selected.length && ['systemic', 'full'].includes(profile)) selected.push('systemic');
+    if (!selected.includes('workspace_ui')) selected.push('workspace_ui');
+    selected.push('release_core');
+    return unique(selected);
   }
   if (profile === 'full' && fullPlatform) return ['systemic', 'platform_full', 'release_core'];
   return profiles[profile] || profiles.full;
@@ -368,7 +380,7 @@ function createPlan({
     classification.domains = unique([...classification.domains, 'release_infrastructure']);
     classification.reasons = [...classification.reasons, '家庭电脑仅对发布规划器变更追加发布核心门禁'];
   }
-  const gateIds = gateIdsForProfile(classification.profile, { fullPlatform, targetedHome });
+  const gateIds = gateIdsForProfile(classification.profile, { fullPlatform, targetedHome, domains: classification.domains });
   return {
     contract_version: CONTRACT_VERSION,
     profile: classification.profile,

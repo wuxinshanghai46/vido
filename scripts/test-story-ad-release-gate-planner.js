@@ -104,6 +104,22 @@ assert.deepEqual(
   ['systemic', 'workspace_ui', 'release_core'],
   '家庭电脑的系统性相关门禁不得隐式触发跨版本完整回归',
 );
+assert.deepEqual(
+  planner.createPlan({
+    root: process.cwd(), baseRevision: 'a'.repeat(40), targetRevision: 'b'.repeat(40), sourceTree: 'c'.repeat(40),
+    files: [
+      'src/services/newStoryAd/blueprintService.js',
+      'src/services/newStoryAd/personGenerationPromptService.js',
+      'src/services/newStoryAd/personDossierCompiler.js',
+      'src/services/newStoryAd/mediaAdapter.js',
+      'src/services/storyAdWorkspace/projectBundleService.js',
+      'public/story-ad/views/assetCenterPersonForm.js',
+      'scripts/test-story-ad-person-prompt-v228.js',
+    ], reliable: true, targetedHome: true,
+  }).gates.map(row => row.id),
+  ['story_content', 'asset_plan', 'upload_media', 'workspace_ui', 'release_core'],
+  '家庭电脑必须按本次人物提示词影响域执行定向门禁，不能因为新文件退化为跨模块 systemic 门禁',
+);
 assert.equal(planner.resolveArtifactRevision(process.cwd(), 'not-an-artifact', 'not-a-revision'), '');
 assert.equal(planner.releaseConfigChangeKind(
   { build_id: 'v1', contract_version: 7, node_runtime: { version: 'v22' } },
