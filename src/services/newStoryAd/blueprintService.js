@@ -401,7 +401,9 @@ function normalizeBlueprint(blueprint, ctx) {
       ? beat.dialogue_lines.map(line => {
         const lineMode = clean(line?.speech_mode || line?.kind || 'dialogue', 30).toLowerCase() === 'voiceover' ? 'voiceover' : 'dialogue';
         const suppliedSpeaker = clean(line?.speaker || '', 80);
-        const lineSpeaker = lineMode === 'voiceover' ? '旁白' : (suppliedSpeaker || (normalizedCharacters.length === 1 ? clean(normalizedCharacters[0]?.name, 80) : ''));
+        const lineSpeaker = lineMode === 'voiceover' ? '旁白' : (backgroundOnly
+          ? clean(normalizedCharacters[0]?.name, 80)
+          : (suppliedSpeaker || (normalizedCharacters.length === 1 ? clean(normalizedCharacters[0]?.name, 80) : '')));
         return {
           speech_mode: lineMode,
           speaker: lineSpeaker,
@@ -412,7 +414,9 @@ function normalizeBlueprint(blueprint, ctx) {
       : [];
     if (!dialogueLines.length && topLevelSpeech) {
       const topMode = speechMode === 'dialogue' ? 'dialogue' : 'voiceover';
-      const topSpeaker = topMode === 'voiceover' ? '旁白' : (rawSpeaker || (normalizedCharacters.length === 1 ? clean(normalizedCharacters[0]?.name, 80) : ''));
+      const topSpeaker = topMode === 'voiceover' ? '旁白' : (backgroundOnly
+        ? clean(normalizedCharacters[0]?.name, 80)
+        : (rawSpeaker || (normalizedCharacters.length === 1 ? clean(normalizedCharacters[0]?.name, 80) : '')));
       dialogueLines = [{
         speech_mode: topMode,
         speaker: topSpeaker,

@@ -99,7 +99,7 @@ conflictingModelBlueprint.characters = [{ id: 'invented_designer', name: '陈默
 conflictingModelBlueprint.beats.forEach((beat, index) => {
   beat.plot = `${index ? '陈默' : '和映恒'}走进展厅，${beat.plot}`;
   beat.action = `${index ? '陈默' : '和映恒'}抬手触摸样板，${beat.action}`;
-  beat.dialogue_lines = [{ speech_mode: 'dialogue', speaker: '', speaker_id: '', line: beat.spoken_line }];
+  beat.dialogue_lines = [{ speech_mode: 'dialogue', speaker: index ? '陈默' : '和映恒', speaker_id: 'invented_designer', line: beat.spoken_line }];
   beat.speech_mode = index === 0 ? 'ambient_only' : 'silent';
   beat.speaker = '';
   beat.speaker_id = '';
