@@ -1571,9 +1571,20 @@ function normalizeContextCastContract(ctx = {}) {
   if (!backgroundPeople) return source;
   const existingCharacter = Array.isArray(source.characters) && source.characters.length === 1 ? source.characters[0] : null;
   const existingParticipant = Array.isArray(rawIntent.participants) && rawIntent.participants.length === 1 ? rawIntent.participants[0] : null;
+  const profileLists = [source.cast_profiles, source.narrative_cast_profiles].filter(Array.isArray);
+  const profilesAreNeutral = profileLists.every(profiles => profiles.every(profile => [profile?.name, profile?.displayName, profile?.roleName]
+    .filter(Boolean).every(value => value === '背景出镜人物')));
   if (existingCharacter?.id === 'background_performer' && existingCharacter?.name === '背景出镜人物'
-    && existingParticipant?.id === 'background_performer' && existingParticipant?.name === '背景出镜人物') return source;
+    && existingParticipant?.id === 'background_performer' && existingParticipant?.name === '背景出镜人物' && profilesAreNeutral) return source;
   const characters = [backgroundPerformerCharacter()];
+  const normalizeProfiles = profiles => (Array.isArray(profiles) ? profiles.slice(0, 1).map(profile => ({
+    ...profile,
+    id: 'background_performer',
+    source_character_id: 'background_performer',
+    name: '背景出镜人物',
+    displayName: '背景出镜人物',
+    roleName: '背景出镜人物',
+  })) : profiles);
   return {
     ...source,
     cast_mode: 'single',
@@ -1581,6 +1592,8 @@ function normalizeContextCastContract(ctx = {}) {
     planning_cast_count: 1,
     visual_asset_count: Math.max(1, Number(source.visual_asset_count || 0) || 0),
     characters,
+    cast_profiles: normalizeProfiles(source.cast_profiles),
+    narrative_cast_profiles: normalizeProfiles(source.narrative_cast_profiles),
     cast_intent: intent,
     brief_intake: { ...(source.brief_intake || {}), cast_intent: intent },
   };

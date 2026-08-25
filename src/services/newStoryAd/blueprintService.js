@@ -375,7 +375,9 @@ function normalizeBackgroundActorText(value, modelCharacterNames = [], maxText =
   });
   return result.replace(/(^|[，。；、\s])([\u3400-\u9fff]{2,4})(?=(?:走进|走到|走过|抬手|伸手|触摸|驻足|停下|站在|点头|微笑|用手|手指|手掌))/g,
     (match, prefix, name) => ['背景人物', '背景出镜人物', '出镜人物', '参观者', '体验者', '人物'].includes(name) ? match : `${prefix}背景出镜人物`)
-    .replaceAll(neutralToken, '背景出镜人物');
+    .replaceAll(neutralToken, '背景出镜人物')
+    .replace(/背景背景出镜人物/g, '背景出镜人物')
+    .replace(/(?:背景出镜人物){2,}/g, '背景出镜人物');
 }
 
 function backgroundActorAliases(blueprint = {}, modelCharacterNames = []) {
