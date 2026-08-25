@@ -189,37 +189,10 @@
 .material-remove:hover { color: var(--danger); background: color-mix(in srgb, var(--danger) 12%, transparent); }
 .material-remove:focus-visible { outline: 3px solid color-mix(in srgb, var(--danger) 32%, transparent); outline-offset: 1px; }
 .material-remove:disabled { opacity: .55; cursor: wait; }
-.reference-progress-card { display: grid; gap: 10px; margin: 14px 0 16px; padding: 14px 16px; border: 1px solid color-mix(in srgb, var(--mint) 48%, var(--line)); border-radius: 12px; background: linear-gradient(135deg, color-mix(in srgb, var(--mint-2) 88%, var(--surface)), var(--surface)); box-shadow: var(--shadow); }
-.reference-progress-head { display: flex; align-items: center; gap: 16px; }
-.reference-progress-head > span { display: grid; min-width: 0; gap: 3px; }
-.reference-progress-head b { color: var(--text); font-size: 14px; }
-.reference-progress-head small { overflow: hidden; color: var(--muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
-.reference-progress-stats { display: flex; margin-left: auto; align-items: center; gap: 14px; white-space: nowrap; }
-.reference-progress-stats .elapsed-time { color: var(--muted); font-size: 12px; font-style: normal; font-weight: 700; }
-.reference-progress-head strong { color: var(--mint); font-size: 20px; }
-.reference-progress-phase { display: flex; align-items: center; gap: 8px; color: var(--text); font-size: 13px; font-weight: 700; }
-.reference-progress-pulse { width: 8px; height: 8px; flex: 0 0 auto; border-radius: 50%; background: var(--mint); box-shadow: 0 0 0 5px color-mix(in srgb, var(--mint) 14%, transparent); }
-.reference-progress-card.is-active .reference-progress-pulse { animation: reference-progress-pulse 1.25s ease-in-out infinite; }
-.reference-progress-track { height: 7px; overflow: hidden; border-radius: 99px; background: var(--surface-3); }
-.reference-progress-track i { position: relative; display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--mint), color-mix(in srgb, var(--mint) 54%, white)); transition: width .35s ease; overflow: hidden; }
-.reference-progress-card.is-active .reference-progress-track i::after { position: absolute; inset: 0; content: ""; background: linear-gradient(90deg, transparent, rgb(255 255 255 / 46%), transparent); transform: translateX(-100%); animation: reference-progress-flow 1.4s linear infinite; }
-.reference-progress-card p { color: var(--muted); font-size: 12px; line-height: 1.55; }
-.reference-progress-foot { display: flex; align-items: center; gap: 14px; }
-.reference-progress-foot p { flex: 1; }
-.reference-progress-foot .btn { flex: 0 0 auto; }
-.reference-progress-actions { display: flex; flex: 0 0 auto; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
 .brief-reference-progress-slot { width: 100%; }
 .brief-reference-progress-slot:empty { display: none; }
 .reference-recovery-actions { display: flex; width: min(760px, calc(100% - 48px)); margin: 4px 0 8px 48px; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
 .reference-recovery-actions .btn { min-height: 34px; padding: 7px 11px; font-size: 11px; }
-.reference-progress-card.is-failed { border-color: color-mix(in srgb, var(--danger) 52%, var(--line)); }
-.reference-progress-card.is-failed .reference-progress-head strong, .reference-progress-card.is-failed .reference-progress-phase { color: var(--danger); }
-.reference-progress-card.is-failed .reference-progress-pulse, .reference-progress-card.is-failed .reference-progress-track i { background: var(--danger); }
-.reference-progress-card.is-cancelled { opacity: .82; }
-.brief-reference-progress-slot .reference-progress-card.is-recovery { width: min(760px, calc(100% - 48px)); margin: 8px 0 10px 48px; padding: 11px 13px; gap: 7px; box-shadow: none; }
-.reference-progress-card.is-recovery .reference-progress-head b{font-size:13px}.reference-progress-card.is-recovery .reference-progress-phase{font-size:12px}.reference-progress-card.is-recovery .reference-contract-breakdown{display:flex;flex-wrap:wrap;gap:6px}.reference-progress-card.is-recovery .reference-contract-state{min-width:0;padding:6px 8px}.reference-progress-card.is-recovery .reference-progress-foot{align-items:flex-end}.reference-progress-card.is-recovery .reference-progress-foot p{max-width:520px;font-size:11px;line-height:1.45}.reference-progress-card.is-recovery .reference-progress-actions .btn{min-height:34px;padding:7px 11px;font-size:11px}
-@keyframes reference-progress-pulse { 50% { opacity: .45; transform: scale(.82); } }
-@keyframes reference-progress-flow { to { transform: translateX(110%); } }
 .hidden-input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 .empty-state { min-height: 168px; display: grid; place-items: center; align-content: center; gap: 9px; padding: 24px; text-align: center; color: var(--muted); }
 .empty-state b { color: var(--text); }
@@ -519,7 +492,7 @@
   .asset-visual-next-actions { width: 100%; min-width: 0; }
 }
 @media (max-width: 620px) {
-  .brief-reference-progress-slot .reference-progress-card.is-recovery{width:100%;margin-left:0}.reference-progress-card.is-recovery .reference-progress-foot{align-items:stretch;flex-direction:column}.reference-progress-card.is-recovery .reference-progress-actions{justify-content:stretch}.reference-progress-card.is-recovery .reference-progress-actions .btn{flex:1 1 auto}
+  .reference-recovery-actions{width:100%;margin-left:0;justify-content:stretch}.reference-recovery-actions .btn{flex:1 1 auto}
   .brief-next-step-copy { flex-direction: column; }
   .brief-settings-meta em { max-width: 100%; }
   .brief-settings-modal { width: calc(100vw - 16px); max-height: calc(100vh - 16px); border-radius: 14px; }
