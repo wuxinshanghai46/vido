@@ -1,5 +1,5 @@
-import { setButtonBusy, toast } from '../components/ui.js?v=20260826-production-v230f';
-import { confirmDialog } from '../components/dialog.js?v=20260826-production-v230f';
+import { setButtonBusy, toast } from '../components/ui.js?v=20260826-production-v230g';
+import { confirmDialog } from '../components/dialog.js?v=20260826-production-v230g';
 
 export function scenePlanBlockedView(eligibility = {}, generationActive = false) {
   const failed = (eligibility.issues || []).includes('task_current_planning_stage_failed');

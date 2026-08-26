@@ -1,6 +1,6 @@
-import { renderSceneWorldWorkspace, bindSceneWorldWorkspace } from './sceneWorldView.js?v=20260826-production-v230f';
-import { escapeHtml } from '../components/ui.js?v=20260826-production-v230f';
-import { bindScenePlanUpdate, scenePlanBlockedView } from './scenePlanStatus.js?v=20260826-production-v230f';
+import { renderSceneWorldWorkspace, bindSceneWorldWorkspace } from './sceneWorldView.js?v=20260826-production-v230g';
+import { escapeHtml } from '../components/ui.js?v=20260826-production-v230g';
+import { bindScenePlanUpdate, scenePlanBlockedView } from './scenePlanStatus.js?v=20260826-production-v230g';
 
 function sceneGenerationQueue(bundle = {}) {
   const scenes = Array.isArray(bundle.assets?.scenes) ? bundle.assets.scenes : [];
