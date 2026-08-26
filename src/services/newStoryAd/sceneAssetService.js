@@ -771,7 +771,7 @@ function publishBaseSceneAsset({
     },
     scene_authority_fingerprint: currentCoreFingerprint,
   });
-  const sceneAssets = mergeSceneAssets(existing, baseAsset);
+  const sceneAssets = mergeSceneAssets(storage.getOutput(taskId, 'scene_assets') || [], baseAsset);
   storage.saveOutput(taskId, 'scene_assets', sceneAssets);
   const nextCtx = { ...ctx, scene_assets: sceneAssets };
   storage.saveOutput(taskId, 'context', nextCtx);
@@ -1555,7 +1555,7 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
     enhancement_revision: activeEnhancement.enhancement_revision,
     enhancement_fingerprint: activeEnhancement.enhancement_fingerprint,
   };
-  const sceneAssets = mergeSceneAssets(existing, asset);
+  const sceneAssets = mergeSceneAssets(storage.getOutput(taskId, 'scene_assets') || [], asset);
   const publishOptions = {
     sceneSpec: target.multi_scene
       ? null

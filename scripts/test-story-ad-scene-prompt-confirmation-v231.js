@@ -59,6 +59,13 @@ async function main() {
   assert.match(initial.descriptor.prompt_version_id, /^[a-f0-9]{64}$/);
   assert.equal(prompts.assertCurrentPrompt(taskId, 'scene-a').prompt_version_id, initial.descriptor.prompt_version_id,
     'the generated scene may immediately use the current prompt without a confirmation receipt');
+  storage.updateTask(taskId, {
+    current_snapshot_id: `${taskId}:r1:queue-snapshot`,
+    required_bundle_id: 'new-execution-release-identity',
+  });
+  const afterExecutionLineageChange = prompts.currentState(taskId, 'scene-a');
+  assert.equal(afterExecutionLineageChange.descriptor.prompt_version_id, initial.descriptor.prompt_version_id,
+    'queue snapshots and release identities must not make unchanged saved prompt content stale');
 
   const editedPrompt = 'USER_EDITED_SCENE_PROMPT：清晨的高级家居展厅保持完整入口、连续不锈钢展示墙、明确互动区和真实侧向柔光。';
   assert.throws(

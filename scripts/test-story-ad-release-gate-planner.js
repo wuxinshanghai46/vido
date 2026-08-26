@@ -95,7 +95,7 @@ const scenePromptConfirmationPlan = planner.createPlan({
     'src/services/newStoryAd/sceneAssetService.js',
     'src/services/newStoryAd/scenePanoramaService.js',
     'src/services/storyAdWorkspace/projectBundleService.js',
-    'scripts/helpers/scene-prompt-confirmation-fixture.js',
+    'scripts/helpers/current-scene-prompt-fixture.js',
     'scripts/test-story-ad-scene-prompt-confirmation-v231.js',
     'scripts/test-story-ad-scene-config-release-rebase-v130.js',
     'scripts/test-new-story-ad-panorama.js',

@@ -20,6 +20,9 @@ async function testAutosaveRuntime() {
   const saved = [];
   const controller = bindTextAutosave({ input, status, delay: 5, save: async value => { saved.push(value); return { value }; } });
 
+  await controller.flush();
+  assert.deepStrictEqual(saved, [], '原样点击生成前冲刷不得伪造提示词更新或发出保存请求');
+
   input.value = '编辑后的提示词';
   input.dispatchEvent(new Event('input'));
   await controller.flush();
@@ -45,9 +48,22 @@ function testCurrentUiContract() {
   const personForm = read('public/story-ad/views/assetCenterPersonForm.js');
   const navigation = read('public/story-ad/app.js');
   const bundleStore = read('public/story-ad/store/projectBundleStore.js');
+  const route = read('src/routes/newStoryAd.js');
+  const sceneAssetService = read('src/services/newStoryAd/sceneAssetService.js');
   assert.doesNotMatch(`${scene}\n${sceneCard}\n${sceneInteractions}`, /data-confirm-scene-prompt|confirmScenePrompt/u);
+  assert.doesNotMatch(`${scene}\n${sceneCard}\n${sceneInteractions}`, /prompt_confirmation|confirmation_id|base_confirmation_id/u,
+    '旧提示词确认字段不得继续参与当前页面、保存或生成链路');
   assert.match(sceneInteractions, /await .*\.flush\(\)/u, '场景生成前必须等待自动保存完成');
   assert.match(sceneInteractions, /prompt_version_id/u, '场景生成必须携带最新提示词版本');
+  assert.match(sceneInteractions, /data-generate-all-scenes/u, '场景页必须支持一次提交全部缺失场景');
+  assert.match(sceneInteractions, /Promise\.allSettled\(targets\.map/u, '批量生成必须提交独立场景任务，单场景失败不得阻止其他场景');
+  assert.match(scene, /data-generate-all-scenes/u, '场景页顶部必须展示批量生成入口');
+  assert.match(scene, /generationActive: sceneIsActive/u, '运行状态必须按场景隔离，不能锁住全部卡片');
+  assert.match(route, /scopeId: sceneId/u, '场景生成队列必须以场景 ID 作为独立锁目标');
+  assert.match(sceneAssetService, /mergeSceneAssets\(storage\.getOutput\(taskId, 'scene_assets'\) \|\| \[\], baseAsset\)/u,
+    '并发发布基础场景时必须基于最新持久化资产合并');
+  assert.match(sceneAssetService, /mergeSceneAssets\(storage\.getOutput\(taskId, 'scene_assets'\) \|\| \[\], asset\)/u,
+    '并发发布最终场景时必须基于最新持久化资产合并');
   assert.match(sceneCard, /generationStarted \? 'images' : 'prompt'/u);
   assert.match(person, /hasPersonMedia \|\| generationActive/u);
   assert.match(person, /personAutosave\?\.flush/u, '人物切页和关闭前必须刷新保存');

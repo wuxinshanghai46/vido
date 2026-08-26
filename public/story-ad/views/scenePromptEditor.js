@@ -14,10 +14,10 @@ export function bindScenePromptEditor(card, context) {
     const scene = (context.bundle.assets?.scenes || []).find(item => String(item.id || item.scene_id) === sceneId);
       if (!scene) throw new Error('未找到对应场景提示词');
       const result = await context.store.saveScenePrompt(scene, value);
-      const promptState = result?.prompt_state || result?.prompt_confirmation || result?.confirmation || {};
+      const promptState = result?.prompt_state || {};
       scene.generation_prompt = value.trim();
       scene.prompt_state = promptState;
-      card.dataset.promptVersionId = promptState.prompt_version_id || promptState.confirmation_id || '';
+      card.dataset.promptVersionId = promptState.prompt_version_id || '';
       return promptState;
     },
     onError: error => toast(error.message || '保存提示词失败', 'error'),

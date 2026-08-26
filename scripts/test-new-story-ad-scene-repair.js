@@ -16,7 +16,7 @@ const mediaAdapter = require('../src/services/newStoryAd/mediaAdapter');
 const modelGateway = require('../src/services/newStoryAd/modelGateway');
 const sceneSpace = require('../src/services/newStoryAd/sceneSpaceContractService');
 const sceneAssets = require('../src/services/newStoryAd/sceneAssetService');
-const { confirmScenePrompt } = require('./helpers/scene-prompt-confirmation-fixture');
+const { currentScenePrompt } = require('./helpers/current-scene-prompt-fixture');
 
 function cameraEvidence(views = [], { pass = true } = {}) {
   const perspectiveViews = views.filter(view => view.key !== 'layout');
@@ -450,7 +450,7 @@ async function main() {
       },
     }],
   });
-  confirmScenePrompt(upgradeTaskId, 'old-scene-upgrade');
+  currentScenePrompt(upgradeTaskId, 'old-scene-upgrade');
   storage.saveOutput(upgradeTaskId, 'scene_assets', [{
     ...upgradedEvidenceFreeV4Asset,
     scene_id: 'old-scene-upgrade',
@@ -507,7 +507,7 @@ async function main() {
     scene_mode: 'single',
     spaces: [{ id: sceneId, name: 'repair scene', scene_spec: sceneSpec }],
   });
-  confirmScenePrompt(taskId, sceneId);
+  currentScenePrompt(taskId, sceneId);
   const urls = Object.fromEntries(['master', 'reverse', 'interaction', 'detail', 'layout'].map(key => [key, `/old-${key}.png`]));
   storage.saveOutput(taskId, 'scene_assets', [{
     id: sceneId,
@@ -559,7 +559,7 @@ async function main() {
       scene_mode: 'single',
       spaces: [{ id: unavailableSceneId, name: 'preserve scene', scene_spec: sceneSpec }],
     });
-    confirmScenePrompt(unavailableTaskId, unavailableSceneId);
+    currentScenePrompt(unavailableTaskId, unavailableSceneId);
     storage.saveOutput(unavailableTaskId, 'scene_assets', [{
       id: unavailableSceneId,
       scene_id: unavailableSceneId,

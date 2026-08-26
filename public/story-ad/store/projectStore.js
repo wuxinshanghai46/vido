@@ -525,6 +525,7 @@ export function createProjectStore() {
           stage: progressTask.stage || state.bundle?.project?.stage || '',
           active_stage: progressTask.active_stage || '',
           active_generation_id: progressTask.active_generation_id || '',
+          active_target_generations: progressTask.active_target_generations || {},
           generation_queued_at: progressTask.generation_queued_at || state.bundle?.project?.generation_queued_at || '',
           generation_started_at: progressTask.generation_started_at || state.bundle?.project?.generation_started_at || '',
           generation_finished_at: progressTask.generation_finished_at || state.bundle?.project?.generation_finished_at || '',

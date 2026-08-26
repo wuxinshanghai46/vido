@@ -20,7 +20,7 @@ const sceneCheckpoint = require('../src/services/newStoryAd/sceneGenerationCheck
 const sceneAtlas = require('../src/services/newStoryAd/sceneAtlasService');
 const sceneAssets = require('../src/services/newStoryAd/sceneAssetService');
 const contextBuilder = require('../src/services/newStoryAd/contextBuilder');
-const { confirmAllScenePrompts } = require('./helpers/scene-prompt-confirmation-fixture');
+const { currentAllScenePrompts } = require('./helpers/current-scene-prompt-fixture');
 
 const sceneSpec = {
   layoutText: 'One complete physical space with readable boundaries, one entrance, fixed anchors and an unobstructed circulation route.',
@@ -50,7 +50,7 @@ function seedTask(taskId, spaces, mode = spaces.length > 1 ? 'multi' : 'single')
       scene_spec: { ...sceneSpec, layoutText: space.description },
     })),
   });
-  confirmAllScenePrompts(taskId);
+  currentAllScenePrompts(taskId);
 }
 
 function verifiedContract(options = {}) {

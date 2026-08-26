@@ -123,6 +123,37 @@ const waitFor = async (predicate, timeoutMs = 2500) => {
     assert.strictEqual(storage.getGenerationRun(unknown.id).state, 'billing_unknown');
     assert.strictEqual(explicitRetryExecutions, 1);
 
+    storage.createTask({ id: 'scoped-scenes', content_revision: 1, request: { brief: 'parallel scenes' } });
+    let releaseA; let releaseB;
+    const gateA = new Promise(resolve => { releaseA = resolve; });
+    const gateB = new Promise(resolve => { releaseB = resolve; });
+    let sceneExecutions = 0;
+    const sceneA = jobs.queueStage({
+      taskId: 'scoped-scenes', stage: 'scene_asset', scopeId: 'scene-a', expectedContentRevision: 1,
+      inputFingerprint: 'scene-a-v1', idempotencyKey: 'scoped-scenes:scene_asset:scene-a:v1',
+      execute: async () => { sceneExecutions += 1; await gateA; },
+    });
+    const sceneB = jobs.queueStage({
+      taskId: 'scoped-scenes', stage: 'scene_asset', scopeId: 'scene-b', expectedContentRevision: 1,
+      inputFingerprint: 'scene-b-v1', idempotencyKey: 'scoped-scenes:scene_asset:scene-b:v1',
+      execute: async () => { sceneExecutions += 1; await gateB; },
+    });
+    assert.strictEqual(sceneA.accepted, true, '场景 A 运行时必须允许场景 B 独立排队');
+    assert.strictEqual(sceneB.accepted, true, '场景 B 必须拥有独立目标锁');
+    const duplicateSceneA = jobs.queueStage({
+      taskId: 'scoped-scenes', stage: 'scene_asset', scopeId: 'scene-a', expectedContentRevision: 1,
+      inputFingerprint: 'scene-a-v1', idempotencyKey: 'scoped-scenes:scene_asset:scene-a:v1', execute: async () => {},
+    });
+    assert.strictEqual(duplicateSceneA.accepted, false, '同一场景双击必须幂等拒绝');
+    await waitFor(() => Object.keys(storage.getTask('scoped-scenes').active_target_generations || {}).length === 2);
+    releaseA(); releaseB();
+    await waitFor(() => storage.getGenerationRun(sceneA.job.generation_unit_id)?.state === 'succeeded'
+      && storage.getGenerationRun(sceneB.job.generation_unit_id)?.state === 'succeeded');
+    await waitFor(() => Object.keys(storage.getTask('scoped-scenes').active_target_generations || {}).length === 0);
+    assert.strictEqual(sceneExecutions, 2, '两个不同场景必须各执行一次且不重复付费');
+    assert.strictEqual(storage.getTask('scoped-scenes').target_generation_results['scene_asset:scene-a'].status, 'succeeded');
+    assert.strictEqual(storage.getTask('scoped-scenes').target_generation_results['scene_asset:scene-b'].status, 'succeeded');
+
     storage.createTask({ id: 'job-interrupted', content_revision: 1, request: { brief: 'interrupted' } });
     storage.updateTask('job-interrupted', {
       status: 'running', stage: 'storyboard', active_stage: 'storyboard', active_generation_id: 'old-worker-job',
@@ -157,6 +188,8 @@ const waitFor = async (predicate, timeoutMs = 2500) => {
       explicit_user_regeneration_allowed: true,
       provider_task_evidence_preserved: true,
       worker_restart_recovered: true,
+      parallel_scene_targets: 2,
+      duplicate_scene_submissions: 0,
     }));
   } finally {
     fs.rmSync(outputDir, { recursive: true, force: true });

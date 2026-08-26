@@ -25,7 +25,7 @@ sceneAssets.generateSceneAsset = (taskId, body = {}, runOptions = {}) => generat
   { ...runOptions, maintenanceLegacyAcquisition: true },
 );
 const storyAdService = require('../src/services/newStoryAd/storyAdService');
-const { confirmAllScenePrompts } = require('./helpers/scene-prompt-confirmation-fixture');
+const { currentAllScenePrompts } = require('./helpers/current-scene-prompt-fixture');
 
 async function main() {
   const taskId = 'spatial-generation-order-test';
@@ -117,7 +117,7 @@ async function main() {
         scene_spec: context.scene_spec,
       }],
     });
-    confirmAllScenePrompts(id);
+    currentAllScenePrompts(id);
   };
   assert.throws(
     () => sceneAssets.assertCompleteUpgradeSceneSpec({
@@ -594,7 +594,7 @@ async function main() {
         { id: 'home', name: '家庭客厅与厨房', description: 'HOME_ONLY_TOKEN 家庭室内空间', story_purpose: '家庭收束', scene_spec: homeSpec },
       ],
     });
-    confirmAllScenePrompts(multiSpaceTaskId);
+    currentAllScenePrompts(multiSpaceTaskId);
     const callsBeforeMissingTarget = calls.length;
     await assert.rejects(
       () => sceneAssets.generateSceneAsset(multiSpaceTaskId, {}),

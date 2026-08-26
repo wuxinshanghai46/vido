@@ -2,6 +2,7 @@ import { renderSceneWorldWorkspace, bindSceneWorldWorkspace } from './sceneWorld
 import { setButtonBusy, toast } from '../components/ui.js?v=20260826-production-v232f';
 import { bindScenePlanUpdate, scenePlanBlockedView } from './scenePlanStatus.js?v=20260826-production-v232f';
 import { renderSceneProductionCard, scenePromptPreviewMarkup, scenePromptPreviewState, startInitialScenePlan } from './scenePromptPreview.js?v=20260826-production-v232f';
+import { sceneNeedsGeneration } from './sceneDossierCard.js?v=20260826-production-v232f';
 
 export async function mount(host, context) {
   const { bundle, store } = context;
@@ -11,13 +12,20 @@ export async function mount(host, context) {
   const scenes = Array.isArray(bundle.assets?.scenes) ? bundle.assets.scenes : [];
   const workflow = bundle.scene_workflow || {};
   const generationActive = !!bundle?.project?.active_generation_id
+  const activeTargets = bundle?.project?.active_target_generations && typeof bundle.project.active_target_generations === 'object'
+    ? Object.values(bundle.project.active_target_generations) : [];
+  const sceneIsActive = sceneId => activeTargets.some(item => item?.stage === 'scene_asset'
+    && String(item?.target_id || '') === String(sceneId)
+    && ['queued', 'running'].includes(String(item?.status || '')));
+  const missingScenes = scenes.filter(scene => sceneNeedsGeneration(scene));
+  const batchReadyCount = missingScenes.filter(scene => !sceneIsActive(scene.id || scene.scene_id)).length;
   const canConfirm = workflow.visuals_complete === true && scenes.length > 0
   const preview = scenePromptPreviewState(bundle, scenePlanReady, generationActive);
 
   host.innerHTML = `<section class="view-head scene-view-head"><div><h1>场景</h1><p>默认查看场景画面，需要时可切换到提示词核对。</p></div><div class="scene-view-actions"><span>${scenes.length ? '' : '预计 '}${preview.displayedCount} 个场景</span>${canConfirm ? '<button class="btn primary compact" data-confirm-scenes>确认场景，进入线稿</button>' : ''}</div></section>
     ${scenePlanReady ? '' : scenePlanBlockedView(sceneEligibility, generationActive, { automatic: preview.autoInitialize || generationActive })}
     ${!scenePlanReady ? scenePromptPreviewMarkup(preview, (scene, index) => renderSceneProductionCard(scene, index, { provisional: true })) : ''}
-    ${scenePlanReady && scenes.length ? `<section class="scene-production"><header><div><h2>场景提示词与画面</h2><p>提示词修改后自动保存；已有或生成中的画面默认展示，需要时可切回提示词。</p></div><span>${workflow.generated_count || 0}/${scenes.length} 已生成</span></header><div class="scene-production-grid">${scenes.map((scene, index) => renderSceneProductionCard(scene, index, { generationActive })).join('')}</div></section>` : ''}
+    ${scenePlanReady && scenes.length ? `<section class="scene-production"><header><div><h2>场景提示词与画面</h2><p>提示词修改后自动保存；已有或生成中的画面默认展示，需要时可切回提示词。</p></div><div class="scene-view-actions"><span>${workflow.generated_count || 0}/${scenes.length} 已生成</span>${batchReadyCount ? `<button class="btn primary compact" data-generate-all-scenes>生成全部缺失场景（${batchReadyCount}）</button>` : ''}</div></header><div class="scene-production-grid">${scenes.map((scene, index) => renderSceneProductionCard(scene, index, { generationActive: sceneIsActive(scene.id || scene.scene_id) })).join('')}</div></section>` : ''}
     ${scenes.length && (workflow.generated_count || 0) > 0 ? `<details class="scene-advanced-details"><summary>查看空间、机位与人物关系</summary>${renderSceneWorldWorkspace(bundle)}</details>` : ''}`;
 
   bindScenePlanUpdate(host, context);

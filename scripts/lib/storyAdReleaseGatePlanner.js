@@ -98,7 +98,7 @@ const DOMAIN_RULES = [
       /^scripts\/(?:test-authorized-voice-pack-library|test-voice-pack-auto-enrollment|test-pipeline-capability-audit|audit-story-ad-model-management)\.js$/i,
       /^scripts\/(?:migrate|audit)-new-story-ad-systemic/,
       /^src\/services\/newStoryAd\/scenePromptConfirmationService\.js$/i,
-      /^scripts\/(?:helpers\/scene-prompt-confirmation-fixture|test-story-ad-(?:legacy-scene-config-route|scene-prompt-confirmation)-v231)\.js$/i,
+      /^scripts\/(?:helpers\/current-scene-prompt-fixture|test-story-ad-(?:legacy-scene-config-route|scene-prompt-confirmation)-v231)\.js$/i,
       /^scripts\/test-story-ad-v67-candidate-structure-gate\.js$/i,
     ],
   },

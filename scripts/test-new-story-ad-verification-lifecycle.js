@@ -21,7 +21,7 @@ const sceneSpace = require('../src/services/newStoryAd/sceneSpaceContractService
 const sceneAssets = require('../src/services/newStoryAd/sceneAssetService');
 const modelGateway = require('../src/services/newStoryAd/modelGateway');
 const subjectAssets = require('../src/services/newStoryAd/subjectAssetBundleService');
-const { confirmAllScenePrompts, confirmScenePrompt } = require('./helpers/scene-prompt-confirmation-fixture');
+const { currentAllScenePrompts, currentScenePrompt } = require('./helpers/current-scene-prompt-fixture');
 
 function passingSceneResult(overrides = {}) {
   return {
@@ -123,7 +123,7 @@ async function main() {
       { id: 'scene-layout', name: '布局视图场景', scene_spec: created.context.scene_spec },
     ],
   });
-  confirmAllScenePrompts(taskId);
+  currentAllScenePrompts(taskId);
   const spec = { age: '30-40', gender: 'female', appearanceText: '成年女性演员', wardrobeText: '深色长袖套装', hairMakeupText: '短发淡妆' };
   const personAsset = {
     id: 'person-asset-verified',
@@ -397,7 +397,7 @@ async function main() {
     })),
     used_model: 'mock/rejected-scene',
   });
-  confirmScenePrompt(taskId, 'scene-rejected');
+  currentScenePrompt(taskId, 'scene-rejected');
   const rejectedGenerated = await sceneAssets.generateSceneAsset(taskId, { scene_id: 'scene-rejected', scene_spec: created.context.scene_spec });
   assert.equal(rejectedGenerated.scene_asset.scene_contract.status, 'rejected');
   assert(storage.getOutput(taskId, 'scene_assets').some(asset => asset.scene_id === 'scene-rejected'), '验证不合格的场景图片仍应保存供用户对照');
@@ -417,7 +417,7 @@ async function main() {
   assert.match(reverifyPrompt, /a smooth reflection or lighting gradient is not a seam by itself/i);
 
   modelGateway.generateVision = originalVision;
-  confirmScenePrompt(taskId, 'scene-layout');
+  currentScenePrompt(taskId, 'scene-layout');
   const layoutGenerated = await sceneAssets.generateSceneAsset(taskId, {
     scene_id: 'scene-layout',
     scene_spec: created.context.scene_spec,
@@ -454,7 +454,7 @@ async function main() {
     scene_mode: 'single',
     spaces: [{ id: 'scene-conflict-reconciled', name: '连续背景墙', scene_spec: conflictingSceneSpec }],
   });
-  confirmAllScenePrompts(conflictingTask.task.id);
+  currentAllScenePrompts(conflictingTask.task.id);
   const reconciledGenerated = await sceneAssets.generateSceneAsset(conflictingTask.task.id, {
     scene_id: 'scene-conflict-reconciled',
     scene_spec: conflictingSceneSpec,

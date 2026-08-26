@@ -17,7 +17,7 @@ const storyboardTableService = require('../src/services/newStoryAd/storyboardTab
 const productionLimits = require('../src/services/newStoryAd/productionLimitsService');
 const qualityReviewService = require('../src/services/newStoryAd/qualityReviewService');
 const ttsAdapter = require('../src/services/newStoryAd/ttsAdapter');
-const { confirmScenePrompt } = require('./helpers/scene-prompt-confirmation-fixture');
+const { currentScenePrompt } = require('./helpers/current-scene-prompt-fixture');
 
 const fifteenSecondBrief = [
   '制作一条十五秒横屏平台品牌宣传片。',
@@ -245,7 +245,7 @@ async function main() {
       },
     }],
   });
-  confirmScenePrompt(taskId, 'duration-gate-scene');
+  currentScenePrompt(taskId, 'duration-gate-scene');
   await assert.rejects(
     sceneAssetService.generateSceneAsset(taskId, { scene_id: 'duration-gate-scene' }),
     /需求文本明确要求 15 秒，但任务结构化时长为 30 秒/,

@@ -473,7 +473,7 @@ function buildProjectBundle(taskId, { sections = '', user = {} } = {}) {
     products: productAssets(context),
     logos: logoAssets(context),
     props: projectedProps,
-    scenes: sceneAssets(outputs, context).map(scene => { const promptState = scenePromptConfirmation.project(taskId, scene.id); return { ...scene, generation_prompt: promptState.generation_prompt || scene.generation_prompt, prompt_state: promptState, prompt_confirmation: promptState }; }),
+    scenes: sceneAssets(outputs, context).map(scene => { const promptState = scenePromptConfirmation.project(taskId, scene.id); return { ...scene, generation_prompt: promptState.generation_prompt || scene.generation_prompt, prompt_state: promptState }; }),
   } : null;
   const projectedCounts = projectedAssets ? countProjection.projectCounts(projectedAssets, mediaUrl, list)
     : { assets: 0, subject_assets: 0, ready_subject_assets: 0, planned_assets: 0, scenes: 0 };

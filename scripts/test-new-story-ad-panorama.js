@@ -32,7 +32,7 @@ const shotReferencePacks = require('../src/services/newStoryAd/shotReferencePack
 const storyAd = require('../src/services/newStoryAd/storyAdService');
 const jobService = require('../src/services/newStoryAd/jobService');
 const pipelineModels = require('../src/services/pipelineModelService');
-const { confirmAllScenePrompts } = require('./helpers/scene-prompt-confirmation-fixture');
+const { currentAllScenePrompts } = require('./helpers/current-scene-prompt-fixture');
 
 const TASK_ID = 'panorama-contract-regression';
 const JOB_TASK_ID = 'panorama-job-concurrency-regression';
@@ -143,7 +143,7 @@ function seedTask(source) {
       },
     })),
   });
-  confirmAllScenePrompts(TASK_ID);
+  currentAllScenePrompts(TASK_ID);
   sceneAssets.saveSceneAssetsToTask(TASK_ID, [{
     id: SCENE_ID,
     scene_id: SCENE_ID,
@@ -569,7 +569,7 @@ async function testProjectedBatchContinuation(candidate) {
       },
     })),
   });
-  confirmAllScenePrompts(BATCH_TASK_ID);
+  currentAllScenePrompts(BATCH_TASK_ID);
   sceneAssets.saveSceneAssetsToTask(BATCH_TASK_ID, [neutralScene('batch-scene-1', candidate)]);
   for (const sceneId of ['batch-scene-2', 'batch-scene-3']) {
     storage.saveOutput(BATCH_TASK_ID, `scene_asset_checkpoint:${sceneId}`, {

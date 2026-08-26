@@ -432,11 +432,12 @@ function updateTaskRequest(taskId, body = {}, user = {}, options = {}) {
 function prepareGeneration(taskId, body = {}, user = {}) {
   let task = assertTaskOwner(taskId, user);
   if (task.lineage_enforced !== true) task = storage.enableLineage(taskId);
-  if (task.active_generation_id) {
-    const error = new Error('当前已有生成任务正在执行，不能同时创建另一条生成链路');
-    error.code = 'GENERATION_ALREADY_ACTIVE';
-    error.status = 409;
-    error.retryable = false;
+  const targetStage = cleanText(body.target_stage || body.targetStage || 'blueprint', 60) || 'blueprint';
+  const activeTargetJobs = Object.values(task.active_target_generations || {});
+  const parallelSceneAssetRequest = targetStage === 'scene_asset' && activeTargetJobs.length > 0 && activeTargetJobs.every(job => String(job?.stage || '') === 'scene_asset')
+    && activeTargetJobs.some(job => String(job?.generation_id || '') === String(task.active_generation_id || ''));
+  if (task.active_generation_id && !parallelSceneAssetRequest) {
+    const error = Object.assign(new Error('当前已有生成任务正在执行，不能同时创建另一条生成链路'), { code: 'GENERATION_ALREADY_ACTIVE', status: 409, retryable: false });
     throw error;
   }
   const currentRevision = Math.max(1, Number(task.content_revision || 1) || 1);
@@ -470,7 +471,6 @@ function prepareGeneration(taskId, body = {}, user = {}) {
   }
   contentSkill.assertSelected(ctx);
   assertContextConsistent(ctx);
-  const targetStage = cleanText(body.target_stage || body.targetStage || 'blueprint', 60) || 'blueprint';
   storySetup.assertConfirmed(ctx, targetStage);
   brandEnding.assertReady(ctx);
   if (['storyboard', 'script_package', 'keyframes', 'media'].includes(targetStage)) {

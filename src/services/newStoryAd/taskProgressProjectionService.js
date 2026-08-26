@@ -51,6 +51,8 @@ function projectTaskProgress(task = {}, sinceRevision = '') {
     stage: text(task.stage, 80),
     active_generation_id: text(task.active_generation_id, 120),
     active_stage: text(task.active_stage, 80),
+    active_target_generations: task.active_target_generations && typeof task.active_target_generations === 'object'
+      ? task.active_target_generations : {},
     generation_queued_at: text(task.generation_queued_at, 48),
     generation_started_at: text(task.generation_started_at, 48),
     generation_finished_at: text(task.generation_finished_at, 48),

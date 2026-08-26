@@ -25,7 +25,7 @@ sceneAssets.generateSceneAsset = (taskId, body = {}, runOptions = {}) => generat
 );
 const sceneCheckpoint = require('../src/services/newStoryAd/sceneGenerationCheckpointService');
 const subjectBundles = require('../src/services/newStoryAd/subjectAssetBundleService');
-const { confirmAllScenePrompts } = require('./helpers/scene-prompt-confirmation-fixture');
+const { currentAllScenePrompts } = require('./helpers/current-scene-prompt-fixture');
 
 function fullSceneSpec(marker, place) {
   return {
@@ -514,7 +514,7 @@ async function assertMultiSpacePromptsAndRecovery() {
       storage.createTask({ id: taskId, title: taskId, request: baseContext });
       storage.saveOutput(taskId, 'context', baseContext);
       storage.saveOutput(taskId, 'scene_config', sceneConfig);
-      confirmAllScenePrompts(taskId);
+      currentAllScenePrompts(taskId);
       await sceneAssets.generateSceneAsset(taskId, { space_id: targetId });
     }
     const parkCalls = calls.filter(call => call.taskId === 'multi-space-park');
@@ -546,7 +546,7 @@ async function assertMultiSpacePromptsAndRecovery() {
     storage.createTask({ id: unknownTask, title: unknownTask, request: baseContext });
     storage.saveOutput(unknownTask, 'context', baseContext);
     storage.saveOutput(unknownTask, 'scene_config', sceneConfig);
-    confirmAllScenePrompts(unknownTask);
+    currentAllScenePrompts(unknownTask);
     failUnknownLayoutFor = unknownTask;
     const unknownStart = calls.length;
     await assert.rejects(
@@ -573,7 +573,7 @@ async function assertMultiSpacePromptsAndRecovery() {
     storage.createTask({ id: legacyUnknownTask, title: legacyUnknownTask, request: baseContext });
     storage.saveOutput(legacyUnknownTask, 'context', baseContext);
     storage.saveOutput(legacyUnknownTask, 'scene_config', sceneConfig);
-    confirmAllScenePrompts(legacyUnknownTask);
+    currentAllScenePrompts(legacyUnknownTask);
     storage.saveOutput(legacyUnknownTask, sceneCheckpoint.outputKind('space_park'), {
       task_id: legacyUnknownTask,
       scene_id: 'space_park',

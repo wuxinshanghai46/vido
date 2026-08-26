@@ -142,6 +142,9 @@ function queueTaskStage(req, res, stage, execute, options = {}) {
     snapshotId,
     inputFingerprint,
     idempotencyKey,
+    scopeId: typeof options.scopeId === 'function'
+      ? options.scopeId(task, body)
+      : (options.scopeId || ''),
     authorityContext: permit ? {
       authority_id: permit.authority_id,
       authority_token: permit.authority_token,
@@ -1609,7 +1612,6 @@ router.put('/tasks/:id/scene-prompts/:sceneId', asyncRoute(async (req, res) => {
     task_id: req.params.id,
     scene_id: req.params.sceneId,
     prompt_state: result.projection,
-    prompt_confirmation: result.projection,
   });
 }));
 
@@ -1635,6 +1637,7 @@ router.post('/tasks/:id/scene-assets', asyncRoute(async (req, res) => {
           generation_id: job.generationId,
         }, { generationId: job.generationId })
   ), {
+    scopeId: sceneId,
     failureContext: {
       scene_id: body.space_id || body.spaceId || body.scene_id || body.sceneId || '',
       scene_name: body.name || body.scene_name || body.sceneName || '',
@@ -1769,6 +1772,7 @@ router.post('/tasks/:id/scene-assets/:sceneId/repair', asyncRoute(async (req, re
   }, {
     generationId: job.generationId,
   }), {
+    scopeId: req.params.sceneId,
     failureContext: {
       scene_id: req.params.sceneId,
       scene_name: body.name || body.scene_name || body.sceneName || '',

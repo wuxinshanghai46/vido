@@ -97,7 +97,12 @@ function authoritativeDescriptor(taskId, requestedSceneId) {
     scene_id: base.canonicalScenePlan.scene_id,
     prompt_fingerprint: storage.canonicalFingerprint({ scene_id: canonicalScenePlan.scene_id, prompt }),
     scene_plan_fingerprint: storage.canonicalFingerprint(canonicalScenePlan),
-    ...base.binding,
+    // A prompt version describes saved business content only. Snapshot and
+    // release identities are execution-lineage guards; queue preflight changes
+    // them and must not make an unchanged prompt falsely stale.
+    content_revision: base.binding.content_revision,
+    scene_plan_revision: base.binding.scene_plan_revision,
+    scene_config_artifact_id: base.binding.scene_config_artifact_id,
   };
   return {
     ...base,
@@ -110,7 +115,6 @@ function authoritativeDescriptor(taskId, requestedSceneId) {
         ...descriptor,
         prompt_version_id: promptVersionId,
         // Temporary read compatibility for bundles cached before the v2 UI is loaded.
-        confirmation_id: promptVersionId,
       };
     })(),
   };
@@ -123,6 +127,7 @@ function currentState(taskId, requestedSceneId) {
     receipt: null,
     projection: {
       ...current.descriptor,
+      execution_binding: current.binding,
       generation_prompt: current.prompt,
       prompt_source: current.prompt_source,
       editable: true,
@@ -138,12 +143,18 @@ function currentState(taskId, requestedSceneId) {
 
 function savePromptOverride(taskId, requestedSceneId, input = {}, actor = {}) {
   const current = currentState(taskId, requestedSceneId);
-  if (current.task.active_generation_id) {
+  const targetJobs = current.task.active_target_generations && typeof current.task.active_target_generations === 'object'
+    ? current.task.active_target_generations : {};
+  const sameSceneActive = Object.values(targetJobs).some(job => String(job?.target_id || '') === String(current.descriptor.scene_id)
+    && ['queued', 'running'].includes(String(job?.status || '')));
+  const globalGenerationIsTargeted = Object.values(targetJobs)
+    .some(job => String(job?.generation_id || '') === String(current.task.active_generation_id || ''));
+  const unrelatedGlobalGeneration = current.task.active_generation_id && !globalGenerationIsTargeted;
+  if (sameSceneActive || unrelatedGlobalGeneration) {
     throw contractError('SCENE_PROMPT_EDIT_ACTIVE_GENERATION', '当前场景生成正在运行，请完成或取消后再编辑提示词');
   }
   const expected = clean(
-    input.base_prompt_version_id || input.basePromptVersionId
-      || input.base_confirmation_id || input.baseConfirmationId,
+      input.base_prompt_version_id || input.basePromptVersionId,
     100,
   );
   if (!expected || expected !== current.descriptor.prompt_version_id) {

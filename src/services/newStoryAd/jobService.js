@@ -34,8 +34,55 @@ function stageBudgetMs(stage = '') {
   return Math.max(5000, Number.isFinite(configured) && configured > 0 ? configured : (DEFAULT_STAGE_BUDGETS[stage] || 600000));
 }
 
-function jobKey(taskId) {
-  return String(taskId);
+function jobKey(taskId, stage = '', scopeId = '') {
+  const scope = String(scopeId || '').trim();
+  return scope ? `${String(taskId)}:${String(stage)}:${scope}` : String(taskId);
+}
+
+function activeJobsForTask(taskId) {
+  return [...runningJobs.values()].filter(job => String(job.taskId) === String(taskId)
+    && ['queued', 'running'].includes(String(job.status || '')));
+}
+
+function targetKey(stage = '', scopeId = '') {
+  return `${String(stage)}:${String(scopeId)}`;
+}
+
+function targetMaps(task = {}) {
+  return {
+    active: task.active_target_generations && typeof task.active_target_generations === 'object'
+      ? { ...task.active_target_generations } : {},
+    results: task.target_generation_results && typeof task.target_generation_results === 'object'
+      ? { ...task.target_generation_results } : {},
+  };
+}
+
+function scopedTaskPatch(task = {}, job = {}, status = 'queued', failure = {}) {
+  const key = targetKey(job.stage, job.scopeId);
+  const maps = targetMaps(task);
+  if (['queued', 'running'].includes(status)) {
+    maps.active[key] = {
+      generation_id: job.id, stage: job.stage, target_id: job.scopeId, status,
+      queued_at: job.queuedAt || '', started_at: job.startedAt || '', updated_at: new Date().toISOString(),
+    };
+    delete maps.results[key];
+  } else {
+    delete maps.active[key];
+    maps.results[key] = {
+      generation_id: job.id, stage: job.stage, target_id: job.scopeId, status,
+      finished_at: job.finishedAt || new Date().toISOString(), error_code: failure.code || '',
+      error: failure.message || '', retryable: failure.retryable === true,
+    };
+  }
+  const remaining = Object.values(maps.active).filter(Boolean);
+  const representative = remaining[remaining.length - 1] || null;
+  return {
+    active_target_generations: maps.active,
+    target_generation_results: maps.results,
+    active_generation_id: representative?.generation_id || '',
+    active_stage: representative?.stage || '',
+    ...(representative ? { status: 'running', stage: representative.stage } : {}),
+  };
 }
 
 /** 将后台任务失败归类，并保证持久化到项目中的错误提示为中文。 */
@@ -255,8 +302,9 @@ function interruptPersistedGenerationUnit(task = {}, reason = '') {
   }, { expected_version: candidate.unit_version, reason: 'worker_interrupted_before_provider_submission' });
 }
 
-function getJob(taskId, stage) {
-  const job = runningJobs.get(jobKey(taskId)) || null;
+function getJob(taskId, stage, scopeId = '') {
+  if (scopeId) return runningJobs.get(jobKey(taskId, stage, scopeId)) || null;
+  const job = runningJobs.get(jobKey(taskId)) || activeJobsForTask(taskId)[0] || null;
   return !stage || job?.stage === stage ? job : null;
 }
 
@@ -280,7 +328,7 @@ function reconcileInterruptedJobs({ now = Date.now() } = {}) {
   const tasks = storage.listTaskRows();
   const result = { interrupted: 0, normalized: 0 };
   for (const task of tasks) {
-    if (!task?.id || runningJobs.has(jobKey(task.id))) continue;
+    if (!task?.id || activeJobsForTask(task.id).length) continue;
     const status = String(task.status || '').toLowerCase();
     const stage = String(task.stage || '');
     const updatedAt = Date.parse(task.generation_started_at || task.updated_at || task.created_at || 0) || 0;
@@ -292,7 +340,7 @@ function reconcileInterruptedJobs({ now = Date.now() } = {}) {
         error: '后台工作进程已重启，任务已停止并释放，可安全重试',
         diagnostics: { error_code: 'WORKER_INTERRUPTED', retryable: true, reconciled_at: new Date(now).toISOString() },
       });
-      storage.updateTask(task.id, interruptedPatch(task));
+      storage.updateTask(task.id, { ...interruptedPatch(task), active_target_generations: {} });
       result.interrupted += 1;
       continue;
     }
@@ -311,9 +359,12 @@ function reconcileInterruptedJobs({ now = Date.now() } = {}) {
 }
 
 function cancelJob(taskId, { generationId = '', cancelledBy = '' } = {}) {
-  const key = jobKey(taskId);
+  const candidates = activeJobsForTask(taskId);
+  const job = generationId
+    ? candidates.find(item => String(item.id) === String(generationId)) || null
+    : candidates[0] || null;
+  const key = job ? jobKey(taskId, job.stage, job.scopeId) : jobKey(taskId);
   const task = storage.getTask(taskId);
-  const job = runningJobs.get(key) || null;
   if (!task) return { cancelled: false, not_found: true, job: null };
   if (!job || !['queued', 'running'].includes(job.status)) {
     return {
@@ -377,9 +428,11 @@ function queueStage({
   inputFingerprint = '',
   idempotencyKey = '',
   authorityContext = null,
+  scopeId = '',
 }) {
   if (!taskId || !stage || typeof execute !== 'function') throw new Error('剧情广告后台任务参数不完整');
-  const key = jobKey(taskId);
+  const normalizedScopeId = String(scopeId || '').trim().slice(0, 120);
+  const key = jobKey(taskId, stage, normalizedScopeId);
   const active = runningJobs.get(key);
   if (active && ['queued', 'running'].includes(active.status)) {
     return { accepted: false, duplicate: true, job: publicJob(active) };
@@ -415,7 +468,7 @@ function queueStage({
       throw error;
     }
   }
-  if (persisted?.active_generation_id && !active) {
+  if (!normalizedScopeId && persisted?.active_generation_id && !active) {
     const reconciled = reconcileInterruptedJobs();
     const current = storage.getTask(taskId);
     if (current?.active_generation_id) {
@@ -433,7 +486,7 @@ function queueStage({
   const unitClaim = generationUnits.claim({
     work_id: String(taskId),
     domain: String(stage),
-    target_permanent_id: `${String(taskId)}:${String(stage)}`,
+    target_permanent_id: `${String(taskId)}:${String(stage)}${normalizedScopeId ? `:${normalizedScopeId}` : ''}`,
     operation: `run_${String(stage)}`,
     input_fingerprint: String(inputFingerprint || sealedSnapshot?.input_fingerprint || idempotencyKey || `${taskId}:${stage}:r${expectedRevision}`),
     spec_revision: expectedRevision,
@@ -502,8 +555,10 @@ function queueStage({
     authorityId: authority?.authority_id || '',
     authorityToken: authority?.authority_token || '',
     executionIdentity: authority?.execution_identity || '',
+    scopeId: normalizedScopeId,
   };
   runningJobs.set(key, job);
+  const queuedTask = storage.getTask(taskId) || persisted || {};
   storage.updateTask(taskId, {
     status: 'queued',
     stage: `${stage}_queued`,
@@ -520,6 +575,7 @@ function queueStage({
     active_content_revision: expectedRevision,
     active_input_fingerprint: job.inputFingerprint,
     ...assetPlanCheckpointLineage.queuedPlanningTaskPatch(stage, job.releaseBundleId),
+    ...(normalizedScopeId ? scopedTaskPatch(queuedTask, job, 'queued') : {}),
   });
   storage.saveStage(taskId, stage, {
     status: 'queued',
@@ -593,6 +649,7 @@ function queueStage({
       generation_started_at: job.startedAt,
       error: '',
       error_code: '',
+      ...(normalizedScopeId ? scopedTaskPatch(storage.getTask(taskId) || {}, job, 'running') : {}),
     });
     storage.saveStage(taskId, stage, {
       status: 'running',
@@ -638,7 +695,17 @@ function queueStage({
         finished_at: job.finishedAt,
       }, { reason: 'job_succeeded' });
       const current = storage.getTask(taskId);
-      if (String(current?.active_generation_id || '') === id) {
+      if (normalizedScopeId) {
+        const patch = scopedTaskPatch(current || {}, job, 'succeeded');
+        const remaining = Object.keys(patch.active_target_generations || {}).length > 0;
+        storage.updateTask(taskId, {
+          ...patch,
+          ...(!remaining ? {
+            status: 'done', stage: `${stage}_done`, generation_finished_at: job.finishedAt,
+            error: '', error_code: '', support_id: '',
+          } : {}),
+        });
+      } else if (String(current?.active_generation_id || '') === id) {
         const stageUnchanged = String(current?.stage || '') === String(stage);
         const needsTerminalStatus = ['queued', 'running'].includes(String(current?.status || ''));
         const terminalProgress = terminalGenerationProgress(current, stage, id, {
@@ -695,7 +762,26 @@ function queueStage({
       const failureSceneId = String(error?.scene_id || error?.sceneId || job.failureSceneId || '').trim().slice(0, 120);
       const failureSceneName = String(error?.scene_name || error?.sceneName || job.failureSceneName || '').trim().slice(0, 120);
       const current = storage.getTask(taskId);
-      if (String(current?.active_generation_id || '') === id) {
+      if (normalizedScopeId) {
+        const patch = scopedTaskPatch(current || {}, job, 'failed', {
+          code: failure.code, message: job.error, retryable: failure.retryable,
+        });
+        const remaining = Object.keys(patch.active_target_generations || {}).length > 0;
+        storage.saveStage(taskId, stage, {
+          status: 'failed', started_at: job.startedAt, finished_at: job.finishedAt,
+          output_summary: error?.partial_results_saved === true ? '部分生成失败；成功资产与检查点已保存' : '执行失败，未保存可用结果',
+          error: job.error,
+          diagnostics: { generation_id: id, support_id: id, error_code: failure.code, retryable: failure.retryable,
+            ...(failureSceneId ? { scene_id: failureSceneId } : {}), ...(failureSceneName ? { scene_name: failureSceneName } : {}) },
+        }, { systemFinalization: true });
+        storage.updateTask(taskId, {
+          ...patch,
+          ...(!remaining ? {
+            status: 'failed', stage: `${stage}_failed`, generation_finished_at: job.finishedAt,
+            error: job.error, error_code: failure.code, support_id: id, retryable: failure.retryable,
+          } : {}),
+        });
+      } else if (String(current?.active_generation_id || '') === id) {
         const failureProgressPatch = {
           status: 'failed',
           error_code: failure.code,
@@ -772,6 +858,20 @@ function queueStage({
       job.error = withSupportId(recoveryState?.message || failure.message, id).slice(0, 1000);
       job.retryable = true;
       const current = storage.getTask(taskId);
+      if (normalizedScopeId) {
+        const patch = scopedTaskPatch(current || {}, job, 'failed', {
+          code: failure.code, message: job.error, retryable: true,
+        });
+        const remaining = Object.keys(patch.active_target_generations || {}).length > 0;
+        storage.updateTask(taskId, {
+          ...patch,
+          ...(!remaining ? {
+            status: 'failed', stage: `${stage}_failed`, generation_finished_at: job.finishedAt,
+            error: job.error, error_code: failure.code, support_id: id, retryable: true,
+          } : {}),
+        }, { systemFinalization: true });
+        return;
+      }
       if (String(current?.active_generation_id || '') !== id) return;
       const terminalProgress = terminalGenerationProgress(current, stage, id, {
         status: 'failed',

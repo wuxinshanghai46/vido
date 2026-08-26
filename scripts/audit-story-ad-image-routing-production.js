@@ -27,7 +27,15 @@ const readiness = providerIds.map(providerId => {
     adapter: String(provider?.adapter || ''),
   };
 });
-const stages = ['new_story_ad.person_sheet', 'new_story_ad.person_dossier_atlas', 'new_story_ad.scene_asset', 'new_story_ad.product_asset', 'new_story_ad.prop_dossier_atlas', 'new_story_ad.keyframe'];
+const stages = [
+  'new_story_ad.person_sheet', 'new_story_ad.person_dossier_atlas', 'new_story_ad.person_dossier_expression',
+  'new_story_ad.person_dossier_action', 'new_story_ad.person_dossier_native_master',
+  'new_story_ad.person_dossier_wearable_accessory', 'new_story_ad.person_dossier_wardrobe_detail',
+  'new_story_ad.scene_asset', 'new_story_ad.scene_extension_atlas', 'new_story_ad.scene_extension_master',
+  'new_story_ad.scene_extension_layout', 'new_story_ad.scene_extension_reverse',
+  'new_story_ad.scene_extension_interaction', 'new_story_ad.scene_extension_detail',
+  'new_story_ad.product_asset', 'new_story_ad.prop_dossier_atlas', 'new_story_ad.keyframe',
+];
 const managedStages = [...pipeline.NEW_STORY_AD_IMAGE_STAGE_IDS].filter(stage => stage !== 'new_story_ad.scene_panorama');
 const desired = providerIds.map((provider_id, index) => ({ provider_id, model_id: 'gpt-image-2', priority: index + 1, enabled: true }));
 const blocked = readiness.filter(item => !item.provider_present || !item.provider_enabled || !item.api_key_present || !item.model_present || !item.model_enabled);
