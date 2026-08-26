@@ -162,6 +162,7 @@ async function main() {
   assert.match(dossierUi, /不再用头像或全身图冒充配饰/);
   assert.doesNotMatch(dossierUi, /dossier-accessories[^\n]+identity\.slice/, '配饰区不得再次使用头像数组');
   const assetUi = read('public/story-ad/views/assetCenterView.js');
+  const sceneWorldPageUi = read('public/story-ad/views/sceneWorldPage.js');
   const planningUi = read('public/story-ad/views/assetCenterPlanningDetails.js');
   assert.match(planningUi, /动态拍摄路线与执行细则/);
   assert.match(planningUi, /机位调度与观看方向/);
@@ -179,7 +180,10 @@ async function main() {
   assert.match(assetUi, /AI 生成展示主体参考图/);
   assert.match(assetUi, /不会伪装成独立商品四视图/);
   assert.match(assetUi, /data-upload-product/);
-  assert.match(assetUi, /重新生成场景与机位/);
+  assert.doesNotMatch(assetUi, /重新生成场景与机位|data-generate-scene/, '资产中心不得继续拥有场景生成入口');
+  assert.match(sceneWorldPageUi, /data-generate-scene/);
+  assert.match(sceneWorldPageUi, /提示词/);
+  assert.match(sceneWorldPageUi, /场景画面/);
   assert.doesNotMatch(assetUi, /本片广告结构与竞品方法/);
   assert.doesNotMatch(assetUi, /COMPETITOR METHOD/);
   assert.doesNotMatch(assetUi, /data-edit-benchmark/);
