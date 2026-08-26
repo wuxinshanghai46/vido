@@ -1,8 +1,8 @@
-import { renderSceneWorldWorkspace, bindSceneWorldWorkspace } from './sceneWorldView.js?v=20260826-production-v230o';
-import { escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260826-production-v230o';
-import { confirmBillingAwareAction } from './assetCenterBillingRetry.js?v=20260826-production-v230o';
-import { renderSceneCoverCard, sceneNeedsGeneration } from './sceneDossierCard.js?v=20260826-production-v230o';
-import { bindScenePlanUpdate, scenePlanBlockedView } from './scenePlanStatus.js?v=20260826-production-v230o';
+import { renderSceneWorldWorkspace, bindSceneWorldWorkspace } from './sceneWorldView.js?v=20260826-production-v230p';
+import { escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260826-production-v230p';
+import { confirmBillingAwareAction } from './assetCenterBillingRetry.js?v=20260826-production-v230p';
+import { renderSceneCoverCard, sceneNeedsGeneration } from './sceneDossierCard.js?v=20260826-production-v230p';
+import { bindScenePlanUpdate, scenePlanBlockedView } from './scenePlanStatus.js?v=20260826-production-v230p';
 
 function scenePrompt(scene = {}) {
   return String(scene.generation_prompt || scene.prompt || scene.description || '').trim();
