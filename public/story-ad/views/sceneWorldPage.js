@@ -1,7 +1,7 @@
-import { renderSceneWorldWorkspace, bindSceneWorldWorkspace } from './sceneWorldView.js?v=20260826-production-v232d';
-import { setButtonBusy, toast } from '../components/ui.js?v=20260826-production-v232d';
-import { bindScenePlanUpdate, scenePlanBlockedView } from './scenePlanStatus.js?v=20260826-production-v232d';
-import { renderSceneProductionCard, scenePromptPreviewMarkup, scenePromptPreviewState, startInitialScenePlan } from './scenePromptPreview.js?v=20260826-production-v232d';
+import { renderSceneWorldWorkspace, bindSceneWorldWorkspace } from './sceneWorldView.js?v=20260826-production-v232e';
+import { setButtonBusy, toast } from '../components/ui.js?v=20260826-production-v232e';
+import { bindScenePlanUpdate, scenePlanBlockedView } from './scenePlanStatus.js?v=20260826-production-v232e';
+import { renderSceneProductionCard, scenePromptPreviewMarkup, scenePromptPreviewState, startInitialScenePlan } from './scenePromptPreview.js?v=20260826-production-v232e';
 
 export async function mount(host, context) {
   const { bundle, store } = context;
@@ -21,7 +21,7 @@ export async function mount(host, context) {
     ${scenes.length && (workflow.generated_count || 0) > 0 ? `<details class="scene-advanced-details"><summary>查看空间、机位与人物关系</summary>${renderSceneWorldWorkspace(bundle)}</details>` : ''}`;
 
   bindScenePlanUpdate(host, context);
-  const cleanupSceneCards = (await import('./sceneCardInteractions.js?v=20260826-production-v232d')).bindSceneCards(host, context);
+  const cleanupSceneCards = (await import('./sceneCardInteractions.js?v=20260826-production-v232e')).bindSceneCards(host, context);
   if (preview.autoInitialize) startInitialScenePlan(bundle, store);
   if (scenes.length && (workflow.generated_count || 0) > 0) bindSceneWorldWorkspace(host, bundle, store);
   host.querySelector('[data-confirm-scenes]')?.addEventListener('click', async event => {
