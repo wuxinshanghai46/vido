@@ -104,15 +104,9 @@ export function sceneEditForm(item = {}) {
 
 export function openAssetDrawer(item, group, handlers = {}, renderers = {}) {
   const { readOnly = false, onGenerate, onVerifyProduct, onSavePerson, onSaveProduct, onSaveScene, onAssistScene, onGenerateScene, onGenerateProduct, onUploadProduct, returnFocus } = handlers;
-  const { groupLabel, generatable, mediaSection, profileDetails, legacyDossierBoard, dossierDetails, checkpointDetails = () => '', knowledgePolicyTrace = () => '', personEditForm } = renderers;
+  const { groupLabel, generatable, mediaSection, profileDetails, checkpointDetails = () => '', knowledgePolicyTrace = () => '', personEditForm } = renderers;
   const views = Array.isArray(item.view_images) ? item.view_images : [];
   const dossier = item.dossier_sheet?.image_url ? { image_url: item.dossier_sheet.image_url } : null;
-  const subjectId = String(item.subject_id || item.profile?.id || item.id || '');
-  const atlases = group === 'people' && !dossier ? (item.category_atlases || []).filter(row => row?.image_url && (!row.subject_id || String(row.subject_id) === subjectId)) : [];
-  const atlas = atlases.find(row => row.key === 'body_1' || /person[_-]body[_-]atlas/i.test(row.image_url || ''))
-    || atlases.find(row => row.image_url === item.cover_image_url)
-    || atlases.find(row => /atlas/i.test(`${row.key}${row.kind}`)) || null;
-  const retainedDossier = atlas ? `<section class="person-canonical-dossier-board is-large is-partial" data-person-dossier-board data-board-state="partial"><header><span>已保留档案大版 · 部分完成</span><h3>${escapeHtml(item.name)}</h3></header>${mediaPreview(atlas, { label: `${item.name}档案大版`, width: 2400, zoomable: true, zoomGroup: `person-dossier-${item.id}` })}</section>` : '';
   const zones = Array.isArray(item.zones) ? item.zones : [];
   const cameras = Array.isArray(item.cameras) ? item.cameras : [];
   const sceneGenerated = group === 'scenes' && Boolean(item.layout?.image_url || views.length || cameras.some(camera => camera.image_url));
@@ -121,22 +115,44 @@ export function openAssetDrawer(item, group, handlers = {}, renderers = {}) {
     : [['资产类型', groupLabel], ['当前状态', item.status || '未确认'], ['版本', item.revision || '—'], ['角色或用途', item.role || '—'], ['空间区域', zones.map(zone => zone.label).filter(Boolean).join('、') || '—'], ['机位', cameras.map(camera => camera.label).filter(Boolean).join('、') || '—']];
   const editablePerson = group === 'people' && !readOnly;
   const personEditor = editablePerson ? personEditForm(item) : '';
+  const hasPersonMedia = group === 'people' && Boolean(
+    dossier || item.native_masters?.face?.image_url || item.native_masters?.body?.image_url
+    || views.length || item.identity_views?.length || item.expressions?.length || item.base_actions?.length,
+  );
+  const personPromptPanel = group === 'people'
+    ? (editablePerson ? personEditor : profileDetails(item, group))
+    : '';
+  const personImagePanel = group === 'people'
+    ? `${hasPersonMedia ? personDossierShowcase(item) : '<div class="character-dossier-regenerate-notice"><b>人物形象尚未生成</b><p>保存提示词并生成人物后，这里会展示完整全局人物图；生成途中则优先展示单人头像。</p></div>'}${checkpointDetails(item)}`
+    : '';
+  const personTabs = group === 'people' ? `<div class="person-detail-tabs" role="tablist" aria-label="人物详情">
+      <button type="button" role="tab" aria-selected="true" data-person-detail-tab="prompt">提示词</button>
+      <button type="button" role="tab" aria-selected="false" data-person-detail-tab="images">人物形象</button>
+    </div>
+    <section class="person-detail-panel" role="tabpanel" data-person-detail-panel="prompt">${personPromptPanel}</section>
+    <section class="person-detail-panel" role="tabpanel" data-person-detail-panel="images" hidden>${personImagePanel}</section>` : '';
   const backdrop = document.createElement('div');
   backdrop.className = 'drawer-backdrop';
   const drawer = document.createElement('aside');
   drawer.className = `drawer ${group === 'people' ? 'is-person-drawer' : ''} ${group === 'scenes' ? 'is-scene-drawer' : ''}`;
   drawer.innerHTML = `<header class="drawer-head"><div><small>${escapeHtml(groupLabel)}</small><h2>${escapeHtml(item.name)}</h2></div><button class="icon-btn" type="button" data-close-drawer>×</button></header><div class="drawer-content">
-    ${personEditor}
-    ${group === 'people' ? (dossier ? `<details class="raw-view-details person-generated-preview"><summary>查看已生成人物图</summary>${personDossierShowcase(item)}</details>` : retainedDossier) : (!views.length ? mediaPreview(item, { label: item.name, width: 1200, symbol: groupLabel, zoomable: true, zoomGroup: `asset-${item.id}` }) : '')}${checkpointDetails(item)}
-    ${group === 'people' && !dossier && !retainedDossier && views.length ? legacyDossierBoard(item, views) : ''}
+    ${personTabs}
+    ${group === 'people' ? '' : (!views.length ? mediaPreview(item, { label: item.name, width: 1200, symbol: groupLabel, zoomable: true, zoomGroup: `asset-${item.id}` }) : '')}${group === 'people' ? '' : checkpointDetails(item)}
     ${group === 'scenes' ? sceneDetails(item) : ''}
-    ${views.length ? (group === 'people' && !dossier ? `<details class="raw-view-details"><summary>查看原始四视图</summary>${mediaSection('原始人物视图', views, 'is-portrait-grid')}</details>` : (group === 'scenes' ? `<details class="raw-view-details"><summary>查看场景原始图集（${views.length} 张）</summary>${mediaSection('场景视角图集', views)}</details>` : mediaSection('完整视图', views, group === 'people' || group === 'animals' ? 'is-portrait-grid' : ''))) : ''}
-    ${group === 'people' ? dossierDetails(item) : ''}${group === 'products' ? productDetails(item) : ''}${editablePerson ? '' : profileDetails(item, group)}${knowledgePolicyTrace(item)}${readOnly ? '<p class="drawer-section-note" data-historical-drawer-readonly>当前为已确认步骤，只展示已保存内容；如需修改文字方案，请先在页面顶部开启编辑。</p>' : `${group === 'products' ? productEditForm(item) : ''}${group === 'scenes' ? sceneEditForm(item) : ''}`}
+    ${views.length ? (group === 'scenes' ? `<details class="raw-view-details"><summary>查看场景原始图集（${views.length} 张）</summary>${mediaSection('场景视角图集', views)}</details>` : (group === 'people' ? '' : mediaSection('完整视图', views, group === 'animals' ? 'is-portrait-grid' : ''))) : ''}
+    ${group === 'products' ? productDetails(item) : ''}${group === 'people' || editablePerson ? '' : profileDetails(item, group)}${knowledgePolicyTrace(item)}${readOnly ? '<p class="drawer-section-note" data-historical-drawer-readonly>当前为已确认步骤，只展示已保存内容；如需修改文字方案，请先在页面顶部开启编辑。</p>' : `${group === 'products' ? productEditForm(item) : ''}${group === 'scenes' ? sceneEditForm(item) : ''}`}
     ${editablePerson ? '' : `<div class="meta-list">${metadata.map(([label, value]) => `<div class="meta-row"><span>${escapeHtml(label)}</span><b>${escapeHtml(value)}</b></div>`).join('')}</div>`}</div>
     ${group === 'scenes' && !readOnly ? '<footer class="drawer-actions"><span>保存后可在场景卡片上单独生成该场景。</span></footer>' : ''}
     ${group === 'products' ? `<footer class="drawer-actions product-reference-actions"><span>上传或更换主体图片后，可单独验证和生成商品资产。</span><div>${readOnly ? '' : `<button class="btn" type="button" data-drawer-upload-product>${item.image_url ? '更换主体图片' : '上传主体图片'}</button>`}</div></footer>` : ''}
     ${group === 'products' && item.image_url && item.status !== 'verified' ? '<footer class="drawer-actions"><span>关键帧使用商品图前，需要先完成外观、形状、颜色和材质一致性验证。</span><button class="btn primary" type="button" data-drawer-verify-product>验证商品素材</button></footer>' : ''}`;
   let closed = false;
+  const personTabButtons = [...drawer.querySelectorAll('[data-person-detail-tab]')];
+  const personTabPanels = [...drawer.querySelectorAll('[data-person-detail-panel]')];
+  personTabButtons.forEach(button => button.addEventListener('click', () => {
+    const selected = button.dataset.personDetailTab;
+    personTabButtons.forEach(row => row.setAttribute('aria-selected', String(row === button)));
+    personTabPanels.forEach(panel => { panel.hidden = panel.dataset.personDetailPanel !== selected; });
+  }));
   const onKeydown = event => { if (event.key === 'Escape') close(); };
   const close = () => {
     if (closed) return;

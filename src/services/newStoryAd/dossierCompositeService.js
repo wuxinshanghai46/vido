@@ -53,7 +53,7 @@ function atomicByKindKey(atomicAssets = [], pairs = []) {
 }
 
 function negativeAccessoryClaim(value = '') {
-  return /(?:不加|不戴|不佩戴|未佩戴|没有|无|without|\bno\b)[^，。；,;\n]{0,36}(?:配饰|首饰|发饰|发冠|发簪|耳饰|项链|腰带|腰佩|玉佩|香囊|腕表|手链|戒指|accessor|hairpin|earring|necklace|belt|watch|ring)/iu.test(String(value || ''));
+  return /(?:不加|不戴|不佩戴|未佩戴|没有|无|without|\bno\b)[^，。；,;\n]{0,36}(?:配饰|首饰|发饰|发冠|发簪|发带|抹额|头饰|耳饰|项链|腰带|腰佩|玉佩|香囊|腕表|手链|戒指|accessor|hairpin|hair\s*ornament|headpiece|earring|necklace|belt|watch|ring)/iu.test(String(value || ''));
 }
 
 function accessoryEvidence(profile = {}, definition = {}) {

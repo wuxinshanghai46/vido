@@ -133,7 +133,11 @@ const planning = loadBrowserModule('public/story-ad/views/assetCenterPlanningDet
   document: fakeDocument, FormData: class {}, escapeHtml, bindMediaLightbox() {}, bindPersonLookForm() {},
   bindPersonEvolutionForm() {}, bindSceneDossierCard() {}, renderSceneDossierCard: () => '',
   mediaPreview: item => item?.image_url ? `<figure data-preview><img src="${escapeHtml(item.image_url)}"></figure>` : '<div data-placeholder></div>',
-  personDossierShowcase: item => `<section class="person-canonical-dossier-board is-large" data-person-dossier-board data-board-state="complete"><img src="${escapeHtml(item.dossier_sheet.image_url)}"></section>`,
+  personDossierShowcase: item => {
+    const globalImage = item.dossier_sheet?.image_url || item.native_masters?.face?.image_url || item.image_url || '';
+    const state = item.dossier_sheet?.image_url ? 'complete' : 'avatar_fallback';
+    return `<section data-person-global-image data-global-image-state="${state}"><img src="${escapeHtml(globalImage)}"></section>`;
+  },
 });
 const renderers = {
   groupLabel: '人物', generatable: true,
@@ -151,18 +155,21 @@ const completeDrawer = drawerHtml({
   id: 'person-1', name: '人物1', dossier_sheet: { image_url: '/assets/person-1-canonical-dossier.png' },
   view_images: [{ image_url: '/assets/person-1-raw-face.png' }], profile: {}, status: 'verified',
 });
-verify('editable person drawer starts with its prompt editor and keeps the canonical dossier behind it', () => {
-  assert.match(completeDrawer, /person-canonical-dossier-board[^>]*is-large|is-large[^>]*person-canonical-dossier-board/);
-  assert.match(completeDrawer, /data-person-dossier-board/);
+verify('editable person drawer separates the prompt and person image tabs', () => {
+  assert.match(completeDrawer, /data-person-detail-tab="prompt"/);
+  assert.match(completeDrawer, /data-person-detail-tab="images"/);
+  assert.match(completeDrawer, /data-person-global-image/);
   const canonical = completeDrawer.indexOf('/assets/person-1-canonical-dossier.png');
   assert.ok(completeDrawer.indexOf('data-person-edit') >= 0 && completeDrawer.indexOf('data-person-edit') < canonical);
-  assert.ok(canonical >= 0 && canonical < completeDrawer.indexOf('data-raw-person-views'));
+  assert.ok(canonical >= 0);
   assert.doesNotMatch(completeDrawer, /data-person-text-profile/);
   assert.doesNotMatch(completeDrawer.slice(0, canonical), /person-1-raw-face|person-2/);
+  assert.doesNotMatch(completeDrawer, /查看原始四视图|查看单图素材/);
 });
 const partialDrawer = drawerHtml({
   id: 'person-1', subject_id: 'person-1', name: '人物1', partial_checkpoint: true,
   image_url: '/assets/person-1-face-single.png', cover_image_url: '/assets/person-1-identity-atlas.png',
+  native_masters: { face: { image_url: '/assets/person-1-face-single.png' } },
   view_images: [{ image_url: '/assets/person-1-face-single.png' }],
   category_atlases: [
     { key: 'body_1', subject_id: 'person-2', image_url: '/assets/person-2-body-atlas.png' },
@@ -170,13 +177,11 @@ const partialDrawer = drawerHtml({
     { key: 'body_1', subject_id: 'person-1', image_url: '/assets/person-1-body-atlas.png' },
   ], profile: {}, checkpoint_recovery_summary: { retry_blocked: true }, status: 'partial',
 });
-verify('partial person drawer starts with that person canonical atlas board and marks partial', () => {
-  assert.match(partialDrawer, /data-person-dossier-board/);
-  assert.match(partialDrawer, /is-large/);
-  assert.match(partialDrawer, /data-board-state="partial"|data-partial(?:="true")?/);
-  const canonical = partialDrawer.indexOf('/assets/person-1-body-atlas.png');
-  assert.ok(canonical >= 0 && canonical < partialDrawer.indexOf('data-raw-person-views'));
-  assert.doesNotMatch(partialDrawer.slice(0, partialDrawer.indexOf('data-raw-person-views')), /person-2-body-atlas|person-1-identity-atlas|person-1-face-single/);
+verify('partial person image tab uses the single portrait until the global dossier exists', () => {
+  assert.match(partialDrawer, /data-person-global-image/);
+  assert.match(partialDrawer, /data-global-image-state="avatar_fallback"/);
+  assert.match(partialDrawer, /person-1-face-single/);
+  assert.doesNotMatch(partialDrawer, /person-1-body-atlas|person-2-body-atlas|person-1-identity-atlas/);
 });
 
 if (failures.length) {

@@ -5,7 +5,7 @@ import { confirmDialog } from '../components/dialog.js?v=20260826-production-v22
 import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260826-production-v229a';
 import { confirmBillingAwareAction, ensureSubjectRecoveryReady, recoveryRequestKey } from './assetCenterBillingRetry.js?v=20260826-production-v229a';
 import { renderPersonLookTiles } from './assetCenterPersonLooks.js?v=20260826-production-v229a';
-import { legacyDossierBoard, mediaSection } from './assetCenterDossierSections.js?v=20260826-production-v229a';
+import { mediaSection } from './assetCenterDossierSections.js?v=20260826-production-v229a';
 import { assetCardMedia } from './sceneDossierCard.js?v=20260826-production-v229a';
 import { assertSavedPerson, personAgeDisplay, personAssetState, personLookSummary } from './assetCenterPersonState.js?v=20260826-production-v229a';
 import { renderPersonEvolutionSummary } from './assetCenterPersonEvolution.js?v=20260826-production-v229a';
@@ -180,16 +180,6 @@ function profileDetails(item = {}, group = '') {
   return `<section class="drawer-profile"><h3>${group === 'people' ? '人物设定' : '动物设定'}</h3>${rows.filter(([, value]) => value).map(([label, value]) => `<div><span>${escapeHtml(label)}</span><p>${escapeHtml(value)}</p></div>`).join('')}</section>`;
 }
 
-function dossierDetails(item = {}) {
-  const sections = [
-    ...(Array.isArray(item.look_assets) ? item.look_assets.map(look => mediaSection(`${look.name || '人物'}造型档案`, look.dossier_sheet?.image_url ? [{ image_url: look.dossier_sheet.image_url, label: look.name }] : [])) : []),
-    mediaSection('人物分类档案', item.category_atlases),
-    mediaSection('身份与形象视图', item.identity_views, 'is-portrait-grid'),
-    mediaSection('表情记录', item.expressions, 'is-portrait-grid'),
-    mediaSection('剧情动作姿态', item.base_actions, 'is-portrait-grid'),
-  ].join('');
-  return sections ? `<details class="raw-view-details dossier-atomic-details"><summary>查看单图素材（点击任意图片放大）</summary>${sections}</details>` : '';
-}
 function knowledgePolicyTrace(item = {}) {
   const policy = item.knowledge_policy || item.knowledgePolicy || {};
   const ruleIds = Array.isArray(policy.rule_ids) ? policy.rule_ids : [], generation = String(policy.generation_fingerprint || policy.prompt_policy_fingerprint || '').trim(), qa = String(policy.qa_fingerprint || policy.qa_policy_fingerprint || '').trim();
@@ -202,7 +192,7 @@ let planningDetailsPromise; let personFormPromise; async function openDrawer(ite
   const [planningDetails, personForm] = await Promise.all([planningDetailsPromise, personFormPromise]);
   return planningDetails.openAssetDrawer(item, group, handlers, {
     groupLabel: groupLabel(group), generatable: GENERATABLE.has(group),
-    mediaSection, profileDetails, legacyDossierBoard, dossierDetails, checkpointDetails: drawerCheckpointDetails, knowledgePolicyTrace, personEditForm: personForm.personEditForm,
+    mediaSection, profileDetails, checkpointDetails: drawerCheckpointDetails, knowledgePolicyTrace, personEditForm: personForm.personEditForm,
   });
 }
 

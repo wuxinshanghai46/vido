@@ -72,6 +72,38 @@ function canonicalPersonAtlas(media = []) {
     .filter(item => item.score > 0).sort((left, right) => right.score - left.score || left.index - right.index)[0]?.row || null;
 }
 
+function mediaRow(value = {}, fallback = {}) {
+  const imageUrl = mediaUrl(value);
+  if (!imageUrl) return null;
+  return {
+    ...value,
+    key: clean(value.key || fallback.key || '', 120),
+    label: clean(value.label || fallback.label || '', 160),
+    kind: clean(value.kind || fallback.kind || '', 80),
+    image_url: imageUrl,
+  };
+}
+
+function collectCompletedResult(result = {}, state = {}) {
+  const kind = clean(result.kind, 80).toLowerCase();
+  if (kind === 'face_master' || kind === 'body_master') {
+    const key = kind === 'face_master' ? 'face' : 'body';
+    const row = mediaRow(result, { key, kind, label: key === 'face' ? '人物头像' : '人物全身母版' });
+    if (row) state.native_masters[key] = row;
+    return;
+  }
+  if (!['body', 'identity', 'expression', 'action'].includes(kind)) return;
+  const atlas = mediaRow(result.atlas, { key: `${kind}_atlas`, kind, label: `${kind} atlas` });
+  if (atlas) state.category_atlases.push(atlas);
+  const atomic = (Array.isArray(result.atomic_assets) ? result.atomic_assets : [])
+    .map(value => mediaRow(value, { kind })).filter(Boolean);
+  state.atomic_assets.push(...atomic);
+  if (kind === 'body') state.view_images.push(...atomic);
+  if (kind === 'identity') state.identity_views.push(...atomic);
+  if (kind === 'expression') state.expressions.push(...atomic);
+  if (kind === 'action') state.base_actions.push(...atomic);
+}
+
 function projectCheckpoint(checkpoint = {}, profiles = []) {
   const units = Object.entries(checkpoint.person_dossier_checkpoints || {});
   const bySubject = new Map();
@@ -80,9 +112,13 @@ function projectCheckpoint(checkpoint = {}, profiles = []) {
     if (checkpoints.isObsolete(unit)) return;
     const owner = checkpoint.subject_checkpoint_owners?.[key] || {};
     const subjectId = clean(owner.subject_id || profiles[Number(owner.index || 0)]?.id || profiles[0]?.id || 'subject', 120);
-    const current = bySubject.get(subjectId) || { media: [], completed: 0, failed: [] };
+    const current = bySubject.get(subjectId) || {
+      media: [], completed: 0, failed: [], native_masters: {}, category_atlases: [], atomic_assets: [],
+      view_images: [], identity_views: [], expressions: [], base_actions: [],
+    };
     if (unit.status === 'completed' && unit.result) {
       collectMedia(unit.result, clean(unit.unit || unit.asset_type || '已完成素材', 160), current.media);
+      collectCompletedResult(unit.result, current);
       current.completed += 1;
     } else if (!['pending', 'cancelled'].includes(unit.status)) {
       const errorCode = clean(unit.error?.code || unit.status || 'GENERATION_INCOMPLETE', 120);
@@ -103,8 +139,20 @@ function projectCheckpoint(checkpoint = {}, profiles = []) {
   });
   return [...bySubject.entries()].map(([subjectId, state]) => ({
     subject_id: subjectId,
-    image_url: canonicalPersonAtlas(state.media)?.image_url || state.media[0]?.image_url || '',
+    image_url: state.native_masters.face?.image_url
+      || state.identity_views.find(row => ['face_front', 'front', 'portrait'].includes(clean(row.key, 80).toLowerCase()))?.image_url
+      || state.identity_views[0]?.image_url
+      || state.native_masters.body?.image_url
+      || state.view_images.find(row => ['front', 'body_front'].includes(clean(row.key, 80).toLowerCase()))?.image_url
+      || canonicalPersonAtlas(state.category_atlases)?.image_url || state.media[0]?.image_url || '',
     checkpoint_media: state.media,
+    native_masters: state.native_masters,
+    category_atlases: state.category_atlases,
+    atomic_assets: state.atomic_assets,
+    view_images: state.view_images,
+    identity_views: state.identity_views,
+    expressions: state.expressions,
+    base_actions: state.base_actions,
     completed_unit_count: state.completed,
     total_unit_count: state.completed + state.failed.length,
     failed_units: state.failed,
@@ -133,10 +181,15 @@ function mergePeople(people = [], outputs = {}) {
     const retryBlocked = preview.failed_units.some(unit => unit.retry_blocked);
     return {
       ...item,
-      image_url: item.image_url || preview.image_url,
-      cover_image_url: item.cover_image_url || preview.image_url,
-      view_images: item.view_images?.length ? item.view_images : preview.checkpoint_media,
-      category_atlases: item.category_atlases?.length ? item.category_atlases : preview.checkpoint_media,
+      image_url: preview.image_url || item.image_url,
+      cover_image_url: preview.image_url || item.cover_image_url,
+      native_masters: Object.keys(item.native_masters || {}).length ? item.native_masters : preview.native_masters,
+      view_images: item.view_images?.length ? item.view_images : preview.view_images,
+      category_atlases: item.category_atlases?.length ? item.category_atlases : preview.category_atlases,
+      atomic_assets: item.atomic_assets?.length ? item.atomic_assets : preview.atomic_assets,
+      identity_views: item.identity_views?.length ? item.identity_views : preview.identity_views,
+      expressions: item.expressions?.length ? item.expressions : preview.expressions,
+      base_actions: item.base_actions?.length ? item.base_actions : preview.base_actions,
       partial_checkpoint: true,
       checkpoint_status: clean(checkpoint.status, 40),
       completed_checkpoint_units: preview.completed_unit_count,

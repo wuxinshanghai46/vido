@@ -21,6 +21,22 @@ function generatedDetailFigure(view, label, group) {
   return `<figure class="${highResolution ? 'is-generated-detail' : 'is-legacy-crop'}">${image(view, label, group, highResolution ? 2048 : 640)}<figcaption><span>${escapeHtml(label)}</span><small>${highResolution ? '2K 独立细节图' : '历史裁切图 · 建议重生成高清档案'}</small></figcaption></figure>`;
 }
 
+function uniqueImages(rows = []) {
+  const seen = new Set();
+  return rows.filter((row) => {
+    const url = String(row?.image_url || '');
+    if (!url || seen.has(url)) return false;
+    seen.add(url);
+    return true;
+  });
+}
+
+function gallerySection(title, description, rows, group, className = '') {
+  const items = uniqueImages(rows);
+  if (!items.length) return '';
+  return `<section class="character-dossier-panel person-image-category ${className}"><header><h3>${escapeHtml(title)}</h3>${description ? `<p>${escapeHtml(description)}</p>` : ''}</header><div>${items.map((view, index) => `<figure>${image(view, localizedLabel(view, `${title} ${index + 1}`), group, 1600)}<figcaption>${escapeHtml(localizedLabel(view, `${title} ${index + 1}`))}</figcaption></figure>`).join('')}</div></section>`;
+}
+
 function fact(label, value) {
   return `<div><span>${escapeHtml(label)}</span><b>${text(value)}</b></div>`;
 }
@@ -58,43 +74,37 @@ export function personDossierShowcase(item = {}) {
     masters: `${groupRoot}-native-masters`,
   };
   const displayName = item.name || profile.displayName || '人物档案';
-  const views = [byKey(body, 'front', 0), byKey(body, 'side', 2), byKey(body, 'back', 3)].filter(Boolean);
-  const detailViews = [byKey(identity, 'face_front', 0), byKey(identity, 'face_profile', 2), byKey(identity, 'hair_back', 3), byKey(body, 'three_quarter', 1)].filter(Boolean);
-  const accessories = generatedAccessories;
-  const chips = keywords(profile);
   const dossier = item.dossier_sheet?.image_url
     && item.dossier_sheet?.layout === 'elegant_character_archive_v5'
     && Number(item.visual_asset_contract_version || 0) >= 2
     ? item.dossier_sheet
     : null;
   const partial = item.partial_checkpoint === true;
+  const portrait = nativeFace || byKey(identity, 'face_front', 0) || identity[0] || null;
+  const globalImage = dossier || portrait || nativeBody || byKey(body, 'front', 0) || body[0] || null;
+  const avatarRows = uniqueImages([nativeFace, ...identity].filter(Boolean));
+  const viewRows = uniqueImages([nativeBody, ...body].filter(Boolean));
+  const chips = keywords(profile);
   return `<section class="character-dossier-showcase" aria-label="${escapeHtml(displayName)}完整人物档案">
     <header class="character-dossier-title">
       <div><small>CHARACTER PRODUCTION DOSSIER</small><h2>人物制作档案 · ${escapeHtml(displayName)}</h2><p>${text(profile.roleName || item.role, '剧情广告人物')} · 身份一致、服装一致、动作可复用</p></div><span class="status-tag ${nativeFace && nativeBody ? 'is-success' : 'is-warning'}">${nativeFace && nativeBody ? '原生高清母版可用' : '历史档案 · 建议升级母版'}</span>
     </header>
-    ${nativeFace || nativeBody ? `<section class="character-dossier-panel dossier-native-masters"><h3>原生高清身份母版</h3><p>独立生成的原生图，不是从拼版放大裁切；关键帧优先使用面部身份母版。</p><div>${nativeFace ? `<figure>${image(nativeFace, `${displayName} 面部身份母版`, groups.masters, 1600)}<figcaption>面部身份母版</figcaption></figure>` : ''}${nativeBody ? `<figure>${image(nativeBody, `${displayName} 全身比例母版`, groups.masters, 1600)}<figcaption>全身比例母版</figcaption></figure>` : ''}</div></section>` : ''}
-    ${dossier ? `<div class="character-dossier-hero">${image(dossier, `${displayName}完整人物设定档案`, groups.sheet, 2400)}<p>完整人物档案 · 点击查看高清大图</p></div><details class="character-dossier-breakdown"><summary>展开查看可复用单图与动作素材</summary>` : `<div class="character-dossier-regenerate-notice"><b>${partial ? '完整人物档案尚未合成' : '当前是历史人物档案'}</b><p>${partial ? '已成功的分类图和人物子资产均已保留；同一档案版本的缺失单元安全完成后，系统才会合成为一张完整人物档案。当前分类拼图不是最终整图。' : '历史档案只有人物原图裁切，不能作为正式人物档案。请使用下方“重生成完整人物档案”，新版会重新生成身体、面部、表情、动作、服装、鞋履和饰品的全部内容。'}</p></div>`}
-    <div class="character-dossier-primary">
-      <aside class="character-dossier-panel character-dossier-facts"><h3>基本信息</h3>
-        ${fact('人物名称', profile.displayName || displayName)}${fact('身份 / 关系', profile.roleName || item.role)}
-        ${fact('年龄', personAge(profile))}${fact('原创族裔外貌设定', profile.ethnicity || profile.ethnic_appearance)}
-        ${fact('外貌与气质', profile.appearanceText)}${fact('服装与配饰', profile.wardrobeText)}${fact('发型 / 妆造', profile.hairMakeupText)}
-      </aside>
-      <section class="character-dossier-panel character-dossier-views"><h3>形象展示</h3><div>${views.map((view, index) => `<figure>${image(view, localizedLabel(view, `人物视图 ${index + 1}`), groups.views)}<figcaption>${escapeHtml(localizedLabel(view, `视图 ${index + 1}`))}</figcaption></figure>`).join('')}</div></section>
-      <section class="character-dossier-panel character-dossier-expressions"><h3>表情记录</h3><div>${expressions.slice(0, 6).map((view, index) => `<figure>${image(view, localizedLabel(view, `表情 ${index + 1}`), groups.expressions, 520)}<figcaption>${escapeHtml(localizedLabel(view, `表情 ${index + 1}`))}</figcaption></figure>`).join('')}</div></section>
+    ${globalImage ? `<div class="character-dossier-hero ${dossier ? 'is-global-dossier' : 'is-avatar-fallback'}" data-person-global-image data-global-image-state="${dossier ? 'complete' : 'avatar_fallback'}">${image(globalImage, dossier ? `${displayName}完整全局人物图` : `${displayName}人物头像`, groups.sheet, dossier ? 2400 : 1600)}<p>${dossier ? '完整全局人物图 · 点击查看高清大图' : '完整全局人物图尚未生成，当前展示人物头像'}</p></div>` : '<div class="character-dossier-regenerate-notice"><b>人物形象尚未生成</b><p>当前没有可展示的人物头像或完整全局人物图。</p></div>'}
+    ${partial ? '<div class="character-dossier-regenerate-notice"><b>完整人物档案尚未合成</b><p>已成功的人物头像、视图和分类素材均已保留；缺失单元完成后才会合成为完整全局人物图。</p></div>' : ''}
+    <div class="person-image-categories" data-person-image-categories>
+      ${gallerySection('人物头像', '单人半身身份图与面部角度', avatarRows, groups.masters, 'is-avatar-category')}
+      ${gallerySection('人物视图', '全身母版与正面、三分之四、侧面、背面视图', viewRows, groups.views, 'is-view-category')}
+      ${gallerySection('穿搭', '服装轮廓、剪裁、面料和鞋履细节', generatedWardrobe, groups.wardrobe, 'is-wardrobe-category')}
+      ${gallerySection('服饰与配饰', '仅展示设定中明确存在的服饰、配饰和鞋履单品', generatedAccessories, groups.accessories, 'is-accessory-category')}
+      ${gallerySection('表情', '可复用的表情状态', expressions, groups.expressions, 'is-expression-category')}
+      ${gallerySection('动作', '用于剧情表演与人物一致性的动作参考', actions, groups.actions, 'is-action-category')}
     </div>
-    <div class="character-dossier-secondary">
-      <section class="character-dossier-panel dossier-wardrobe"><h3>服装拆解</h3><div>${generatedWardrobe.length ? generatedWardrobe.map((view, index) => generatedDetailFigure(view, localizedLabel(view, `${displayName}穿搭 ${index + 1}`), groups.wardrobe)).join('') : '<div class="dossier-accessory-empty">历史档案没有独立服装拆解成品；不再用全身图裁切冒充服装细节。</div>'}</div><p>${text(profile.wardrobeText)}</p></section>
-      <section class="character-dossier-panel dossier-accessories"><h3>配饰与鞋履单品</h3><div>${accessories.length ? accessories.map((view, index) => generatedDetailFigure(view, localizedLabel(view, `${displayName}配饰 ${index + 1}`), groups.accessories)).join('') : '<div class="dossier-accessory-empty">设定中没有明确填写耳饰、项链、腕饰或鞋履；系统不会凭空添加配饰。</div>'}</div><p>${generatedAccessories.length ? '只展示设定中明确存在的独立配饰和鞋履单品，不再用头像或全身图冒充配饰。' : '请先在“修改人物信息”中写明实际配饰或鞋履，再重生成高清人物档案。'}</p></section>
-      <section class="character-dossier-panel dossier-details"><h3>人物细节</h3><div>${detailViews.map((view, index) => image(view, view.label || `人物细节 ${index + 1}`, groups.details, 520)).join('')}</div></section>
-      <section class="character-dossier-panel dossier-keywords"><h3>风格关键词</h3><div>${(chips.length ? chips : ['身份一致', '自然真实', '服装一致', '动作可复用']).map(value => `<span>${escapeHtml(value)}</span>`).join('')}</div></section>
-    </div>
-    <section class="character-dossier-panel character-dossier-actions"><div class="dossier-section-heading"><h3>动作档案</h3><span>补充参考版缺少的动作类，用于 Seedance 人物一致性与剧情动作参考</span></div><div>${actions.slice(0, 6).map((view, index) => `<figure>${image(view, localizedLabel(view, `动作 ${index + 1}`), groups.actions)}<figcaption>${escapeHtml(localizedLabel(view, `动作 ${index + 1}`))}</figcaption></figure>`).join('')}</div></section>
+    <section class="character-dossier-panel character-dossier-facts"><h3>人物信息</h3><div class="person-image-facts">${fact('人物名称', profile.displayName || displayName)}${fact('身份 / 关系', profile.roleName || item.role)}${fact('年龄', personAge(profile))}${fact('原创族裔外貌设定', profile.ethnicity || profile.ethnic_appearance)}${fact('外貌与气质', profile.appearanceText)}${fact('服装与配饰', profile.wardrobeText)}${fact('发型 / 妆造', profile.hairMakeupText)}</div></section>
+    <section class="character-dossier-panel dossier-keywords"><h3>风格关键词</h3><div>${(chips.length ? chips : ['身份一致', '自然真实', '服装一致', '动作可复用']).map(value => `<span>${escapeHtml(value)}</span>`).join('')}</div></section>
     <footer class="character-dossier-footer">
       <div><h3>角色介绍</h3><p>${text([profile.roleName, profile.appearanceText].filter(Boolean).join('。'))}</p></div>
       <div><h3>使用约束</h3><p>${text(profile.negativeText, '保持人物身份、五官、发型、服装和体态一致。')}</p></div>
       <div class="dossier-signature"><small>角色签名</small><b>${escapeHtml(profile.displayName || displayName)}</b></div>
     </footer>
-    ${dossier ? '</details>' : ''}
   </section>`;
 }

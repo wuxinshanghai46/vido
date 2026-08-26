@@ -56,9 +56,10 @@ const sceneDossierCard = read('public/story-ad/views/sceneDossierCard.js');
 const sceneWorldPage = read('public/story-ad/views/sceneWorldPage.js');
 const assetPlanningDetails = read('public/story-ad/views/assetCenterPlanningDetails.js');
 const assetPersonForm = read('public/story-ad/views/assetCenterPersonForm.js');
-assert.match(assetDossierSections, /reference-dossier-board/);
-assert.match(assetDossierSections, /参考档案预览/);
-assert.match(assetPlanningDetails, /查看原始四视图/);
+assert.doesNotMatch(assetDossierSections, /reference-dossier-board|参考档案预览/u, '旧四视图参考档案实现必须退出当前人物详情合同');
+assert.doesNotMatch(assetPlanningDetails, /查看原始四视图|查看单图素材/u, '人物详情不得重复展示原始四视图和单图素材入口');
+assert.match(assetPlanningDetails, /data-person-detail-tab="prompt"/u, '人物详情必须提供提示词标签页');
+assert.match(assetPlanningDetails, /data-person-detail-tab="images"/u, '人物详情必须提供人物形象标签页');
 assert.match(assetPersonForm, /data-person-prompt-workbench/u, '点击人物后必须直接显示单一提示词工作台');
 assert.match(assetPersonForm, /保存提示词/u);
 assert.match(assetPersonForm, /name="generation_prompt"/u);
@@ -69,10 +70,11 @@ assert.doesNotMatch(assetPersonForm, /名称与身份|renderPersonLookEditors|re
 assert.doesNotMatch(assetPlanningDetails.slice(0, assetPlanningDetails.indexOf('export function productDetails')), /type="file"|上传参考并生成/u, '随身道具不得继续要求上传参考图');
 assert.doesNotMatch(assetPlanningDetails, /data-owned-prop-form|由模型生成道具/u, '随身道具必须并入完整人物提示词，不再保留第二套表单');
 assert.match(sceneDossierCard, /function assetCardMedia/);
-assert.match(sceneDossierCard, /const portrait = item\.native_masters\?\.face\?\.image_url/, '人物主卡必须优先显示单人物标准人像');
+assert.match(sceneDossierCard, /const portrait = \(item\.native_masters\?\.face\?\.image_url/, '人物主卡必须优先显示单人物标准人像');
 assert.match(sceneDossierCard, /asset-people-portraits/, '人物主卡必须使用独立人像预览组，而不是完整档案拼图');
 assert.match(personDossierShowcase, /完整人物档案尚未合成/);
-assert.match(personDossierShowcase, /当前分类拼图不是最终整图/);
+assert.match(personDossierShowcase, /完整全局人物图尚未生成，当前展示人物头像/u);
+['人物头像', '人物视图', '穿搭', '服饰与配饰', '表情', '动作'].forEach(label => assert.match(personDossierShowcase, new RegExp(label)));
 
 const briefView = read('public/story-ad/views/briefView.js');
 const briefDurationOptions = read('public/story-ad/views/briefDurationOptions.js');
@@ -503,7 +505,7 @@ const personLookModule = loadBrowserModule(
 );
 const assetDossierModule = loadBrowserModule(
   'public/story-ad/views/assetCenterDossierSections.js',
-  ['mediaSection', 'legacyDossierBoard'],
+  ['mediaSection'],
   { escapeHtml, mediaPreview },
 );
 const assetPersonStateModule = loadBrowserModule(

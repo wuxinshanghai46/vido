@@ -759,6 +759,7 @@ function humanPrompt(member, count) {
     worldSetting.visualMediumPrompt(medium, 'character identity dossier'),
     'This identity will be rendered into separate body, face, expression and action contact sheets.',
     subjectContinuityPolicy.generationRuleEn(),
+    visualRealism.image2CompliancePrompt(),
     'Use a neutral character-design studio presentation appropriate to the selected medium, with even readable lighting, clear floor contact and no text, watermark, other person or collage border inside cells.',
     liveAction ? visualRealism.identitySheetRealismPrompt() : '',
     count > 1 ? `This is cast member ${member.member_index} of ${count}. Create a clearly unique identity; never clone or resemble another cast member.` : '',

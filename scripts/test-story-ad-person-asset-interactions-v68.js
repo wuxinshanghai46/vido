@@ -8,6 +8,8 @@ const vm = require('vm');
 const root = path.resolve(__dirname, '..');
 const read = file => fs.readFileSync(path.join(root, file), 'utf8');
 const projection = require('../src/services/newStoryAd/subjectCheckpointProjectionService');
+const dossierComposites = require('../src/services/newStoryAd/dossierCompositeService');
+const subjectBundle = require('../src/services/newStoryAd/subjectAssetBundleService');
 
 function loadBrowserModule(file, exposed, globals = {}) {
   const source = read(file)
@@ -140,9 +142,9 @@ function checkpointFixture() {
     status: 'failed', updated_at: '2026-08-15T08:00:00.000Z',
     person_dossier_checkpoints: {
       portrait: {
-        key: 'portrait', unit: 'identity:face_front', status: 'completed',
+        key: 'portrait', unit: 'face_master', status: 'completed',
         provider_submission_state: 'completed', billing_state: 'confirmed',
-        result: { image_url: '/api/new-story-ad/assets/person-face.png' },
+        result: { kind: 'face_master', key: 'face', image_url: '/api/new-story-ad/assets/person-face.png' },
       },
       walk: {
         key: 'walk', unit: 'base_action:natural_walk', status: 'failed',
@@ -225,17 +227,35 @@ async function main() {
 
   const people = [{ subject_id: 'person-1', name: '苏月见', profile: { id: 'person-1' }, status: 'draft' }];
   const projected = projection.mergePeople(people, { 'subject_asset_checkpoint:generation-1': checkpointFixture() })[0];
-  verify('all successful checkpoint images are available to the full drawer', () => {
-    assert.equal(projected.view_images.length, 1);
-    assert.equal(projected.category_atlases.length, 1);
+  verify('successful native portrait is projected semantically instead of masquerading as a four-view atlas', () => {
+    assert.equal(projected.view_images.length, 0);
+    assert.equal(projected.category_atlases.length, 0);
+    assert.equal(projected.native_masters.face.image_url, '/api/new-story-ad/assets/person-face.png');
     assert.equal(projected.cover_image_url, '/api/new-story-ad/assets/person-face.png');
   });
-  verify('body atlas wins canonical cover even when an identity atlas appears first', () => {
-    const atlas = projection.canonicalPersonAtlas([
-      { key: 'identity_1', kind: 'identity', image_url: '/person_identity_atlas.png' },
-      { key: 'body_1', kind: 'body', image_url: '/person_body_atlas.png' },
-    ]);
-    assert.equal(atlas.image_url, '/person_body_atlas.png');
+  verify('native face portrait wins the partial card even when a body atlas also completed', () => {
+    const realCheckpoint = checkpointFixture();
+    realCheckpoint.person_dossier_checkpoints.body = {
+      key: 'body', unit: 'body', status: 'completed', billing_state: 'confirmed', provider_submission_state: 'completed',
+      result: { kind: 'body', atlas: { image_url: '/person_body_atlas.png' }, atomic_assets: [{ kind: 'body', key: 'front', image_url: '/person_body_front.png' }] },
+    };
+    realCheckpoint.subject_checkpoint_owners.body = { kind: 'human', subject_id: 'person-1', index: 0 };
+    const preview = projection.projectCheckpoint(realCheckpoint, [{ id: 'person-1' }])[0];
+    assert.equal(preview.image_url, '/api/new-story-ad/assets/person-face.png');
+    assert.equal(preview.native_masters.face.image_url, '/api/new-story-ad/assets/person-face.png');
+    assert.equal(preview.category_atlases[0].image_url, '/person_body_atlas.png');
+  });
+  verify('negative hair-band wording does not create a paid hair-accessory unit', () => {
+    const evidence = dossierComposites.accessoryEvidence({
+      hairMakeupText: '黑色及肩中长直发；不戴帽子、不戴眼镜、不戴发带；自然通勤淡妆',
+    }, { key: 'hair_accessories', pattern: /发饰|发带/u });
+    assert.equal(evidence, '');
+  });
+  verify('the remembered Image 2 compliance specification reaches every human dossier prompt', () => {
+    const prompt = subjectBundle.humanPrompt({ displayName: '原创人物', roleName: '背景人物', age: '25岁', visual_medium: 'live_action' }, 1);
+    assert.match(prompt, /Compliance preflight/);
+    assert.match(prompt, /original synthetic identities/i);
+    assert.match(prompt, /celebrities, public figures, protected characters/i);
   });
   verify('projection preserves each failed unit and public reason', () => {
     assert.equal(projected.failed_checkpoint_units.length, 1);
