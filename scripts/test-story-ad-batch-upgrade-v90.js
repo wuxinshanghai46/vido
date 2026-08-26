@@ -52,9 +52,10 @@ assert.match(subjectBundleSource, /人物 \$\{index \+ 1\} 生成中断，继续
 assert.match(subjectBundleSource, /checkpoint\.humans\[index\] = asset;[\s\S]*?checkpoint\.generated_counts\.people \+= 1;[\s\S]*?save\(\);/, 'each successful person must be atomically checkpointed before its worker completes');
 
 const personEditor = fs.readFileSync(path.join(root, 'public/story-ad/views/assetCenterPersonLooks.js'), 'utf8');
-assert.match(personEditor, /华丽程度（AI 帮写和图片生成都会遵守）/);
-assert.match(personEditor, /华丽华贵/);
 assert.match(personEditor, /look_\$\{index\}_style_richness/);
+const personForm = fs.readFileSync(path.join(root, 'public/story-ad/views/assetCenterPersonForm.js'), 'utf8');
+assert.match(personForm, /name="generation_prompt"/, '当前人物编辑入口必须由完整提示词承载造型语义');
+assert.doesNotMatch(personForm, /renderPersonLookEditors/, '旧造型分段编辑器不得阻塞统一提示词合同');
 
 const assist = fs.readFileSync(path.join(root, 'public/story-ad/views/assetCenterAssist.js'), 'utf8');
 assert.match(assist, /用户选择的造型华丽程度/);

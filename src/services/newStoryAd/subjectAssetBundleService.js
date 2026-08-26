@@ -772,7 +772,7 @@ function humanPrompt(member, count) {
     !approvedPrompt && member.wardrobeText ? `Locked wardrobe: ${member.wardrobeText}.` : '',
     !approvedPrompt && (member.look_name || member.story_state) ? `Current look and story state: ${[member.look_name, member.story_state].filter(Boolean).join('; ')}.` : '',
     !approvedPrompt && member.wardrobe_contract ? `Structured wardrobe asset contract (all declared items must be visible and mutually consistent): ${JSON.stringify(member.wardrobe_contract)}.` : '',
-    !approvedPrompt ? (richnessRules[member.style_richness] || '') : '',
+    richnessRules[member.style_richness] || '',
     !approvedPrompt && member.hairMakeupText ? `Locked hair/makeup: ${member.hairMakeupText}.` : '',
     !approvedPrompt && member.performanceText ? `Performance and body-language direction: ${member.performanceText}.` : '',
     !approvedPrompt && member.continuityText ? `Cross-shot identity continuity lock: ${member.continuityText}.` : '',
