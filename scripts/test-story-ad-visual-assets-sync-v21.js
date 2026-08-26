@@ -36,7 +36,7 @@ assert(!assetView.includes('renderSceneWorldWorkspace(bundle)'), 'asset tasks an
 assert(sceneWorldPage.includes('renderSceneWorldWorkspace(bundle)'), 'the dedicated scene step must own the scene-world workspace');
 assert(!assetView.includes('data-generate-visual-assets'), 'asset center must not expose the old all-subject-and-scene batch action');
 assert(!sceneWorldPage.includes('data-generate-base-scene'), 'scene-world viewing must not duplicate the asset-center scene action');
-assert(sceneWorldPage.includes('production_graph_v1'), 'scene workflow must be unlocked by the unified production graph');
+assert(sceneWorldPage.includes('data-generate-scene'), 'the dedicated scene page must own per-scene generation');
 assert(billingRetryView.includes("store.runStage('visual-assets'"));
 assert(billingRetryView.includes('同时生成人物与场景'));
 assert(unifiedStageView.includes('生成人物资产'), '人物资产必须使用独立生成动作');
@@ -45,13 +45,14 @@ assert.strictEqual((unifiedStageView.match(/data-generate-subject-assets/g) || [
 assert(unifiedStageView.includes("generationActive ? '正在生成人物资产…'"), '人物按钮必须区分运行中与空闲状态');
 assert(!planningStatusView.includes('人物方案需要更新') && !planningStatusView.includes('文字方案确认后，再单独生成图片'), '旧状态标签和两步式提示必须删除');
 assert(!planningStatusView.includes('人物与场景方案'), '人物页不得继续显示合并方案提示');
-assert(scenePlanStatus.includes('当前内容的场景方案'), '场景合同失效时必须只给出场景方案第一步');
+assert(scenePlanStatus.includes('生成场景'), '场景合同失效时必须只给出生成提示词的第一步');
 assert(scenePlanStatus.includes('不修改人物身份、人物图片和人物造型'), '场景更新提示必须明确保护人物资产');
-assert(scenePlanStatus.includes('已有站位绑定无法安全延续时会阻止发布'), '场景更新提示必须明确站位绑定失效时阻止发布');
+assert(scenePlanStatus.includes('逐个确认生成场景画面'), '场景提示词完成后必须由用户逐个确认生成画面');
 assert.strictEqual((scenePlanStatus.match(/type="button" data-update-scene-plan/g) || []).length, 1, '场景合同失效提示只能提供一个场景方案更新按钮');
 assert(!scenePlanStatus.includes('人物与场景方案'), '场景页不得继续显示合并方案提示');
 assert(assetView.includes("host.querySelector('[data-generate-subject-assets]')?.addEventListener"), '人物按钮必须只提交主体资产阶段');
-assert(assetView.includes("host.querySelectorAll('[data-generate-scene]')"), '场景卡必须单独提交场景资产阶段');
+assert(!assetView.includes("host.querySelectorAll('[data-generate-scene]')"), '资产中心不得继续提交场景资产阶段');
+assert(sceneWorldPage.includes("host.querySelectorAll('[data-generate-scene]')"), '场景页必须单独提交场景资产阶段');
 assert(!assetView.includes('请先更新当前人物与场景方案'), '人物生成按钮不得继续显示合并方案提示');
 
 const briefView = read('public/story-ad/views/briefView.js');
@@ -87,7 +88,7 @@ assert(billingRetryView.includes("? '核对并继续'"), '计费未知状态的�
 assert(!billingRetryView.includes("? '重新生成'"), '计费未知状态不得误导用户整批重新生成');
 assert(!assetView.includes('当前人物配饰存在计费未知记录'), '单个人物按钮不能再被其它计费未知单元全局拦截');
 assert(assetView.includes("store.runStage('person-plan', payload)"), '人物按钮必须先提交独立人物规划，再由服务端启动图片分支');
-assert(assetView.includes("lane: 'scenes'"), '场景按钮必须只核对当前场景的失败单元');
+assert(sceneWorldPage.includes("lane: 'scenes'"), '场景按钮必须只核对当前场景的失败单元');
 assert(billingRetryView.includes('accept_duplicate_charge_risk: true'));
 assert(billingRetryView.includes('/visual-assets/retry-authorizations'));
 assert(billingRetryView.includes('checkpoint_keys: reviews.map'), '批量计费风险授权必须携带精确 checkpoint 集合');
