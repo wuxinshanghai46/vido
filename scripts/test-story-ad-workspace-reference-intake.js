@@ -749,9 +749,14 @@ async function testFamilyRecognitionAndSequentialWorkflowGates() {
     });
     bundle = bundles.buildProjectBundle(taskId, { sections: 'all', user });
     assert.equal(bundle.navigation.steps.plot.completed, true);
-    assert.equal(bundle.navigation.steps.storyboard.enabled, true);
+    assert.equal(bundle.navigation.steps.storyboard.enabled, false, '场景尚未确认时不得提前开放线稿与分镜');
     assert.equal(bundle.navigation.steps.final.enabled, false);
     assert.equal(bundle.navigation.current, 'scene', '剧情和人物确认后必须先核对场景，再进入分镜');
+
+    storyAd.updateTaskRequest(taskId, { scene_setup_confirmed: true }, user);
+    bundle = bundles.buildProjectBundle(taskId, { sections: 'all', user });
+    assert.equal(bundle.navigation.steps.storyboard.enabled, true, '确认场景后才允许进入线稿与分镜');
+    assert.equal(bundle.navigation.current, 'storyboard');
 
     storage.saveOutput(taskId, 'storyboard_table', [{
       shot_index: 1,
