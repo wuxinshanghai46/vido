@@ -42,5 +42,9 @@ assert(releaseSource.includes("pm2(['delete', String(id)])"), '候选清理必�
 const deleteCandidate = releaseSource.lastIndexOf("pm2(['delete', candidateName])");
 const startProduction = releaseSource.indexOf('start(appName, 4600)');
 assert(deleteCandidate >= 0 && deleteCandidate < startProduction, '切换时必须先停止候选进程再启动正式进程，避免共享 SQLite 启动写竞争');
+assert(releaseSource.includes("process.env.VIDO_PM2_LOG_DIR || '/data/vido/logs/pm2'"), 'PM2 日志必须默认写入数据盘');
+assert(releaseSource.includes("'--output', path.join(logDir, `${safeName}-out.log`)"), 'stdout 必须使用数据盘日志目录');
+assert(releaseSource.includes("'--error', path.join(logDir, `${safeName}-error.log`)"), 'stderr 必须使用数据盘日志目录');
+assert(releaseSource.includes("fs.mkdirSync(logDir, { recursive: true, mode: 0o750 })"), '启动前必须创建受限权限日志目录');
 
-console.log(JSON.stringify({ passed: true, checks: 11, scope: 'story-ad-pm2-env-sanitization-v104', model_calls: 0 }));
+console.log(JSON.stringify({ passed: true, checks: 15, scope: 'story-ad-pm2-env-sanitization-v104', data_disk_logs: true, model_calls: 0 }));
