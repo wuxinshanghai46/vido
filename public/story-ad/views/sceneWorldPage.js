@@ -1,8 +1,8 @@
-import { renderSceneWorldWorkspace, bindSceneWorldWorkspace } from './sceneWorldView.js?v=20260826-production-v231d';
-import { setButtonBusy, toast } from '../components/ui.js?v=20260826-production-v231d';
-import { confirmBillingAwareAction } from './assetCenterBillingRetry.js?v=20260826-production-v231d';
-import { bindScenePlanUpdate, scenePlanBlockedView } from './scenePlanStatus.js?v=20260826-production-v231d';
-import { renderSceneProductionCard, scenePromptPreviewMarkup, scenePromptPreviewState, startInitialScenePlan } from './scenePromptPreview.js?v=20260826-production-v231d';
+import { renderSceneWorldWorkspace, bindSceneWorldWorkspace } from './sceneWorldView.js?v=20260826-production-v231e';
+import { setButtonBusy, toast } from '../components/ui.js?v=20260826-production-v231e';
+import { confirmBillingAwareAction } from './assetCenterBillingRetry.js?v=20260826-production-v231e';
+import { bindScenePlanUpdate, scenePlanBlockedView } from './scenePlanStatus.js?v=20260826-production-v231e';
+import { renderSceneProductionCard, scenePromptPreviewMarkup, scenePromptPreviewState, startInitialScenePlan } from './scenePromptPreview.js?v=20260826-production-v231e';
 
 function bindSceneCards(host, context) {
   host.querySelectorAll('[data-scene-detail-tab]').forEach(button => {
@@ -13,7 +13,7 @@ function bindSceneCards(host, context) {
       card.querySelectorAll('[data-scene-detail-pane]').forEach(pane => {
         pane.hidden = pane.dataset.sceneDetailPane !== button.dataset.sceneDetailTab;
       });
-      if (button.dataset.sceneDetailTab === 'prompt') import('./scenePromptEditor.js?v=20260826-production-v231d').then(module => module.bindScenePromptEditor(card, context));
+      if (button.dataset.sceneDetailTab === 'prompt') import('./scenePromptEditor.js?v=20260826-production-v231e').then(module => module.bindScenePromptEditor(card, context));
     });
   });
 
