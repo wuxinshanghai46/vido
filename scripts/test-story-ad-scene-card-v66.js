@@ -105,11 +105,11 @@ function testUiAndExportBoundaries() {
   assert(!assetCenter.includes('data-generate-scene='), '资产中心不得继续保留场景生成入口');
   const sceneWorldModules = `${sceneWorldPage}\n${scenePromptPreview}`;
   assert(sceneWorldModules.includes('data-generate-scene=') && sceneWorldModules.includes('data-scene-detail-tab="prompt"'), '场景生成与提示词核对必须归属场景页模块');
-  assert.match(scenePromptPreview, /button class="is-active" data-scene-detail-tab="images"/u, '场景卡必须默认显示场景画面');
-  assert.match(scenePromptPreview, /data-scene-detail-pane="prompt" hidden/u, '提示词必须由用户主动切换后显示');
+  assert.match(scenePromptPreview, /generationStarted \? 'images' : 'prompt'/u, '未生图场景默认提示词，已有或生成中的场景默认画面');
+  assert.match(scenePromptPreview, /data-default-scene-tab/u, '场景卡必须显式投影默认标签页');
   assert.match(scenePromptPreview, /data-scene-prompt-editor=/u, '正式场景提示词必须提供可编辑文本区');
-  assert.match(scenePromptPreview, /data-save-scene-prompt=/u, '场景提示词必须提供显式保存动作');
-  assert.match(scenePromptEditor, /saveScenePrompt\(scene, editor\.value\)/u, '保存动作必须写回服务端权威提示词而非只改浏览器状态');
+  assert.doesNotMatch(scenePromptPreview, /data-save-scene-prompt=|data-confirm-scene-prompt=/u, '场景提示词不得再要求显式保存或确认');
+  assert.match(scenePromptEditor, /bindTextAutosave/u, '场景提示词必须自动保存到服务端权威版本');
   assert(details.includes('renderSceneDossierCard(item)') && details.includes('bindSceneDossierCard(drawer, item)'), '完整档案必须在场景抽屉内渲染并绑定');
   assert(details.includes("event.key === 'Escape'") && details.includes('returnFocus?.focus?.()'), '抽屉必须支持 Escape 与焦点恢复');
   assert(api.indexOf("options.responseType === 'blob'") < api.indexOf('const text = await response.text()'), '原图读取必须走受版本保护的 Blob 请求');

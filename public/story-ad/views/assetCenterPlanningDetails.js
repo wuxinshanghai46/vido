@@ -103,7 +103,7 @@ export function sceneEditForm(item = {}) {
 }
 
 export function openAssetDrawer(item, group, handlers = {}, renderers = {}) {
-  const { readOnly = false, onGenerate, onVerifyProduct, onSavePerson, onSaveProduct, onSaveScene, onAssistScene, onGenerateScene, onGenerateProduct, onUploadProduct, returnFocus } = handlers;
+  const { readOnly = false, generationActive = false, onGenerate, onVerifyProduct, onSavePerson, onSaveProduct, onSaveScene, onAssistScene, onGenerateScene, onGenerateProduct, onUploadProduct, returnFocus } = handlers;
   const { groupLabel, generatable, mediaSection, profileDetails, checkpointDetails = () => '', knowledgePolicyTrace = () => '', personEditForm } = renderers;
   const views = Array.isArray(item.view_images) ? item.view_images : [];
   const dossier = item.dossier_sheet?.image_url ? { image_url: item.dossier_sheet.image_url } : null;
@@ -119,18 +119,22 @@ export function openAssetDrawer(item, group, handlers = {}, renderers = {}) {
     dossier || item.native_masters?.face?.image_url || item.native_masters?.body?.image_url
     || views.length || item.identity_views?.length || item.expressions?.length || item.base_actions?.length,
   );
+  const personGenerationStarted = group === 'people' && Boolean(hasPersonMedia || generationActive
+    || item.active_generation_id || item.generation_runtime?.started_at
+    || ['queued', 'running', 'processing', 'generating'].includes(String(item.generation_status || item.generation_runtime?.status || '').toLowerCase()));
+  const personDefaultTab = personGenerationStarted ? 'images' : 'prompt';
   const personPromptPanel = group === 'people'
     ? (editablePerson ? personEditor : profileDetails(item, group))
     : '';
   const personImagePanel = group === 'people'
-    ? `${hasPersonMedia ? personDossierShowcase(item) : '<div class="character-dossier-regenerate-notice"><b>人物形象尚未生成</b><p>保存提示词并生成人物后，这里会展示完整全局人物图；生成途中则优先展示单人头像。</p></div>'}${checkpointDetails(item)}`
+    ? `${hasPersonMedia ? personDossierShowcase(item) : '<div class="character-dossier-regenerate-notice"><b>人物形象正在准备</b><p>开始生成后默认停留在这里；首张人物图完成后会自动展示。</p></div>'}${checkpointDetails(item)}`
     : '';
   const personTabs = group === 'people' ? `<div class="person-detail-tabs" role="tablist" aria-label="人物详情">
-      <button type="button" role="tab" aria-selected="true" data-person-detail-tab="prompt">提示词</button>
-      <button type="button" role="tab" aria-selected="false" data-person-detail-tab="images">人物形象</button>
+      <button type="button" role="tab" aria-selected="${personDefaultTab === 'prompt'}" data-person-detail-tab="prompt">提示词</button>
+      <button type="button" role="tab" aria-selected="${personDefaultTab === 'images'}" data-person-detail-tab="images">人物形象</button>
     </div>
-    <section class="person-detail-panel" role="tabpanel" data-person-detail-panel="prompt">${personPromptPanel}</section>
-    <section class="person-detail-panel" role="tabpanel" data-person-detail-panel="images" hidden>${personImagePanel}</section>` : '';
+    <section class="person-detail-panel" role="tabpanel" data-person-detail-panel="prompt" ${personDefaultTab === 'prompt' ? '' : 'hidden'}>${personPromptPanel}</section>
+    <section class="person-detail-panel" role="tabpanel" data-person-detail-panel="images" ${personDefaultTab === 'images' ? '' : 'hidden'}>${personImagePanel}</section>` : '';
   const backdrop = document.createElement('div');
   backdrop.className = 'drawer-backdrop';
   const drawer = document.createElement('aside');
@@ -146,17 +150,28 @@ export function openAssetDrawer(item, group, handlers = {}, renderers = {}) {
     ${group === 'products' ? `<footer class="drawer-actions product-reference-actions"><span>上传或更换主体图片后，可单独验证和生成商品资产。</span><div>${readOnly ? '' : `<button class="btn" type="button" data-drawer-upload-product>${item.image_url ? '更换主体图片' : '上传主体图片'}</button>`}</div></footer>` : ''}
     ${group === 'products' && item.image_url && item.status !== 'verified' ? '<footer class="drawer-actions"><span>关键帧使用商品图前，需要先完成外观、形状、颜色和材质一致性验证。</span><button class="btn primary" type="button" data-drawer-verify-product>验证商品素材</button></footer>' : ''}`;
   let closed = false;
+  let personAutosave = null;
+  const personTabStorageKey = `vido:person-detail-tab:${item.id || item.profile?.id || item.name || 'current'}`;
   const personTabButtons = [...drawer.querySelectorAll('[data-person-detail-tab]')];
   const personTabPanels = [...drawer.querySelectorAll('[data-person-detail-panel]')];
-  personTabButtons.forEach(button => button.addEventListener('click', () => {
-    const selected = button.dataset.personDetailTab;
-    personTabButtons.forEach(row => row.setAttribute('aria-selected', String(row === button)));
+  const selectPersonTab = selected => {
+    personTabButtons.forEach(row => row.setAttribute('aria-selected', String(row.dataset.personDetailTab === selected)));
     personTabPanels.forEach(panel => { panel.hidden = panel.dataset.personDetailPanel !== selected; });
+  };
+  const rememberedPersonTab = sessionStorage.getItem(personTabStorageKey);
+  if (rememberedPersonTab) selectPersonTab(rememberedPersonTab);
+  personTabButtons.forEach(button => button.addEventListener('click', async () => {
+    const selected = button.dataset.personDetailTab;
+    if (selected !== 'prompt') { try { await personAutosave?.flush(); } catch { return; } }
+    sessionStorage.setItem(personTabStorageKey, selected);
+    selectPersonTab(selected);
   }));
   const onKeydown = event => { if (event.key === 'Escape') close(); };
-  const close = () => {
+  const close = async ({ flush = true } = {}) => {
     if (closed) return;
+    if (flush) { try { await personAutosave?.flush(); } catch { return; } }
     closed = true;
+    personAutosave?.destroy?.();
     document.removeEventListener('keydown', onKeydown);
     backdrop.remove();
     drawer.remove();
@@ -176,12 +191,14 @@ export function openAssetDrawer(item, group, handlers = {}, renderers = {}) {
     if (saved === true) close();
   });
   drawer.querySelector('[data-drawer-verify-product]')?.addEventListener('click', async event => { if (await onVerifyProduct?.(item, event.currentTarget) === true) close(); });
-  bindSubmit('[data-person-edit]', onSavePerson);
   bindSubmit('[data-product-edit]', onSaveProduct);
   bindSubmit('[data-scene-edit]', onSaveScene);
   drawer.querySelector('[data-ai-assist-scene]')?.addEventListener('click', event => onAssistScene?.(item, drawer.querySelector('[data-scene-edit]'), event.currentTarget));
   drawer.querySelector('[data-drawer-upload-product]')?.addEventListener('click', () => { close(); onUploadProduct?.(item); });
   document.body.append(backdrop, drawer);
+  if (editablePerson) import('./personPromptAutosave.js?v=20260826-production-v232').then(module => {
+    if (!closed) personAutosave = module.bindPersonPromptAutosave(drawer, item, { onSavePerson, onGenerate, close });
+  });
   bindMediaLightbox(drawer);
   if (group === 'scenes') bindSceneDossierCard(drawer, item);
   drawer.querySelector('[data-close-drawer]')?.focus();

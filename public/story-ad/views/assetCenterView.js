@@ -318,15 +318,10 @@ export async function mount(host, context) {
     const profiles = (assets.people || []).map(row => row.profile || {}).map(profile => (
       String(profile.id || '') === String(item.profile?.id || '') ? { ...profile, ...normalizedValues } : profile
     ));
-    try {
-      setButtonBusy(button, true, '正在保存…', { elapsed: true });
-      const receipt = await store.updateRequest({ cast_profiles: profiles }, { refreshSections: 'summary,assets', returnMutationResult: true });
-      const savedProfile = assertSavedPerson(receipt.bundle, item, normalizedValues, receipt.mutation);
-      item.profile = savedProfile;
-      await context.refreshCurrentView?.();
-      toast('人物信息已保存；下次生成会使用最新设定。', 'success');
-      return true;
-    } catch (error) { toast(error.message, 'danger'); return false; } finally { setButtonBusy(button, false); }
+    const receipt = await store.updateRequest({ cast_profiles: profiles }, { refreshSections: 'summary,assets', returnMutationResult: true });
+    const savedProfile = assertSavedPerson(receipt.bundle, item, normalizedValues, receipt.mutation);
+    item.profile = savedProfile;
+    return savedProfile;
   };
   const saveProduct = async (item, values, button = null) => {
     try {
@@ -423,7 +418,7 @@ export async function mount(host, context) {
   const showAsset = button => {
     const group = button.dataset.assetGroup;
     const item = (assets[group] || []).find(asset => String(asset.id) === button.dataset.assetId);
-    if (item) openDrawer(item, group, { readOnly: historicalReadOnly, onGenerate: generate, onGenerateScene: generateScene, onVerifyProduct: verifyProduct, onSavePerson: savePerson, onSaveProduct: saveProduct, onSaveScene: saveScene, onAssistScene: assistScene, onUploadProduct: () => openUpload('products'), returnFocus: button });
+    if (item) openDrawer(item, group, { readOnly: historicalReadOnly, generationActive, onGenerate: generate, onGenerateScene: generateScene, onVerifyProduct: verifyProduct, onSavePerson: savePerson, onSaveProduct: saveProduct, onSaveScene: saveScene, onAssistScene: assistScene, onUploadProduct: () => openUpload('products'), returnFocus: button });
   };
   host.querySelectorAll('[data-asset-id]').forEach(button => button.addEventListener('click', () => showAsset(button)));
   host.querySelectorAll('[data-verify-product]').forEach(button => button.addEventListener('click', event => {

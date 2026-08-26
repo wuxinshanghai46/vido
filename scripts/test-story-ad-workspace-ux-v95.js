@@ -9,6 +9,7 @@ const briefProjection = read('public/story-ad/views/briefDialogueProjection.js')
 const plot = read('public/story-ad/views/plotRoomView.js');
 const plotEditor = read('public/story-ad/views/plotBeatEditor.js');
 const scene = read('public/story-ad/views/sceneWorldPage.js');
+const scenePromptPreview = read('public/story-ad/views/scenePromptPreview.js');
 const storyboard = read('public/story-ad/views/storyboardView.js');
 const dialogueCss = read('public/story-ad/dialogue-theme.css');
 const workspaceCss = read('public/story-ad/workspace.css');
@@ -26,8 +27,8 @@ assert.match(plotEditor, /data-beat-summary="title"[\s\S]*data-beat-summary="vis
 assert.match(workspaceUxCss, /beat-overview\{[^}]*grid-template-columns/, '剧情顺序表必须有稳定列布局');
 assert.match(workspaceUxCss, /beat-table-head,.beat-overview\{[^}]*min-width:/, '窄屏剧情列表必须保留内部横向滚动所需的稳定列宽');
 
-assert.match(scene, /data-scene-detail-tab="prompt"/, '每个场景必须提供提示词标签页');
-assert.match(scene, /data-scene-detail-tab="images"/, '每个场景必须提供场景画面标签页');
+assert.match(scenePromptPreview, /data-scene-detail-tab="prompt"/, '每个场景必须提供提示词标签页');
+assert.match(scenePromptPreview, /data-scene-detail-tab="images"/, '每个场景必须提供场景画面标签页');
 assert.match(scene, /scene-production-grid/, '场景提示词与画面必须使用清晰的自适应卡片网格');
 assert.match(workspaceUxCss, /scene-production-grid\{[^}]*auto-fit/, '单场景必须占满可用宽度，多场景自动换行');
 assert.match(workspaceUxCss, /scene-production-tabs[^}]*font-size:12px/, '场景页标签和提示不得继续使用过大的字号');

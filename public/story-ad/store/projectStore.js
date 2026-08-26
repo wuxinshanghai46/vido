@@ -9,6 +9,7 @@ export function createProjectStore() {
     stats: {},
     bundle: null,
     bundleSections: [],
+    bundleRequestSeq: 0,
     loading: false,
     saving: false,
     error: '',
@@ -19,11 +20,9 @@ export function createProjectStore() {
     referenceTimer: null,
     referenceAnalysisId: '',
     referenceReplacementSeq: 0,
-  };
-  const listeners = new Set();
+  }; const listeners = new Set();
   let requestMutationChain = Promise.resolve();
-  const notify = () => listeners.forEach(listener => listener(state));
-  const set = patch => { Object.assign(state, patch); notify(); };
+  const notify = () => listeners.forEach(listener => listener(state)); const set = patch => { Object.assign(state, patch); notify(); };
 
   async function loadProjects(options = {}) {
     return loadProjectList({ request, set }, options);
@@ -478,6 +477,7 @@ export function createProjectStore() {
   function clearProject() {
     stopProgressPolling();
     stopReferencePolling();
+    state.bundleRequestSeq += 1;
     set({ bundle: null, bundleSections: [], saving: false, error: '', progressRevision: '' });
   }
 
@@ -577,7 +577,7 @@ export function createProjectStore() {
     refreshSections,
     updateRequest,
     runStage,
-    confirmScenePrompt: async scene => (await import('./scenePromptConfirmationStore.js?v=20260826-production-v231f')).confirmScenePrompt({ state, request, refreshSections }, scene), saveScenePrompt: async (scene, prompt) => (await import('./scenePromptConfirmationStore.js?v=20260826-production-v231f')).saveScenePrompt({ state, request, refreshSections }, scene, prompt),
+    saveScenePrompt: async (scene, prompt) => (await import('./scenePromptConfirmationStore.js?v=20260826-production-v232')).saveScenePrompt({ state, request }, scene, prompt),
     saveBlueprint,
     saveStoryboard,
     saveSketches,

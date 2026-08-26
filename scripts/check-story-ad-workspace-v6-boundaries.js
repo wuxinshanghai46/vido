@@ -97,6 +97,7 @@ function main() {
   const allJsFiles = walk(FRONTEND_ROOT).filter(file => file.endsWith('.js'));
   const lazyJsFiles = allJsFiles.filter(file => /(?:directorStudioView|vendor[\\/])/.test(file));
   const assetEditorLazyJsFiles = allJsFiles.filter(file => /(?:assetCenterAssist|assetCenterPlanningDetails|assetCenterBillingReviewDialog)/.test(file));
+  const promptAutosaveLazyJsFiles = allJsFiles.filter(file => /(?:personPromptAutosave|textAutosave|sceneCardInteractions)/.test(file));
   const planMigrationLazyJsFiles = allJsFiles.filter(file => /assetCenterPlan(?:MigrationAction|ReleaseStatus)/.test(file));
   const personFormLazyJsFiles = allJsFiles.filter(file => /assetCenterPersonForm/.test(file));
   const personEvolutionLazyJsFiles = allJsFiles.filter(file => /assetCenterPersonEvolution/.test(file));
@@ -125,10 +126,11 @@ function main() {
   const plotCharacterLazyJsFiles = allJsFiles.filter(file => /plotCharacterAutosave/.test(file));
   const plotEditorJsFiles = allJsFiles.filter(file => /plotBeatEditor/.test(file));
   const plotCellLazyJsFiles = allJsFiles.filter(file => /plotBeatCellPopover/.test(file));
-  const coreJsFiles = allJsFiles.filter(file => !lazyJsFiles.includes(file) && !assetEditorLazyJsFiles.includes(file) && !planMigrationLazyJsFiles.includes(file) && !personFormLazyJsFiles.includes(file) && !personEvolutionLazyJsFiles.includes(file) && !featureLazyJsFiles.includes(file) && !recognitionLazyJsFiles.includes(file) && !briefLazyJsFiles.includes(file) && !briefMaterialsLazyJsFiles.includes(file) && !briefAdvancedLazyJsFiles.includes(file) && !briefPageLazyJsFiles.includes(file) && !panoramaLazyJsFiles.includes(file) && !sceneWorldLazyJsFiles.includes(file) && !dossierLazyJsFiles.includes(file) && !mediaLazyJsFiles.includes(file) && !lightboxLazyJsFiles.includes(file) && !checkpointRecoveryLazyJsFiles.includes(file) && !assetStageLazyJsFiles.includes(file) && !recoveryPreflightLazyJsFiles.includes(file) && !dialogueFlowJsFiles.includes(file) && !dialogueDataJsFiles.includes(file) && !dialogueGuidanceLazyJsFiles.includes(file) && !dialogueSupportLazyJsFiles.includes(file) && !dialogueSpecificationLazyJsFiles.includes(file) && !referenceDialogueStateJsFiles.includes(file) && !dialoguePolicyJsFiles.includes(file) && !plotRoomLazyJsFiles.includes(file) && !plotCharacterLazyJsFiles.includes(file) && !plotEditorJsFiles.includes(file) && !plotCellLazyJsFiles.includes(file));
+  const coreJsFiles = allJsFiles.filter(file => !lazyJsFiles.includes(file) && !assetEditorLazyJsFiles.includes(file) && !promptAutosaveLazyJsFiles.includes(file) && !planMigrationLazyJsFiles.includes(file) && !personFormLazyJsFiles.includes(file) && !personEvolutionLazyJsFiles.includes(file) && !featureLazyJsFiles.includes(file) && !recognitionLazyJsFiles.includes(file) && !briefLazyJsFiles.includes(file) && !briefMaterialsLazyJsFiles.includes(file) && !briefAdvancedLazyJsFiles.includes(file) && !briefPageLazyJsFiles.includes(file) && !panoramaLazyJsFiles.includes(file) && !sceneWorldLazyJsFiles.includes(file) && !dossierLazyJsFiles.includes(file) && !mediaLazyJsFiles.includes(file) && !lightboxLazyJsFiles.includes(file) && !checkpointRecoveryLazyJsFiles.includes(file) && !assetStageLazyJsFiles.includes(file) && !recoveryPreflightLazyJsFiles.includes(file) && !dialogueFlowJsFiles.includes(file) && !dialogueDataJsFiles.includes(file) && !dialogueGuidanceLazyJsFiles.includes(file) && !dialogueSupportLazyJsFiles.includes(file) && !dialogueSpecificationLazyJsFiles.includes(file) && !referenceDialogueStateJsFiles.includes(file) && !dialoguePolicyJsFiles.includes(file) && !plotRoomLazyJsFiles.includes(file) && !plotCharacterLazyJsFiles.includes(file) && !plotEditorJsFiles.includes(file) && !plotCellLazyJsFiles.includes(file));
   const coreJsBytes = coreJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
   const lazyJsBytes = lazyJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
   const assetEditorLazyJsBytes = assetEditorLazyJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
+  const promptAutosaveLazyJsBytes = promptAutosaveLazyJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
   const planMigrationLazyJsBytes = planMigrationLazyJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
   const personFormLazyJsBytes = personFormLazyJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
   const personEvolutionLazyJsBytes = personEvolutionLazyJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
@@ -161,6 +163,7 @@ function main() {
   const coreJsGzip = gzipBytes(coreJsFiles);
   const lazyJsGzip = gzipBytes(lazyJsFiles);
   const assetEditorLazyJsGzip = gzipBytes(assetEditorLazyJsFiles);
+  const promptAutosaveLazyJsGzip = gzipBytes(promptAutosaveLazyJsFiles);
   const planMigrationLazyJsGzip = gzipBytes(planMigrationLazyJsFiles);
   const personFormLazyJsGzip = gzipBytes(personFormLazyJsFiles);
   const personEvolutionLazyJsGzip = gzipBytes(personEvolutionLazyJsFiles);
@@ -257,6 +260,8 @@ function main() {
 
   assert(assetEditorLazyJsBytes <= 40 * 1024, `asset editor lazy modules ${assetEditorLazyJsBytes} bytes exceed 40 KiB`);
   assert(assetEditorLazyJsGzip <= 12 * 1024, `asset editor lazy modules gzip ${assetEditorLazyJsGzip} bytes exceed 12 KiB`);
+  assert(promptAutosaveLazyJsBytes <= 12 * 1024, `prompt autosave lazy modules ${promptAutosaveLazyJsBytes} bytes exceed 12 KiB`);
+  assert(promptAutosaveLazyJsGzip <= 4 * 1024, `prompt autosave lazy modules gzip ${promptAutosaveLazyJsGzip} bytes exceed 4 KiB`);
   assert(planMigrationLazyJsBytes <= 4 * 1024, `方案迁移点击模块 ${planMigrationLazyJsBytes} bytes 超过 4 KiB`);
   assert(planMigrationLazyJsGzip <= 2 * 1024, `方案迁移点击模块 gzip ${planMigrationLazyJsGzip} bytes 超过 2 KiB`);
   assert(personFormLazyJsBytes <= 4 * 1024, `person form lazy module ${personFormLazyJsBytes} bytes exceeds 4 KiB`);

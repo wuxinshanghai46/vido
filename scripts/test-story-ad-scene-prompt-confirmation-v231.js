@@ -6,13 +6,13 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
-const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vido-scene-prompt-confirmation-'));
+const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vido-scene-prompt-authority-'));
 process.env.OUTPUT_DIR = tempDir;
 process.env.DB_ENABLED = '0';
 
 const storage = require('../src/services/newStoryAd/storageService');
 const releaseBundle = require('../src/services/storyAdReleaseBundleService');
-const confirmations = require('../src/services/newStoryAd/scenePromptConfirmationService');
+const prompts = require('../src/services/newStoryAd/scenePromptConfirmationService');
 const sceneAssets = require('../src/services/newStoryAd/sceneAssetService');
 const panoramas = require('../src/services/newStoryAd/scenePanoramaService');
 const mediaAdapter = require('../src/services/newStoryAd/mediaAdapter');
@@ -37,14 +37,14 @@ function scene(id, name, suffix = '') {
 }
 
 async function main() {
-  const taskId = 'scene-confirmation-contract-task';
+  const taskId = 'scene-prompt-authority-contract-task';
   const identity = releaseBundle.identity();
   storage.createTask({
     id: taskId,
     status: 'done',
     stage: 'scene_config_done',
     user_id: 'owner-1',
-    request: { brief: '场景确认合同回归' },
+    request: { brief: '场景提示词权威合同回归' },
     content_revision: 1,
     current_snapshot_id: `${taskId}:r1:snapshot`,
     lineage_enforced: true,
@@ -53,63 +53,57 @@ async function main() {
   const firstPlan = { revision: 3, spaces: [scene('scene-a', '高级家居展厅'), scene('scene-b', '商业展台')] };
   storage.saveOutput(taskId, 'scene_config', firstPlan, { content_revision: 1, snapshot_id: `${taskId}:r1:snapshot` });
 
-  const descriptorA = confirmations.authoritativeDescriptor(taskId, 'scene-a').descriptor;
-  const descriptorB = confirmations.authoritativeDescriptor(taskId, 'scene-b').descriptor;
-  assert.equal(confirmations.project(taskId, 'scene-a').confirmed, false);
-  assert.throws(() => confirmations.assertConfirmed(taskId, 'scene-a'), error => error.code === 'SCENE_PROMPT_CONFIRMATION_REQUIRED');
-  assert.throws(() => confirmations.confirm(taskId, 'scene-a', { confirmation_id: 'stale' }), error => error.code === 'SCENE_PROMPT_CHANGED');
-
-  const receiptA = confirmations.confirm(taskId, 'scene-a', { confirmation_id: descriptorA.confirmation_id }, { id: 'owner-1' });
-  const duplicateA = confirmations.confirm(taskId, 'scene-a', { confirmation_id: descriptorA.confirmation_id }, { id: 'owner-1' });
-  assert.equal(receiptA.confirmed, true);
-  assert.equal(duplicateA.duplicate, true);
-  assert.equal(duplicateA.confirmed_at, receiptA.confirmed_at, 'duplicate confirmation must preserve the original timestamp');
-  assert.equal(confirmations.assertConfirmed(taskId, 'scene-a').confirmation_id, descriptorA.confirmation_id);
+  const initial = prompts.currentState(taskId, 'scene-a');
+  assert.equal(initial.projection.authoritative, true);
+  assert.equal(initial.projection.saved, true);
+  assert.match(initial.descriptor.prompt_version_id, /^[a-f0-9]{64}$/);
+  assert.equal(prompts.assertCurrentPrompt(taskId, 'scene-a').prompt_version_id, initial.descriptor.prompt_version_id,
+    'the generated scene may immediately use the current prompt without a confirmation receipt');
 
   const editedPrompt = 'USER_EDITED_SCENE_PROMPT：清晨的高级家居展厅保持完整入口、连续不锈钢展示墙、明确互动区和真实侧向柔光。';
   assert.throws(
-    () => confirmations.savePromptOverride(taskId, 'scene-a', { base_confirmation_id: 'stale', generation_prompt: editedPrompt }),
+    () => prompts.savePromptOverride(taskId, 'scene-a', { base_prompt_version_id: 'stale', generation_prompt: editedPrompt }),
     error => error.code === 'SCENE_PROMPT_EDIT_CONFLICT',
   );
-  assert.throws(
-    () => confirmations.savePromptOverride(taskId, 'scene-a', { base_confirmation_id: descriptorA.confirmation_id, generation_prompt: '过短提示词' }),
-    error => error.code === 'SCENE_PROMPT_TOO_SHORT',
-  );
-  storage.updateTask(taskId, { active_generation_id: 'generation-active' });
-  assert.throws(
-    () => confirmations.savePromptOverride(taskId, 'scene-a', { base_confirmation_id: descriptorA.confirmation_id, generation_prompt: editedPrompt }),
-    error => error.code === 'SCENE_PROMPT_EDIT_ACTIVE_GENERATION',
-  );
-  storage.updateTask(taskId, { active_generation_id: '' });
-  const editedState = confirmations.savePromptOverride(taskId, 'scene-a', {
-    base_confirmation_id: descriptorA.confirmation_id,
+  const saved = prompts.savePromptOverride(taskId, 'scene-a', {
+    base_prompt_version_id: initial.descriptor.prompt_version_id,
     generation_prompt: editedPrompt,
   }, { id: 'owner-1' });
-  assert.equal(editedState.prompt, editedPrompt);
-  assert.equal(editedState.projection.prompt_source, 'user_override');
-  assert.equal(editedState.projection.confirmed, false, 'saving an edit must invalidate the previous confirmation');
-  assert.throws(() => confirmations.assertConfirmed(taskId, 'scene-a'), error => error.code === 'SCENE_PROMPT_CONFIRMATION_REQUIRED');
-  const editedReceipt = confirmations.confirm(taskId, 'scene-a', {
-    confirmation_id: editedState.descriptor.confirmation_id,
-  }, { id: 'owner-1' });
-  assert.equal(editedReceipt.generation_prompt, editedPrompt);
-  assert.match(sceneVisualPrompt.buildSceneSheetPrompt({
-    ctx: {}, sceneConfig: {}, body: { prompt: editedReceipt.generation_prompt, scene_spec: firstPlan.spaces[0].scene_spec },
-  }), /USER_EDITED_SCENE_PROMPT/, 'the paid visual prompt must consume the saved authoritative edit');
+  assert.equal(saved.prompt, editedPrompt);
+  assert.equal(saved.projection.authoritative, true);
+  assert.equal(saved.projection.prompt_source, 'user_override');
+  assert.notEqual(saved.descriptor.prompt_version_id, initial.descriptor.prompt_version_id);
+  assert.equal(prompts.assertCurrentPrompt(taskId, 'scene-a').generation_prompt, editedPrompt,
+    'saving is sufficient to make the edit authoritative for direct generation');
 
-  const receiptB = confirmations.confirm(taskId, 'scene-b', { confirmation_id: descriptorB.confirmation_id }, { id: 'owner-1' });
-  assert.equal(receiptB.confirmed, true);
-  assert.notEqual(confirmations.outputKind('scene-a'), confirmations.outputKind('scene-b'));
-  assert(storage.getOutput(taskId, confirmations.outputKind('scene-a')));
-  assert(storage.getOutput(taskId, confirmations.outputKind('scene-b')));
+  assert.throws(
+    () => prompts.savePromptOverride(taskId, 'scene-a', {
+      base_prompt_version_id: initial.descriptor.prompt_version_id,
+      generation_prompt: `${editedPrompt} 另一窗口覆盖`,
+    }),
+    error => error.code === 'SCENE_PROMPT_EDIT_CONFLICT',
+    'two editors using one base version must not overwrite the first successful save',
+  );
 
-  storage.saveOutput(taskId, 'scene_config', {
-    revision: 4,
-    spaces: [scene('scene-a', '高级家居展厅', '，改为清晨侧光'), firstPlan.spaces[1]],
-  }, { content_revision: 1, snapshot_id: `${taskId}:r1:snapshot` });
-  assert.equal(confirmations.project(taskId, 'scene-a').confirmed, false, 'prompt edits must invalidate the old receipt');
-  assert.equal(confirmations.project(taskId, 'scene-a').prompt_source, 'scene_plan', 'a changed scene plan must invalidate the saved override');
-  assert.equal(confirmations.project(taskId, 'scene-b').confirmed, false, 'strict scene-config lineage changes invalidate old bundle receipts');
+  const target = {
+    scene_id: 'scene-a',
+    space_id: 'scene-a',
+    scene_spec: firstPlan.spaces[0].scene_spec,
+    space: firstPlan.spaces[0],
+  };
+  const generationBody = sceneAssets.authoritativeSceneGenerationBody(
+    { prompt: 'FORGED_REQUEST_PROMPT', description: 'FORGED_REQUEST_DESCRIPTION' },
+    target,
+    prompts.assertCurrentPrompt(taskId, 'scene-a'),
+  );
+  assert.equal(generationBody.prompt, editedPrompt,
+    'derived scene descriptions and request fields must not overwrite the saved prompt');
+  assert.notEqual(generationBody.description, editedPrompt,
+    'structural scene description must remain a separate field');
+  const providerPrompt = sceneVisualPrompt.buildSceneSheetPrompt({ ctx: {}, sceneConfig: {}, body: generationBody });
+  assert(providerPrompt.includes(editedPrompt), 'the real provider prompt construction must contain the exact saved edit');
+  assert(!providerPrompt.includes('FORGED_REQUEST_PROMPT'), 'the request prompt must not bypass current prompt authority');
+
   storage.saveOutput(taskId, 'scene_assets', [{
     id: 'scene-a',
     scene_id: 'scene-a',
@@ -124,47 +118,71 @@ async function main() {
     generation_contract_version: 7,
   }], { content_revision: 1, snapshot_id: `${taskId}:r1:snapshot` });
 
-  let imageCalls = 0;
+  let mediaCalls = 0;
   let modelCalls = 0;
-  const originalImage = mediaAdapter.generateImage;
-  const originalText = modelGateway.generateText;
-  mediaAdapter.generateImage = async () => { imageCalls += 1; return {}; };
+  let businessWrites = 0;
+  const originals = {
+    image: mediaAdapter.generateImage,
+    text: modelGateway.generateText,
+    saveOutput: storage.saveOutput,
+    saveStage: storage.saveStage,
+    updateTask: storage.updateTask,
+  };
+  mediaAdapter.generateImage = async () => { mediaCalls += 1; return {}; };
   modelGateway.generateText = async () => { modelCalls += 1; return {}; };
+  storage.saveOutput = (...args) => { businessWrites += 1; return originals.saveOutput(...args); };
+  storage.saveStage = (...args) => { businessWrites += 1; return originals.saveStage(...args); };
+  storage.updateTask = (...args) => { businessWrites += 1; return originals.updateTask(...args); };
   try {
-    await assert.rejects(
-      () => sceneAssets.generateSceneAsset(taskId, { scene_id: 'scene-a' }),
-      error => error.code === 'SCENE_PROMPT_CONFIRMATION_REQUIRED',
+    assert.throws(
+      () => prompts.confirm(taskId, 'scene-a', { confirmation_id: saved.descriptor.prompt_version_id }),
+      error => error.code === 'LEGACY_SCENE_PROMPT_CONFIRMATION_DISABLED' && error.status === 410 && error.retryable === false,
     );
     await assert.rejects(
-      () => sceneAssets.repairSceneAsset(taskId, 'scene-a', {}),
-      error => error.code === 'SCENE_PROMPT_CONFIRMATION_REQUIRED',
+      () => sceneAssets.generateSceneAsset(taskId, { scene_id: 'scene-a', prompt_version_id: initial.descriptor.prompt_version_id }),
+      error => error.code === 'SCENE_PROMPT_VERSION_STALE' && error.status === 409,
     );
     await assert.rejects(
-      () => panoramas.generateScenePanorama(taskId, 'scene-a', {}),
-      error => error.code === 'SCENE_PROMPT_CONFIRMATION_REQUIRED',
+      () => sceneAssets.repairSceneAsset(taskId, 'scene-a', { prompt_version_id: initial.descriptor.prompt_version_id }),
+      error => error.code === 'SCENE_PROMPT_VERSION_STALE',
     );
     await assert.rejects(
-      () => panoramas.generateTaskPanoramas(taskId, {}, {}, { imageGenerator: async () => { imageCalls += 1; } }),
-      error => error.code === 'SCENE_PROMPT_CONFIRMATION_REQUIRED',
+      () => panoramas.generateScenePanorama(taskId, 'scene-a', { prompt_version_id: initial.descriptor.prompt_version_id }),
+      error => error.code === 'SCENE_PROMPT_VERSION_STALE',
+    );
+    await assert.rejects(
+      () => panoramas.generateTaskPanoramas(taskId, { prompt_version_ids: { 'scene-a': initial.descriptor.prompt_version_id } }),
+      error => error.code === 'SCENE_PROMPT_VERSION_STALE',
     );
   } finally {
-    mediaAdapter.generateImage = originalImage;
-    modelGateway.generateText = originalText;
+    mediaAdapter.generateImage = originals.image;
+    modelGateway.generateText = originals.text;
+    storage.saveOutput = originals.saveOutput;
+    storage.saveStage = originals.saveStage;
+    storage.updateTask = originals.updateTask;
   }
-  assert.equal(imageCalls, 0, 'unconfirmed scene operations must stop before media calls');
-  assert.equal(modelCalls, 0, 'unconfirmed scene operations must stop before model calls');
+  assert.equal(mediaCalls, 0, 'stale prompt versions must stop before paid media calls');
+  assert.equal(modelCalls, 0, 'stale prompt versions must stop before model calls');
+  assert.equal(businessWrites, 0, 'stale prompt versions and the legacy confirmation service must not persist state');
 
-  const outputKinds = storage.listOutputs(taskId).map(row => row.kind);
-  assert(outputKinds.includes(confirmations.outputKind('scene-a')));
-  assert(outputKinds.includes(confirmations.outputKind('scene-b')));
+  storage.saveOutput(taskId, 'scene_config', {
+    revision: 4,
+    spaces: [scene('scene-a', '高级家居展厅', '，改为清晨侧光'), firstPlan.spaces[1]],
+  }, { content_revision: 1, snapshot_id: `${taskId}:r1:snapshot` });
+  const replanned = prompts.currentState(taskId, 'scene-a');
+  assert.equal(replanned.prompt_source, 'scene_plan', 'a changed scene plan must invalidate the saved override');
+  assert.notEqual(replanned.descriptor.prompt_version_id, saved.descriptor.prompt_version_id);
+
   console.log(JSON.stringify({
     passed: true,
-    independent_receipts: 2,
-    stale_receipts_blocked: 2,
-    editable_prompt_override: true,
-    direct_scene_operations_blocked: 4,
+    save_is_authority: true,
+    legacy_confirmation_status: 410,
+    concurrent_cas_conflicts: 1,
+    stale_direct_operations_blocked: 4,
+    provider_prompt_preserved: true,
     model_calls: modelCalls,
-    media_calls: imageCalls,
+    media_calls: mediaCalls,
+    business_writes: businessWrites,
   }));
 }
 

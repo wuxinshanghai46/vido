@@ -190,8 +190,7 @@ function projectNavigation(bundle, active) {
     shot: counts.keyframes,
     final: counts.clips,
   }[view]);
-  return VIEW_ORDER.filter(view => !['storyboard', 'final'].includes(view)
-    || steps[view]?.enabled !== false || view === active).map(view => {
+  return VIEW_ORDER.map(view => {
     const [number, label] = VIEW_META[view];
     const count = countFor(view);
     const state = steps[view] || { enabled: true, completed: false, blocker: '' };

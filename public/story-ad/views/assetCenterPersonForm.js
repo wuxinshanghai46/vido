@@ -17,6 +17,6 @@ export function personEditForm(item = {}) {
       ${calls ? `<span class="person-setting-chip" title="按当前 ${Math.max(1, Number(runtime.look_count || 1) || 1)} 套造型计算的供应商生图单元">${calls}组生图</span>` : ''}
       ${outputs ? `<span class="person-setting-chip" title="包含原子素材与原生人物主视图">${outputs}项素材</span>` : ''}
       <span class="person-setting-chip" title="当前所有人物档案阶段共同可用的模型通道">${routes ? `${routes}条可用通道` : '生图通道暂不可用'}</span>
-    </div><div class="person-prompt-actions"><button class="btn" type="submit">保存提示词</button><button class="person-generate-submit" type="submit" data-save-regenerate-person aria-label="保存并生成人物" title="保存并生成人物">↑</button></div></footer>
+    </div><div class="person-prompt-actions"><span data-autosave-state="saved">已自动保存</span><button class="person-generate-submit" type="button" data-generate-person aria-label="生成人物" title="使用自动保存的最新提示词生成人物">↑</button></div></footer>
   </form></section>`;
 }

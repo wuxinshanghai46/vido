@@ -4,8 +4,8 @@ const storage = require('./storageService');
 const releaseBundle = require('../storyAdReleaseBundleService');
 const sceneWorkflowProjection = require('../storyAdWorkspace/sceneWorkflowProjectionService');
 
-const CONTRACT_VERSION = 1;
-const PROMPT_CONTRACT_VERSION = 'scene-prompt-confirmation-v1';
+const CONTRACT_VERSION = 2;
+const PROMPT_CONTRACT_VERSION = 'scene-prompt-authority-v2';
 
 function clean(value = '', max = 12000) {
   return String(value || '').normalize('NFKC').replace(/\r\n?/g, '\n').trim().slice(0, max);
@@ -104,27 +104,34 @@ function authoritativeDescriptor(taskId, requestedSceneId) {
     prompt,
     prompt_source: overrideCurrent ? 'user_override' : 'scene_plan',
     prompt_override: overrideCurrent ? storedOverride : null,
-    descriptor: { ...descriptor, confirmation_id: storage.canonicalFingerprint(descriptor) },
+    descriptor: (() => {
+      const promptVersionId = storage.canonicalFingerprint(descriptor);
+      return {
+        ...descriptor,
+        prompt_version_id: promptVersionId,
+        // Temporary read compatibility for bundles cached before the v2 UI is loaded.
+        confirmation_id: promptVersionId,
+      };
+    })(),
   };
 }
 
 function currentState(taskId, requestedSceneId) {
   const current = authoritativeDescriptor(taskId, requestedSceneId);
-  const stored = storage.getOutput(taskId, outputKind(current.descriptor.scene_id));
-  const confirmed = Boolean(stored
-    && stored.confirmation_id === current.descriptor.confirmation_id
-    && stored.scene_id === current.descriptor.scene_id);
   return {
     ...current,
-    receipt: confirmed ? stored : null,
+    receipt: null,
     projection: {
       ...current.descriptor,
       generation_prompt: current.prompt,
       prompt_source: current.prompt_source,
       editable: true,
-      confirmed,
-      confirmed_at: confirmed ? clean(stored.confirmed_at, 80) : '',
-      reason: confirmed ? 'current_prompt_confirmed' : (stored ? 'prompt_changed' : 'not_confirmed'),
+      authoritative: true,
+      saved: true,
+      // Compatibility only. v2 consumers use authoritative/saved + prompt_version_id.
+      confirmed: true,
+      confirmed_at: '',
+      reason: 'current_prompt_authoritative',
     },
   };
 }
@@ -134,8 +141,12 @@ function savePromptOverride(taskId, requestedSceneId, input = {}, actor = {}) {
   if (current.task.active_generation_id) {
     throw contractError('SCENE_PROMPT_EDIT_ACTIVE_GENERATION', '当前场景生成正在运行，请完成或取消后再编辑提示词');
   }
-  const expected = clean(input.base_confirmation_id || input.baseConfirmationId, 100);
-  if (!expected || expected !== current.descriptor.confirmation_id) {
+  const expected = clean(
+    input.base_prompt_version_id || input.basePromptVersionId
+      || input.base_confirmation_id || input.baseConfirmationId,
+    100,
+  );
+  if (!expected || expected !== current.descriptor.prompt_version_id) {
     throw contractError('SCENE_PROMPT_EDIT_CONFLICT', '场景提示词已在其他窗口更新，请刷新后再编辑');
   }
   const prompt = promptText(input.generation_prompt || input.generationPrompt);
@@ -167,53 +178,49 @@ function project(taskId, requestedSceneId) {
   }
 }
 
-function confirm(taskId, requestedSceneId, input = {}, actor = {}) {
+function confirm() {
+  throw contractError(
+    'LEGACY_SCENE_PROMPT_CONFIRMATION_DISABLED',
+    '场景提示词显式确认入口已停用；保存后的当前版本将直接用于生成',
+    410,
+  );
+}
+
+function assertCurrentPrompt(taskId, requestedSceneId, input = {}) {
   const current = currentState(taskId, requestedSceneId);
-  const expected = clean(input.confirmation_id || input.confirmationId, 100);
-  if (!expected) throw contractError('SCENE_PROMPT_CONFIRMATION_PROOF_REQUIRED', '请刷新场景页后重新确认当前提示词');
-  if (expected !== current.descriptor.confirmation_id) {
-    throw contractError('SCENE_PROMPT_CHANGED', '场景提示词已经更新，请重新查看并确认后再生成画面');
+  const expected = clean(input.prompt_version_id || input.promptVersionId, 100);
+  if (expected && expected !== current.descriptor.prompt_version_id) {
+    throw contractError('SCENE_PROMPT_VERSION_STALE', '场景提示词已更新，请使用保存后的最新版本生成画面');
   }
-  if (current.receipt) return { ...current.receipt, confirmed: true, duplicate: true };
-  const receipt = {
+  return {
     ...current.descriptor,
     generation_prompt: current.prompt,
     prompt_source: current.prompt_source,
-    confirmed_by: clean(actor.id || actor.userId || actor.username, 120),
-    confirmed_at: new Date().toISOString(),
+    authoritative: true,
   };
-  storage.saveOutput(taskId, outputKind(receipt.scene_id), receipt, {
-    content_revision: receipt.content_revision,
-    snapshot_id: receipt.snapshot_id,
-    input_fingerprint: receipt.confirmation_id,
-    qa_status: 'user_confirmed',
-  });
-  return { ...receipt, confirmed: true, duplicate: false };
 }
 
-function assertConfirmed(taskId, requestedSceneId, input = {}) {
-  const current = currentState(taskId, requestedSceneId);
-  const expected = clean(input.confirmation_id || input.confirmationId, 100);
-  if (!current.receipt || (expected && expected !== current.descriptor.confirmation_id)) {
-    throw contractError('SCENE_PROMPT_CONFIRMATION_REQUIRED', current.projection.reason === 'prompt_changed'
-      ? '场景提示词已更新，请重新确认后再生成画面'
-      : '请先确认当前场景提示词，再生成场景画面');
-  }
-  return current.receipt;
-}
-
-function assertAllConfirmed(taskId, sceneIds = [], input = {}) {
-  const confirmationIds = input.confirmation_ids && typeof input.confirmation_ids === 'object' ? input.confirmation_ids : {};
-  return [...new Set(sceneIds.map(sceneId).filter(Boolean))].map(id => assertConfirmed(taskId, id, {
-    confirmation_id: confirmationIds[id] || '',
+function assertAllCurrentPrompts(taskId, sceneIds = [], input = {}) {
+  const promptVersionIds = input.prompt_version_ids && typeof input.prompt_version_ids === 'object'
+    ? input.prompt_version_ids
+    : {};
+  return [...new Set(sceneIds.map(sceneId).filter(Boolean))].map(id => assertCurrentPrompt(taskId, id, {
+    prompt_version_id: promptVersionIds[id] || '',
   }));
 }
+
+// Internal compatibility aliases. They enforce the v2 current-authority contract and
+// do not read or create legacy confirmation receipts.
+const assertConfirmed = assertCurrentPrompt;
+const assertAllConfirmed = assertAllCurrentPrompts;
 
 module.exports = {
   CONTRACT_VERSION,
   PROMPT_CONTRACT_VERSION,
   assertAllConfirmed,
+  assertAllCurrentPrompts,
   assertConfirmed,
+  assertCurrentPrompt,
   authoritativeDescriptor,
   confirm,
   currentState,

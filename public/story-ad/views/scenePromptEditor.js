@@ -1,22 +1,25 @@
-import { setButtonBusy, toast } from '../components/ui.js?v=20260826-production-v231f';
+import { toast } from '../components/ui.js?v=20260826-production-v231f';
+import { bindTextAutosave } from '../components/textAutosave.js?v=20260826-production-v232';
 
 export function bindScenePromptEditor(card, context) {
-  const button = card?.querySelector('[data-save-scene-prompt]');
-  if (!button || button.dataset.bound === 'true') return;
-  button.dataset.bound = 'true';
-  button.addEventListener('click', async () => {
-    const sceneId = button.dataset.saveScenePrompt;
+  const editor = card?.querySelector('[data-scene-prompt-editor]');
+  if (!editor || editor.dataset.bound === 'true') return null;
+  editor.dataset.bound = 'true';
+  const status = card.querySelector('[data-autosave-state]');
+  return bindTextAutosave({
+    input: editor,
+    status,
+    save: async value => {
+      const sceneId = editor.dataset.scenePromptEditor;
     const scene = (context.bundle.assets?.scenes || []).find(item => String(item.id || item.scene_id) === sceneId);
-    const editor = card.querySelector('[data-scene-prompt-editor]');
-    if (!scene || !editor) return toast('未找到对应场景提示词', 'error');
-    setButtonBusy(button, true, '正在保存…');
-    try {
-      await context.store.saveScenePrompt(scene, editor.value);
-      toast('提示词已保存，请重新确认后生成画面。', 'success');
-      await context.refreshShell();
-    } catch (error) {
-      toast(error.message || '保存提示词失败', 'error');
-      setButtonBusy(button, false);
-    }
+      if (!scene) throw new Error('未找到对应场景提示词');
+      const result = await context.store.saveScenePrompt(scene, value);
+      const promptState = result?.prompt_state || result?.prompt_confirmation || result?.confirmation || {};
+      scene.generation_prompt = value.trim();
+      scene.prompt_state = promptState;
+      card.dataset.promptVersionId = promptState.prompt_version_id || promptState.confirmation_id || '';
+      return promptState;
+    },
+    onError: error => toast(error.message || '保存提示词失败', 'error'),
   });
 }

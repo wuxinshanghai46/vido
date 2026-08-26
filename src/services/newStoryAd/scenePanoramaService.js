@@ -366,7 +366,12 @@ function assertConfirmedTaskPlan(body = {}, expected = {}) {
 
 async function generateTaskPanoramas(taskId, body = {}, runOptions = {}, deps = {}) {
   const expected = planForTask(taskId);
-  scenePromptConfirmation.assertAllConfirmed(taskId, expected.scenes.map(scene => scene.scene_id), body);
+  const currentPrompts = scenePromptConfirmation.assertAllCurrentPrompts(
+    taskId,
+    expected.scenes.map(scene => scene.scene_id),
+    body,
+  );
+  const promptVersions = Object.fromEntries(currentPrompts.map(prompt => [prompt.scene_id, prompt.prompt_version_id]));
   assertConfirmedTaskPlan(body, expected);
   const results = [];
   const failures = [];
@@ -379,6 +384,7 @@ async function generateTaskPanoramas(taskId, body = {}, runOptions = {}, deps = 
     try {
       results.push(await generateScenePanorama(taskId, plan.scene_id, {
         ...body,
+        prompt_version_id: promptVersions[plan.scene_id],
         plan_fingerprint: plan.plan_fingerprint,
         cost_confirmation: true,
       }, {
@@ -419,7 +425,7 @@ function assertConfirmedPlan(body = {}, expected = {}) {
 }
 
 async function generateScenePanorama(taskId, sceneId, body = {}, runOptions = {}, deps = {}) {
-  scenePromptConfirmation.assertConfirmed(taskId, sceneId, body);
+  scenePromptConfirmation.assertCurrentPrompt(taskId, sceneId, body);
   const { assets, scene } = findScene(taskId, sceneId);
   const source = sourceView(scene);
   if (!source || !clean(source.image_url || source.url, 1200)) {

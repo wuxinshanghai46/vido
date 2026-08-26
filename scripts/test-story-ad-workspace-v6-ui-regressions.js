@@ -65,7 +65,9 @@ assert.doesNotMatch(assetPlanningDetails, /查看原始四视图|查看单图素
 assert.match(assetPlanningDetails, /data-person-detail-tab="prompt"/u, '人物详情必须提供提示词标签页');
 assert.match(assetPlanningDetails, /data-person-detail-tab="images"/u, '人物详情必须提供人物形象标签页');
 assert.match(assetPersonForm, /data-person-prompt-workbench/u, '点击人物后必须直接显示单一提示词工作台');
-assert.match(assetPersonForm, /保存提示词/u);
+assert.match(assetPersonForm, /data-autosave-state="saved"/u, '人物提示词必须显示自动保存状态');
+assert.match(assetPersonForm, /data-generate-person/u, '人物生成必须保留独立付费动作');
+assert.doesNotMatch(assetPersonForm, />保存提示词</u, '人物提示词不得再要求显式保存');
 assert.match(assetPersonForm, /name="generation_prompt"/u);
 ['runtime.model_label', 'runtime.aspect_ratios', 'estimated_provider_calls', 'expected_output_assets', 'available_route_count']
   .forEach(field => assert.match(assetPersonForm, new RegExp(field.replace('.', '\\.'))));
@@ -618,8 +620,9 @@ assert.match(assetPlanStageStatus, /场景模块单独生成/, '人物入口必�
 assert.match(assetPlanStageStatus, /data-generate-subject-assets/, '必须提供独立人物生成入口');
 assert.doesNotMatch(assetPlanStageStatus, /data-generate-missing-subjects/, '不得继续暴露旧的缺失人物单项生成入口');
 assert.doesNotMatch(assets, /data-show-pending-scenes/, '人物资产步骤不得继续混入待生成场景入口');
-assert.match(sceneWorldPage, /data-generate-scene/, '场景页面必须成为场景画面的唯一生成入口');
 const scenePromptPreview = read('public/story-ad/views/scenePromptPreview.js');
+const sceneCardInteractions = read('public/story-ad/views/sceneCardInteractions.js');
+assert.match(`${scenePromptPreview}\n${sceneCardInteractions}`, /data-generate-scene/, '场景页面必须成为场景画面的唯一生成入口');
 assert.match(scenePromptPreview, /data-scene-detail-tab="prompt"/, '场景详情必须提供提示词标签页');
 assert.match(scenePromptPreview, /data-scene-detail-tab="images"/, '场景详情必须提供场景画面标签页');
 assert.match(sceneWorldPage, /scene_setup_confirmed:\s*true/, '场景生成完成后必须显式确认才能进入线稿');
@@ -764,7 +767,8 @@ const resumePayload = assetModule.subjectGenerationPayload({
 assert.equal(resumePayload.resume_partial_checkpoint, true, '批量入口遇到部分成功检查点时必须进入只补缺失项模式');
 assert.equal(resumePayload.regenerate_selected, false, '恢复部分检查点不得误标为重新生成并重复付费');
 const sceneWorldPageSource = fs.readFileSync(path.join(__dirname, '../public/story-ad/views/sceneWorldPage.js'), 'utf8');
-assert.match(sceneWorldPageSource, /runStage\(['"]scene-assets/, '场景页必须成为场景画面的唯一正常生成入口');
+const sceneCardInteractionsSource = fs.readFileSync(path.join(__dirname, '../public/story-ad/views/sceneCardInteractions.js'), 'utf8');
+assert.match(sceneCardInteractionsSource, /runStage\(['"]scene-assets/, '场景页必须成为场景画面的唯一正常生成入口');
 assert.match(sceneWorldPageSource, /scene_setup_confirmed:\s*true/, '场景画面核对完成后必须显式确认才放行线稿');
 assert.doesNotMatch(sceneWorldPageSource, /production_graph_v1/, '场景放行不得继续读取项目大包中不存在的旧 outputs 投影');
 const newStoryAdRouteSource = fs.readFileSync(path.join(__dirname, '../src/routes/newStoryAd.js'), 'utf8');

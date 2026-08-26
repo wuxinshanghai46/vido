@@ -1588,10 +1588,12 @@ router.post('/generations/:generationId/cancel', asyncRoute(async (req, res) => 
   res.json({ success: true, ...result, task_cancelled: taskResult?.cancelled === true });
 }));
 
-router.post('/tasks/:id/scene-prompts/:sceneId/confirm', asyncRoute(async (req, res) => {
-  taskForReq(req);
-  const receipt = scenePromptConfirmation.confirm(req.params.id, req.params.sceneId, req.body || {}, userFromReq(req));
-  res.json({ success: true, task_id: req.params.id, scene_id: req.params.sceneId, confirmation: receipt });
+router.post('/tasks/:id/scene-prompts/:sceneId/confirm', asyncRoute(async () => {
+  const error = new Error('场景提示词显式确认入口已停用；保存后的当前版本将直接用于生成');
+  error.code = 'LEGACY_SCENE_PROMPT_CONFIRMATION_DISABLED';
+  error.status = 410;
+  error.retryable = false;
+  throw error;
 }));
 
 router.put('/tasks/:id/scene-prompts/:sceneId', asyncRoute(async (req, res) => {
@@ -1602,28 +1604,34 @@ router.put('/tasks/:id/scene-prompts/:sceneId', asyncRoute(async (req, res) => {
     req.body || {},
     userFromReq(req),
   );
-  res.json({ success: true, task_id: req.params.id, scene_id: req.params.sceneId, prompt_confirmation: result.projection });
+  res.json({
+    success: true,
+    task_id: req.params.id,
+    scene_id: req.params.sceneId,
+    prompt_state: result.projection,
+    prompt_confirmation: result.projection,
+  });
 }));
 
 router.post('/tasks/:id/scene-assets', asyncRoute(async (req, res) => {
   taskForReq(req);
   const body = req.body || {};
   const sceneId = body.space_id || body.spaceId || body.scene_id || body.sceneId || '';
-  const promptReceipt = scenePromptConfirmation.assertConfirmed(req.params.id, sceneId, body);
-  const confirmedBody = {
+  const currentPrompt = scenePromptConfirmation.assertCurrentPrompt(req.params.id, sceneId, body);
+  const authoritativeBody = {
     ...body,
-    confirmation_id: promptReceipt.confirmation_id,
-    idempotency_key: `${req.params.id}:scene_asset:${sceneId}:${promptReceipt.confirmation_id}`,
+    prompt_version_id: currentPrompt.prompt_version_id,
+    idempotency_key: `${req.params.id}:scene_asset:${sceneId}:${currentPrompt.prompt_version_id}`,
   };
-  req.body = confirmedBody;
+  req.body = authoritativeBody;
   return queueTaskStage(req, res, 'scene_asset', job => (
-    confirmedBody.repair_existing === true || confirmedBody.repairExisting === true
-      ? sceneAssetService.repairSceneAsset(req.params.id, confirmedBody.space_id || confirmedBody.scene_id, {
-          ...confirmedBody,
+    authoritativeBody.repair_existing === true || authoritativeBody.repairExisting === true
+      ? sceneAssetService.repairSceneAsset(req.params.id, authoritativeBody.space_id || authoritativeBody.scene_id, {
+          ...authoritativeBody,
           generation_id: job.generationId,
         }, { generationId: job.generationId })
       : sceneAssetService.generateSceneAsset(req.params.id, {
-          ...confirmedBody,
+          ...authoritativeBody,
           generation_id: job.generationId,
         }, { generationId: job.generationId })
   ), {
@@ -1663,19 +1671,19 @@ router.post('/tasks/:id/scene-assets/:sceneId/panorama', asyncRoute(async (req, 
   res.setHeader('Cache-Control', 'private, no-store, no-cache, must-revalidate');
   res.setHeader('Vary', 'Authorization');
   const body = req.body || {};
-  const promptReceipt = scenePromptConfirmation.assertConfirmed(req.params.id, req.params.sceneId, body);
+  const currentPrompt = scenePromptConfirmation.assertCurrentPrompt(req.params.id, req.params.sceneId, body);
   const expected = scenePanoramaService.planForScene(req.params.id, req.params.sceneId);
   scenePanoramaService.assertConfirmedPlan(body, expected);
-  const confirmedBody = {
+  const authoritativeBody = {
     ...body,
-    confirmation_id: promptReceipt.confirmation_id,
-    idempotency_key: `${req.params.id}:scene_panorama:${req.params.sceneId}:${expected.source_fingerprint}:${promptReceipt.confirmation_id}:v${scenePanoramaService.PANORAMA_CONTRACT_VERSION}`,
+    prompt_version_id: currentPrompt.prompt_version_id,
+    idempotency_key: `${req.params.id}:scene_panorama:${req.params.sceneId}:${expected.source_fingerprint}:${currentPrompt.prompt_version_id}:v${scenePanoramaService.PANORAMA_CONTRACT_VERSION}`,
   };
-  req.body = confirmedBody;
+  req.body = authoritativeBody;
   return queueTaskStage(req, res, 'scene_panorama', job => scenePanoramaService.generateScenePanorama(
     req.params.id,
     req.params.sceneId,
-    { ...confirmedBody, generation_id: job.generationId },
+    { ...authoritativeBody, generation_id: job.generationId },
     { generationId: job.generationId },
   ), {
     deadlineMs: 12 * 60 * 1000,
@@ -1692,21 +1700,21 @@ router.post('/tasks/:id/scene-assets/panoramas', asyncRoute(async (req, res) => 
   res.setHeader('Vary', 'Authorization');
   const body = req.body || {};
   const expected = scenePanoramaService.planForTask(req.params.id);
-  const promptReceipts = scenePromptConfirmation.assertAllConfirmed(
+  const currentPrompts = scenePromptConfirmation.assertAllCurrentPrompts(
     req.params.id,
     expected.scenes.map(scene => scene.scene_id),
     body,
   );
   scenePanoramaService.assertConfirmedTaskPlan(body, expected);
-  const confirmedBody = {
+  const authoritativeBody = {
     ...body,
-    confirmation_ids: Object.fromEntries(promptReceipts.map(receipt => [receipt.scene_id, receipt.confirmation_id])),
-    idempotency_key: `${req.params.id}:scene_panorama_batch:${expected.plan_fingerprint}:${storage.canonicalFingerprint(promptReceipts.map(receipt => receipt.confirmation_id).sort())}:v${scenePanoramaService.PANORAMA_CONTRACT_VERSION}`,
+    prompt_version_ids: Object.fromEntries(currentPrompts.map(prompt => [prompt.scene_id, prompt.prompt_version_id])),
+    idempotency_key: `${req.params.id}:scene_panorama_batch:${expected.plan_fingerprint}:${storage.canonicalFingerprint(currentPrompts.map(prompt => prompt.prompt_version_id).sort())}:v${scenePanoramaService.PANORAMA_CONTRACT_VERSION}`,
   };
-  req.body = confirmedBody;
+  req.body = authoritativeBody;
   return queueTaskStage(req, res, 'scene_panorama_batch', job => scenePanoramaService.generateTaskPanoramas(
     req.params.id,
-    { ...confirmedBody, generation_id: job.generationId },
+    { ...authoritativeBody, generation_id: job.generationId },
     { generationId: job.generationId },
   ), { deadlineMs: 45 * 60 * 1000 });
 }));
@@ -1748,15 +1756,15 @@ router.post('/tasks/:id/scene-assets/:sceneId/verify', asyncRoute(async (req, re
 router.post('/tasks/:id/scene-assets/:sceneId/repair', asyncRoute(async (req, res) => {
   taskForReq(req);
   const body = req.body || {};
-  const promptReceipt = scenePromptConfirmation.assertConfirmed(req.params.id, req.params.sceneId, body);
-  const confirmedBody = {
+  const currentPrompt = scenePromptConfirmation.assertCurrentPrompt(req.params.id, req.params.sceneId, body);
+  const authoritativeBody = {
     ...body,
-    confirmation_id: promptReceipt.confirmation_id,
-    idempotency_key: `${req.params.id}:scene_asset_repair:${req.params.sceneId}:${promptReceipt.confirmation_id}`,
+    prompt_version_id: currentPrompt.prompt_version_id,
+    idempotency_key: `${req.params.id}:scene_asset_repair:${req.params.sceneId}:${currentPrompt.prompt_version_id}`,
   };
-  req.body = confirmedBody;
+  req.body = authoritativeBody;
   return queueTaskStage(req, res, 'scene_asset', job => sceneAssetService.repairSceneAsset(req.params.id, req.params.sceneId, {
-    ...confirmedBody,
+    ...authoritativeBody,
     generation_id: job.generationId,
   }, {
     generationId: job.generationId,

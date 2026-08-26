@@ -856,12 +856,35 @@ function finishWithBaseScene({ taskId, target, basePublication, checkpoint, erro
   };
 }
 
+function authoritativeSceneGenerationBody(input = {}, target = {}, currentPrompt = {}) {
+  const authoritativeSceneDescription = sceneSpecProjection.sceneDescriptionForSpec(
+    target.scene_spec,
+    target.space?.description || '',
+  );
+  return {
+    ...input,
+    scene_id: target.scene_id,
+    space_id: target.space_id,
+    scene_spec: target.scene_spec,
+    require_complete_scene_spec: true,
+    ...(target.space ? {
+      name: target.space.name,
+      description: authoritativeSceneDescription,
+      scene_description: authoritativeSceneDescription,
+    } : {}),
+    // This must stay after every structural spread: it is the exact paid-provider
+    // prompt authority and must never be replaced by a derived description.
+    prompt: currentPrompt.generation_prompt,
+    prompt_version_id: currentPrompt.prompt_version_id,
+  };
+}
+
 async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
   cancellation.throwIfCancelled(taskId);
   const task = storage.getTask(taskId);
   if (!task) throw new Error('任务不存在');
   const requestedSceneId = cleanText(body.space_id || body.spaceId || body.scene_id || body.sceneId, 120);
-  const promptReceipt = scenePromptConfirmation.assertConfirmed(taskId, requestedSceneId, body);
+  const currentPrompt = scenePromptConfirmation.assertCurrentPrompt(taskId, requestedSceneId, body);
   const generationId = cleanText(
     runOptions.generationId || body.generation_id || body.generationId || task.active_generation_id || '',
     100,
@@ -883,21 +906,7 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
   const ctx = { ...baseCtx, scene_spec: target.scene_spec };
   const knowledgePolicy = knowledgeRuntime.resolveTaskMany({ storage, taskId, context: ctx, selectors: [{ stage: 'scene_asset', assetType: 'scene' }] });
   const sceneConfig = target.isolated_scene_config;
-  const authoritativeSceneDescription = sceneSpecProjection.sceneDescriptionForSpec(target.scene_spec, target.space?.description || '');
-  body = {
-    ...body,
-    scene_id: target.scene_id,
-    space_id: target.space_id,
-    scene_spec: target.scene_spec,
-    prompt: promptReceipt.generation_prompt,
-    require_complete_scene_spec: true,
-    ...(target.space ? {
-      name: target.space.name,
-      description: authoritativeSceneDescription,
-      scene_description: authoritativeSceneDescription,
-      prompt: authoritativeSceneDescription,
-    } : {}),
-  };
+  body = authoritativeSceneGenerationBody(body, target, currentPrompt);
   assertCompleteUpgradeSceneSpec(body);
   assertSceneRightsPreflight(ctx, body);
   const existing = runOptions.existingSceneAssets || storage.getOutput(taskId, 'scene_assets') || baseCtx.scene_assets || [];
@@ -1607,7 +1616,7 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
 async function repairSceneAsset(taskId, sceneId, body = {}, runOptions = {}) {
   const task = storage.getTask(taskId);
   if (!task) throw new Error('没有找到对应项目。');
-  scenePromptConfirmation.assertConfirmed(taskId, sceneId, body);
+  scenePromptConfirmation.assertCurrentPrompt(taskId, sceneId, body);
   const ctx = assertContextConsistent(storage.getOutput(taskId, 'context') || task.request || {});
   const assets = normalizeSceneAssets(storage.getOutput(taskId, 'scene_assets') || ctx.scene_assets || []);
   const asset = assets.find(item => String(item.scene_id || item.id) === String(sceneId || ''));
@@ -1756,4 +1765,4 @@ async function reverifySceneAsset(taskId, sceneId) {
   saveSceneAssetsToTask(taskId, assets);
   return { scene_asset: assets[index], scene_assets: assets };
 }
-module.exports = { SCENE_VIEW_KEYS, REQUIRED_SCENE_VIEW_KEYS, SCENE_GENERATION_ORDER, SCENE_IMAGE_STAGE_BY_VIEW, SCENE_IMAGE_MAX_ATTEMPTS, SCENE_IMAGE_EXTRA_ATTEMPTS, SCENE_GENERATION_CONTRACT_VERSION, sceneViewLabel, sceneImageStage, sceneViewContentHash, exactSceneViewDuplicate, assertCompleteUpgradeSceneSpec, assertSceneRightsPreflight, sceneMaterialReferenceImages, buildSceneSheetPrompt, sceneStructuredContract: sceneStructuredContract.compile, sceneDescriptionForSpec: sceneSpecProjection.sceneDescriptionForSpec, buildLayoutAcquisitionPrompt, legacyScenePromptFingerprintText, buildDerivedViewPrompt, buildSceneAuditSafePrompt, sceneVisionThumbnailUrl, needsLayoutView, sceneRequest, buildSceneRepairPlan, sceneGenerationUpgradeRequired, normalizeSceneAssets, localizeSceneViews, localizeSceneAssets, saveSceneAssetsToTask, generateSceneAsset, repairSceneAsset, reverifySceneAsset, _resetSceneImageCircuit: resetSceneImageCircuit };
+module.exports = { SCENE_VIEW_KEYS, REQUIRED_SCENE_VIEW_KEYS, SCENE_GENERATION_ORDER, SCENE_IMAGE_STAGE_BY_VIEW, SCENE_IMAGE_MAX_ATTEMPTS, SCENE_IMAGE_EXTRA_ATTEMPTS, SCENE_GENERATION_CONTRACT_VERSION, sceneViewLabel, sceneImageStage, sceneViewContentHash, exactSceneViewDuplicate, assertCompleteUpgradeSceneSpec, assertSceneRightsPreflight, sceneMaterialReferenceImages, authoritativeSceneGenerationBody, buildSceneSheetPrompt, sceneStructuredContract: sceneStructuredContract.compile, sceneDescriptionForSpec: sceneSpecProjection.sceneDescriptionForSpec, buildLayoutAcquisitionPrompt, legacyScenePromptFingerprintText, buildDerivedViewPrompt, buildSceneAuditSafePrompt, sceneVisionThumbnailUrl, needsLayoutView, sceneRequest, buildSceneRepairPlan, sceneGenerationUpgradeRequired, normalizeSceneAssets, localizeSceneViews, localizeSceneAssets, saveSceneAssetsToTask, generateSceneAsset, repairSceneAsset, reverifySceneAsset, _resetSceneImageCircuit: resetSceneImageCircuit };

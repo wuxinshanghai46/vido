@@ -3,11 +3,8 @@
 const storage = require('../../src/services/newStoryAd/storageService');
 const confirmations = require('../../src/services/newStoryAd/scenePromptConfirmationService');
 
-function confirmScenePrompt(taskId, sceneId, actor = { id: 'contract-test-user' }) {
-  const descriptor = confirmations.authoritativeDescriptor(taskId, sceneId).descriptor;
-  return confirmations.confirm(taskId, sceneId, {
-    confirmation_id: descriptor.confirmation_id,
-  }, actor);
+function confirmScenePrompt(taskId, sceneId) {
+  return confirmations.assertCurrentPrompt(taskId, sceneId);
 }
 
 function confirmAllScenePrompts(taskId, actor = { id: 'contract-test-user' }) {
