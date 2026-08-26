@@ -1,7 +1,7 @@
 # 2026-08-27 剧情广告场景生成与公司电脑续接交接
 
-> 生成时间：2026-08-27（Asia/Shanghai）  
-> 续接分支：`codex/story-ad-systemic-remediation`  
+> 生成时间：2026-08-27（Asia/Shanghai）<br>
+> 续接分支：`codex/story-ad-systemic-remediation`<br>
 > 目标任务：`b83fa67c-244a-4869-b3cc-df282fad5c59`（佛山智造 · 不锈钢品牌广告）
 
 ## 1. 当日目标与用户最终决策
