@@ -152,14 +152,18 @@ function testUnknownCheckpointBlocksMigrationWithoutWrites() {
   const original = {
     getTask: storage.getTask,
     getOutput: storage.getOutput,
-    readDb: storage.readDb,
+    listOutputsByKindPrefixes: storage.listOutputsByKindPrefixes,
+    listModelCalls: storage.listModelCalls,
+    listGenerationRuns: storage.listGenerationRuns,
     saveOutput: storage.saveOutput,
     withWriteBatch: storage.withWriteBatch,
   };
   let writes = 0;
   storage.getTask = id => id === taskId ? { id: taskId, content_revision: 1, active_generation_id: '' } : null;
   storage.getOutput = (id, kind) => id === taskId ? clone(outputMap.get(kind) || null) : null;
-  storage.readDb = () => clone(db);
+  storage.listOutputsByKindPrefixes = id => id === taskId ? clone(db.outputs) : [];
+  storage.listModelCalls = id => id === taskId ? clone(db.model_calls) : [];
+  storage.listGenerationRuns = ({ task_id: id } = {}) => id === taskId ? clone(db.generation_runs) : [];
   storage.saveOutput = () => { writes += 1; throw new Error('migration must not write while billing is unknown'); };
   storage.withWriteBatch = callback => callback();
   try {
