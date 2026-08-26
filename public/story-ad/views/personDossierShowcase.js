@@ -95,7 +95,7 @@ export function personDossierShowcase(item = {}) {
       ${gallerySection('人物头像', '单人半身身份图与面部角度', avatarRows, groups.masters, 'is-avatar-category')}
       ${gallerySection('人物视图', '全身母版与正面、三分之四、侧面、背面视图', viewRows, groups.views, 'is-view-category')}
       ${gallerySection('穿搭', '服装轮廓、剪裁、面料和鞋履细节', generatedWardrobe, groups.wardrobe, 'is-wardrobe-category')}
-      ${gallerySection('服饰与配饰', '仅展示设定中明确存在的服饰、配饰和鞋履单品', generatedAccessories, groups.accessories, 'is-accessory-category')}
+      ${gallerySection('服饰与配饰', '仅展示设定中明确存在的服饰、配饰与鞋履单品；不再用头像或全身图冒充配饰', generatedAccessories, groups.accessories, 'is-accessory-category')}
       ${gallerySection('表情', '可复用的表情状态', expressions, groups.expressions, 'is-expression-category')}
       ${gallerySection('动作', '用于剧情表演与人物一致性的动作参考', actions, groups.actions, 'is-action-category')}
     </div>
