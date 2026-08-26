@@ -5,13 +5,15 @@ export function bindSceneCards(host, context) {
   const editorControllers = new Map(); const editorPromises = new Map();
   const taskId = String(context.bundle?.project?.id || '');
   const tabKey = sceneId => `vido:scene-detail-tab:${taskId}:${sceneId}`;
+  const rememberTab = (key, value) => { try { globalThis.sessionStorage?.setItem(key, value); } catch {} };
+  const recalledTab = key => { try { return globalThis.sessionStorage?.getItem(key) || ''; } catch { return ''; } };
   const switchTab = (card, selected, remember = true) => {
     card.querySelectorAll('[data-scene-detail-tab]').forEach(tab => tab.classList.toggle('is-active', tab.dataset.sceneDetailTab === selected));
     card.querySelectorAll('[data-scene-detail-pane]').forEach(pane => { pane.hidden = pane.dataset.sceneDetailPane !== selected; });
-    if (remember) sessionStorage.setItem(tabKey(card.dataset.sceneId || ''), selected);
+    if (remember) rememberTab(tabKey(card.dataset.sceneId || ''), selected);
   };
   host.querySelectorAll('[data-scene-card]').forEach(card => {
-    switchTab(card, sessionStorage.getItem(tabKey(card.dataset.sceneId || '')) || card.dataset.defaultSceneTab || 'prompt', false);
+    switchTab(card, recalledTab(tabKey(card.dataset.sceneId || '')) || card.dataset.defaultSceneTab || 'prompt', false);
     const promise = import('./scenePromptEditor.js?v=20260826-production-v232a').then(module => {
       const controller = module.bindScenePromptEditor(card, context);
       if (controller) editorControllers.set(card.dataset.sceneId || '', controller);

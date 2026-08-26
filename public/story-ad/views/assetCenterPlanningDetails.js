@@ -152,18 +152,20 @@ export function openAssetDrawer(item, group, handlers = {}, renderers = {}) {
   let closed = false;
   let personAutosave = null;
   const personTabStorageKey = `vido:person-detail-tab:${item.id || item.profile?.id || item.name || 'current'}`;
+  const rememberPersonTab = value => { try { globalThis.sessionStorage?.setItem(personTabStorageKey, value); } catch {} };
+  const recalledPersonTab = () => { try { return globalThis.sessionStorage?.getItem(personTabStorageKey) || ''; } catch { return ''; } };
   const personTabButtons = [...drawer.querySelectorAll('[data-person-detail-tab]')];
   const personTabPanels = [...drawer.querySelectorAll('[data-person-detail-panel]')];
   const selectPersonTab = selected => {
     personTabButtons.forEach(row => row.setAttribute('aria-selected', String(row.dataset.personDetailTab === selected)));
     personTabPanels.forEach(panel => { panel.hidden = panel.dataset.personDetailPanel !== selected; });
   };
-  const rememberedPersonTab = sessionStorage.getItem(personTabStorageKey);
+  const rememberedPersonTab = recalledPersonTab();
   if (rememberedPersonTab) selectPersonTab(rememberedPersonTab);
   personTabButtons.forEach(button => button.addEventListener('click', async () => {
     const selected = button.dataset.personDetailTab;
     if (selected !== 'prompt') { try { await personAutosave?.flush(); } catch { return; } }
-    sessionStorage.setItem(personTabStorageKey, selected);
+    rememberPersonTab(selected);
     selectPersonTab(selected);
   }));
   const onKeydown = event => { if (event.key === 'Escape') close(); };
@@ -196,7 +198,7 @@ export function openAssetDrawer(item, group, handlers = {}, renderers = {}) {
   drawer.querySelector('[data-ai-assist-scene]')?.addEventListener('click', event => onAssistScene?.(item, drawer.querySelector('[data-scene-edit]'), event.currentTarget));
   drawer.querySelector('[data-drawer-upload-product]')?.addEventListener('click', () => { close(); onUploadProduct?.(item); });
   document.body.append(backdrop, drawer);
-  if (editablePerson) import('./personPromptAutosave.js?v=20260826-production-v232a').then(module => {
+  if (editablePerson && drawer.querySelector('[name="generation_prompt"]')) import('./personPromptAutosave.js?v=20260826-production-v232a').then(module => {
     if (!closed) personAutosave = module.bindPersonPromptAutosave(drawer, item, { onSavePerson, onGenerate, close });
   });
   bindMediaLightbox(drawer);
