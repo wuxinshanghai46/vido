@@ -1,8 +1,8 @@
-import { request, uploadAsset, uploadReferenceVideo } from '../api.js?v=20260826-production-v230i';
-import { beginReferenceReplacement, referenceSyncInterrupted, replacementCurrent, removeProjectReference, restoreReferenceReplacement } from './referenceReplacementState.js?v=20260826-production-v230i';
-import { cancelReferenceAnalysisRequest, retryReferenceAnalysisRequest, retryReferenceImportRequest } from './referenceRetryStore.js?v=20260826-production-v230i';
-import { loadProjectList } from './projectListStore.js?v=20260826-production-v230i';
-import { loadProjectBundle, refreshProjectBundle } from './projectBundleStore.js?v=20260826-production-v230i';
+import { request, uploadAsset, uploadReferenceVideo } from '../api.js?v=20260826-production-v230k';
+import { beginReferenceReplacement, referenceSyncInterrupted, replacementCurrent, removeProjectReference, restoreReferenceReplacement } from './referenceReplacementState.js?v=20260826-production-v230k';
+import { cancelReferenceAnalysisRequest, retryReferenceAnalysisRequest, retryReferenceImportRequest } from './referenceRetryStore.js?v=20260826-production-v230k';
+import { loadProjectList } from './projectListStore.js?v=20260826-production-v230k';
+import { loadProjectBundle, refreshProjectBundle } from './projectBundleStore.js?v=20260826-production-v230k';
 export function createProjectStore() {
   const state = {
     projects: [],
@@ -55,7 +55,7 @@ export function createProjectStore() {
     hydrateReferenceFailure();
     return bundle;
   }
-  const mediaStore = () => import('./mediaCatalogStore.js?v=20260826-production-v230i'), loadMediaPage = async options => (await mediaStore()).loadMediaPage({ request, state }, options);
+  const mediaStore = () => import('./mediaCatalogStore.js?v=20260826-production-v230k'), loadMediaPage = async options => (await mediaStore()).loadMediaPage({ request, state }, options);
   const loadMoreMedia = async (kind = 'keyframes', limit = 24) => (await mediaStore()).loadMoreMedia({ request, state, set }, kind, limit);
 
   async function refreshSections(sections) {
@@ -131,14 +131,9 @@ export function createProjectStore() {
         };
         const data = await request(`/api/new-story-ad/tasks/${encodeURIComponent(taskId)}`, { method: 'PUT', body, timeoutMs: 120000 });
         applyMutationResult(data);
-        if (options.skipRefresh === true) {
-          const workflowKeys = ['asset_setup_confirmed', 'scene_setup_confirmed', 'shot_design_confirmed'];
-          const workflowPatch = Object.fromEntries(workflowKeys.filter(key => Object.hasOwn(patch || {}, key)).map(key => [key, patch[key] === true]));
-          if (Object.keys(workflowPatch).length) set({ bundle: { ...state.bundle, brief: { ...(state.bundle?.brief || {}), ...workflowPatch } } });
-        }
-        const bundle = options.skipRefresh === true
-          ? state.bundle
-          : await refreshSections(options.refreshSections || 'summary');
+        const workflowKeys = ['asset_setup_confirmed', 'scene_setup_confirmed', 'shot_design_confirmed'];
+        if (options.skipRefresh === true) { const workflowPatch = Object.fromEntries(workflowKeys.filter(key => Object.hasOwn(patch || {}, key)).map(key => [key, patch[key] === true])); if (Object.keys(workflowPatch).length) set({ bundle: { ...state.bundle, brief: { ...(state.bundle?.brief || {}), ...workflowPatch } } }); }
+        const bundle = options.skipRefresh === true ? state.bundle : await refreshSections(options.refreshSections || 'summary');
         set({ saving: false });
         return options.returnMutationResult === true ? { bundle, mutation: data } : bundle;
       } catch (error) {
