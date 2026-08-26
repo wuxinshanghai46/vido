@@ -1,5 +1,7 @@
 'use strict';
 
+const personAgeContract = require('./personAgeContractService');
+
 function clean(value, max = 4000) {
   return String(value ?? '').replace(/\r\n?/g, '\n').trim().slice(0, max);
 }
@@ -71,9 +73,20 @@ function ensurePropsLine(prompt = '', profile = {}) {
   return `${normalized}\n\n${line}`;
 }
 
+function alignAgeAuthority(prompt = '', profile = {}) {
+  const normalized = clean(prompt, 8000);
+  const contract = personAgeContract.normalize(profile.age_contract || profile.age || profile.age_range || '');
+  if (!normalized || !['exact', 'range', 'preset_range'].includes(contract.mode)) return normalized;
+  const authoritativeAge = contract.display_text;
+  return normalized.replace(
+    /(?:年龄(?:约为|为|约)?|约|大约|看起来)?\s*(?:\d{1,7}\s*(?:~|～|-|—|–|至|到)\s*\d{1,7}\s*(?:岁|周岁)|\d{1,7}\s*(?:岁|周岁)(?:左右|上下)?)/gu,
+    authoritativeAge,
+  );
+}
+
 function compile(profile = {}) {
   const authored = clean(profile.generation_prompt || profile.generationPrompt, 8000);
-  return ensurePropsLine(authored || fallbackPrompt(profile), profile);
+  return alignAgeAuthority(ensurePropsLine(authored || fallbackPrompt(profile), profile), profile);
 }
 
 function normalizeSettings() {
@@ -100,4 +113,4 @@ function project(profile = {}) {
   };
 }
 
-module.exports = { clean, normalizeOwnedProps, propsText, performanceOnly, fallbackPrompt, ensurePropsLine, compile, normalizeSettings, project };
+module.exports = { clean, normalizeOwnedProps, propsText, performanceOnly, fallbackPrompt, ensurePropsLine, alignAgeAuthority, compile, normalizeSettings, project };

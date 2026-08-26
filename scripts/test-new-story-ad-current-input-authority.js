@@ -48,6 +48,17 @@ async function main() {
   assert.match(personPrompt, /Age-range lock: 40~55岁/);
   assert.match(personPrompt, /Preserve one stable apparent maturity inside this interval/);
   assert.doesNotMatch(personPrompt, /约30岁/);
+  const authoredAgePrompt = subjectAssets.humanPrompt(subjectAssets.humanMemberSpecs(
+    { age: 'middle_40_55' },
+    { cast_profiles: [{
+      id: 'cast_1', displayName: '人物一', roleName: '主角', age: 'middle_40_55',
+      appearanceText: '约30岁，真实人物', wardrobeText: '固定服装', hairMakeupText: '固定发型',
+      generation_prompt: '名称：人物一\n\n描述：约30岁，原创真实人物\n\n服装：固定服装',
+    }] },
+    1,
+  )[0], 1);
+  assert.match(authoredAgePrompt, /描述：40~55岁，原创真实人物/);
+  assert.doesNotMatch(authoredAgePrompt, /约30岁/);
 
   const currentScene = {
     layoutText: 'NEW_USER_LAYOUT_当前修改后的完整空间布局，包含明确前景背景和行动路线。',
