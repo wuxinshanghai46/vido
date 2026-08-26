@@ -1,7 +1,7 @@
-import { request } from '../api.js?v=20260826-production-v230e';
-import { escapeHtml, mediaPreview, toast } from '../components/ui.js?v=20260826-production-v230e';
-import { promptDialog } from '../components/dialog.js?v=20260826-production-v230e';
-import { list, worldById } from './sceneWorldData.js?v=20260826-production-v230e';
+import { request } from '../api.js?v=20260826-production-v230f';
+import { escapeHtml, mediaPreview, toast } from '../components/ui.js?v=20260826-production-v230f';
+import { promptDialog } from '../components/dialog.js?v=20260826-production-v230f';
+import { list, worldById } from './sceneWorldData.js?v=20260826-production-v230f';
 const CAPABILITY_LABELS = {
   supports_photo_views: '真实图片视角',
   supports_panorama: '360原地环视（3DoF）',
@@ -355,7 +355,7 @@ function initSceneWorldViewer({ overlay, bundle, world }) {
     host.innerHTML = '<div class="scene-world-canvas-loading">正在按需加载3DoF球形全景查看器…</div>';
     if (help) help.textContent = '3DoF原地环视：可改变观看方向与FOV，不支持摄像机前后左右位移';
     try {
-      const module = await import('./panoramaViewer.js?v=20260826-production-v230e');
+      const module = await import('./panoramaViewer.js?v=20260826-production-v230f');
       if (requestToken !== activation) return;
       host.replaceChildren();
       viewer = module.mountPanoramaViewer({ host, source: node.image_url, label: node.name || world.name });
@@ -456,7 +456,7 @@ async function openSceneWorldStudio(bundle, world) {
   disposeViewer = initSceneWorldViewer({ overlay, bundle, world });
   overlay.querySelector('[data-open-director-studio]')?.addEventListener('click', async () => {
     try {
-      const module = await import('./directorStudioView.js?v=20260826-production-v230e');
+      const module = await import('./directorStudioView.js?v=20260826-production-v230f');
       await module.openDirectorStudio({ taskId: bundle.project.id, world });
     } catch (error) { toast(error.message || '导演台加载失败', 'danger'); }
   });
