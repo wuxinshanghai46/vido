@@ -13,7 +13,7 @@ function argument(name) {
 }
 
 function modelCallCount(taskId) {
-  return (storage.readDb().model_calls || []).filter(call => String(call.task_id) === String(taskId)).length;
+  return storage.getTaskBundle(taskId, { diagnostics: true }).model_calls.length;
 }
 
 function inspect(taskId) {

@@ -332,6 +332,9 @@ assert.equal(referenceChangedResult.migrated, false);
 assert(referenceChangedResult.compatibility.issues.includes('active_plan_content_revision_mismatch'));
 
 const cliFixture = createFixture({ id: 'cli-explicit-task', oldBundle: 'legacy-cli', castCount: 2, propCount: 0, sceneCount: 4 });
+const migrationCliSource = fs.readFileSync(path.join(__dirname, 'migrate-story-ad-active-plan-release.js'), 'utf8');
+assert.doesNotMatch(migrationCliSource, /storage\.readDb\(\)/, '单任务发布迁移不得全库扫描模型调用记录');
+assert.match(migrationCliSource, /getTaskBundle\(taskId/, '单任务发布迁移必须按 taskId 查询诊断记录');
 function cli(args) {
   return spawnSync(process.execPath, [path.join(__dirname, 'migrate-story-ad-active-plan-release.js'), ...args], {
     env: process.env, cwd: path.resolve(__dirname, '..'), encoding: 'utf8',
