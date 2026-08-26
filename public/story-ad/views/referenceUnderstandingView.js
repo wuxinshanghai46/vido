@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260826-production-v233b';
-import { escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260826-production-v233b';
-import { confirmDialog } from '../components/dialog.js?v=20260826-production-v233b';
+import { request } from '../api.js?v=20260826-production-v233c';
+import { escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260826-production-v233c';
+import { confirmDialog } from '../components/dialog.js?v=20260826-production-v233c';
 
 const STYLE_ID = 'story-ad-reference-understanding-style';
 const MAX_ITEMS = 120;
@@ -95,7 +95,7 @@ function ensureStyles() {
   const link = document.createElement('link');
   link.id = STYLE_ID;
   link.rel = 'stylesheet';
-  link.href = '/story-ad/reference-understanding.css?v=20260826-production-v233b';
+  link.href = '/story-ad/reference-understanding.css?v=20260826-production-v233c';
   document.head.appendChild(link);
 }
 
