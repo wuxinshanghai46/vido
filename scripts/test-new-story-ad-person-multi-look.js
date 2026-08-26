@@ -122,10 +122,12 @@ async function run() {
   assert.match(frontend, /data-person-look/);
   assert.match(frontend, /collectPersonLookValues/);
   assert.match(drawer, /assetCenterPersonForm\.js/, '人物抽屉必须按需加载独立表单模块');
-  assert.match(personForm, /renderPersonLookEditors/, '独立人物表单必须渲染多造型编辑器');
+  assert.match(personForm, /data-person-prompt-workbench/, '人物表单必须使用统一提示词工作台');
+  assert.match(personForm, /name="generation_prompt"/, '多造型内容必须经完整人物提示词统一编辑');
+  assert.doesNotMatch(personForm, /renderPersonLookEditors/, '旧多造型分段编辑器不得重新进入当前人物合同');
   assert.match(drawer, /look_upgrade_required/);
   assert.match(drawer, /personLookSummary/);
-  console.log('person multi-look regression: 25 assertions passed');
+  console.log('person multi-look regression: 27 assertions passed');
 }
 
 run().catch(error => { console.error(error); process.exitCode = 1; });
