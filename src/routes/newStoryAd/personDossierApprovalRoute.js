@@ -15,7 +15,7 @@ function registerPersonDossierApprovalRoute(router, deps = {}) {
       error.status = 422;
       throw error;
     }
-    const committed = service.commitGeneratedPersonAsset(req.params.id, actorAsset, production.person_profile || {});
+    const committed = service.commitGeneratedPersonAsset(req.params.id, actorAsset, production.person_profile || {}, { change_kind: 'visual_dossier' });
     const privateActor = upsertActorAssetForUser(userId, committed.person_asset, {
       generated_by: 'new_story_ad.authorized_real_person_dossier', task_id: req.params.id,
     });

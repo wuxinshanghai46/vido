@@ -207,7 +207,12 @@ finally:
     maxBuffer: 50 * 1024 * 1024,
   });
   if (child.status !== 0) {
-    const detail = (child.stderr || child.stdout || '').trim();
+    // stdout can contain a partially emitted multi-megabyte query result when
+    // spawnSync reaches maxBuffer. Never echo that payload into PM2 logs: it
+    // both leaks business rows and can fill the system disk in a few minutes.
+    const bridgeError = String(child.error?.code || child.error?.message || '').trim();
+    const stderr = String(child.stderr || '').trim();
+    const detail = (bridgeError || stderr || `python exited with status ${String(child.status)}`).slice(0, 2000);
     throw new Error(`sqlite python bridge failed: ${detail}`);
   }
   const output = (child.stdout || '').trim();

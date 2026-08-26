@@ -274,7 +274,10 @@ function interruptedPatch(task = {}, reason = '后台工作进程已重启，原
 }
 
 function reconcileInterruptedJobs({ now = Date.now() } = {}) {
-  const tasks = storage.readDb().tasks || [];
+  // Reconciliation only needs task rows. readDb() materializes every artifact
+  // payload as well; production history can exceed the Python bridge buffer
+  // and previously caused a 50 MB error payload to be logged every interval.
+  const tasks = storage.listTaskRows();
   const result = { interrupted: 0, normalized: 0 };
   for (const task of tasks) {
     if (!task?.id || runningJobs.has(jobKey(task.id))) continue;

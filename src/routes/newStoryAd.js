@@ -1309,7 +1309,7 @@ router.post('/person-sheet', asyncRoute(async (req, res) => {
       production_usable_actor: personContract.status === 'verified',
     };
     if (taskId) {
-      committed = service.commitGeneratedPersonAsset(taskId, actorAsset, spec);
+      committed = service.commitGeneratedPersonAsset(taskId, actorAsset, spec, { change_kind: 'visual_dossier' });
       actorAsset = committed.person_asset;
     }
     let providerSync = { status: taskId ? 'pending' : 'not_required' };
@@ -1380,7 +1380,7 @@ router.post('/person-sheet', asyncRoute(async (req, res) => {
       person_contract: fallbackContract,
       production_usable_actor: fallbackContract.status === 'verified',
     };
-    const committed = taskId ? service.commitGeneratedPersonAsset(taskId, actorAsset, spec) : null;
+    const committed = taskId ? service.commitGeneratedPersonAsset(taskId, actorAsset, spec, { change_kind: 'visual_dossier' }) : null;
     if (committed) actorAsset = committed.person_asset;
     let providerSync = { status: taskId ? 'pending' : 'not_required' };
     if (taskId && committed?.person_contract?.status === 'verified') {
@@ -1435,7 +1435,9 @@ async function generateAndCommitSubjectAssets({ body = {}, taskId = '', generati
     }
     const committed = taskId
       ? personAssetLifecycle.commitGeneratedSubjectAssets(taskId, normalizedBundle, body.person_spec || {}, {
-          change_kind: body.person_change_kind || body.change_kind || (body.regenerate_selected ? 'visual_dossier' : 'semantic'),
+          // Image generation only attaches/replaces visual dossiers. Semantic
+          // profile edits are persisted by the profile-save route beforehand.
+          change_kind: 'visual_dossier',
         })
       : {
           person_asset: normalizedBundle.cast_assets.length ? {

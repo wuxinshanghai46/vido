@@ -111,7 +111,7 @@ function create({ service, storage, generateAndCommitSubjectAssets, persistProvi
     let subjectCommit = null;
     if (subjects.status === 'fulfilled' && subjects.value?.normalized_bundle) {
       subjectCommit = personAssetLifecycle.commitGeneratedSubjectAssets(taskId, subjects.value.normalized_bundle, body.person_spec || {},
-        { change_kind: body.person_change_kind || body.change_kind || 'semantic', deferContextWrite: true });
+        { change_kind: 'visual_dossier', deferContextWrite: true });
       visualAssetProgress.updateLane(taskId, 'subjects', { status: 'completed', percent: 100, message: '人物与动物档案已保存' });
     }
     if (sceneCommit.scene_assets?.length) sceneAssetService.saveSceneAssetsToTask(taskId, sceneCommit.scene_assets, { deferContextWrite: true });

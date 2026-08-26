@@ -73,7 +73,7 @@ export function subjectGenerationPayload(bundle = {}, target = null, requestKey 
     payload.subject_targets = selected.id ? [selected] : [];
     payload.regenerate_selected = true;
     payload.resume_partial_checkpoint = target.partial_checkpoint === true;
-    payload.person_change_kind = target.kind === 'animal' ? 'semantic' : 'visual_dossier';
+    payload.person_change_kind = 'visual_dossier';
     if (group === 'people' && target.profile?.id) {
       payload.cast_profiles = payload.cast_profiles.map(profile => String(profile.id || '') === String(target.profile.id) ? { ...profile, ...target.profile } : profile);
     }
@@ -93,7 +93,7 @@ export function subjectGenerationPayload(bundle = {}, target = null, requestKey 
       payload.resume_partial_checkpoint = pending.some(entry => entry.item.partial_checkpoint === true);
       payload.regenerate_selected = !payload.resume_partial_checkpoint
         && pending.some(entry => entry.kind === 'human' && personAssetState(entry.item) !== 'missing');
-      payload.person_change_kind = payload.regenerate_selected ? 'visual_dossier' : 'semantic';
+      payload.person_change_kind = 'visual_dossier';
     }
   }
   return payload;
