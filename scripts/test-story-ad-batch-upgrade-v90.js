@@ -39,10 +39,12 @@ assert.equal(targets[1].repair_existing, false);
 
 const assetPersonState = fs.readFileSync(path.join(root, 'public/story-ad/views/assetCenterPersonState.js'), 'utf8');
 const assetView = fs.readFileSync(path.join(root, 'public/story-ad/views/assetCenterView.js'), 'utf8');
+const sceneWorldPage = fs.readFileSync(path.join(root, 'public/story-ad/views/sceneWorldPage.js'), 'utf8');
 assert.match(assetPersonState, /visual_asset_contract_version \|\| 0\) >= 2/);
 assert.match(assetView, /旧版档案 · 待升级/);
 assert.match(assetView, /生成缺失人物 \/ 动物资产/, 'batch upgrade action must describe the current unified missing-subject flow');
-assert.match(assetView, /repair_existing: repairing/);
+assert.doesNotMatch(assetView, /repair_existing: repairing/, '资产中心不得继续拥有场景修复入口');
+assert.match(sceneWorldPage, /runStage\('scene-assets'/, '场景页必须独立拥有单场景生成入口');
 assert.match(assetView, /subject_targets = pending\.map/, 'one user action must submit every missing person target');
 
 const subjectBundleSource = fs.readFileSync(path.join(root, 'src/services/newStoryAd/subjectAssetBundleService.js'), 'utf8');
