@@ -25,6 +25,7 @@ sceneAssets.generateSceneAsset = (taskId, body = {}, runOptions = {}) => generat
 );
 const sceneCheckpoint = require('../src/services/newStoryAd/sceneGenerationCheckpointService');
 const subjectBundles = require('../src/services/newStoryAd/subjectAssetBundleService');
+const { confirmAllScenePrompts } = require('./helpers/scene-prompt-confirmation-fixture');
 
 function fullSceneSpec(marker, place) {
   return {
@@ -513,6 +514,7 @@ async function assertMultiSpacePromptsAndRecovery() {
       storage.createTask({ id: taskId, title: taskId, request: baseContext });
       storage.saveOutput(taskId, 'context', baseContext);
       storage.saveOutput(taskId, 'scene_config', sceneConfig);
+      confirmAllScenePrompts(taskId);
       await sceneAssets.generateSceneAsset(taskId, { space_id: targetId });
     }
     const parkCalls = calls.filter(call => call.taskId === 'multi-space-park');
@@ -536,7 +538,7 @@ async function assertMultiSpacePromptsAndRecovery() {
     const callsBeforeMissingPlan = calls.length;
     await assert.rejects(
       () => sceneAssets.generateSceneAsset(missingPlanTask, { space_id: 'space_park' }),
-      error => error?.status === 422,
+      error => error?.code === 'SCENE_PLAN_REQUIRED',
     );
     assert.strictEqual(calls.length, callsBeforeMissingPlan, 'missing multi-space plan must fail before supplier');
 
@@ -544,6 +546,7 @@ async function assertMultiSpacePromptsAndRecovery() {
     storage.createTask({ id: unknownTask, title: unknownTask, request: baseContext });
     storage.saveOutput(unknownTask, 'context', baseContext);
     storage.saveOutput(unknownTask, 'scene_config', sceneConfig);
+    confirmAllScenePrompts(unknownTask);
     failUnknownLayoutFor = unknownTask;
     const unknownStart = calls.length;
     await assert.rejects(
@@ -570,6 +573,7 @@ async function assertMultiSpacePromptsAndRecovery() {
     storage.createTask({ id: legacyUnknownTask, title: legacyUnknownTask, request: baseContext });
     storage.saveOutput(legacyUnknownTask, 'context', baseContext);
     storage.saveOutput(legacyUnknownTask, 'scene_config', sceneConfig);
+    confirmAllScenePrompts(legacyUnknownTask);
     storage.saveOutput(legacyUnknownTask, sceneCheckpoint.outputKind('space_park'), {
       task_id: legacyUnknownTask,
       scene_id: 'space_park',

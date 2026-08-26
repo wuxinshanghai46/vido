@@ -9,6 +9,7 @@ const sceneCheckpointProjection = require('./sceneCheckpointProjectionService');
 const { sceneProjectionRows } = require('./taskViewService');
 const pipelineModels = require('../pipelineModelService');
 const modelCapabilities = require('../modelCapabilityService');
+const scenePromptConfirmation = require('./scenePromptConfirmationService');
 
 const PANORAMA_CONTRACT_VERSION = 1;
 const CHECKPOINT_OUTPUT_KIND = 'scene_panorama_checkpoints';
@@ -365,6 +366,7 @@ function assertConfirmedTaskPlan(body = {}, expected = {}) {
 
 async function generateTaskPanoramas(taskId, body = {}, runOptions = {}, deps = {}) {
   const expected = planForTask(taskId);
+  scenePromptConfirmation.assertAllConfirmed(taskId, expected.scenes.map(scene => scene.scene_id), body);
   assertConfirmedTaskPlan(body, expected);
   const results = [];
   const failures = [];
@@ -417,6 +419,7 @@ function assertConfirmedPlan(body = {}, expected = {}) {
 }
 
 async function generateScenePanorama(taskId, sceneId, body = {}, runOptions = {}, deps = {}) {
+  scenePromptConfirmation.assertConfirmed(taskId, sceneId, body);
   const { assets, scene } = findScene(taskId, sceneId);
   const source = sourceView(scene);
   if (!source || !clean(source.image_url || source.url, 1200)) {

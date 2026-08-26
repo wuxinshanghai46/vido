@@ -32,6 +32,7 @@ const shotReferencePacks = require('../src/services/newStoryAd/shotReferencePack
 const storyAd = require('../src/services/newStoryAd/storyAdService');
 const jobService = require('../src/services/newStoryAd/jobService');
 const pipelineModels = require('../src/services/pipelineModelService');
+const { confirmAllScenePrompts } = require('./helpers/scene-prompt-confirmation-fixture');
 
 const TASK_ID = 'panorama-contract-regression';
 const JOB_TASK_ID = 'panorama-job-concurrency-regression';
@@ -128,6 +129,21 @@ function seedTask(source) {
     status: 'draft',
   });
   storage.saveOutput(TASK_ID, 'context', { brief: 'NEUTRAL_CURRENT_SCENE_TOKEN' });
+  storage.saveOutput(TASK_ID, 'scene_config', {
+    scene_mode: 'multi',
+    spaces: [SCENE_ID, 'qa-failure-scene', 'provider-submitted-block', 'qa-running-block'].map(id => ({
+      id,
+      name: id,
+      description: 'NEUTRAL_CURRENT_SCENE_TOKEN with stable boundaries and a fixed central anchor.',
+      scene_spec: {
+        layoutText: 'NEUTRAL_CURRENT_SCENE_TOKEN with stable boundaries and a fixed central anchor.',
+        materialLightText: 'CURRENT_MATERIAL_TOKEN with coherent natural light.',
+        interactionText: 'CURRENT_INTERACTION_TOKEN beside the central anchor.',
+        negativeText: 'No people, text, seams or unrelated locations.',
+      },
+    })),
+  });
+  confirmAllScenePrompts(TASK_ID);
   sceneAssets.saveSceneAssetsToTask(TASK_ID, [{
     id: SCENE_ID,
     scene_id: SCENE_ID,
@@ -542,8 +558,18 @@ async function testTwentyConcurrentJobSubmissions() {
 async function testProjectedBatchContinuation(candidate) {
   storage.createTask({ id: BATCH_TASK_ID, title: 'Panorama batch regression', brief: 'batch', request: {}, content_revision: 1, status: 'draft' });
   storage.saveOutput(BATCH_TASK_ID, 'scene_config', {
-    spaces: ['batch-scene-1', 'batch-scene-2', 'batch-scene-3'].map(id => ({ id, space_id: id, name: id })),
+    spaces: ['batch-scene-1', 'batch-scene-2', 'batch-scene-3'].map(id => ({
+      id, space_id: id, name: id,
+      description: `Panorama continuation scene ${id}`,
+      scene_spec: {
+        layoutText: `Complete physical space ${id}`,
+        materialLightText: 'Coherent materials and natural light.',
+        interactionText: 'One stable interaction zone.',
+        negativeText: 'No people, text or unrelated spaces.',
+      },
+    })),
   });
+  confirmAllScenePrompts(BATCH_TASK_ID);
   sceneAssets.saveSceneAssetsToTask(BATCH_TASK_ID, [neutralScene('batch-scene-1', candidate)]);
   for (const sceneId of ['batch-scene-2', 'batch-scene-3']) {
     storage.saveOutput(BATCH_TASK_ID, `scene_asset_checkpoint:${sceneId}`, {

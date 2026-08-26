@@ -17,6 +17,7 @@ const storyboardTableService = require('../src/services/newStoryAd/storyboardTab
 const productionLimits = require('../src/services/newStoryAd/productionLimitsService');
 const qualityReviewService = require('../src/services/newStoryAd/qualityReviewService');
 const ttsAdapter = require('../src/services/newStoryAd/ttsAdapter');
+const { confirmScenePrompt } = require('./helpers/scene-prompt-confirmation-fixture');
 
 const fifteenSecondBrief = [
   '制作一条十五秒横屏平台品牌宣传片。',
@@ -230,12 +231,26 @@ async function main() {
     request: mismatchedContext,
   });
   storage.saveOutput(taskId, 'context', mismatchedContext);
+  storage.saveOutput(taskId, 'scene_config', {
+    scene_mode: 'single',
+    spaces: [{
+      id: 'duration-gate-scene',
+      name: '时长冲突门禁场景',
+      description: '用于验证付费调用前时长合同门禁',
+      scene_spec: {
+        layoutText: '一个完整连续的测试空间',
+        materialLightText: '真实材质与统一自然光',
+        interactionText: '保留清晰互动区域',
+        negativeText: '禁止人物、文字和拼贴',
+      },
+    }],
+  });
+  confirmScenePrompt(taskId, 'duration-gate-scene');
   await assert.rejects(
-    sceneAssetService.generateSceneAsset(taskId, {}),
+    sceneAssetService.generateSceneAsset(taskId, { scene_id: 'duration-gate-scene' }),
     /需求文本明确要求 15 秒，但任务结构化时长为 30 秒/,
     '时长冲突必须在任何场景图片供应商调用前停止',
   );
-  assert.deepEqual(storage.listOutputs(taskId).map(row => row.kind), ['context']);
   assert.equal(storage.getTaskBundle(taskId).model_calls.length, 0);
   console.log('new story ad duration contract: ok');
 }

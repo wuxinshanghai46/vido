@@ -97,8 +97,8 @@ async function main() {
   assert.equal((storage.getTaskBundle(taskId, { diagnostics: true }).model_calls || []).length, 0);
 
   const routeSource = fs.readFileSync(path.join(__dirname, '../src/routes/newStoryAd.js'), 'utf8');
-  assert(routeSource.includes("deadlineMs: task => service.sceneConfigStageBudgetMs(task.id, {"), 'scene-config 路由必须使用自适应阶段预算');
-  assert(routeSource.includes("replan_scene_coverage: replanSceneCoverage"), '主动重建标志必须参与预算计算');
+  assert.match(routeSource, /router\.post\('\/tasks\/:id\/scene-config'[\s\S]*?LEGACY_SCENE_CONFIG_ROUTE_DISABLED[\s\S]*?status = 410/, '旧 scene-config 路由必须保持不可重试拒绝壳');
+  assert.match(routeSource, /router\.post\('\/tasks\/:id\/scene-plan'[\s\S]*?sceneConfigStageBudgetMs\(task\.id, \{ replan_scene_coverage: true \}\)/, '当前 scene-plan 路由必须保留场景规划安全预算');
 
   console.log(JSON.stringify({
     passed: true,
@@ -108,7 +108,8 @@ async function main() {
     stale_contract_upgrade_budget_ms: 450000,
     checkpoint_preserved_on_deadline: true,
     partial_state_message_accurate: true,
-    route_uses_adaptive_budget: true,
+    legacy_scene_config_route_disabled: true,
+    scene_plan_route_uses_safe_budget: true,
     real_model_calls: 0,
   }, null, 2));
 }

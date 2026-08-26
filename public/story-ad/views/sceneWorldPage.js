@@ -16,6 +16,23 @@ function bindSceneCards(host, context) {
     });
   });
 
+  host.querySelectorAll('[data-confirm-scene-prompt]').forEach(button => {
+    button.addEventListener('click', async () => {
+      const sceneId = button.dataset.confirmScenePrompt;
+      const scene = (context.bundle.assets?.scenes || []).find(item => String(item.id || item.scene_id) === sceneId);
+      if (!scene) return toast('未找到对应场景', 'error');
+      setButtonBusy(button, true, '正在确认…');
+      try {
+        await context.store.confirmScenePrompt(scene);
+        toast('提示词已确认，可以生成该场景画面。', 'success');
+        await context.refreshShell();
+      } catch (error) {
+        toast(error.message || '确认提示词失败', 'error');
+        setButtonBusy(button, false);
+      }
+    });
+  });
+
   host.querySelectorAll('[data-generate-scene]').forEach(button => {
     button.addEventListener('click', async () => {
       const sceneId = button.dataset.generateScene;
@@ -32,7 +49,12 @@ function bindSceneCards(host, context) {
       if (!confirmation.accepted) return;
       setButtonBusy(button, true, '正在生成…');
       try {
-        const result = await context.store.runStage('scene-assets', { space_id: sceneId, scene_id: sceneId, name: scene.name });
+        const result = await context.store.runStage('scene-assets', {
+          space_id: sceneId,
+          scene_id: sceneId,
+          name: scene.name,
+          confirmation_id: scene.prompt_confirmation?.confirmation_id || '',
+        });
         if (!result.accepted) throw new Error(result.message || '生成未被接受');
         toast('任务已提交');
         await context.refreshShell();

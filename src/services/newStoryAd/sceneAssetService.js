@@ -13,7 +13,7 @@ const sceneBinding = require('./sceneBindingService');
 const visualRealismPolicy = require('./visualRealismPolicyService');
 const sceneAtlas = require('./sceneAtlasService');
 const blueprintQuality = require('./blueprintQualityService'), sceneStructuredContract = require('./sceneStructuredContractService');
-const generationSpecCompletion = require('./generationSpecCompletionService');
+const scenePromptConfirmation = require('./scenePromptConfirmationService');
 const visualAssetProgress = require('./visualAssetProgressService');
 const productAssetResolver = require('./productAssetResolverService');
 const sceneGenerationPolicy = require('./sceneGenerationPolicyService'), knowledgeRuntime = require('./knowledgePolicyRuntimeService');
@@ -860,6 +860,8 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
   cancellation.throwIfCancelled(taskId);
   const task = storage.getTask(taskId);
   if (!task) throw new Error('任务不存在');
+  const requestedSceneId = cleanText(body.space_id || body.spaceId || body.scene_id || body.sceneId, 120);
+  scenePromptConfirmation.assertConfirmed(taskId, requestedSceneId, body);
   const generationId = cleanText(
     runOptions.generationId || body.generation_id || body.generationId || task.active_generation_id || '',
     100,
@@ -869,67 +871,15 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
   let target = sceneBinding.resolveSceneGenerationTarget({
     sceneConfig: storedSceneConfig,
     context: baseCtx,
-    body: { ...body, allow_incomplete_scene_spec: true },
+    body: {
+      ...body,
+      scene_spec: undefined,
+      sceneSpec: undefined,
+      allow_incomplete_scene_spec: false,
+      require_complete_scene_spec: true,
+    },
   });
   target = sceneSpecProjection.ensureNarrativeDescription(target);
-  const sceneCompletion = await generationSpecCompletion.completeSceneSpec({
-    taskId,
-    brief: baseCtx.brief || task.request?.brief || '',
-    productSubject: baseCtx.product_subject || task.request?.product_subject || '',
-    contentMode: baseCtx.content_mode || baseCtx.product_presentation?.mode,
-    sceneId: target.scene_id,
-    sceneName: target.space?.name || body.name || '',
-    sceneSpec: target.scene_spec,
-  });
-  if (sceneCompletion.changed) {
-    target.scene_spec = sceneCompletion.scene_spec;
-    const targetIndex = Array.isArray(target.scene_plan?.spaces)
-      ? target.scene_plan.spaces.findIndex(space => String(space.id || space.space_id || space.scene_id) === String(target.scene_id))
-      : -1;
-    if (targetIndex >= 0) {
-      target.scene_plan.spaces[targetIndex] = {
-        ...target.scene_plan.spaces[targetIndex],
-        description: sceneSpecProjection.sceneDescriptionForSpec(sceneCompletion.scene_spec, target.scene_plan.spaces[targetIndex].description),
-        scene_spec: sceneCompletion.scene_spec,
-      };
-    }
-    if (runOptions.deferPublish !== true) storage.saveOutput(taskId, 'scene_config', target.scene_plan);
-    const completedCtx = {
-      ...baseCtx,
-      scene_mode: target.scene_plan.scene_mode,
-      scene_spec: target.multi_scene ? baseCtx.scene_spec : sceneCompletion.scene_spec,
-      generation_input_completion: {
-        ...(baseCtx.generation_input_completion || {}),
-        scene: { checkpoint_kind: sceneCompletion.checkpoint_kind, scene_id: target.scene_id, updated_at: new Date().toISOString() },
-      },
-    };
-    if (runOptions.deferPublish !== true) {
-      storage.saveOutput(taskId, 'context', completedCtx);
-      storage.updateTask(taskId, { request: completedCtx, updated_at: new Date().toISOString() });
-    }
-  }
-  if (target.submitted_scene_spec_used) {
-    const targetIndex = Array.isArray(target.scene_plan?.spaces)
-      ? target.scene_plan.spaces.findIndex(space => String(space.id || space.space_id || space.scene_id) === String(target.scene_id))
-      : -1;
-    if (targetIndex >= 0) {
-      target.scene_plan.spaces[targetIndex] = {
-        ...target.scene_plan.spaces[targetIndex],
-        description: sceneSpecProjection.sceneDescriptionForSpec(target.scene_spec, target.scene_plan.spaces[targetIndex].description),
-        scene_spec: target.scene_spec,
-      };
-    }
-    if (runOptions.deferPublish !== true) storage.saveOutput(taskId, 'scene_config', target.scene_plan);
-    const editedCtx = {
-      ...baseCtx,
-      scene_mode: target.scene_plan.scene_mode,
-      scene_spec: target.multi_scene ? baseCtx.scene_spec : target.scene_spec,
-    };
-    if (runOptions.deferPublish !== true) {
-      storage.saveOutput(taskId, 'context', editedCtx);
-      storage.updateTask(taskId, { request: editedCtx, updated_at: new Date().toISOString() });
-    }
-  }
   const ctx = { ...baseCtx, scene_spec: target.scene_spec };
   const knowledgePolicy = knowledgeRuntime.resolveTaskMany({ storage, taskId, context: ctx, selectors: [{ stage: 'scene_asset', assetType: 'scene' }] });
   const sceneConfig = target.isolated_scene_config;
@@ -939,6 +889,7 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
     scene_id: target.scene_id,
     space_id: target.space_id,
     scene_spec: target.scene_spec,
+    require_complete_scene_spec: true,
     ...(target.space ? {
       name: target.space.name,
       description: authoritativeSceneDescription,
@@ -1655,6 +1606,7 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
 async function repairSceneAsset(taskId, sceneId, body = {}, runOptions = {}) {
   const task = storage.getTask(taskId);
   if (!task) throw new Error('没有找到对应项目。');
+  scenePromptConfirmation.assertConfirmed(taskId, sceneId, body);
   const ctx = assertContextConsistent(storage.getOutput(taskId, 'context') || task.request || {});
   const assets = normalizeSceneAssets(storage.getOutput(taskId, 'scene_assets') || ctx.scene_assets || []);
   const asset = assets.find(item => String(item.scene_id || item.id) === String(sceneId || ''));

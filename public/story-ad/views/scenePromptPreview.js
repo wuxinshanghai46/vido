@@ -8,13 +8,14 @@ export function renderSceneProductionCard(scene = {}, index = 0, options = {}) {
   const imageCount = [scene.layout?.image_url, ...(scene.view_images || []), ...(scene.cameras || []).map(camera => camera?.image_url)].filter(Boolean).length;
   const provisional = options.provisional === true || scene.provisional === true;
   const needsGeneration = !provisional && sceneNeedsGeneration(scene);
+  const promptConfirmed = scene.prompt_confirmation?.confirmed === true;
   const sceneId = escapeHtml(scene.id || scene.scene_id || `scene-${index + 1}`);
   return `<article class="scene-production-card" data-scene-card>
     <header><div><small>场景 ${index + 1}</small><h3>${escapeHtml(scene.name || `场景 ${index + 1}`)}</h3></div><span class="status-tag ${needsGeneration || provisional ? 'is-neutral' : 'is-ready'}">${provisional ? '提示词预览' : (needsGeneration ? '待生成画面' : `已生成 ${imageCount} 张`)}</span></header>
     <nav class="scene-production-tabs"><button class="is-active" data-scene-detail-tab="prompt">提示词</button><button data-scene-detail-tab="images">场景画面 ${imageCount ? `(${imageCount})` : ''}</button></nav>
     <section class="scene-production-pane" data-scene-detail-pane="prompt"><pre>${escapeHtml(prompt || '场景提示词尚未生成。')}</pre></section>
     <section class="scene-production-pane" data-scene-detail-pane="images" hidden>${renderSceneCoverCard(scene)}</section>
-    <footer><span>${provisional ? '正式规划完成后可逐个生成画面' : (needsGeneration ? '确认提示词后生成画面' : '画面已就绪，可继续核对')}</span>${needsGeneration ? `<button class="btn primary compact" data-generate-scene="${sceneId}">生成该场景</button>` : ''}</footer>
+    <footer><span>${provisional ? '正式规划完成后可逐个生成画面' : (needsGeneration ? (promptConfirmed ? '提示词已确认，可以生成画面' : '请先确认当前提示词') : '画面已就绪，可继续核对')}</span>${needsGeneration && !promptConfirmed ? `<button class="btn primary compact" data-confirm-scene-prompt="${sceneId}">确认提示词</button>` : ''}${needsGeneration && promptConfirmed ? `<button class="btn primary compact" data-generate-scene="${sceneId}">生成该场景</button>` : ''}</footer>
   </article>`;
 }
 

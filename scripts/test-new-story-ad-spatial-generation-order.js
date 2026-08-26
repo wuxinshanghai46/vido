@@ -25,6 +25,7 @@ sceneAssets.generateSceneAsset = (taskId, body = {}, runOptions = {}) => generat
   { ...runOptions, maintenanceLegacyAcquisition: true },
 );
 const storyAdService = require('../src/services/newStoryAd/storyAdService');
+const { confirmAllScenePrompts } = require('./helpers/scene-prompt-confirmation-fixture');
 
 async function main() {
   const taskId = 'spatial-generation-order-test';
@@ -116,6 +117,7 @@ async function main() {
         scene_spec: context.scene_spec,
       }],
     });
+    confirmAllScenePrompts(id);
   };
   assert.throws(
     () => sceneAssets.assertCompleteUpgradeSceneSpec({
@@ -571,16 +573,16 @@ async function main() {
       },
     };
     const parkSpec = {
-      layoutText: 'PARK_ONLY_TOKEN：开阔公园草坪、弧形步道、长椅与树荫形成独立户外空间。',
-      materialLightText: '自然草地、浅灰步道和午后侧逆光，仅属于户外公园。',
-      interactionText: '草坪中央保留人物与宠物活动区，步道作为进出路线。',
-      negativeText: '禁止人物、文字水印、空间边界断裂和不相关室内陈设。',
+      layoutText: 'PARK_ONLY_TOKEN：开阔公园草坪、完整树线、稳定入口、弧形步道与长椅形成连续可导航户外空间。',
+      materialLightText: '连续自然草地、浅灰步道、真实树木、统一午后侧逆光方向与合理环境反射，仅属于户外公园。',
+      interactionText: '草坪中央保留完整人物与宠物互动区域，弧形步道提供无阻挡连续进出路线与摄影机路径。',
+      negativeText: '禁止人物、文字水印、拼贴样板、重复树木、错误透视、空间边界断裂和不相关室内陈设。',
     };
     const homeSpec = {
-      layoutText: 'HOME_ONLY_TOKEN：家庭客厅与相邻厨房形成一个连续室内空间。',
-      materialLightText: '木地板、布艺沙发、暖色窗光，仅属于家庭室内。',
-      interactionText: '沙发前为家庭互动区，厨房通道保持畅通。',
-      negativeText: '禁止人物、文字水印、空间边界断裂和不相关户外陈设。',
+      layoutText: 'HOME_ONLY_TOKEN：家庭客厅、稳定入口、相邻厨房与清晰通道形成一个完整连续的室内生活空间。',
+      materialLightText: '连续木地板、真实布艺沙发、统一暖色窗光方向与合理室内辅助照明，仅属于家庭室内。',
+      interactionText: '沙发前保留完整家庭互动区域，厨房通道保持畅通并提供明确连续摄影机移动路径。',
+      negativeText: '禁止人物、文字水印、拼贴样板、重复家具、错误透视、空间边界断裂和不相关户外陈设。',
     };
     storage.createTask({ id: multiSpaceTaskId, title: 'multi space prompt isolation', request: mixedContext });
     storage.saveOutput(multiSpaceTaskId, 'context', mixedContext);
@@ -592,6 +594,7 @@ async function main() {
         { id: 'home', name: '家庭客厅与厨房', description: 'HOME_ONLY_TOKEN 家庭室内空间', story_purpose: '家庭收束', scene_spec: homeSpec },
       ],
     });
+    confirmAllScenePrompts(multiSpaceTaskId);
     const callsBeforeMissingTarget = calls.length;
     await assert.rejects(
       () => sceneAssets.generateSceneAsset(multiSpaceTaskId, {}),

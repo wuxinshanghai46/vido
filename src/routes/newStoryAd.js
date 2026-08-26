@@ -34,6 +34,7 @@ const paidExecutionPolicy = require('../services/newStoryAd/paidVideoExecutionPo
 const visualRealismPolicy = require('../services/newStoryAd/visualRealismPolicyService');
 const videoCore = require('../services/videoGenerationCore');
 const publicFailure = require('../services/newStoryAd/publicFailureProjectionService');
+const scenePromptConfirmation = require('../services/newStoryAd/scenePromptConfirmationService');
 const db = require('../models/database');
 function userFromReq(req) {
   return req.user || req.auth || {};
@@ -1587,17 +1588,31 @@ router.post('/generations/:generationId/cancel', asyncRoute(async (req, res) => 
   res.json({ success: true, ...result, task_cancelled: taskResult?.cancelled === true });
 }));
 
+router.post('/tasks/:id/scene-prompts/:sceneId/confirm', asyncRoute(async (req, res) => {
+  taskForReq(req);
+  const receipt = scenePromptConfirmation.confirm(req.params.id, req.params.sceneId, req.body || {}, userFromReq(req));
+  res.json({ success: true, task_id: req.params.id, scene_id: req.params.sceneId, confirmation: receipt });
+}));
+
 router.post('/tasks/:id/scene-assets', asyncRoute(async (req, res) => {
   taskForReq(req);
   const body = req.body || {};
+  const sceneId = body.space_id || body.spaceId || body.scene_id || body.sceneId || '';
+  const promptReceipt = scenePromptConfirmation.assertConfirmed(req.params.id, sceneId, body);
+  const confirmedBody = {
+    ...body,
+    confirmation_id: promptReceipt.confirmation_id,
+    idempotency_key: `${req.params.id}:scene_asset:${sceneId}:${promptReceipt.confirmation_id}`,
+  };
+  req.body = confirmedBody;
   return queueTaskStage(req, res, 'scene_asset', job => (
-    body.repair_existing === true || body.repairExisting === true
-      ? sceneAssetService.repairSceneAsset(req.params.id, body.space_id || body.scene_id, {
-          ...body,
+    confirmedBody.repair_existing === true || confirmedBody.repairExisting === true
+      ? sceneAssetService.repairSceneAsset(req.params.id, confirmedBody.space_id || confirmedBody.scene_id, {
+          ...confirmedBody,
           generation_id: job.generationId,
         }, { generationId: job.generationId })
       : sceneAssetService.generateSceneAsset(req.params.id, {
-          ...body,
+          ...confirmedBody,
           generation_id: job.generationId,
         }, { generationId: job.generationId })
   ), {
@@ -1637,16 +1652,19 @@ router.post('/tasks/:id/scene-assets/:sceneId/panorama', asyncRoute(async (req, 
   res.setHeader('Cache-Control', 'private, no-store, no-cache, must-revalidate');
   res.setHeader('Vary', 'Authorization');
   const body = req.body || {};
+  const promptReceipt = scenePromptConfirmation.assertConfirmed(req.params.id, req.params.sceneId, body);
   const expected = scenePanoramaService.planForScene(req.params.id, req.params.sceneId);
   scenePanoramaService.assertConfirmedPlan(body, expected);
-  req.body = {
+  const confirmedBody = {
     ...body,
-    idempotency_key: `${req.params.id}:scene_panorama:${req.params.sceneId}:${expected.source_fingerprint}:v${scenePanoramaService.PANORAMA_CONTRACT_VERSION}`,
+    confirmation_id: promptReceipt.confirmation_id,
+    idempotency_key: `${req.params.id}:scene_panorama:${req.params.sceneId}:${expected.source_fingerprint}:${promptReceipt.confirmation_id}:v${scenePanoramaService.PANORAMA_CONTRACT_VERSION}`,
   };
+  req.body = confirmedBody;
   return queueTaskStage(req, res, 'scene_panorama', job => scenePanoramaService.generateScenePanorama(
     req.params.id,
     req.params.sceneId,
-    { ...body, generation_id: job.generationId },
+    { ...confirmedBody, generation_id: job.generationId },
     { generationId: job.generationId },
   ), {
     deadlineMs: 12 * 60 * 1000,
@@ -1663,14 +1681,21 @@ router.post('/tasks/:id/scene-assets/panoramas', asyncRoute(async (req, res) => 
   res.setHeader('Vary', 'Authorization');
   const body = req.body || {};
   const expected = scenePanoramaService.planForTask(req.params.id);
+  const promptReceipts = scenePromptConfirmation.assertAllConfirmed(
+    req.params.id,
+    expected.scenes.map(scene => scene.scene_id),
+    body,
+  );
   scenePanoramaService.assertConfirmedTaskPlan(body, expected);
-  req.body = {
+  const confirmedBody = {
     ...body,
-    idempotency_key: `${req.params.id}:scene_panorama_batch:${expected.plan_fingerprint}:v${scenePanoramaService.PANORAMA_CONTRACT_VERSION}`,
+    confirmation_ids: Object.fromEntries(promptReceipts.map(receipt => [receipt.scene_id, receipt.confirmation_id])),
+    idempotency_key: `${req.params.id}:scene_panorama_batch:${expected.plan_fingerprint}:${storage.canonicalFingerprint(promptReceipts.map(receipt => receipt.confirmation_id).sort())}:v${scenePanoramaService.PANORAMA_CONTRACT_VERSION}`,
   };
+  req.body = confirmedBody;
   return queueTaskStage(req, res, 'scene_panorama_batch', job => scenePanoramaService.generateTaskPanoramas(
     req.params.id,
-    { ...body, generation_id: job.generationId },
+    { ...confirmedBody, generation_id: job.generationId },
     { generationId: job.generationId },
   ), { deadlineMs: 45 * 60 * 1000 });
 }));
@@ -1695,28 +1720,12 @@ router.post('/tasks/:id/product-verify', asyncRoute(async (req, res) => {
   res.json({ success: true, task_id: req.params.id, ...result });
 }));
 
-router.put('/tasks/:id/scene-assets', asyncRoute(async (req, res) => {
-  productionGraph.assertLegacyMutationAllowed(req.params.id, 'scene_asset_client_write');
-  const task = taskForReq(req);
-  const body = req.body || {};
-  const submitted = body.scene_assets || body.sceneAssets || [];
-  const authoritative = storage.getOutput(req.params.id, 'scene_assets') || [];
-  if (task.lineage_enforced === true
-    && storage.canonicalFingerprint(submitted) !== storage.canonicalFingerprint(authoritative)) {
-    const error = new Error('场景生成产物由服务器版本管理，浏览器旧快照不能覆盖当前场景；请刷新任务后继续');
-    error.code = 'CLIENT_GENERATED_OUTPUT_REJECTED';
-    error.status = 409;
-    error.retryable = false;
-    throw error;
-  }
-  const sceneAssets = task.lineage_enforced === true
-    ? authoritative
-    : sceneAssetService.saveSceneAssetsToTask(req.params.id, submitted);
-  res.json({
-    success: true,
-    task_id: req.params.id,
-    scene_assets: sceneAssets,
-  });
+router.put('/tasks/:id/scene-assets', asyncRoute(async () => {
+  const error = new Error('浏览器写入场景产物的旧入口已停用；场景画面只接受当前服务端生成链路发布');
+  error.code = 'LEGACY_SCENE_ASSET_WRITE_DISABLED';
+  error.status = 410;
+  error.retryable = false;
+  throw error;
 }));
 
 router.post('/tasks/:id/scene-assets/:sceneId/verify', asyncRoute(async (req, res) => {
@@ -1728,8 +1737,15 @@ router.post('/tasks/:id/scene-assets/:sceneId/verify', asyncRoute(async (req, re
 router.post('/tasks/:id/scene-assets/:sceneId/repair', asyncRoute(async (req, res) => {
   taskForReq(req);
   const body = req.body || {};
-  return queueTaskStage(req, res, 'scene_asset', job => sceneAssetService.repairSceneAsset(req.params.id, req.params.sceneId, {
+  const promptReceipt = scenePromptConfirmation.assertConfirmed(req.params.id, req.params.sceneId, body);
+  const confirmedBody = {
     ...body,
+    confirmation_id: promptReceipt.confirmation_id,
+    idempotency_key: `${req.params.id}:scene_asset_repair:${req.params.sceneId}:${promptReceipt.confirmation_id}`,
+  };
+  req.body = confirmedBody;
+  return queueTaskStage(req, res, 'scene_asset', job => sceneAssetService.repairSceneAsset(req.params.id, req.params.sceneId, {
+    ...confirmedBody,
     generation_id: job.generationId,
   }, {
     generationId: job.generationId,
@@ -1824,14 +1840,12 @@ router.get('/tasks/:id/diagnostics', asyncRoute(async (req, res) => {
   });
 }));
 
-router.post('/tasks/:id/scene-config', asyncRoute(async (req, res) => {
-  const replanSceneCoverage = req.body?.replan_scene_coverage === true || req.body?.replanSceneCoverage === true;
-  return queueTaskStage(req, res, 'scene_config', job => service.generateSceneConfig(req.params.id, {
-    generation_id: job.generationId,
-    replan_scene_coverage: replanSceneCoverage,
-  }), { deadlineMs: task => service.sceneConfigStageBudgetMs(task.id, {
-    replan_scene_coverage: replanSceneCoverage,
-  }) });
+router.post('/tasks/:id/scene-config', asyncRoute(async () => {
+  const error = new Error('旧场景配置入口已停用，不会排队、调用模型或写入数据；请刷新页面后使用当前场景提示词规划入口');
+  error.code = 'LEGACY_SCENE_CONFIG_ROUTE_DISABLED';
+  error.status = 410;
+  error.retryable = false;
+  throw error;
 }));
 
 registerPersonPlanGenerationRoute(router, { asyncRoute, queueTaskStage, userFromReq, service, storage, generationPermit, generateAndCommitSubjectAssets });

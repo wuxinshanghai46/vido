@@ -74,16 +74,53 @@ async function main() {
   assert.equal(observedBeforeModel.required_bundle_id, currentBundleId);
   assert.deepEqual(observedBeforeModel.compatibility.issues, []);
 
-  storage.updateTask(taskId, { required_bundle_id: 'c'.repeat(64) });
-  const scenePlanPatch = require('../src/services/newStoryAd/assetPlanCheckpointLineageService')
-    .queuedPlanningTaskPatch('scene_plan', currentBundleId);
-  assert.equal(scenePlanPatch.required_bundle_id, currentBundleId, 'independent scene-plan jobs must rebase lineage before checkpoint CAS');
-  storage.updateTask(taskId, scenePlanPatch);
-  assert(!checkpoints.checkpointCompatibility(storage.getTask(taskId), null, {
-    content_revision: prepared.content_revision,
-    fingerprint: prepared.input_fingerprint,
-    generation_id: 'direct-scene-plan-check',
-  }).issues.includes('task_bundle_mismatch'), 'scene-plan rebase must clear the historical task bundle mismatch');
+  const scenePlanCreated = storyAd.createTask({
+    brief: 'A scene-plan queue integration task with historical release lineage.',
+    product_subject: 'scene-plan queue integration',
+    content_mode: 'commercial_subject',
+    content_mode_source: 'user',
+    cast_mode: 'human',
+  }, owner);
+  const scenePlanTaskId = scenePlanCreated.task.id;
+  storage.updateTask(scenePlanTaskId, { required_bundle_id: 'c'.repeat(64) });
+  const scenePlanPrepared = storyAd.prepareGeneration(scenePlanTaskId, {
+    expected_content_revision: 1,
+    target_stage: 'scene_plan',
+  }, owner);
+  let scenePlanObserved = null;
+  const scenePlanQueued = jobs.queueStage({
+    taskId: scenePlanTaskId,
+    stage: 'scene_plan',
+    expectedContentRevision: scenePlanPrepared.content_revision,
+    snapshotId: scenePlanPrepared.snapshot_id,
+    inputFingerprint: scenePlanPrepared.input_fingerprint,
+    execute: async ({ generationId }) => {
+      const task = storage.getTask(scenePlanTaskId);
+      const checkpoint = checkpoints.saveCheckpointAtomic(
+        scenePlanTaskId,
+        'scene_plan_queue_rebase_probe',
+        {},
+        storage.getOutput(scenePlanTaskId, 'context') || task.request || {},
+        {
+          content_revision: scenePlanPrepared.content_revision,
+          fingerprint: scenePlanPrepared.input_fingerprint,
+          generation_id: generationId,
+          status: 'queue_rebase_verified',
+        },
+      );
+      scenePlanObserved = {
+        required_bundle_id: task.required_bundle_id,
+        checkpoint_bundle_id: checkpoint.release_envelope.producer_bundle_id,
+        generation_id: checkpoint.generation_id,
+        active_generation_id: task.active_generation_id,
+      };
+    },
+  });
+  assert.equal(scenePlanQueued.accepted, true, 'scene-plan queue must accept a fresh current-revision job');
+  await waitUntil(() => !storage.getTask(scenePlanTaskId).active_generation_id);
+  assert.equal(scenePlanObserved.required_bundle_id, currentBundleId, 'scene-plan queue must rebase the task before execute');
+  assert.equal(scenePlanObserved.checkpoint_bundle_id, currentBundleId, 'the first scene-plan checkpoint CAS must use the current bundle');
+  assert.equal(scenePlanObserved.generation_id, scenePlanObserved.active_generation_id, 'checkpoint CAS must remain owned by the active queued generation');
 
   const guardTask = storage.getTask(taskId);
   storage.updateTask(taskId, { required_bundle_id: 'b'.repeat(64) });
@@ -97,6 +134,37 @@ async function main() {
   const nonPlanningPatch = require('../src/services/newStoryAd/assetPlanCheckpointLineageService')
     .queuedPlanningTaskPatch('storyboard', currentBundleId);
   assert.deepEqual(nonPlanningPatch, {}, 'non-planning stages must not silently rebase planning lineage');
+
+  const oldWorkerPatch = require('../src/services/newStoryAd/assetPlanCheckpointLineageService')
+    .queuedPlanningTaskPatch('scene_plan', 'd'.repeat(64));
+  assert.deepEqual(oldWorkerPatch, {}, 'a worker from a different release must not rebase task lineage');
+
+  const staleCreated = storyAd.createTask({
+    brief: 'A stale scene-plan worker must stop before execute.',
+    product_subject: 'stale scene-plan worker',
+    content_mode: 'commercial_subject',
+    content_mode_source: 'user',
+    cast_mode: 'human',
+  }, owner);
+  const staleTaskId = staleCreated.task.id;
+  const stalePrepared = storyAd.prepareGeneration(staleTaskId, {
+    expected_content_revision: 1,
+    target_stage: 'scene_plan',
+  }, owner);
+  let staleExecuteCalls = 0;
+  const staleQueued = jobs.queueStage({
+    taskId: staleTaskId,
+    stage: 'scene_plan',
+    expectedContentRevision: stalePrepared.content_revision,
+    snapshotId: stalePrepared.snapshot_id,
+    inputFingerprint: stalePrepared.input_fingerprint,
+    execute: async () => { staleExecuteCalls += 1; },
+  });
+  assert.equal(staleQueued.accepted, true);
+  storage.updateTask(staleTaskId, { content_revision: stalePrepared.content_revision + 1 });
+  await waitUntil(() => !storage.getTask(staleTaskId).active_generation_id);
+  assert.equal(staleExecuteCalls, 0, 'a stale revision worker must stop before execute or checkpoint writes');
+  assert.equal(storage.getTask(staleTaskId).error_code, 'STALE_GENERATION_REVISION');
   console.log('story ad scene-config release rebase v130: ok');
 }
 

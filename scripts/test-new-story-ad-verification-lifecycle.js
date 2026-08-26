@@ -21,6 +21,7 @@ const sceneSpace = require('../src/services/newStoryAd/sceneSpaceContractService
 const sceneAssets = require('../src/services/newStoryAd/sceneAssetService');
 const modelGateway = require('../src/services/newStoryAd/modelGateway');
 const subjectAssets = require('../src/services/newStoryAd/subjectAssetBundleService');
+const { confirmAllScenePrompts, confirmScenePrompt } = require('./helpers/scene-prompt-confirmation-fixture');
 
 function passingSceneResult(overrides = {}) {
   return {
@@ -107,10 +108,10 @@ async function main() {
     product_subject: '测试主体',
     cast_mode: 'single',
     scene_spec: {
-      layoutText: '一面完整连续的背景墙和一个操作区域',
-      materialLightText: '金属墙面，真实柔和照明',
-      interactionText: '主体在墙前完成操作',
-      negativeText: '禁止拼贴墙、可见接缝和无关人物',
+      layoutText: '建立一面完整连续且边界清晰的背景墙、稳定入口、无阻挡通道和明确商业操作区域',
+      materialLightText: '使用尺度真实的连续金属墙面、统一材质方向、自然柔和主光与合理商业辅助照明',
+      interactionText: '主体能够在墙前完整操作区域内连续完成动作，摄影机路径保持清晰且没有遮挡',
+      negativeText: '禁止样板拼贴墙、可见接缝、重复家具、错误透视、无关人物、文字水印和空间断裂',
       surfaceTopology: { mode: 'continuous', seam_policy: 'hidden', finish_distribution: 'uniform', notes: '连续完整基面' },
     },
   }, { id: 'verification-lifecycle-user' });
@@ -122,6 +123,7 @@ async function main() {
       { id: 'scene-layout', name: '布局视图场景', scene_spec: created.context.scene_spec },
     ],
   });
+  confirmAllScenePrompts(taskId);
   const spec = { age: '30-40', gender: 'female', appearanceText: '成年女性演员', wardrobeText: '深色长袖套装', hairMakeupText: '短发淡妆' };
   const personAsset = {
     id: 'person-asset-verified',
@@ -395,6 +397,7 @@ async function main() {
     })),
     used_model: 'mock/rejected-scene',
   });
+  confirmScenePrompt(taskId, 'scene-rejected');
   const rejectedGenerated = await sceneAssets.generateSceneAsset(taskId, { scene_id: 'scene-rejected', scene_spec: created.context.scene_spec });
   assert.equal(rejectedGenerated.scene_asset.scene_contract.status, 'rejected');
   assert(storage.getOutput(taskId, 'scene_assets').some(asset => asset.scene_id === 'scene-rejected'), '验证不合格的场景图片仍应保存供用户对照');
@@ -414,6 +417,7 @@ async function main() {
   assert.match(reverifyPrompt, /a smooth reflection or lighting gradient is not a seam by itself/i);
 
   modelGateway.generateVision = originalVision;
+  confirmScenePrompt(taskId, 'scene-layout');
   const layoutGenerated = await sceneAssets.generateSceneAsset(taskId, {
     scene_id: 'scene-layout',
     scene_spec: created.context.scene_spec,
@@ -441,12 +445,16 @@ async function main() {
   }, { id: 'verification-lifecycle-user' });
   const conflictingSceneSpec = {
     ...conflictingTask.context.scene_spec,
-    interactionText: conflictingTask.context.scene_spec.interactionText || '墙前保留完整商业展示与操作区域',
+    layoutText: '画面视觉焦点是一整面连续完整且边界清晰的背景墙，并保留稳定入口、完整地面与无阻挡通道',
+    materialLightText: '不锈钢纹理在同一连续基面上自然变化，使用统一柔和主光方向与合理商业辅助照明',
+    interactionText: '墙前保留完整商业展示与操作区域，人物和摄影机能够沿清晰通道连续移动且不受遮挡',
+    negativeText: '禁止模块化拼板、矩形板块、网格墙、可见接缝、文字水印、重复家具和不相关人物',
   };
   storage.saveOutput(conflictingTask.task.id, 'scene_config', {
     scene_mode: 'single',
     spaces: [{ id: 'scene-conflict-reconciled', name: '连续背景墙', scene_spec: conflictingSceneSpec }],
   });
+  confirmAllScenePrompts(conflictingTask.task.id);
   const reconciledGenerated = await sceneAssets.generateSceneAsset(conflictingTask.task.id, {
     scene_id: 'scene-conflict-reconciled',
     scene_spec: conflictingSceneSpec,

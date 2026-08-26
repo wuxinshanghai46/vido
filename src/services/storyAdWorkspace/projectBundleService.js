@@ -10,7 +10,7 @@ const sceneLineage = require('../newStoryAd/sceneLineageContractService'), media
 const { projectedDossierItems } = require('./dossierItemProjectionService'), personLookProjection = require('./personLookProjectionService');
 const personOwnedPropProjection = require('./personOwnedPropProjectionService'), personGenerationRuntime = require('../newStoryAd/personGenerationRuntimeContractService');
 const { projectSceneWorldAssets } = require('./sceneWorldAssetProjectionService'), { projectSceneDossier } = require('./sceneDossierProjectionService'), subjectCheckpointProjection = require('../newStoryAd/subjectCheckpointProjectionService');
-const sceneWorkflowProjection = require('./sceneWorkflowProjectionService');
+const sceneWorkflowProjection = require('./sceneWorkflowProjectionService'), scenePromptConfirmation = require('../newStoryAd/scenePromptConfirmationService');
 const MAX_MEDIA_ITEMS = 120;
 function clean(value = '', max = 240) { return String(value || '').replace(/\s+/g, ' ').trim().slice(0, max); }
 function cleanMultiline(value = '', max = 5000) { return multilineTextContract.normalize(value, max); }
@@ -473,7 +473,7 @@ function buildProjectBundle(taskId, { sections = '', user = {} } = {}) {
     products: productAssets(context),
     logos: logoAssets(context),
     props: projectedProps,
-    scenes: sceneAssets(outputs, context),
+    scenes: sceneAssets(outputs, context).map(scene => ({ ...scene, prompt_confirmation: scenePromptConfirmation.project(taskId, scene.id) })),
   } : null;
   const projectedCounts = projectedAssets ? countProjection.projectCounts(projectedAssets, mediaUrl, list)
     : { assets: 0, subject_assets: 0, ready_subject_assets: 0, planned_assets: 0, scenes: 0 };

@@ -16,6 +16,7 @@ const mediaAdapter = require('../src/services/newStoryAd/mediaAdapter');
 const modelGateway = require('../src/services/newStoryAd/modelGateway');
 const sceneSpace = require('../src/services/newStoryAd/sceneSpaceContractService');
 const sceneAssets = require('../src/services/newStoryAd/sceneAssetService');
+const { confirmScenePrompt } = require('./helpers/scene-prompt-confirmation-fixture');
 
 function cameraEvidence(views = [], { pass = true } = {}) {
   const perspectiveViews = views.filter(view => view.key !== 'layout');
@@ -435,6 +436,21 @@ async function main() {
 
   const upgradeTaskId = 'scene-full-upgrade-required-test';
   storage.createTask({ id: upgradeTaskId, title: 'old scene upgrade', request: {} });
+  storage.saveOutput(upgradeTaskId, 'context', { brief: '旧场景合同升级门禁' });
+  storage.saveOutput(upgradeTaskId, 'scene_config', {
+    scene_mode: 'single',
+    spaces: [{
+      id: 'old-scene-upgrade',
+      name: 'old scene upgrade',
+      scene_spec: {
+        layoutText: 'One complete old scene.',
+        materialLightText: 'Coherent old materials and light.',
+        interactionText: 'A clear old interaction zone.',
+        negativeText: 'No people or text.',
+      },
+    }],
+  });
+  confirmScenePrompt(upgradeTaskId, 'old-scene-upgrade');
   storage.saveOutput(upgradeTaskId, 'scene_assets', [{
     ...upgradedEvidenceFreeV4Asset,
     scene_id: 'old-scene-upgrade',
@@ -491,6 +507,7 @@ async function main() {
     scene_mode: 'single',
     spaces: [{ id: sceneId, name: 'repair scene', scene_spec: sceneSpec }],
   });
+  confirmScenePrompt(taskId, sceneId);
   const urls = Object.fromEntries(['master', 'reverse', 'interaction', 'detail', 'layout'].map(key => [key, `/old-${key}.png`]));
   storage.saveOutput(taskId, 'scene_assets', [{
     id: sceneId,
@@ -542,6 +559,7 @@ async function main() {
       scene_mode: 'single',
       spaces: [{ id: unavailableSceneId, name: 'preserve scene', scene_spec: sceneSpec }],
     });
+    confirmScenePrompt(unavailableTaskId, unavailableSceneId);
     storage.saveOutput(unavailableTaskId, 'scene_assets', [{
       id: unavailableSceneId,
       scene_id: unavailableSceneId,

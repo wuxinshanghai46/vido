@@ -166,7 +166,6 @@ export function createProjectStore() {
       throw error;
     }
   }
-
   async function saveBlueprint(blueprint) {
     const execute = async () => {
       const taskId = state.bundle?.project?.id;
@@ -578,6 +577,7 @@ export function createProjectStore() {
     refreshSections,
     updateRequest,
     runStage,
+    confirmScenePrompt: async scene => (await import('./scenePromptConfirmationStore.js?v=20260826-production-v230u')).confirmScenePrompt({ state, request, refreshSections }, scene),
     saveBlueprint,
     saveStoryboard,
     saveSketches,
