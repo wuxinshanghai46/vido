@@ -1,4 +1,4 @@
-import { toast } from '../components/ui.js?v=20260826-production-v231f';
+import { toast } from '../components/ui.js?v=20260826-production-v232';
 import { bindTextAutosave } from '../components/textAutosave.js?v=20260826-production-v232';
 
 export function bindScenePromptEditor(card, context) {
