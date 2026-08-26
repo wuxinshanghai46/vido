@@ -10,9 +10,11 @@ function assetHasResult(item = {}, mediaUrl, list) {
 }
 
 function projectCounts(projectedAssets = {}, mediaUrl, list) {
-  const groups = Object.values(projectedAssets).map(items => list(items));
+  const isIndependentAsset = item => String(item?.status || '').toLowerCase() !== 'not_applicable'
+    || assetHasResult(item, mediaUrl, list);
+  const groups = Object.values(projectedAssets).map(items => list(items).filter(isIndependentAsset));
   const subjectGroups = ['people', 'animals', 'products', 'logos']
-    .map(key => list(projectedAssets[key]));
+    .map(key => list(projectedAssets[key]).filter(isIndependentAsset));
   const ready = item => assetHasResult(item, mediaUrl, list);
   return {
     assets: groups.flat().filter(ready).length,

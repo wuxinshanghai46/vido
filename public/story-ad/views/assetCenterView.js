@@ -123,7 +123,9 @@ function assetCard(item, group) {
   const productDetail = group === 'products' ? [
     item.presentation?.label,
     item.presentation?.scene_linked ? `关联 ${item.linked_scene_ids?.length || 0} 个场景` : '',
-    item.image_url ? '已有独立素材' : '无独立商品图',
+    item.status === 'not_applicable'
+      ? '随场景生成，不需要独立商品图'
+      : (item.image_url ? '已有独立素材' : '无独立商品图'),
   ] : [];
   const detail = (group === 'scenes' ? sceneDetail : (group === 'products' ? productDetail : [
     item.partial_checkpoint ? `已保留 ${item.completed_checkpoint_units || 0} 个成功单元 · 档案待补齐` : '',
@@ -151,7 +153,7 @@ function assetCard(item, group) {
         ? `<button class="asset-card-media asset-card-person-entry" type="button" data-history-safe data-asset-group="${group}" data-asset-id="${escapeHtml(item.id)}" aria-label="打开${escapeHtml(item.name)}完整人物档案">${cardMedia}</button>`
         : `<div class="asset-card-media">${cardMedia}</div>`}
       <button class="asset-card-copy" type="button" data-history-safe data-asset-group="${group}" data-asset-id="${escapeHtml(item.id)}" aria-label="查看${escapeHtml(item.name)}完整详情">
-        <span>${escapeHtml(item.partial_checkpoint ? '部分资产已保留' : (personState === 'legacy_views' ? '历史四视图' : (personState === 'medium_upgrade_required' ? '画面形态已更新 · 待同步档案' : (personState === 'profile_upgrade_required' ? '人物设定已更新 · 待同步档案' : (personState === 'look_upgrade_required' ? `${personLooks.length}套造型 · 待同步档案` : (personState === 'upgrade_required' ? '旧版档案 · 待升级' : (personState === 'complete_dossier' ? `${Math.max(1, personLooks.length)}套造型 · 完整档案` : (personLooks.length ? `${personLooks.length}套造型` : (item.status || '未确认')))))))))}</span>
+        <span>${escapeHtml(item.partial_checkpoint ? '部分资产已保留' : (group === 'products' && item.status === 'not_applicable' ? '随场景生成' : (personState === 'legacy_views' ? '历史四视图' : (personState === 'medium_upgrade_required' ? '画面形态已更新 · 待同步档案' : (personState === 'profile_upgrade_required' ? '人物设定已更新 · 待同步档案' : (personState === 'look_upgrade_required' ? `${personLooks.length}套造型 · 待同步档案` : (personState === 'upgrade_required' ? '旧版档案 · 待升级' : (personState === 'complete_dossier' ? `${Math.max(1, personLooks.length)}套造型 · 完整档案` : (personLooks.length ? `${personLooks.length}套造型` : (item.status || '未确认'))))))))))}</span>
         <b>${escapeHtml(item.name)}</b>
         <small>${escapeHtml(detail || '点击查看当前项目中的真实详情')}</small>
       </button>${group === 'people' ? renderPersonEvolutionSummary(item.profile || {}) : ''}${personLookTiles}

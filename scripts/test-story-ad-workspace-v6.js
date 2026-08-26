@@ -172,9 +172,9 @@ async function main() {
   }, owner).task.id;
   const placeholderBundle = projectBundles.buildProjectBundle(placeholderTask, { sections: 'all', user: owner });
   assert.equal(placeholderBundle.navigation.counts.assets, 0, '只有文字占位不得伪装成已生成资产');
-  assert.equal(placeholderBundle.navigation.counts.subject_assets, 1, '主体总数应保留待生成商品占位，供人物资产步骤显示真实计划数');
+  assert.equal(placeholderBundle.navigation.counts.subject_assets, 0, '随场景生成的商品占位不得计入待完成人物/主体资产');
   assert.equal(placeholderBundle.navigation.counts.ready_subject_assets, 0, '只有文字占位不得计入已就绪主体资产');
-  assert.ok(placeholderBundle.navigation.counts.planned_assets >= 1, '文字占位仍可保留为后续待生成计划');
+  assert.equal(placeholderBundle.navigation.counts.planned_assets, 0, 'not_applicable 商品不是独立资产生成计划');
   storyAd.updateStoryboardTable(placeholderTask, [{
     title: '无版本漂移镜头',
     visual: '商品保持在画面中央，镜头静止展示。',

@@ -17,6 +17,17 @@ export function personAssetState(item = {}) {
     wardrobeText: String(look?.wardrobeText || ''), hairMakeupText: String(look?.hairMakeupText || ''),
     negativeText: String(look?.negativeText || ''), style_richness: String(look?.style_richness || 'auto'),
   }));
+  const canonicalContinuity = profile => String(profile?.identity_continuity || 'same_person');
+  const visualAgeStates = profile => {
+    const states = Array.isArray(profile?.age_states) ? profile.age_states : [];
+    const evolving = String(profile?.aging_mode || 'fixed') !== 'fixed'
+      || states.length > 1
+      || states.some(state => String(state?.story_state || '').trim() || (state?.scene_ids || []).length);
+    return evolving ? states.map(state => ({
+      id: String(state?.id || ''), apparent_age: String(state?.apparent_age || ''),
+      story_state: String(state?.story_state || ''), scene_ids: (state?.scene_ids || []).map(String),
+    })) : [];
+  };
   const profileSnapshot = profile => JSON.stringify({
     displayName: String(profile?.displayName || ''), roleName: String(profile?.roleName || ''),
     age: ageValue(profile), appearanceText: String(profile?.appearanceText || ''),
@@ -25,12 +36,9 @@ export function personAssetState(item = {}) {
     negativeText: String(profile?.negativeText || ''), looks: lookSnapshot(profile),
     identity_id: String(profile?.identity_id || profile?.id || ''),
     lineage_identity_id: String(profile?.lineage_identity_id || profile?.source_identity_id || profile?.id || ''),
-    identity_continuity: String(profile?.identity_continuity || ''),
-    aging_mode: String(profile?.aging_mode || ''),
-    age_states: (Array.isArray(profile?.age_states) ? profile.age_states : []).map(state => ({
-      id: String(state?.id || ''), apparent_age: String(state?.apparent_age || ''),
-      story_state: String(state?.story_state || ''), scene_ids: (state?.scene_ids || []).map(String),
-    })),
+    identity_continuity: canonicalContinuity(profile),
+    aging_mode: String(profile?.aging_mode || 'fixed'),
+    age_states: visualAgeStates(profile),
   });
   if (item.dossier_sheet?.image_url && item.generated_profile
     && profileSnapshot(item.generated_profile) !== profileSnapshot(item.profile)) return 'profile_upgrade_required';

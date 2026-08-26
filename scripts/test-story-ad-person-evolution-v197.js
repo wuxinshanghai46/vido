@@ -24,6 +24,21 @@ const aging = evolution.normalizeProfile({
 assert.equal(aging.age_states.length, 2);
 assert.match(evolution.generationLocks(aging, 'old').aging_rule, /preserve identity geometry/);
 
+const ordinary = evolution.normalizeProfile({
+  id: 'ordinary_person', age: '25岁', aging_mode: 'fixed',
+  age_states: [{ id: 'ordinary_person_age_base', apparent_age: '30岁', story_state: '', scene_ids: [] }],
+});
+assert.equal(ordinary.identity_continuity, '', '普通单时态人物不得凭空补成跨时空 same_person');
+assert.equal(ordinary.age_states[0].apparent_age, '25岁', '固定单年龄人物的基础年龄状态必须跟随当前权威年龄');
+
+const storyAging = evolution.normalizeProfile({
+  id: 'story_person', age: '25岁', aging_mode: 'natural_aging', age_states: [
+    { id: 'young', apparent_age: '25岁', story_state: '青年时期', scene_ids: ['scene-young'] },
+    { id: 'old', apparent_age: '65岁', story_state: '老年时期', scene_ids: ['scene-old'] },
+  ],
+});
+assert.deepEqual(storyAging.age_states.map(state => state.apparent_age), ['25岁', '65岁'], '真实多年龄剧情状态不得被顶层年龄覆盖');
+
 const reincarnation = evolution.normalizeProfile({ id: 'modern_yun', identity_continuity: 'reincarnation' });
 assert.equal(reincarnation.aging_mode, 'reincarnation');
 assert.notEqual(reincarnation.lineage_identity_id, '');
@@ -46,7 +61,7 @@ assert(cardSource.includes('单人物标准人像'));
 assert(editorSource.includes('高级：年龄与剧情状态演化'));
 assert(editorSource.includes('同一人物自然变老'));
 assert(editorSource.includes('时间经过但容颜不老'));
-assert(personFormSource.includes('renderPersonEvolutionEditor'));
-assert(assetSource.includes('collectPersonEvolutionValues'));
+assert(!personFormSource.includes('renderPersonEvolutionEditor'), '当前单提示词工作台不得恢复已废弃的分段人物演化编辑器');
+assert(!assetSource.includes('collectPersonEvolutionValues'), '资产页不得重新拼装已废弃的分段人物演化表单数据');
 
 console.log('story-ad person evolution and wardrobe assets: ok');

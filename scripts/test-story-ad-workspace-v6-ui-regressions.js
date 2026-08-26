@@ -640,6 +640,20 @@ const completePerson = { ...legacyPerson, visual_asset_contract_version: 2, doss
 assert.equal(assetModule.personAssetState(completePerson), 'complete_dossier');
 const generatedProfile = { displayName: '凌光', roleName: '男主角', age: '18岁', age_contract: { value: '18岁' }, appearanceText: '面容清俊', negativeText: '', look_profiles: [] };
 assert.equal(assetModule.personAssetState({ ...completePerson, visual_medium: 'live_action', profile: { ...generatedProfile, visual_medium: 'live_action' }, generated_profile: generatedProfile }), 'complete_dossier');
+const fixedGeneratedProfile = {
+  ...generatedProfile, aging_mode: 'fixed', identity_continuity: '',
+  age_states: [{ id: 'lingguang_age_base', apparent_age: '25岁', story_state: '', scene_ids: [] }],
+};
+const fixedCurrentProfile = {
+  ...fixedGeneratedProfile, identity_continuity: 'same_person',
+  age_states: [{ id: 'lingguang_age_base', apparent_age: '30岁', story_state: '', scene_ids: [] }],
+};
+assert.equal(assetModule.personAssetState({ ...completePerson, profile: fixedCurrentProfile, generated_profile: fixedGeneratedProfile }), 'complete_dossier', '固定单年龄人物不得因派生连续性和基础年龄状态漂移重复付费生成');
+const evolvedCurrentProfile = {
+  ...fixedCurrentProfile, aging_mode: 'natural_aging',
+  age_states: [{ id: 'young', apparent_age: '25岁', story_state: '青年', scene_ids: ['scene-a'] }, { id: 'old', apparent_age: '65岁', story_state: '老年', scene_ids: ['scene-b'] }],
+};
+assert.equal(assetModule.personAssetState({ ...completePerson, profile: evolvedCurrentProfile, generated_profile: fixedGeneratedProfile }), 'profile_upgrade_required', '真实多年龄剧情状态变化仍必须使人物档案失效');
 assert.equal(assetModule.personAssetState({ ...completePerson, visual_medium: 'live_action', profile: { ...generatedProfile, age: '18~25岁', age_contract: { value: '18~25岁' }, visual_medium: 'live_action' }, generated_profile: generatedProfile }), 'profile_upgrade_required', '年龄区间更新后旧人物档案必须失效');
 assert.equal(assetModule.personAssetState({ ...completePerson, visual_medium: 'live_action', profile: { ...generatedProfile, visual_medium: 'anime_2d' }, generated_profile: generatedProfile }), 'medium_upgrade_required', '项目画面形态更新后旧真人档案必须失效');
 const completeCard = assetModule.assetCard(completePerson, 'people');
@@ -647,6 +661,7 @@ assert.match(completeCard, /完整档案/);
 assert.match(completeCard, /查看完整视图/);
 assert.doesNotMatch(completeCard, /重生成完整人物档案|data-generate-asset="legacy-person"/);
 assert.doesNotMatch(completeCard, /重生成高清服装与配饰档案/);
+assert.match(assets, /随场景生成/u, 'not_applicable 展示主体必须明确标记为随场景生成');
 const readableProfile = { ...completePerson, profile: { displayName: '苏晚', roleName: '美学策展人', age: 'match_brief', appearanceText: '年龄约28岁，东方古典气质的现代女性', generation_prompt: '名称：苏晚\n\n描述：年龄约28岁，东方古典气质的现代女性\n\n随身道具：无' } };
 const personEdit = personFormModule.personEditForm(readableProfile);
 assert.doesNotMatch(personEdit, /value="match_brief"/u, '人物编辑区不得暴露内部年龄枚举');
