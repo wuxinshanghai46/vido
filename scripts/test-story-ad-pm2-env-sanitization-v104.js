@@ -11,6 +11,9 @@ const env = buildPm2Env({
     cwd: '/opt/vido/releases/old-top-level',
     pm_cwd: '/opt/vido/releases/old-pm-cwd',
     pm_exec_path: '/opt/vido/releases/old/src/server.js',
+    pm_out_log_path: '/root/.pm2/logs/old-out.log',
+    pm_err_log_path: '/root/.pm2/logs/old-error.log',
+    pm_pid_path: '/root/.pm2/pids/old.pid',
     exec_interpreter: '/old/node',
     pm_id: 9,
     name: 'vido',
@@ -21,6 +24,8 @@ const env = buildPm2Env({
       STORY_AD_BUILD_ID: 'old-build',
       name: 'vido',
       namespace: 'default',
+      PM_OUT_LOG_PATH: '/root/.pm2/logs/nested-out.log',
+      PM_ERR_LOG_PATH: '/root/.pm2/logs/nested-error.log',
       BUSINESS_FLAG: 'kept',
     },
   },
@@ -29,7 +34,7 @@ const env = buildPm2Env({
   API_PROVIDER: 'kept-base',
 });
 
-for (const key of ['cwd', 'CWD', 'pm_cwd', 'PM_CWD', 'pm_exec_path', 'exec_interpreter', 'pm_id', 'name', 'namespace']) {
+for (const key of ['cwd', 'CWD', 'pm_cwd', 'PM_CWD', 'pm_exec_path', 'pm_out_log_path', 'pm_err_log_path', 'pm_pid_path', 'PM_OUT_LOG_PATH', 'PM_ERR_LOG_PATH', 'exec_interpreter', 'pm_id', 'name', 'namespace']) {
   assert.equal(Object.prototype.hasOwnProperty.call(env, key), false, `PM2 控制字段不得进入业务环境：${key}`);
 }
 assert.equal(env.API_PROVIDER, 'kept-base');
@@ -47,4 +52,4 @@ assert(releaseSource.includes("'--output', path.join(logDir, `${safeName}-out.lo
 assert(releaseSource.includes("'--error', path.join(logDir, `${safeName}-error.log`)"), 'stderr 必须使用数据盘日志目录');
 assert(releaseSource.includes("fs.mkdirSync(logDir, { recursive: true, mode: 0o750 })"), '启动前必须创建受限权限日志目录');
 
-console.log(JSON.stringify({ passed: true, checks: 15, scope: 'story-ad-pm2-env-sanitization-v104', data_disk_logs: true, model_calls: 0 }));
+console.log(JSON.stringify({ passed: true, checks: 20, scope: 'story-ad-pm2-env-sanitization-v104', data_disk_logs: true, inherited_log_paths_blocked: true, model_calls: 0 }));
