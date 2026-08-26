@@ -30,8 +30,20 @@ function stageEligibility(eligibility = {}, stage = '') {
 
 function issue(taskId, stage, { idempotencyKey = '' } = {}) {
   if (!protectedStage(stage)) return null;
-  const active = publication.activeRecord(taskId);
-  const eligibility = publication.eligibility(taskId, { fingerprint: active?.fingerprint || '' });
+  let active = publication.activeRecord(taskId);
+  let eligibility = publication.eligibility(taskId, { fingerprint: active?.fingerprint || '' });
+  if (!eligibility.eligible
+    && eligibility.release_migration?.compatible === true
+    && eligibility.release_migration?.migration_required === true) {
+    const migrated = publication.migrateCompatibleRelease(taskId, {
+      fingerprint: active?.fingerprint || '',
+      reason: `${String(stage || 'generation')}_permit_release_sync`,
+    });
+    if (migrated.migrated) {
+      active = publication.activeRecord(taskId);
+      eligibility = publication.eligibility(taskId, { fingerprint: active?.fingerprint || '' });
+    }
+  }
   const required = stageEligibility(eligibility, stage);
   if (!required.eligible) {
     const error = new Error(`当前任务没有可用于生成的本版本 Active Plan：${required.issues.join('、')}`);

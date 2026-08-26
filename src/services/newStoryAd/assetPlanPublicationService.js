@@ -368,6 +368,17 @@ function migrateCompatibleRelease(taskId, {
     return { migrated: false, compatibility, plan };
   }
   const currentGenerationId = clean(generationId || legacyGenerationId);
+  const ownedRun = currentGenerationId
+    ? storage.listGenerationRuns({ task_id: taskId })
+      .find(run => clean(run.orchestration_job_id) === currentGenerationId)
+    : null;
+  const ownedDomain = clean(ownedRun?.domain);
+  const promotionOwnership = {
+    generation_id: currentGenerationId,
+    production_graph_authority: ownedDomain === 'production_assets',
+    person_plan_authority: ownedDomain === 'person_plan',
+    scene_plan_authority: ownedDomain === 'scene_plan',
+  };
   // This migration is scoped to one task. Reading the whole SQLite database
   // makes the Python bridge serialize every historical payload and can exceed
   // spawnSync's buffer before the write transaction even begins.
@@ -452,7 +463,7 @@ function migrateCompatibleRelease(taskId, {
   // The storage batch is a real SQLite transaction (or one atomic JSON batch),
   // so authority, plan, candidate and migration become visible together.
   storage.withWriteBatch(() => {
-    const authority = authorityLifecycle.activate(taskId, nextPlan, nextActive, nextCandidate);
+    const authority = authorityLifecycle.activate(taskId, nextPlan, nextActive, nextCandidate, promotionOwnership);
     Object.assign(nextPlan, {
       authority_id: authority.authority_id,
       authority_token: authority.authority_token,

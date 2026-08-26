@@ -17,6 +17,7 @@ process.env.DB_JSON_FALLBACK = '1';
 const storage = require('../src/services/newStoryAd/storageService');
 const assetPlan = require('../src/services/newStoryAd/assetPlanService');
 const publication = require('../src/services/newStoryAd/assetPlanPublicationService');
+const generationPermit = require('../src/services/newStoryAd/generationPermitService');
 const coverage = require('../src/services/newStoryAd/storySceneCoverageService');
 const release = require('../src/services/storyAdReleaseBundleService');
 
@@ -160,6 +161,50 @@ for (const fixture of fixtures) {
   assert.equal(repeated.compatibility.already_current, true);
   assert.equal(storage.getOutput(fixture.taskId, publication.RELEASE_MIGRATION_KIND).migrated_at, migrationTimestamp);
 }
+
+const ownedSceneMigration = createFixture({ id: 'owned-scene-release-migration', oldBundle: 'legacy-owned-scene', castCount: 2, propCount: 0, sceneCount: 4 });
+const ownedSceneGenerationId = 'owned-scene-generation';
+storage.createGenerationRun({
+  id: 'owned-scene-release-unit', task_id: ownedSceneMigration.taskId, work_id: ownedSceneMigration.taskId,
+  domain: 'scene_plan', target_permanent_id: `${ownedSceneMigration.taskId}:scene_plan`, operation: 'run_scene_plan',
+  input_fingerprint: ownedSceneMigration.fingerprint, spec_revision: 8, provider_id: 'internal-orchestrator', model_id: 'legacy-owned-scene',
+  orchestration_job_id: ownedSceneGenerationId, state: 'running', unit_version: 1,
+  billing_state: 'not_submitted', provider_submission_state: 'not_applicable',
+});
+storage.updateTask(ownedSceneMigration.taskId, { active_generation_id: ownedSceneGenerationId, active_stage: 'scene_plan' });
+const ownedSceneResult = publication.migrateCompatibleRelease(ownedSceneMigration.taskId, {
+  fingerprint: ownedSceneMigration.fingerprint, generationId: ownedSceneGenerationId, reason: 'owned-scene-release-migration',
+});
+assert.equal(ownedSceneResult.migrated, true, '当前 scene-plan job 必须能完成自己的零模型版本迁移');
+assert.equal(storage.getGenerationRun('owned-scene-release-unit').authority_id, storage.getTask(ownedSceneMigration.taskId).active_authority_id,
+  '当前 scene-plan generation unit 必须绑定到迁移后的新 Active authority');
+assert.equal(modelCalls(ownedSceneMigration.taskId), 0, '当前 scene-plan 版本迁移不得调用模型');
+
+const unrelatedSceneMigration = createFixture({ id: 'unrelated-scene-release-migration', oldBundle: 'legacy-unrelated-scene', castCount: 2, propCount: 0, sceneCount: 4 });
+storage.createGenerationRun({
+  id: 'owned-scene-unit-with-neighbor', task_id: unrelatedSceneMigration.taskId, work_id: unrelatedSceneMigration.taskId,
+  domain: 'scene_plan', target_permanent_id: `${unrelatedSceneMigration.taskId}:scene_plan`, operation: 'run_scene_plan',
+  input_fingerprint: unrelatedSceneMigration.fingerprint, spec_revision: 8, provider_id: 'internal-orchestrator', model_id: 'legacy-unrelated-scene',
+  orchestration_job_id: 'owned-scene-job-with-neighbor', state: 'running', unit_version: 1,
+  billing_state: 'not_submitted', provider_submission_state: 'not_applicable',
+});
+storage.createGenerationRun({
+  id: 'unrelated-active-scene-unit', task_id: unrelatedSceneMigration.taskId, work_id: unrelatedSceneMigration.taskId,
+  domain: 'scene_plan', target_permanent_id: `${unrelatedSceneMigration.taskId}:scene_plan:other`, operation: 'run_scene_plan',
+  input_fingerprint: `${unrelatedSceneMigration.fingerprint}:other`, spec_revision: 8, provider_id: 'internal-orchestrator', model_id: 'legacy-unrelated-scene',
+  orchestration_job_id: 'unrelated-active-scene-job', state: 'running', unit_version: 1,
+  billing_state: 'not_submitted', provider_submission_state: 'not_applicable',
+});
+storage.updateTask(unrelatedSceneMigration.taskId, { active_generation_id: 'owned-scene-job-with-neighbor', active_stage: 'scene_plan' });
+assert.throws(() => publication.migrateCompatibleRelease(unrelatedSceneMigration.taskId, {
+  fingerprint: unrelatedSceneMigration.fingerprint, generationId: 'owned-scene-job-with-neighbor',
+}), error => error?.code === 'AUTHORITY_PROMOTION_BLOCKED', '无关活动 generation 仍必须阻止版本迁移');
+
+const lazyPermitMigration = createFixture({ id: 'lazy-permit-release-migration', oldBundle: 'legacy-lazy-permit', castCount: 2, propCount: 0, sceneCount: 4 });
+const lazyPermit = generationPermit.issue(lazyPermitMigration.taskId, 'scene_asset', { idempotencyKey: 'lazy-scene-generation' });
+assert.equal(lazyPermit.release_bundle_id, release.identity().bundle_id, '受保护生成必须先零模型迁移到当前 release 再签发许可');
+assert.equal(publication.eligibility(lazyPermitMigration.taskId, { fingerprint: lazyPermitMigration.fingerprint }).eligible, true);
+assert.equal(modelCalls(lazyPermitMigration.taskId), 0, '生成许可的 release 同步不得调用模型');
 
 const legacyV14 = createLegacyV14Fixture('legacy-v14-four-source');
 assert.notEqual(legacyV14.currentFingerprint, legacyV14.fingerprint, 'V15必须与旧V14投影明确分版');
@@ -359,4 +404,4 @@ assert.equal(idempotent.status, 0, idempotent.stderr);
 assert.equal(JSON.parse(idempotent.stdout).idempotent, true);
 assert.notEqual(cli(['--apply']).status, 0);
 
-console.log(JSON.stringify({ passed: true, production_shape_fixtures: fixtures.length, incompatible_cases: incompatibleCases.length, model_calls_added: 0, cli_dry_run: true, cli_apply_explicit_task: true }));
+console.log(JSON.stringify({ passed: true, production_shape_fixtures: fixtures.length, incompatible_cases: incompatibleCases.length, owned_scene_release_migration: true, unrelated_generation_blocked: true, lazy_permit_release_migration: true, model_calls_added: 0, cli_dry_run: true, cli_apply_explicit_task: true }));

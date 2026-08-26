@@ -58,6 +58,9 @@ function testCurrentUiContract() {
   assert.match(sceneInteractions, /data-generate-all-scenes/u, '场景页必须支持一次提交全部缺失场景');
   assert.match(sceneInteractions, /Promise\.allSettled\(targets\.map/u, '批量生成必须提交独立场景任务，单场景失败不得阻止其他场景');
   assert.match(scene, /data-generate-all-scenes/u, '场景页顶部必须展示批量生成入口');
+  assert.match(scene, /persistedScenePlanReady = scenes\.length > 0/u, '已持久化场景不得因 release eligibility 漂移从页面消失');
+  assert.match(scene, /scenePlanReady \|\| persistedScenePlanReady \? '' : scenePlanBlockedView/u,
+    '存在持久化场景时不得用重新生成提示词面板覆盖场景卡');
   assert.match(scene, /generationActive: sceneIsActive/u, '运行状态必须按场景隔离，不能锁住全部卡片');
   assert.match(route, /scopeId: sceneId/u, '场景生成队列必须以场景 ID 作为独立锁目标');
   assert.match(sceneAssetService, /mergeSceneAssets\(storage\.getOutput\(taskId, 'scene_assets'\) \|\| \[\], baseAsset\)/u,
