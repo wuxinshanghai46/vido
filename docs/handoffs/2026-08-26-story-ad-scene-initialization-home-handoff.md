@@ -199,3 +199,47 @@ node scripts/deploy-story-ad-immutable-release.js
 4. 用真实 `scene_plan` 队列恢复目标任务。
 5. 做人物资产哈希、场景提示词数、模型调用类型和图片调用数的前后对比。
 6. 最后再核对本地、Gitee、生产清单，并更新本交接文件的完成状态。
+
+
+## 11. 家庭续接完成（2026-08-26）
+
+### 最终结论
+
+- 本地、Gitee 目标分支与生产运行清单已完成三方核对。
+- 最终生产版本为 `20260826-production-v231f`，不可变 artifact 为 `79d79a938085c9ca8cd34b2200c133e666773f5833c86e868611ee7f92bb7d6e`，release bundle 为 `6eea015b4f0bf95d9ca628efbe7aa2810b3c3abd1f9ef36103165e349241d045`，runtime hash 为 `499bd24c43bc9d514990a7d13793b33bdfcd2adba0c413cf8a88dd1b79455f2f`。
+- 场景卡现在默认显示图片；用户主动切换到“提示词”后可编辑并保存。保存会使旧确认失效，重新确认后场景图片生成只读取服务端保存的精确提示词。
+- 逐场景确认已成为服务端权威合同；主生成、修复、单场景全景及批量全景在未确认时均于模型/媒体调用前阻止。
+- 旧 `scene-config` 和浏览器写入 `scene-assets` 入口均为不可重试的 410 拒绝壳，不再调用模型或写入业务数据。
+
+### 目标任务恢复
+
+目标任务 `b83fa67c-244a-4869-b3cc-df282fad5c59` 已通过当前生产主进程的真实 `scene-plan` HTTP 队列恢复：
+
+- 任务终态：`done / scene_config_done`；活动 generation、错误码和错误信息均已清空。
+- 权威场景：从 0 个恢复为 2 个，分别为“现代高端家居展示厅”和“高端商业展台”。
+- 前端权威投影得到两条独立提示词：746 字符/9 段、693 字符/9 段，均来自 `scene_plan_compiled`。
+- 人物 authoritative 哈希恢复前后完全一致：`afcd63c2c3ab68f800c379a624154ad03d7277cd4d977981f91825c48cfefbb3`。
+- 场景资产仍为 0，提示词确认记录为 0；没有替用户确认提示词，也没有生成图片。
+- 本次最终重试的文字模型调用增量为 3：2 次成功完成缺失的 `scene_plan` 和 `story_seed`，1 次鉴权配置拒绝且明确未计费；媒体调用增量为 0，目标未知计费为 0。
+
+### 续接中发现并修复的更深根因
+
+首次 V231d 真实重试在文字区段完成后被 `AUTHORITY_PROMOTION_BLOCKED` 拒绝。生产证据确认唯一 blocker 是当前 scene-plan generation unit 自己，而非旧任务或未知计费记录。修复后：
+
+- 仅当内部 generation ID 与 orchestration job 精确匹配且 domain 为 `scene_plan` 时，当前收尾 job 可完成自身 authority promotion。
+- 其他并发 scene-plan generation 继续阻塞。
+- 任何 `billing_unknown / unknown` 状态继续阻塞，不能被自有 job 豁免。
+- 当前 generation 成功绑定到新 Active authority，人物和历史成功数据不被覆盖。
+
+### 实际验证
+
+- 场景提示词确认/编辑回归：独立确认 2、过期/冲突阻止 2、直接场景操作阻止 4，模型与媒体调用均 0。
+- 真实队列 CAS、旧入口 410、deadline 恢复、场景卡、工作台 UI、模块体积、authority lifecycle、生产图谱及分域迁移回归均通过。
+- V231d 完成系统、资产方案、上传媒体、工作台 UI、发布核心五组影响范围门禁；V231f 根因修复完成资产方案、工作台 UI、发布核心三组影响范围门禁。
+- V231f 854 个运行文件远端逐项校验通过；PM2 `vido` online、restart 0，内外网 health/version 一致，SQLite `quick_check=ok`。
+- 活动任务 0，活动未知计费 0；历史隔离未知计费 62 条未变化。
+- 家庭电脑仅执行当前任务的定向和影响范围门禁，未运行全平台/跨版本完整回归，符合 `LAPTOP-LDFOL0GT` 的既定限制。
+
+### 当前可操作状态
+
+目标任务的场景文字规划已恢复，后台无已知阻塞。用户可在场景页查看或编辑每个场景提示词；编辑保存后需逐场景重新确认，之后才会出现对应图片生成操作。系统不会自动生成图片。
