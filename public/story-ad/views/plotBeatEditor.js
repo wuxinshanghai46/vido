@@ -1,4 +1,4 @@
-import { escapeHtml } from '../components/ui.js?v=20260826-production-v230u';
+import { escapeHtml } from '../components/ui.js?v=20260826-production-v231';
 
 const fields='shot_id,title,scene,duration,visual,action,shot_size,lighting_mood,speaker,speaker_id,speech_mode,spoken_line,dialogue_lines_json,sound_design,sound_mode,ambient_sound,sfx,music_cue,audio_bridge,explicit_silence_reason,camera_movement,camera_movement_notes,transition,visual_proof,prompt_notes,keyframe_prompt_override,video_prompt_override,negative_prompt_override'.split(',');
 const normalizedDialogueLines=b=>Array.isArray(b.dialogue_lines)&&b.dialogue_lines.length?b.dialogue_lines:(b.spoken_line||b.voiceover?[{speech_mode:b.speech_mode||'voiceover',speaker:b.speaker||'旁白',speaker_id:b.speaker_id||'',line:b.spoken_line||b.voiceover}]:[]);
