@@ -22,7 +22,7 @@ const mediaAdapter = new Proxy({}, { get: (_target, key) => {
 function buildSceneSheetPrompt({ ctx = {}, sceneConfig = {}, body = {}, outputRole = 'master', knowledgePolicy = {} } = {}) {
   const subject = cleanText(ctx.product_subject || sceneConfig.advertised_subject || body.product_subject || '', 240);
   const sceneSpec = body.scene_spec || body.sceneSpec || ctx.scene_spec || {};
-  const custom = cleanText(body.description || body.scene_description || body.prompt || '', 1200);
+  const custom = cleanText(body.prompt || body.description || body.scene_description || '', 12000);
   const layout = cleanText(sceneSpec.layoutText || sceneSpec.layout_text || sceneSpec.layout || '', 800);
   const materialLight = cleanText(sceneSpec.materialLightText || sceneSpec.material_light_text || sceneSpec.material || sceneSpec.light || '', 800);
   const structuredScene = sceneStructuredContract.compileSpatialAsset(sceneSpec, ctx, body);

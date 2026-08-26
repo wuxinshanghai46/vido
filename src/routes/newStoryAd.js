@@ -1594,6 +1594,17 @@ router.post('/tasks/:id/scene-prompts/:sceneId/confirm', asyncRoute(async (req, 
   res.json({ success: true, task_id: req.params.id, scene_id: req.params.sceneId, confirmation: receipt });
 }));
 
+router.put('/tasks/:id/scene-prompts/:sceneId', asyncRoute(async (req, res) => {
+  taskForReq(req);
+  const result = scenePromptConfirmation.savePromptOverride(
+    req.params.id,
+    req.params.sceneId,
+    req.body || {},
+    userFromReq(req),
+  );
+  res.json({ success: true, task_id: req.params.id, scene_id: req.params.sceneId, prompt_confirmation: result.projection });
+}));
+
 router.post('/tasks/:id/scene-assets', asyncRoute(async (req, res) => {
   taskForReq(req);
   const body = req.body || {};

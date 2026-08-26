@@ -13,6 +13,7 @@ function bindSceneCards(host, context) {
       card.querySelectorAll('[data-scene-detail-pane]').forEach(pane => {
         pane.hidden = pane.dataset.sceneDetailPane !== button.dataset.sceneDetailTab;
       });
+      if (button.dataset.sceneDetailTab === 'prompt') import('./scenePromptEditor.js?v=20260826-production-v231c').then(module => module.bindScenePromptEditor(card, context));
     });
   });
 

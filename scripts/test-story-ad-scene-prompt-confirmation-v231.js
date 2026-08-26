@@ -17,6 +17,7 @@ const sceneAssets = require('../src/services/newStoryAd/sceneAssetService');
 const panoramas = require('../src/services/newStoryAd/scenePanoramaService');
 const mediaAdapter = require('../src/services/newStoryAd/mediaAdapter');
 const modelGateway = require('../src/services/newStoryAd/modelGateway');
+const sceneVisualPrompt = require('../src/services/newStoryAd/sceneVisualPromptService');
 
 function scene(id, name, suffix = '') {
   return {
@@ -65,6 +66,37 @@ async function main() {
   assert.equal(duplicateA.confirmed_at, receiptA.confirmed_at, 'duplicate confirmation must preserve the original timestamp');
   assert.equal(confirmations.assertConfirmed(taskId, 'scene-a').confirmation_id, descriptorA.confirmation_id);
 
+  const editedPrompt = 'USER_EDITED_SCENE_PROMPT：清晨的高级家居展厅保持完整入口、连续不锈钢展示墙、明确互动区和真实侧向柔光。';
+  assert.throws(
+    () => confirmations.savePromptOverride(taskId, 'scene-a', { base_confirmation_id: 'stale', generation_prompt: editedPrompt }),
+    error => error.code === 'SCENE_PROMPT_EDIT_CONFLICT',
+  );
+  assert.throws(
+    () => confirmations.savePromptOverride(taskId, 'scene-a', { base_confirmation_id: descriptorA.confirmation_id, generation_prompt: '过短提示词' }),
+    error => error.code === 'SCENE_PROMPT_TOO_SHORT',
+  );
+  storage.updateTask(taskId, { active_generation_id: 'generation-active' });
+  assert.throws(
+    () => confirmations.savePromptOverride(taskId, 'scene-a', { base_confirmation_id: descriptorA.confirmation_id, generation_prompt: editedPrompt }),
+    error => error.code === 'SCENE_PROMPT_EDIT_ACTIVE_GENERATION',
+  );
+  storage.updateTask(taskId, { active_generation_id: '' });
+  const editedState = confirmations.savePromptOverride(taskId, 'scene-a', {
+    base_confirmation_id: descriptorA.confirmation_id,
+    generation_prompt: editedPrompt,
+  }, { id: 'owner-1' });
+  assert.equal(editedState.prompt, editedPrompt);
+  assert.equal(editedState.projection.prompt_source, 'user_override');
+  assert.equal(editedState.projection.confirmed, false, 'saving an edit must invalidate the previous confirmation');
+  assert.throws(() => confirmations.assertConfirmed(taskId, 'scene-a'), error => error.code === 'SCENE_PROMPT_CONFIRMATION_REQUIRED');
+  const editedReceipt = confirmations.confirm(taskId, 'scene-a', {
+    confirmation_id: editedState.descriptor.confirmation_id,
+  }, { id: 'owner-1' });
+  assert.equal(editedReceipt.generation_prompt, editedPrompt);
+  assert.match(sceneVisualPrompt.buildSceneSheetPrompt({
+    ctx: {}, sceneConfig: {}, body: { prompt: editedReceipt.generation_prompt, scene_spec: firstPlan.spaces[0].scene_spec },
+  }), /USER_EDITED_SCENE_PROMPT/, 'the paid visual prompt must consume the saved authoritative edit');
+
   const receiptB = confirmations.confirm(taskId, 'scene-b', { confirmation_id: descriptorB.confirmation_id }, { id: 'owner-1' });
   assert.equal(receiptB.confirmed, true);
   assert.notEqual(confirmations.outputKind('scene-a'), confirmations.outputKind('scene-b'));
@@ -76,6 +108,7 @@ async function main() {
     spaces: [scene('scene-a', '高级家居展厅', '，改为清晨侧光'), firstPlan.spaces[1]],
   }, { content_revision: 1, snapshot_id: `${taskId}:r1:snapshot` });
   assert.equal(confirmations.project(taskId, 'scene-a').confirmed, false, 'prompt edits must invalidate the old receipt');
+  assert.equal(confirmations.project(taskId, 'scene-a').prompt_source, 'scene_plan', 'a changed scene plan must invalidate the saved override');
   assert.equal(confirmations.project(taskId, 'scene-b').confirmed, false, 'strict scene-config lineage changes invalidate old bundle receipts');
   storage.saveOutput(taskId, 'scene_assets', [{
     id: 'scene-a',
@@ -128,6 +161,7 @@ async function main() {
     passed: true,
     independent_receipts: 2,
     stale_receipts_blocked: 2,
+    editable_prompt_override: true,
     direct_scene_operations_blocked: 4,
     model_calls: modelCalls,
     media_calls: imageCalls,

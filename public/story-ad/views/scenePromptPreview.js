@@ -10,10 +10,13 @@ export function renderSceneProductionCard(scene = {}, index = 0, options = {}) {
   const needsGeneration = !provisional && sceneNeedsGeneration(scene);
   const promptConfirmed = scene.prompt_confirmation?.confirmed === true;
   const sceneId = escapeHtml(scene.id || scene.scene_id || `scene-${index + 1}`);
+  const promptPane = provisional
+    ? `<pre>${escapeHtml(prompt || '场景提示词尚未生成。')}</pre>`
+    : `<textarea data-scene-prompt-editor="${sceneId}" maxlength="12000">${escapeHtml(prompt || '')}</textarea><div class="scene-prompt-editor-actions"><small>保存后需要重新确认，生图只使用这里保存的版本。</small><button class="btn compact" data-save-scene-prompt="${sceneId}">保存提示词</button></div>`;
   return `<article class="scene-production-card" data-scene-card>
     <header><div><small>场景 ${index + 1}</small><h3>${escapeHtml(scene.name || `场景 ${index + 1}`)}</h3></div><span class="status-tag ${needsGeneration || provisional ? 'is-neutral' : 'is-ready'}">${provisional ? '提示词预览' : (needsGeneration ? '待生成画面' : `已生成 ${imageCount} 张`)}</span></header>
     <nav class="scene-production-tabs"><button data-scene-detail-tab="prompt">提示词</button><button class="is-active" data-scene-detail-tab="images">场景画面 ${imageCount ? `(${imageCount})` : ''}</button></nav>
-    <section class="scene-production-pane" data-scene-detail-pane="prompt" hidden><pre>${escapeHtml(prompt || '场景提示词尚未生成。')}</pre></section>
+    <section class="scene-production-pane" data-scene-detail-pane="prompt" hidden>${promptPane}</section>
     <section class="scene-production-pane" data-scene-detail-pane="images">${renderSceneCoverCard(scene)}</section>
     <footer><span>${provisional ? '正式规划完成后可逐个生成画面' : (needsGeneration ? (promptConfirmed ? '提示词已确认，可以生成画面' : '请先确认当前提示词') : '画面已就绪，可继续核对')}</span>${needsGeneration && !promptConfirmed ? `<button class="btn primary compact" data-confirm-scene-prompt="${sceneId}">确认提示词</button>` : ''}${needsGeneration && promptConfirmed ? `<button class="btn primary compact" data-generate-scene="${sceneId}">生成该场景</button>` : ''}</footer>
   </article>`;

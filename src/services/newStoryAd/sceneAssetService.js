@@ -861,7 +861,7 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
   const task = storage.getTask(taskId);
   if (!task) throw new Error('任务不存在');
   const requestedSceneId = cleanText(body.space_id || body.spaceId || body.scene_id || body.sceneId, 120);
-  scenePromptConfirmation.assertConfirmed(taskId, requestedSceneId, body);
+  const promptReceipt = scenePromptConfirmation.assertConfirmed(taskId, requestedSceneId, body);
   const generationId = cleanText(
     runOptions.generationId || body.generation_id || body.generationId || task.active_generation_id || '',
     100,
@@ -889,6 +889,7 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
     scene_id: target.scene_id,
     space_id: target.space_id,
     scene_spec: target.scene_spec,
+    prompt: promptReceipt.generation_prompt,
     require_complete_scene_spec: true,
     ...(target.space ? {
       name: target.space.name,

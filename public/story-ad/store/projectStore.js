@@ -577,7 +577,7 @@ export function createProjectStore() {
     refreshSections,
     updateRequest,
     runStage,
-    confirmScenePrompt: async scene => (await import('./scenePromptConfirmationStore.js?v=20260826-production-v231c')).confirmScenePrompt({ state, request, refreshSections }, scene),
+    confirmScenePrompt: async scene => (await import('./scenePromptConfirmationStore.js?v=20260826-production-v231c')).confirmScenePrompt({ state, request, refreshSections }, scene), saveScenePrompt: async (scene, prompt) => (await import('./scenePromptConfirmationStore.js?v=20260826-production-v231c')).saveScenePrompt({ state, request, refreshSections }, scene, prompt),
     saveBlueprint,
     saveStoryboard,
     saveSketches,
