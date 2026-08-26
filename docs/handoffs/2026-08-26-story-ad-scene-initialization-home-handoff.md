@@ -81,8 +81,8 @@
 
 | 位置 | 当前权威状态 | 结论 |
 |---|---|---|
-| 办公电脑本地 | 分支 `codex/story-ad-systemic-remediation`，HEAD `3bc1eb88099ec0ebd4118f84bc390a571ac62ace` | 本轮代码已提交；工作树仍有用户原有无关改动，未纳入提交 |
-| Gitee 目标分支 | HEAD `3bc1eb88099ec0ebd4118f84bc390a571ac62ace`，本地 ahead/behind `0/0` | 与本轮本地提交一致 |
+| 办公电脑本地 | 分支 `codex/story-ad-systemic-remediation`；本轮代码基线 `3bc1eb88099ec0ebd4118f84bc390a571ac62ace`，其后仅追加本交接文档提交 | 本轮代码已提交；工作树仍有用户原有无关改动，未纳入提交 |
+| Gitee 目标分支 | 包含代码基线 `3bc1eb88099ec0ebd4118f84bc390a571ac62ace` 及本交接文档；最终复核 ahead/behind `0/0` | 与本轮本地已提交内容一致 |
 | 生产 | V230t；artifact `80334eface5934981966aea0e5ea05dccfaa2ba677ccb945ebca2788b07ba4f6`；source `da358d4bee42ad553a21f5ff1fb25eb42a5f11b8` | 与 V230t 清单一致，但**不含**提交 `3bc1eb88`，这是明确的待发布差异 |
 
 生产运行详情：
@@ -130,10 +130,10 @@ git status --short
 git fetch --all --prune
 git switch codex/story-ad-systemic-remediation
 git pull --ff-only origin codex/story-ad-systemic-remediation
-git rev-parse HEAD
+git merge-base --is-ancestor 3bc1eb88099ec0ebd4118f84bc390a571ac62ace HEAD
 ```
 
-应得到 HEAD `3bc1eb88099ec0ebd4118f84bc390a571ac62ace`。若家里工作树有未提交内容，先保留并检查，不要执行 `reset --hard`。
+最后一条命令应返回退出码 0，表示已包含代码基线 `3bc1eb88`；HEAD 还会包含本交接文档提交。若家里工作树有未提交内容，先保留并检查，不要执行 `reset --hard`。
 
 ### A. 先重跑定向回归
 
