@@ -67,6 +67,7 @@ function oldEnvelope(oldBundle) { return { ...release.envelope(), producer_bundl
 function createFixture({ id, oldBundle, castCount, propCount, sceneCount, opaquePlanFingerprint = '' }) {
   const ctx = context(id, castCount);
   storage.createTask({ id, title: '匿名历史任务', content_revision: 8, request: ctx, status: 'done', stage: 'scene_config_done' });
+  storage.updateTask(id, { required_bundle_id: oldBundle }, { systemFinalization: true });
   const task = storage.getTask(id);
   const currentFingerprint = assetPlan.fingerprint(task, ctx);
   const fingerprint = opaquePlanFingerprint || currentFingerprint;
@@ -147,6 +148,8 @@ for (const fixture of fixtures) {
   assert.equal(after.plan_id, fixture.candidateId);
   assert.equal(after.active_revision, 3);
   assert.equal(after.plan.release_envelope.producer_bundle_id, release.identity().bundle_id);
+  assert.equal(storage.getTask(fixture.taskId).required_bundle_id, release.identity().bundle_id,
+    '兼容迁移必须在同一原子事务内同步任务与 Active Plan 的 release bundle');
   assert.equal(hash({ cast: after.plan.cast_profiles, props: after.plan.prop_plan, scenes: after.plan.scene_plan, story: after.plan.story_seed }), semanticHash);
   const candidate = storage.getOutput(fixture.taskId, publication.CANDIDATE_KIND);
   assert.equal(candidate.candidate_id, after.plan_id);
@@ -176,6 +179,8 @@ const ownedSceneResult = publication.migrateCompatibleRelease(ownedSceneMigratio
   fingerprint: ownedSceneMigration.fingerprint, generationId: ownedSceneGenerationId, reason: 'owned-scene-release-migration',
 });
 assert.equal(ownedSceneResult.migrated, true, '当前 scene-plan job 必须能完成自己的零模型版本迁移');
+assert.equal(storage.getTask(ownedSceneMigration.taskId).required_bundle_id, release.identity().bundle_id,
+  'scene-plan 自有迁移必须同步任务 release bundle');
 assert.equal(storage.getGenerationRun('owned-scene-release-unit').authority_id, storage.getTask(ownedSceneMigration.taskId).active_authority_id,
   '当前 scene-plan generation unit 必须绑定到迁移后的新 Active authority');
 assert.equal(modelCalls(ownedSceneMigration.taskId), 0, '当前 scene-plan 版本迁移不得调用模型');
@@ -203,6 +208,8 @@ assert.throws(() => publication.migrateCompatibleRelease(unrelatedSceneMigration
 const lazyPermitMigration = createFixture({ id: 'lazy-permit-release-migration', oldBundle: 'legacy-lazy-permit', castCount: 2, propCount: 0, sceneCount: 4 });
 const lazyPermit = generationPermit.issue(lazyPermitMigration.taskId, 'scene_asset', { idempotencyKey: 'lazy-scene-generation' });
 assert.equal(lazyPermit.release_bundle_id, release.identity().bundle_id, '受保护生成必须先零模型迁移到当前 release 再签发许可');
+assert.equal(storage.getTask(lazyPermitMigration.taskId).required_bundle_id, release.identity().bundle_id,
+  '生成许可懒迁移必须同步任务 release bundle');
 assert.equal(publication.eligibility(lazyPermitMigration.taskId, { fingerprint: lazyPermitMigration.fingerprint }).eligible, true);
 assert.equal(modelCalls(lazyPermitMigration.taskId), 0, '生成许可的 release 同步不得调用模型');
 
@@ -335,6 +342,8 @@ storage.saveOutput = (...args) => {
 assert.throws(() => publication.migrateCompatibleRelease(failureGuarded.taskId, { fingerprint: failureGuarded.fingerprint }), /simulated-active-write-failure/);
 storage.saveOutput = originalSaveOutput;
 assert.equal(publication.activeRecord(failureGuarded.taskId).plan.release_envelope.producer_bundle_id, 'legacy-write-failure', 'failed JSON batch must retain old active plan');
+assert.equal(storage.getTask(failureGuarded.taskId).required_bundle_id, 'legacy-write-failure',
+  '失败迁移必须把任务 release bundle 与 Active Plan 一起回滚');
 assert.equal(storage.getOutput(failureGuarded.taskId, publication.RELEASE_MIGRATION_KIND), null);
 
 const incompatibleCases = [

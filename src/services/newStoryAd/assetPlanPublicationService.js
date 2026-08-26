@@ -484,6 +484,14 @@ function migrateCompatibleRelease(taskId, {
     storage.saveOutput(taskId, 'asset_plan', nextPlan, { content_revision: compatibility.content_revision });
     storage.saveOutput(taskId, RELEASE_MIGRATION_KIND, migrationRecord, { content_revision: compatibility.content_revision });
     storage.saveOutput(taskId, ACTIVE_KIND, nextActive, { content_revision: compatibility.content_revision });
+    // The task-level bundle is part of the same authority contract as the
+    // Active Plan. Publishing only the plan leaves section recovery and the
+    // scene UI reading two different release identities after a deployment.
+    // Keep this write in the same batch so a failed migration rolls every
+    // authority surface back together.
+    storage.updateTask(taskId, {
+      required_bundle_id: compatibility.to_bundle_id,
+    }, { systemFinalization: true });
   });
   let auditFinalized = true;
   try {
