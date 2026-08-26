@@ -58,7 +58,7 @@ function currentPlanningTaskPatch() {
 // Do not clear legacy planning flags here: those are only cleared after a
 // complete plan has been persisted by currentPlanningTaskPatch().
 function queuedPlanningTaskPatch(stage = '', bundleId = '') {
-  if (clean(stage) !== 'scene_config') return {};
+  if (!['scene_config', 'scene_plan'].includes(clean(stage))) return {};
   const currentBundleId = releaseBundle.identity().bundle_id;
   if (clean(bundleId) !== currentBundleId) return {};
   return { required_bundle_id: currentBundleId };

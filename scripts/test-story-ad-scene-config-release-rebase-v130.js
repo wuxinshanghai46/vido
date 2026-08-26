@@ -37,6 +37,8 @@ async function main() {
   const created = storyAd.createTask({
     brief: 'A universal two-character story used to verify scene planning release lineage.',
     product_subject: 'release lineage test',
+    content_mode: 'commercial_subject',
+    content_mode_source: 'user',
     cast_mode: 'human',
   }, owner);
   const taskId = created.task.id;
@@ -71,6 +73,17 @@ async function main() {
   await waitUntil(() => !storage.getTask(taskId).active_generation_id);
   assert.equal(observedBeforeModel.required_bundle_id, currentBundleId);
   assert.deepEqual(observedBeforeModel.compatibility.issues, []);
+
+  storage.updateTask(taskId, { required_bundle_id: 'c'.repeat(64) });
+  const scenePlanPatch = require('../src/services/newStoryAd/assetPlanCheckpointLineageService')
+    .queuedPlanningTaskPatch('scene_plan', currentBundleId);
+  assert.equal(scenePlanPatch.required_bundle_id, currentBundleId, 'independent scene-plan jobs must rebase lineage before checkpoint CAS');
+  storage.updateTask(taskId, scenePlanPatch);
+  assert(!checkpoints.checkpointCompatibility(storage.getTask(taskId), null, {
+    content_revision: prepared.content_revision,
+    fingerprint: prepared.input_fingerprint,
+    generation_id: 'direct-scene-plan-check',
+  }).issues.includes('task_bundle_mismatch'), 'scene-plan rebase must clear the historical task bundle mismatch');
 
   const guardTask = storage.getTask(taskId);
   storage.updateTask(taskId, { required_bundle_id: 'b'.repeat(64) });
