@@ -13,6 +13,7 @@ const modelGateway = require('../src/services/newStoryAd/modelGateway');
 const storage = require('../src/services/newStoryAd/storageService');
 const assetPlan = require('../src/services/newStoryAd/assetPlanService');
 const sceneWorkflow = require('../src/services/storyAdWorkspace/sceneWorkflowProjectionService');
+const authorityLifecycle = require('../src/services/newStoryAd/authorityLifecycleService');
 
 const projectedPreview = sceneWorkflow.projectBundleState([], { asset_setup_confirmed: true }, { blueprint: { beats: [
   { title: '进入展厅', scene: '现代展示空间', visual: '人物走入展厅', action: '沿通道前进' },
@@ -44,6 +45,20 @@ assetPlan.persistIndependentPersonProfiles(taskId, [profile], { source: 'test', 
 const partial = require('../src/services/newStoryAd/assetPlanPublicationService').currentPlan(taskId);
 assert.equal(assetPlan.complete(partial, storage.getOutput(taskId, 'context')), false);
 assert.equal(assetPlan.initialScenePlanSource(partial, storage.getOutput(taskId, 'context')), true);
+const generationId = 'initial-scene-plan-job';
+storage.createGenerationRun({
+  id: 'initial-scene-plan-unit', task_id: taskId, work_id: taskId, domain: 'scene_plan', operation: 'run_scene_plan',
+  orchestration_job_id: generationId, state: 'running', unit_version: 1, billing_state: 'not_submitted', provider_submission_state: 'not_applicable',
+});
+assert.equal(authorityLifecycle.promotionBlockers(taskId, { scene_plan_authority: true, generation_id: generationId }).length, 0,
+  'the current scene-plan generation must not block its own authority promotion');
+storage.createGenerationRun({
+  id: 'unrelated-scene-plan-unit', task_id: taskId, work_id: taskId, domain: 'scene_plan', operation: 'run_scene_plan',
+  orchestration_job_id: 'another-job', state: 'running', unit_version: 1, billing_state: 'not_submitted', provider_submission_state: 'not_applicable',
+});
+assert.equal(authorityLifecycle.promotionBlockers(taskId, { scene_plan_authority: true, generation_id: generationId }).length, 1,
+  'an unrelated active scene-plan generation must remain a promotion blocker');
+storage.updateGenerationRun('unrelated-scene-plan-unit', { state: 'failed_terminal' });
 
 const originalGenerateText = modelGateway.generateText;
 let modelCalls = 0;
@@ -61,7 +76,7 @@ modelGateway.generateText = async ({ userPrompt = '' }) => {
 
 (async () => {
   try {
-    const scenePlan = await assetPlan.replanScene(taskId, {});
+    const scenePlan = await assetPlan.replanScene(taskId, { generation_id: generationId });
     const saved = require('../src/services/newStoryAd/assetPlanPublicationService').currentPlan(taskId);
     assert.equal(scenePlan.spaces.length, 1);
     assert.equal(saved.cast_profiles[0].id, 'person-1');
@@ -69,8 +84,10 @@ modelGateway.generateText = async ({ userPrompt = '' }) => {
     assert.equal(storage.getOutput(taskId, 'scene_config').spaces.length, 1);
     assert.equal(storage.getTask(taskId).stage, 'scene_config_done');
     assert.equal(storage.getTask(taskId).error || '', '');
+    assert.equal(storage.getGenerationRun('initial-scene-plan-unit').authority_id, storage.getTask(taskId).active_authority_id,
+      'the owned scene-plan generation must be rebound to the newly active authority');
     assert.equal(modelCalls, 2, '首次场景补齐只能调用缺失的 scene_plan 与 story_seed 两段');
-    console.log(JSON.stringify({ success: true, reproduced_error: 'partial_active_plan_without_scene', recovered_sections: ['scene_plan', 'story_seed'], preserved_person: true, model_calls: modelCalls }, null, 2));
+    console.log(JSON.stringify({ success: true, reproduced_error: 'scene_plan_self_blocked_authority_promotion', recovered_sections: ['scene_plan', 'story_seed'], preserved_person: true, owned_generation_rebound: true, unrelated_generation_blocked: true, model_calls: modelCalls }, null, 2));
   } finally {
     modelGateway.generateText = originalGenerateText;
     fs.rmSync(outputDir, { recursive: true, force: true });

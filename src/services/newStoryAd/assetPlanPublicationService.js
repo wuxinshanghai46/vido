@@ -273,6 +273,7 @@ function publish(taskId, rawPlan = {}, { fingerprint = '', source = '', model_me
     const authority = authorityLifecycle.activate(taskId, activePlan, nextActive, validatedCandidate, {
       production_graph_authority: production_graph_authority === true,
       person_plan_authority: person_plan_authority === true,
+      scene_plan_authority: scope === 'scene',
       generation_id: generation_id || generationId,
     });
     Object.assign(activePlan, {

@@ -1895,6 +1895,9 @@ async function replanScope(taskId, scope, options = {}) {
     source: `${scope}_plan_section_patch`,
     model_meta: { ...recovered.model_meta, model_call_count: 1, scope },
     completed_at: new Date().toISOString(),
+    generation_id: generationId,
+    production_graph_authority: options.production_graph_authority === true,
+    person_plan_authority: options.person_plan_authority === true,
   }, scope);
   storage.deleteOutput(taskId, ASSET_PLAN_DRAFT_CHECKPOINT_KIND);
   storage.saveStage(taskId, `${scope}_plan`, {

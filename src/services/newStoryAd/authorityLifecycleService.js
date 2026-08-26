@@ -46,7 +46,8 @@ function ownedAuthorityRun(run = {}, options = {}) {
   if (!generationId || clean(run.orchestration_job_id, 160) !== generationId) return false;
   const domain = clean(run.domain, 80);
   return (options.production_graph_authority === true && domain === 'production_assets')
-    || (options.person_plan_authority === true && domain === 'person_plan');
+    || (options.person_plan_authority === true && domain === 'person_plan')
+    || (options.scene_plan_authority === true && domain === 'scene_plan');
 }
 
 function promotionBlockers(taskId, options = {}) {
@@ -55,7 +56,9 @@ function promotionBlockers(taskId, options = {}) {
     if (ownedAuthorityRun(run, options)) return false;
     const state = clean(run.state, 40).toLowerCase();
     const billingUnknown = state === 'billing_unknown' || clean(run.billing_state, 40).toLowerCase() === 'unknown';
-    const ownedPromotion = options.production_graph_authority === true || options.person_plan_authority === true;
+    const ownedPromotion = options.production_graph_authority === true
+      || options.person_plan_authority === true
+      || options.scene_plan_authority === true;
     if (billingUnknown && ownedPromotion && quarantinedBillingUnknown(run)) return false;
     return ACTIVE_RUN_STATES.has(state) || billingUnknown;
   });
