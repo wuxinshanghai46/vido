@@ -1,0 +1,12 @@
+[Unit]
+Description=Check VIDO disk usage every five minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+AccuracySec=30s
+Persistent=true
+Unit=vido-disk-alert.service
+
+[Install]
+WantedBy=timers.target
