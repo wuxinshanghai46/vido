@@ -30,9 +30,11 @@ assert.match(ready, /data-confirm-assets[^>]*>人物资产已完成，进入场�
 assert.doesNotMatch(ready, /data-generate-production-assets|data-generate-subject-assets|data-generate-recovery|data-update-person-plan/);
 
 const liveSource = read('public/story-ad/views/assetCenterView.js');
+const sceneSource = read('public/story-ad/views/sceneWorldPage.js');
 assert.doesNotMatch(liveSource, /checkpointRecoveryBanner\s*\(/);
 assert.doesNotMatch(liveSource, /querySelectorAll\('\[data-generate-subjects\]/);
 assert.match(liveSource, /data-generate-subject-assets/);
-assert.match(liveSource, /data-generate-scene/);
+assert.doesNotMatch(liveSource, /data-generate-scene/, '资产中心不得继续承担场景生成');
+assert.match(sceneSource, /data-generate-scene/, '场景页必须是场景画面的唯一正常生成入口');
 
 console.log(JSON.stringify({ passed: true, separated_subject_action: 1, separated_scene_action: true, model_calls: 0 }));
