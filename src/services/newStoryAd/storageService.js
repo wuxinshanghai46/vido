@@ -852,6 +852,31 @@ function listOutputs(taskId) {
   return [...legacy.filter(row => !mapped.has(String(row.kind || ''))), ...projected];
 }
 
+function listOutputsByKindPrefixes(taskId, prefixes = []) {
+  const normalizedTaskId = String(taskId || '');
+  const normalizedPrefixes = [...new Set((Array.isArray(prefixes) ? prefixes : [prefixes])
+    .map(String).map(value => value.trim()).filter(Boolean))];
+  if (!normalizedTaskId || !normalizedPrefixes.length) return [];
+  const matches = row => String(row?.task_id || '') === normalizedTaskId
+    && normalizedPrefixes.some(prefix => String(row?.kind || '').startsWith(prefix));
+  if (!useSqlite()) return listOutputs(normalizedTaskId).filter(matches);
+  ensureDbSeeded();
+  // Query identifiers first, then hydrate only matching checkpoint rows. This
+  // keeps unrelated large media/output payloads out of the Python bridge.
+  const idPrefix = `${normalizedTaskId}:`;
+  const ids = contentRecords.listIds(COLLECTIONS.outputs, { project_id: normalizedTaskId })
+    .filter(id => id.startsWith(idPrefix)
+      && normalizedPrefixes.some(prefix => id.slice(idPrefix.length).startsWith(prefix)));
+  return ids.map(id => getRow('outputs', id)).filter(matches);
+}
+
+function listModelCalls(taskId) {
+  const normalizedTaskId = String(taskId || '');
+  if (!normalizedTaskId) return [];
+  return listRows('model_calls', { project_id: normalizedTaskId })
+    .filter(row => String(row.task_id || '') === normalizedTaskId);
+}
+
 function createWork(work = {}) {
   const id = String(work.id || work.task_id || '');
   if (!id) throw new Error('Work ID 不能为空');
@@ -1067,6 +1092,8 @@ module.exports = {
   createGenerationRun,
   getGenerationRun,
   listGenerationRuns,
+  listModelCalls,
+  listOutputsByKindPrefixes,
   updateGenerationRun,
   getProviderCircuit,
   saveProviderCircuit,

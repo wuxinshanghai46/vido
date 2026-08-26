@@ -368,7 +368,18 @@ function migrateCompatibleRelease(taskId, {
     return { migrated: false, compatibility, plan };
   }
   const currentGenerationId = clean(generationId || legacyGenerationId);
-  const billingRisk = taskStateAudit.billingRiskForTask(storage.readDb(), taskId);
+  // This migration is scoped to one task. Reading the whole SQLite database
+  // makes the Python bridge serialize every historical payload and can exceed
+  // spawnSync's buffer before the write transaction even begins.
+  const billingRisk = taskStateAudit.billingRiskForTask({
+    outputs: storage.listOutputsByKindPrefixes(taskId, [
+      'subject_asset_checkpoint:',
+      'prop_asset_checkpoint:',
+      'scene_asset_checkpoint:',
+    ]),
+    model_calls: storage.listModelCalls(taskId),
+    generation_runs: storage.listGenerationRuns({ task_id: taskId }),
+  }, taskId);
   const safetyIssues = [];
   const legacyV14Migration = compatibility.fingerprint_basis === 'legacy_v14_four_source_exact_match';
   if (task?.active_generation_id

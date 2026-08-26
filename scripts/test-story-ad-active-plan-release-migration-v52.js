@@ -334,7 +334,14 @@ assert(referenceChangedResult.compatibility.issues.includes('active_plan_content
 const cliFixture = createFixture({ id: 'cli-explicit-task', oldBundle: 'legacy-cli', castCount: 2, propCount: 0, sceneCount: 4 });
 const migrationCliSource = fs.readFileSync(path.join(__dirname, 'migrate-story-ad-active-plan-release.js'), 'utf8');
 assert.doesNotMatch(migrationCliSource, /storage\.readDb\(\)/, '单任务发布迁移不得全库扫描模型调用记录');
-assert.match(migrationCliSource, /getTaskBundle\(taskId/, '单任务发布迁移必须按 taskId 查询诊断记录');
+assert.match(migrationCliSource, /listModelCalls\(taskId/, '单任务发布迁移必须按 taskId 查询模型调用记录');
+const publicationSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'services', 'newStoryAd', 'assetPlanPublicationService.js'), 'utf8');
+const migrationBody = publicationSource.match(/function migrateCompatibleRelease[\s\S]*?\n}\n\nfunction eligibility/)?.[0] || '';
+assert.doesNotMatch(migrationBody, /storage\.readDb\(\)/, '发布迁移写入前的计费审计不得读取完整数据库');
+assert.doesNotMatch(migrationBody, /getTaskBundle\(taskId/, '发布迁移计费审计不得读取目标任务的全部输出');
+assert.match(migrationBody, /listOutputsByKindPrefixes\(taskId/, '发布迁移计费审计必须只查询计费检查点输出');
+assert.match(migrationBody, /listModelCalls\(taskId\)/, '发布迁移计费审计必须按 taskId 查询模型调用');
+assert.match(migrationBody, /listGenerationRuns\(\{ task_id: taskId \}\)/, '发布迁移计费审计必须按 taskId 查询生成单元');
 function cli(args) {
   return spawnSync(process.execPath, [path.join(__dirname, 'migrate-story-ad-active-plan-release.js'), ...args], {
     env: process.env, cwd: path.resolve(__dirname, '..'), encoding: 'utf8',

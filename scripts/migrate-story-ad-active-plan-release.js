@@ -13,7 +13,7 @@ function argument(name) {
 }
 
 function modelCallCount(taskId) {
-  return storage.getTaskBundle(taskId, { diagnostics: true }).model_calls.length;
+  return storage.listModelCalls(taskId).length;
 }
 
 function inspect(taskId) {
