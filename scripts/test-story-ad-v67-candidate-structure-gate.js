@@ -57,8 +57,10 @@ for (const registration of registrations) {
   cursor = registration.index;
 }
 routeSignatures.push(...rootRoutes.filter(item => item.index > cursor).map(item => item.signature));
-assert.equal(routeSignatures.length, 87,
-  'V204h 在既有 86 个路由上只允许新增一次参考链接重新导入路由，不能丢失或重复其它路由');
+assert.equal(routeSignatures.length, 88,
+  '当前 88 个权威路由必须包含参考链接重新导入与逐场景提示词确认，不能丢失或重复其它路由');
+assert.equal(routeSignatures.filter(value => value === 'POST /tasks/:id/scene-prompts/:sceneId/confirm').length, 1,
+  '逐场景提示词确认路由必须且只能注册一次');
 assert.equal(routeSignatures.filter(value => value === 'POST /reference-video-analyses/:analysisId/reimport').length, 1,
   '超大参考链接恢复入口必须且只能注册一次');
 const singleRetry = 'POST /tasks/:id/visual-assets/retry-authorization';
@@ -79,8 +81,8 @@ assert.equal(routeSignatures.filter(value => value === 'POST /tasks/:id/producti
   '统一制作图谱执行路由必须且只能注册一次');
 assert.equal(
   crypto.createHash('sha256').update(JSON.stringify(routeSignatures)).digest('hex'),
-  '992301e227e6e3da3c1e8ba4e7e125ce99c911ff0c5a17f0f78f04e1f193dd05',
-  'V204h 合并路由方法、路径及注册顺序必须与审计签名一致',
+  'a9923d4f0b10aef101728252c217fd31318be379c20609231c556bc0ac3ae94a',
+  '当前合并路由方法、路径及注册顺序必须与审计签名一致',
 );
 
 const batchRouteStart = billingRoutesSource.indexOf("router.post('/tasks/:id/visual-assets/retry-authorizations'");
@@ -122,5 +124,5 @@ console.log(JSON.stringify({
   full_platform_gates: fullPlatformGates,
   route_lines: lines,
   root_route_count: routeSignatures.length,
-  route_signature_sha256: '992301e227e6e3da3c1e8ba4e7e125ce99c911ff0c5a17f0f78f04e1f193dd05',
+  route_signature_sha256: 'a9923d4f0b10aef101728252c217fd31318be379c20609231c556bc0ac3ae94a',
 }));

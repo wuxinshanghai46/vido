@@ -86,6 +86,26 @@ assert.deepEqual(
   '按账号自动注册音色必须执行系统性、UI 与发布门禁，但家庭电脑不得触发跨版本完整回归',
 );
 assert.equal(plan(['src/services/newStoryAd/unclassifiedAuthority.js']).profile, 'full');
+const scenePromptConfirmationPlan = planner.createPlan({
+  root: process.cwd(), baseRevision: 'a'.repeat(40), targetRevision: 'b'.repeat(40), sourceTree: 'c'.repeat(40),
+  files: [
+    'src/routes/newStoryAd.js',
+    'src/services/newStoryAd/scenePromptConfirmationService.js',
+    'src/services/newStoryAd/sceneAssetService.js',
+    'src/services/newStoryAd/scenePanoramaService.js',
+    'src/services/storyAdWorkspace/projectBundleService.js',
+    'scripts/helpers/scene-prompt-confirmation-fixture.js',
+    'scripts/test-story-ad-scene-prompt-confirmation-v231.js',
+    'scripts/test-story-ad-scene-config-release-rebase-v130.js',
+    'scripts/test-new-story-ad-panorama.js',
+  ],
+  reliable: true, targetedHome: true,
+});
+assert.deepEqual(scenePromptConfirmationPlan.unknown_files, [],
+  '场景提示词确认、图片、修复、全景与队列测试必须全部归入明确影响域');
+assert.deepEqual(scenePromptConfirmationPlan.gates.map(row => row.id),
+  ['systemic', 'asset_plan', 'upload_media', 'workspace_ui', 'release_core'],
+  '家庭电脑必须只执行场景确认直接涉及的系统安全、资产方案、媒体、工作台和发布核心门禁');
 assert.equal(
   plan(['scripts/test-new-story-ad-visual-asset-failure-recovery.js']).profile,
   'upload_media',

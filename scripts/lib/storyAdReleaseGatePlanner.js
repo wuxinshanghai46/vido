@@ -97,6 +97,9 @@ const DOMAIN_RULES = [
       /^scripts\/test-story-ad-production-graph-/i,
       /^scripts\/(?:test-authorized-voice-pack-library|test-voice-pack-auto-enrollment|test-pipeline-capability-audit|audit-story-ad-model-management)\.js$/i,
       /^scripts\/(?:migrate|audit)-new-story-ad-systemic/,
+      /^src\/services\/newStoryAd\/scenePromptConfirmationService\.js$/i,
+      /^scripts\/(?:helpers\/scene-prompt-confirmation-fixture|test-story-ad-(?:legacy-scene-config-route|scene-prompt-confirmation)-v231)\.js$/i,
+      /^scripts\/test-story-ad-v67-candidate-structure-gate\.js$/i,
     ],
   },
   {
@@ -110,6 +113,8 @@ const DOMAIN_RULES = [
     patterns: [
       /(?:upload|multipart|mediaAdapter|mediaCatalog|fileStorage|videoAnalysis)/i,
       /^scripts\/test-new-story-ad-visual-asset-failure-recovery\.js$/i,
+      /^src\/services\/newStoryAd\/(?:sceneAssetService|scenePanoramaService)\.js$/i,
+      /^scripts\/test-new-story-ad-(?:duration-contract|multi-space-cast-recovery|panorama|scene-atlas-v7|scene-repair|spatial-generation-order|verification-lifecycle)\.js$/i,
     ],
   },
   {
@@ -123,6 +128,7 @@ const DOMAIN_RULES = [
       /^scripts\/test-story-ad-person-prompt-separation-v\d+\.js$/i,
       /^scripts\/test-story-ad-person-prompt(?:-|$)/i,
       /^scripts\/test-new-story-ad-asset-contracts\.js$/i,
+      /^scripts\/test-story-ad-scene-config-(?:deadline-recovery-v109|release-rebase-v130)\.js$/i,
     ],
   },
   {
