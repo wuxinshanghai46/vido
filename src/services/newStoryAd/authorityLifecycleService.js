@@ -45,9 +45,11 @@ function ownedAuthorityRun(run = {}, options = {}) {
   const generationId = clean(options.generation_id || options.generationId, 160);
   if (!generationId || clean(run.orchestration_job_id, 160) !== generationId) return false;
   const domain = clean(run.domain, 80);
+  const billingUnknown = clean(run.state, 40).toLowerCase() === 'billing_unknown'
+    || clean(run.billing_state, 40).toLowerCase() === 'unknown';
   return (options.production_graph_authority === true && domain === 'production_assets')
     || (options.person_plan_authority === true && domain === 'person_plan')
-    || (options.scene_plan_authority === true && domain === 'scene_plan');
+    || (options.scene_plan_authority === true && domain === 'scene_plan' && !billingUnknown);
 }
 
 function promotionBlockers(taskId, options = {}) {

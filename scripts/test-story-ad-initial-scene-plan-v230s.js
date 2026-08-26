@@ -52,6 +52,10 @@ storage.createGenerationRun({
 });
 assert.equal(authorityLifecycle.promotionBlockers(taskId, { scene_plan_authority: true, generation_id: generationId }).length, 0,
   'the current scene-plan generation must not block its own authority promotion');
+storage.updateGenerationRun('initial-scene-plan-unit', { state: 'billing_unknown', billing_state: 'unknown' });
+assert.equal(authorityLifecycle.promotionBlockers(taskId, { scene_plan_authority: true, generation_id: generationId }).length, 1,
+  'an owned scene-plan generation with unknown billing must remain a promotion blocker');
+storage.updateGenerationRun('initial-scene-plan-unit', { state: 'running', billing_state: 'not_submitted' });
 storage.createGenerationRun({
   id: 'unrelated-scene-plan-unit', task_id: taskId, work_id: taskId, domain: 'scene_plan', operation: 'run_scene_plan',
   orchestration_job_id: 'another-job', state: 'running', unit_version: 1, billing_state: 'not_submitted', provider_submission_state: 'not_applicable',
