@@ -619,12 +619,13 @@ assert.match(assetPlanStageStatus, /data-generate-subject-assets/, '必须提供
 assert.doesNotMatch(assetPlanStageStatus, /data-generate-missing-subjects/, '不得继续暴露旧的缺失人物单项生成入口');
 assert.doesNotMatch(assets, /data-show-pending-scenes/, '人物资产步骤不得继续混入待生成场景入口');
 assert.match(sceneWorldPage, /data-generate-scene/, '场景页面必须成为场景画面的唯一生成入口');
-assert.match(sceneWorldPage, /data-scene-detail-tab="prompt"/, '场景详情必须提供提示词标签页');
-assert.match(sceneWorldPage, /data-scene-detail-tab="images"/, '场景详情必须提供场景画面标签页');
+const scenePromptPreview = read('public/story-ad/views/scenePromptPreview.js');
+assert.match(scenePromptPreview, /data-scene-detail-tab="prompt"/, '场景详情必须提供提示词标签页');
+assert.match(scenePromptPreview, /data-scene-detail-tab="images"/, '场景详情必须提供场景画面标签页');
 assert.match(sceneWorldPage, /scene_setup_confirmed:\s*true/, '场景生成完成后必须显式确认才能进入线稿');
-assert.match(sceneWorldPage, /workflow\.initialization_required === true/, '首次进入场景页必须识别缺失的正式场景规划');
-assert.match(sceneWorldPage, /runStage\('scene-plan'/, '首次进入场景页必须自动提交正式场景提示词规划');
-assert.match(sceneWorldPage, /场景数量与提示词预览/, '正式规划完成前必须立即展示预计场景数量和独立提示词预览');
+assert.match(scenePromptPreview, /workflow\.initialization_required === true/, '首次进入场景页必须识别缺失的正式场景规划');
+assert.match(scenePromptPreview, /runStage\('scene-plan'/, '首次进入场景页必须自动提交正式场景提示词规划');
+assert.match(scenePromptPreview, /场景数量与提示词预览/, '正式规划完成前必须立即展示预计场景数量和独立提示词预览');
 assert.doesNotMatch(sceneWorldPage, /进入第 5 步：线稿与分镜|统一制作图谱尚未完整|请返回资产中心/, '场景页不得提前显示线稿入口或把用户踢回资产中心');
 assert.equal(assetModule.sceneNeedsGeneration({ id: 'scene-missing' }), true);
 assert.equal(assetModule.sceneNeedsGeneration({ id: 'scene-ready', layout: { image_url: '/scene.png' } }), false);

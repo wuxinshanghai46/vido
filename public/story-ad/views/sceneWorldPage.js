@@ -1,34 +1,8 @@
 import { renderSceneWorldWorkspace, bindSceneWorldWorkspace } from './sceneWorldView.js?v=20260826-production-v230s';
-import { escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260826-production-v230s';
+import { setButtonBusy, toast } from '../components/ui.js?v=20260826-production-v230s';
 import { confirmBillingAwareAction } from './assetCenterBillingRetry.js?v=20260826-production-v230s';
-import { renderSceneCoverCard, sceneNeedsGeneration } from './sceneDossierCard.js?v=20260826-production-v230s';
 import { bindScenePlanUpdate, scenePlanBlockedView } from './scenePlanStatus.js?v=20260826-production-v230s';
-
-const autoScenePlanRequests = new Set();
-
-function scenePrompt(scene = {}) {
-  return String(scene.generation_prompt || scene.prompt || scene.description || '').trim();
-}
-
-function sceneImageCount(scene = {}) { return [scene.layout?.image_url, ...(scene.view_images || []), ...(scene.cameras || []).map(camera => camera?.image_url)].filter(Boolean).length; }
-
-function renderSceneCard(scene = {}, index = 0, options = {}) {
-  const prompt = scenePrompt(scene);
-  const imageCount = sceneImageCount(scene);
-  const provisional = options.provisional === true || scene.provisional === true;
-  const needsGeneration = !provisional && sceneNeedsGeneration(scene);
-  const sceneId = escapeHtml(scene.id || scene.scene_id || `scene-${index + 1}`);
-  return `<article class="scene-production-card" data-scene-card>
-    <header><div><small>场景 ${index + 1}</small><h3>${escapeHtml(scene.name || `场景 ${index + 1}`)}</h3></div><span class="status-tag ${needsGeneration || provisional ? 'is-neutral' : 'is-ready'}">${provisional ? '提示词预览' : (needsGeneration ? '待生成画面' : `已生成 ${imageCount} 张`)}</span></header>
-    <nav class="scene-production-tabs">
-      <button class="is-active" data-scene-detail-tab="prompt">提示词</button>
-      <button data-scene-detail-tab="images">场景画面 ${imageCount ? `(${imageCount})` : ''}</button>
-    </nav>
-    <section class="scene-production-pane" data-scene-detail-pane="prompt"><pre>${escapeHtml(prompt || '场景提示词尚未生成。')}</pre></section>
-    <section class="scene-production-pane" data-scene-detail-pane="images" hidden>${renderSceneCoverCard(scene)}</section>
-    <footer><span>${provisional ? '正式规划完成后可逐个生成画面' : (needsGeneration ? '确认提示词后生成画面' : '画面已就绪，可继续核对')}</span>${needsGeneration ? `<button class="btn primary compact" data-generate-scene="${sceneId}">生成该场景</button>` : ''}</footer>
-  </article>`;
-}
+import { renderSceneProductionCard, scenePromptPreviewMarkup, scenePromptPreviewState, startInitialScenePlan } from './scenePromptPreview.js?v=20260826-production-v230s';
 
 function bindSceneCards(host, context) {
   host.querySelectorAll('[data-scene-detail-tab]').forEach(button => {
@@ -77,27 +51,19 @@ export async function mount(host, context) {
   const scenePlanReady = sceneEligibility.eligible === true;
   const scenes = Array.isArray(bundle.assets?.scenes) ? bundle.assets.scenes : [];
   const workflow = bundle.scene_workflow || {};
-  const previewScenes = Array.isArray(workflow.preview_scenes) ? workflow.preview_scenes : [];
   const generationActive = !!bundle?.project?.active_generation_id
   const canConfirm = workflow.visuals_complete === true && scenes.length > 0
-  const projectFailed = ['failed', 'blocked'].includes(String(bundle?.project?.status || '').toLowerCase());
-  const autoInitialize = workflow.initialization_required === true && !scenePlanReady && !generationActive && !projectFailed;
-  const displayedCount = scenes.length || Number(workflow.estimated_count || previewScenes.length || 0);
+  const preview = scenePromptPreviewState(bundle, scenePlanReady, generationActive);
 
-  host.innerHTML = `<section class="view-head scene-view-head"><div><h1>场景</h1><p>先查看提示词，再生成并核对场景画面。</p></div><div class="scene-view-actions"><span>${scenes.length ? '' : '预计 '}${displayedCount} 个场景</span>${canConfirm ? '<button class="btn primary compact" data-confirm-scenes>确认场景，进入线稿</button>' : ''}</div></section>
-    ${scenePlanReady ? '' : scenePlanBlockedView(sceneEligibility, generationActive, { automatic: autoInitialize || generationActive })}
-    ${!scenePlanReady && previewScenes.length ? `<section class="scene-production is-preview"><header><div><h2>场景数量与提示词预览</h2><p>每个场景都有独立提示词；正式规划完成后会自动替换，不会修改人物资产。</p></div><span>预计 ${displayedCount} 个</span></header><div class="scene-production-grid">${previewScenes.map((scene, index) => renderSceneCard(scene, index, { provisional: true })).join('')}</div></section>` : ''}
-    ${scenePlanReady && scenes.length ? `<section class="scene-production"><header><div><h2>场景提示词与画面</h2><p>逐个核对提示词和生成结果；未生成画面不能进入线稿。</p></div><span>${workflow.generated_count || 0}/${scenes.length} 已生成</span></header><div class="scene-production-grid">${scenes.map(renderSceneCard).join('')}</div></section>` : ''}
+  host.innerHTML = `<section class="view-head scene-view-head"><div><h1>场景</h1><p>先查看提示词，再生成并核对场景画面。</p></div><div class="scene-view-actions"><span>${scenes.length ? '' : '预计 '}${preview.displayedCount} 个场景</span>${canConfirm ? '<button class="btn primary compact" data-confirm-scenes>确认场景，进入线稿</button>' : ''}</div></section>
+    ${scenePlanReady ? '' : scenePlanBlockedView(sceneEligibility, generationActive, { automatic: preview.autoInitialize || generationActive })}
+    ${!scenePlanReady ? scenePromptPreviewMarkup(preview, (scene, index) => renderSceneProductionCard(scene, index, { provisional: true })) : ''}
+    ${scenePlanReady && scenes.length ? `<section class="scene-production"><header><div><h2>场景提示词与画面</h2><p>逐个核对提示词和生成结果；未生成画面不能进入线稿。</p></div><span>${workflow.generated_count || 0}/${scenes.length} 已生成</span></header><div class="scene-production-grid">${scenes.map(renderSceneProductionCard).join('')}</div></section>` : ''}
     ${scenes.length && (workflow.generated_count || 0) > 0 ? `<details class="scene-advanced-details"><summary>查看空间、机位与人物关系</summary>${renderSceneWorldWorkspace(bundle)}</details>` : ''}`;
 
   bindScenePlanUpdate(host, context);
   bindSceneCards(host, context);
-  if (autoInitialize && !autoScenePlanRequests.has(String(bundle.project.id))) {
-    autoScenePlanRequests.add(String(bundle.project.id));
-    store.runStage('scene-plan', { request_key: `scene-plan-auto:${bundle.project.id}:${bundle.revisions?.content || 1}` })
-      .then(() => toast('正式场景提示词正在生成，页面会自动更新。', 'success'))
-      .catch(error => { autoScenePlanRequests.delete(String(bundle.project.id)); toast(error.message || '场景提示词生成失败', 'error'); });
-  }
+  if (preview.autoInitialize) startInitialScenePlan(bundle, store);
   if (scenes.length && (workflow.generated_count || 0) > 0) bindSceneWorldWorkspace(host, bundle, store);
   host.querySelector('[data-confirm-scenes]')?.addEventListener('click', async event => {
     const button = event.currentTarget;
