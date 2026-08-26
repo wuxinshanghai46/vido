@@ -11,6 +11,13 @@ import { assertSavedPerson, personAgeDisplay, personAssetState, personLookSummar
 import { renderPersonEvolutionSummary } from './assetCenterPersonEvolution.js?v=20260826-production-v230a';
 import { createKeyedRequestGuard } from './assetCenterRequestGuard.js?v=20260826-production-v230a';
 import { checkpointRecoverySummary } from './assetCheckpointRecovery.js?v=20260826-production-v230a';
+if (typeof document !== 'undefined' && !document.getElementById('person-dossier-style')) {
+  const style = document.createElement('link');
+  style.id = 'person-dossier-style';
+  style.rel = 'stylesheet';
+  style.href = '/story-ad/person-dossier.css?v=20260826-production-v230a';
+  document.head.append(style);
+}
 const GROUPS = [['people', '人物'], ['animals', '动物'], ['products', '商品 / 展示主体'], ['logos', 'LOGO']];
 const GENERATABLE = new Set(['people', 'animals']);
 const loadAssetCenterStage = globalThis.__loadAssetCenterStage || (() => import('./assetCenterStageView.js?v=20260826-production-v230a'));
