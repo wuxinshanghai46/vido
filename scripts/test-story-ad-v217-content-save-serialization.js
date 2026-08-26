@@ -23,6 +23,7 @@ async function main() {
   let serverRevision = 1;
   let serverMode = 'story';
   const putBodies = [];
+  let bundleRequests = 0;
   const referencePutBodies = [];
   const firstPutStarted = deferred();
   const releaseFirstPut = deferred();
@@ -49,6 +50,7 @@ async function main() {
       };
     }
     if (url.includes('/bundle?sections=')) {
+      bundleRequests += 1;
       return {
         bundle: {
           project: { id: 'task-v217', content_revision: serverRevision },
@@ -96,6 +98,11 @@ async function main() {
   assert.deepEqual(putBodies.map(body => body.base_content_revision), [1, 2], '串行保存必须逐笔采用上一笔返回的新版本');
   assert.equal(store.state.bundle.revisions.content, 3, '客户端最终版本必须与两次服务端提交一致');
   assert.equal(store.state.bundle.brief.content_mode, 'commercial_subject', '广告类型必须立即回写到客户端权威状态');
+
+  const bundleRequestsBeforeConfirmation = bundleRequests;
+  await store.updateRequest({ asset_setup_confirmed: true }, { skipRefresh: true });
+  assert.equal(bundleRequests, bundleRequestsBeforeConfirmation, '纯流程确认必须使用 PUT 回执立即跳转，不能再等待项目大包刷新');
+  assert.equal(store.state.bundle.brief.asset_setup_confirmed, true, '纯流程确认必须立即回写本地权威状态');
 
   serverRevision = 1;
   serverMode = 'commercial_subject';

@@ -4,7 +4,8 @@ const METADATA_KEYS = new Set([
   'base_content_revision', 'baseContentRevision', 'client_edit_seq', 'clientEditSeq',
 ]);
 const WORKFLOW_CONFIRMATION_KEYS = new Set([
-  'asset_setup_confirmed', 'assetSetupConfirmed', 'shot_design_confirmed', 'shotDesignConfirmed',
+  'asset_setup_confirmed', 'assetSetupConfirmed', 'scene_setup_confirmed', 'sceneSetupConfirmed',
+  'shot_design_confirmed', 'shotDesignConfirmed',
 ]);
 
 /** 判断请求是否只更新环节完成状态，不包含创意内容。 */
@@ -24,6 +25,10 @@ function applyWorkflowConfirmations(previous = {}, body = {}) {
     ...(Object.prototype.hasOwnProperty.call(body, 'shot_design_confirmed')
       || Object.prototype.hasOwnProperty.call(body, 'shotDesignConfirmed')
       ? { shot_design_confirmed: body.shot_design_confirmed === true || body.shotDesignConfirmed === true }
+      : {}),
+    ...(Object.prototype.hasOwnProperty.call(body, 'scene_setup_confirmed')
+      || Object.prototype.hasOwnProperty.call(body, 'sceneSetupConfirmed')
+      ? { scene_setup_confirmed: body.scene_setup_confirmed === true || body.sceneSetupConfirmed === true }
       : {}),
   };
 }

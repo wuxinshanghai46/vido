@@ -65,6 +65,8 @@ function testProjectionAndIsolation() {
   assert(!JSON.stringify(scenes[0]).includes('只属于b'), '多场景资产不得串用');
   assert(!JSON.stringify(scenes[1]).includes('只属于a'), '多场景资产不得串用');
   assert.deepEqual(scenes[1].failed_view_keys, ['interaction']);
+  assert.match(scenes[0].generation_prompt, /场景：场景A[\s\S]*空间结构：布局A[\s\S]*视觉风格：/, '场景卡必须直接提供可核对的结构化生图提示词');
+  assert.equal(scenes[0].generation_prompt_source, 'scene_plan_compiled');
 }
 
 function testSceneContractIdempotence() {
@@ -98,6 +100,8 @@ function testUiAndExportBoundaries() {
   assert(card.includes('usedUrls.has(url)') && card.includes('没有使用其他视图冒充'), '同一图片不得跨槽复用');
   assert(card.includes("import('./sceneDossierExport.js"), '高清导出必须按需加载');
   assert(assetCenter.includes("group === 'scenes' ? sceneDetail") && sceneWorldPage.includes('renderSceneWorldWorkspace(bundle)'), '场景摘要与场景世界必须同时存在，并由独立场景流程承载');
+  assert(!assetCenter.includes('data-generate-scene='), '资产中心不得继续保留场景生成入口');
+  assert(sceneWorldPage.includes('data-generate-scene=') && sceneWorldPage.includes('data-scene-detail-tab="prompt"'), '场景生成与提示词核对必须归属场景页');
   assert(details.includes('renderSceneDossierCard(item)') && details.includes('bindSceneDossierCard(drawer, item)'), '完整档案必须在场景抽屉内渲染并绑定');
   assert(details.includes("event.key === 'Escape'") && details.includes('returnFocus?.focus?.()'), '抽屉必须支持 Escape 与焦点恢复');
   assert(api.indexOf("options.responseType === 'blob'") < api.indexOf('const text = await response.text()'), '原图读取必须走受版本保护的 Blob 请求');

@@ -350,6 +350,7 @@ function updateTaskRequest(taskId, body = {}, user = {}, options = {}) {
   ctx = contentSkill.applyModeTransition(previousCtx, ctx, body);
   if (changedDomains.length) {
     ctx.asset_setup_confirmed = body.asset_setup_confirmed === true || body.assetSetupConfirmed === true;
+    ctx.scene_setup_confirmed = false;
     ctx.shot_design_confirmed = false;
   }
   if (changedDomains.includes('person') || changedDomains.includes('source')) {

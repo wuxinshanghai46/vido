@@ -89,13 +89,13 @@ assert.equal(afterScene.scene.eligible, true);
 const personUi = fs.readFileSync(path.join(root, 'public/story-ad/views/assetCenterView.js'), 'utf8');
 const sceneUi = fs.readFileSync(path.join(root, 'public/story-ad/views/sceneWorldPage.js'), 'utf8');
 const sceneStatusUi = fs.readFileSync(path.join(root, 'public/story-ad/views/scenePlanStatus.js'), 'utf8');
-const statusUi = fs.readFileSync(path.join(root, 'public/story-ad/views/assetCenterPlanningDetailsStatus.js'), 'utf8');
-assert(personUi.includes("runStage('person-plan')"));
+const statusUi = fs.readFileSync(path.join(root, 'public/story-ad/views/assetCenterPlanReleaseStatus.js'), 'utf8');
+assert(personUi.includes("runStage('person-plan',"));
 assert(!personUi.includes("data-build-scenes"));
 assert(sceneUi.includes('bindScenePlanUpdate'));
 assert(sceneStatusUi.includes("runStage('scene-plan')"));
-assert(statusUi.includes('本次只更新人物文字方案'));
-assert(sceneStatusUi.includes('本次只更新场景文字方案'));
+assert(statusUi.includes('生成人物方案'));
+assert(sceneStatusUi.includes('先根据已确认剧情整理场景数量和每个场景的生图提示词'));
 
 console.log(JSON.stringify({
   success: true,

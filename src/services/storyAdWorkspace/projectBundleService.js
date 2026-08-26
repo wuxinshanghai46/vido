@@ -265,6 +265,20 @@ function logoAssets(context = {}) {
   }];
 }
 
+function scenePromptText({ name = '', storyPurpose = '', description = '', spec = {}, cameraPlan = [] } = {}) {
+  return [
+    `场景：${name || '未命名场景'}`,
+    storyPurpose ? `剧情用途：${storyPurpose}` : '',
+    description ? `场景描述：${description}` : '',
+    spec.layoutText || spec.layout || spec.spatialLayout ? `空间结构：${spec.layoutText || spec.layout || spec.spatialLayout}` : '',
+    spec.materialLightText || spec.material_light_text || spec.materials ? `材质、色彩与光线：${spec.materialLightText || spec.material_light_text || spec.materials}` : '',
+    spec.interactionText || spec.interaction_text || spec.interaction ? `人物互动与路线：${spec.interactionText || spec.interaction_text || spec.interaction}` : '',
+    cameraPlan.length ? `机位与构图：${cameraPlan.map(camera => [camera.label || camera.name, camera.framing || camera.shot_size, camera.movement || camera.camera_movement].filter(Boolean).join(' · ')).join('；')}` : '',
+    spec.negativeText || spec.negative_text || spec.negative ? `视觉限制：${spec.negativeText || spec.negative_text || spec.negative}` : '',
+    '视觉风格：沿用当前项目已确认的画面形态、人物档案和整体美术方向，保持真实空间比例与跨视角一致性。',
+  ].filter(Boolean).join('\n\n');
+}
+
 /** 将场景规划、生成资产和未绑定参考合并成同一组稳定场景卡，避免规划已存在却显示为 0。 */
 function sceneAssets(outputs = {}, context = {}) {
   const plan = outputs.scene_config && typeof outputs.scene_config === 'object'
@@ -327,10 +341,19 @@ function sceneAssets(outputs = {}, context = {}) {
     }));
     const imageUrl = mediaUrl(asset) || views[0]?.image_url || mediaUrl(reference);
     const candidateCount = list(asset.candidates || space.candidates || space.options).length;
+    const sceneName = clean(space.display_name || space.name || asset.display_name || asset.name || asset.scene_name || reference.display_name || reference.name || `场景 ${index + 1}`, 120);
+    const rawCameraPlan = list(spec.cameraPlan || spec.camera_plan || space.camera_plan);
+    const generationPrompt = cleanMultiline(asset.prompt || space.generation_prompt || space.generationPrompt || scenePromptText({
+      name: sceneName,
+      storyPurpose: space.story_purpose || space.purpose || asset.story_purpose,
+      description: space.description || asset.description || spec.description || spec.layoutText,
+      spec,
+      cameraPlan: rawCameraPlan,
+    }), 12000);
     return {
       id,
       kind: 'scene',
-      name: clean(space.display_name || space.name || asset.display_name || asset.name || asset.scene_name || reference.display_name || reference.name || `场景 ${index + 1}`, 120),
+      name: sceneName,
       name_source: clean(space.name_source || asset.name_source || (space.name ? 'plan' : (asset.name || asset.scene_name ? 'asset' : (reference.name ? 'upload' : 'fallback'))), 40),
       description: clean(space.description || asset.description || spec.description || spec.layoutText, 900),
       story_purpose: clean(space.story_purpose || space.purpose || asset.story_purpose, 500),
@@ -346,6 +369,8 @@ function sceneAssets(outputs = {}, context = {}) {
       reference_only: options.referenceOnly === true,
       candidate_count: candidateCount,
       selected_candidate_id: clean(asset.selected_candidate_id || space.selected_candidate_id, 120),
+      generation_prompt: generationPrompt,
+      generation_prompt_source: clean(asset.prompt ? 'generated_asset' : (space.generation_prompt || space.generationPrompt ? 'scene_plan' : 'scene_plan_compiled'), 40),
       scene_spec: {
         mode: clean(spec.mode || 'auto', 40), layoutText: clean(spec.layoutText || spec.layout_text || spec.layout || spec.spatialLayout, 800), materialLightText: clean(spec.materialLightText || spec.material_light_text || [spec.materialText || spec.materials || spec.material, spec.lightText || spec.lighting || spec.keyLightDirection].filter(Boolean).join('；'), 800), interactionText: clean(spec.interactionText || spec.interaction_text || spec.interaction || spec.actionZone, 500), negativeText: clean(spec.negativeText || spec.negative_text || spec.negative, 500),
         layout: clean(spec.layoutText || spec.layout || spec.spatialLayout, 800),
@@ -558,6 +583,17 @@ function buildProjectBundle(taskId, { sections = '', user = {} } = {}) {
       scene_plan: outputs.scene_config && typeof outputs.scene_config === 'object'
         ? outputs.scene_config
         : (context.scene_plan && typeof context.scene_plan === 'object' ? context.scene_plan : { scene_mode: 'auto', spaces: [] }),
+    };
+    const plannedScenes = bundle.assets.scenes.filter(scene => scene.planned !== false && scene.reference_only !== true);
+    const generatedScenes = plannedScenes.filter(scene => Boolean(scene.image_url || scene.layout?.image_url || scene.view_images?.some(view => view?.image_url)));
+    const lockedScenes = plannedScenes.filter(scene => scene.qa?.full_space_lock === true);
+    bundle.scene_workflow = {
+      planned_count: plannedScenes.length,
+      generated_count: generatedScenes.length,
+      locked_count: lockedScenes.length,
+      prompts_ready: plannedScenes.length > 0,
+      visuals_complete: plannedScenes.length > 0 && lockedScenes.length === plannedScenes.length,
+      confirmed: context.scene_setup_confirmed === true,
     };
   }
 

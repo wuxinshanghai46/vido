@@ -1,30 +1,102 @@
 import { renderSceneWorldWorkspace, bindSceneWorldWorkspace } from './sceneWorldView.js?v=20260826-production-v230i';
-import { escapeHtml } from '../components/ui.js?v=20260826-production-v230i';
+import { escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260826-production-v230i';
+import { confirmBillingAwareAction } from './assetCenterBillingRetry.js?v=20260826-production-v230i';
+import { renderSceneCoverCard, sceneNeedsGeneration } from './sceneDossierCard.js?v=20260826-production-v230i';
 import { bindScenePlanUpdate, scenePlanBlockedView } from './scenePlanStatus.js?v=20260826-production-v230i';
 
-function sceneGenerationQueue(bundle = {}) {
-  const scenes = Array.isArray(bundle.assets?.scenes) ? bundle.assets.scenes : [];
-  if (!scenes.length) return '<section class="card"><h2>场景资产核对</h2><p>尚未建立场景资产。</p></section>';
-  return `<section class="card scene-generation-queue"><div class="section-title"><h2>场景资产核对</h2><span>${scenes.length}</span></div><p>这里仅查看场景、机位与人物移动关系；如需修改，请回到资产中心，在对应场景卡片中重新生成。</p><div class="scene-queue-grid">${scenes.map(scene => {
-    const generated = Boolean(scene.layout?.image_url || scene.view_images?.length || scene.cameras?.some(camera => camera.image_url));
-    return `<article class="asset-card"><div><small>${generated ? '场景资产已生成' : '场景资产待补齐'}</small><h3>${escapeHtml(scene.name || '未命名场景')}</h3><p>${escapeHtml(scene.description || scene.scene_spec?.description || '')}</p></div><span class="status-tag ${generated ? 'is-ready' : 'is-neutral'}">${generated ? '场景资产已就绪' : '请返回资产中心生成场景'}</span></article>`;
-  }).join('')}</div></section>`;
+function scenePrompt(scene = {}) {
+  return String(scene.generation_prompt || scene.prompt || scene.description || '').trim();
+}
+
+function sceneImageCount(scene = {}) {
+  return [scene.layout?.image_url, ...(scene.view_images || []), ...(scene.cameras || []).map(camera => camera?.image_url)]
+    .filter(Boolean).length;
+}
+
+function renderSceneCard(scene = {}, index = 0) {
+  const prompt = scenePrompt(scene);
+  const imageCount = sceneImageCount(scene);
+  const needsGeneration = sceneNeedsGeneration(scene);
+  const sceneId = escapeHtml(scene.id || scene.scene_id || `scene-${index + 1}`);
+  return `<article class="scene-production-card" data-scene-card="${sceneId}">
+    <header><div><small>场景 ${index + 1}</small><h3>${escapeHtml(scene.name || `场景 ${index + 1}`)}</h3></div><span class="status-tag ${needsGeneration ? 'is-neutral' : 'is-ready'}">${needsGeneration ? '待生成画面' : `已生成 ${imageCount} 张`}</span></header>
+    <nav class="scene-production-tabs" aria-label="场景详情">
+      <button type="button" class="is-active" data-scene-detail-tab="prompt" data-scene-id="${sceneId}">提示词</button>
+      <button type="button" data-scene-detail-tab="images" data-scene-id="${sceneId}">场景画面 ${imageCount ? `(${imageCount})` : ''}</button>
+    </nav>
+    <section class="scene-production-pane" data-scene-detail-pane="prompt"><pre>${escapeHtml(prompt || '场景提示词尚未生成。')}</pre></section>
+    <section class="scene-production-pane" data-scene-detail-pane="images" hidden>${renderSceneCoverCard(scene)}</section>
+    <footer><span>${needsGeneration ? '提示词确认后生成场景画面' : '场景画面已就绪，可继续核对其他场景'}</span>${needsGeneration ? `<button class="btn primary compact" type="button" data-generate-scene="${sceneId}">生成该场景</button>` : ''}</footer>
+  </article>`;
+}
+
+function bindSceneCards(host, context) {
+  host.querySelectorAll('[data-scene-detail-tab]').forEach(button => {
+    button.addEventListener('click', () => {
+      const card = button.closest('[data-scene-card]');
+      if (!card) return;
+      card.querySelectorAll('[data-scene-detail-tab]').forEach(tab => tab.classList.toggle('is-active', tab === button));
+      card.querySelectorAll('[data-scene-detail-pane]').forEach(pane => {
+        pane.hidden = pane.dataset.sceneDetailPane !== button.dataset.sceneDetailTab;
+      });
+    });
+  });
+
+  host.querySelectorAll('[data-generate-scene]').forEach(button => {
+    button.addEventListener('click', async () => {
+      const sceneId = button.dataset.generateScene;
+      const scene = (context.bundle.assets?.scenes || []).find(item => String(item.id || item.scene_id) === sceneId);
+      if (!scene) return toast('未找到对应场景', 'error');
+      const confirmation = await confirmBillingAwareAction({
+        bundle: context.bundle,
+        lane: 'scenes',
+        sceneId,
+        title: `生成场景：${scene.name || sceneId}`,
+        message: '将根据已确认的提示词生成场景画面，此操作会调用图片模型并产生费用。',
+        confirmText: '确认生成',
+      });
+      if (!confirmation.accepted) return;
+      setButtonBusy(button, true, '正在生成…');
+      try {
+        const result = await context.store.runStage('scene-assets', { space_id: sceneId, scene_id: sceneId, name: scene.name });
+        if (!result.accepted) throw new Error(result.message || '场景生成未被接受');
+        toast('场景生成任务已提交');
+        await context.refreshShell();
+      } catch (error) {
+        toast(error.message || '生成场景失败', 'error');
+        setButtonBusy(button, false);
+      }
+    });
+  });
 }
 
 export async function mount(host, context) {
   const { bundle, store } = context;
-  const planEligibility = bundle?.navigation?.asset_plan_eligibility || {};
-  const scenePlanEligibility = planEligibility.scene || planEligibility;
-  const scenePlanReady = scenePlanEligibility.eligible === true;
-  const graphReady = bundle.outputs?.production_graph_v1?.validation?.status === 'ready';
-  const generationActive = !!bundle?.project?.active_generation_id;
-  host.innerHTML = `<section class="view-head"><div><h1>场景世界</h1><p>查看统一制作图谱中的地点、时代、空间结构、360°全景、机位与人物出场关系。</p></div><span class="status-tag is-neutral">第 4 步 · 场景核对</span></section>
-    <div class="guide"><b>操作方法</b>　①核对剧情中的地点与时代　②查看空间结构、360°全景和人物出场　③确认机位与衔接　④进入线稿与分镜</div>
-    ${scenePlanReady ? '' : scenePlanBlockedView(scenePlanEligibility, generationActive)}
-    ${sceneGenerationQueue(bundle)}
-    ${renderSceneWorldWorkspace(bundle)}
-    <section class="step-completion-card ${graphReady ? 'is-ready' : ''}"><div><b>场景世界由统一制作图谱承接</b><span>${graphReady ? '人物、造型、配饰、场景、全景、机位和逐镜绑定均已锁定，可以进入线稿与分镜。' : '统一制作图谱尚未完整，请返回资产中心一次补齐；这里不再启动任何旧的单项生成任务。'}</span></div><button class="btn primary" type="button" data-open-script ${graphReady ? '' : 'disabled'}>进入第 5 步：线稿与分镜</button></section>`;
-  bindSceneWorldWorkspace(host, bundle, store);
+  const eligibility = bundle?.navigation?.asset_plan_eligibility || {};
+  const sceneEligibility = eligibility.scene || eligibility;
+  const scenePlanReady = sceneEligibility.eligible === true;
+  const scenes = Array.isArray(bundle.assets?.scenes) ? bundle.assets.scenes : [];
+  const workflow = bundle.scene_workflow || {};
+  const generationActive = Boolean(bundle?.project?.active_generation_id);
+  const canConfirm = workflow.visuals_complete === true && scenes.length > 0;
+
+  host.innerHTML = `<section class="view-head scene-view-head"><div><h1>场景</h1><p>先查看每个场景的提示词，再生成并核对场景画面。</p></div><div class="scene-view-actions"><span>${scenes.length} 个场景</span>${canConfirm ? '<button class="btn primary compact" type="button" data-confirm-scenes>确认场景，进入线稿</button>' : ''}</div></section>
+    ${scenePlanReady ? '' : scenePlanBlockedView(sceneEligibility, generationActive)}
+    ${scenePlanReady && scenes.length ? `<section class="scene-production"><header><div><h2>场景提示词与画面</h2><p>每个场景分别核对提示词和生成结果；未生成的画面不会进入线稿与分镜。</p></div><span>${workflow.generated_count || 0}/${scenes.length} 已生成</span></header><div class="scene-production-grid">${scenes.map(renderSceneCard).join('')}</div></section>` : ''}
+    ${scenes.length && (workflow.generated_count || 0) > 0 ? `<details class="scene-advanced-details"><summary>查看空间、机位与人物关系</summary>${renderSceneWorldWorkspace(bundle)}</details>` : ''}`;
+
   bindScenePlanUpdate(host, context);
-  host.querySelector('[data-open-script]')?.addEventListener('click', () => context.navigate(`/story-ad/projects/${encodeURIComponent(bundle.project.id)}?view=storyboard`));
+  bindSceneCards(host, context);
+  if (scenes.length && (workflow.generated_count || 0) > 0) bindSceneWorldWorkspace(host, bundle, store);
+  host.querySelector('[data-confirm-scenes]')?.addEventListener('click', async event => {
+    const button = event.currentTarget;
+    setButtonBusy(button, true, '正在确认…');
+    try {
+      await store.updateRequest({ scene_setup_confirmed: true }, { skipRefresh: true });
+      context.navigate(`/story-ad/projects/${encodeURIComponent(bundle.project.id)}?view=storyboard`);
+    } catch (error) {
+      toast(error.message || '确认场景失败', 'error');
+      setButtonBusy(button, false);
+    }
+  });
 }

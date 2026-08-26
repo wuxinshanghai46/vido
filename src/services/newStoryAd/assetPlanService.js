@@ -1696,12 +1696,14 @@ function persist(taskId, ctx, rawPlan, meta, scope = 'all') {
     asset_plan_fingerprint: meta.fingerprint,
     asset_plan_generated_cast_fingerprint: castFingerprint,
     asset_setup_confirmed: false,
+    scene_setup_confirmed: false,
     shot_design_confirmed: false,
   };
   const sceneContext = {
     ...ctx,
     story_seed: plan.story_seed,
     asset_plan_fingerprint: meta.fingerprint,
+    scene_setup_confirmed: false,
     shot_design_confirmed: false,
   };
   const fullContext = {

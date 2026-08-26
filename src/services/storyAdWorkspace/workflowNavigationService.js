@@ -32,6 +32,8 @@ function build({ task = {}, context = {}, outputs = {}, counts = {}, clean, list
   const finalReady = Boolean(outputs.final_video?.video_url || outputs.final_video?.videoUrl);
   const assetSetupComplete = context.asset_setup_confirmed === true
     || storyboardReady || keyframesReady || clipsReady || finalReady;
+  const sceneSetupComplete = context.scene_setup_confirmed === true
+    || storyboardReady || keyframesReady || clipsReady || finalReady;
   const shotDesignComplete = context.shot_design_confirmed === true || keyframesReady || clipsReady || finalReady;
   const step = (enabled, completed, blocker, nextView) => ({
     enabled,
@@ -53,8 +55,8 @@ function build({ task = {}, context = {}, outputs = {}, counts = {}, clean, list
         ? '请等待参考视频分析成功并确认理解结果。'
         : '请先通过对话确认项目名称、内容类型和核心设想。', 'assets'),
       assets: step(blueprintReady || assetPlanReady, assetSetupComplete, '请先生成并确认详细剧情与对白。', 'scene'),
-      scene: step(assetSetupComplete, storyboardReady, '请先根据已确认剧情提取并确认人物方案。', 'storyboard'),
-      storyboard: step(assetSetupComplete && blueprintReady, storyboardReady && shotDesignComplete, '请先确认人物与场景规划。', 'final'),
+      scene: step(assetSetupComplete, sceneSetupComplete, '请先确认人物资产。', 'storyboard'),
+      storyboard: step(sceneSetupComplete && blueprintReady, storyboardReady && shotDesignComplete, '请先生成并确认全部场景。', 'final'),
       final: step(shotDesignComplete, finalReady, '请先完成并确认全部镜头设计。', ''),
       workflow: step(true, finalReady, '', ''),
     },

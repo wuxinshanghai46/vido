@@ -3,7 +3,7 @@ import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.j
 import { bindMediaLightbox } from './mediaLightbox.js?v=20260826-production-v230i';
 import { confirmDialog } from '../components/dialog.js?v=20260826-production-v230i';
 import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260826-production-v230i';
-import { confirmBillingAwareAction, ensureSubjectRecoveryReady, recoveryRequestKey } from './assetCenterBillingRetry.js?v=20260826-production-v230i';
+import { ensureSubjectRecoveryReady, recoveryRequestKey } from './assetCenterBillingRetry.js?v=20260826-production-v230i';
 import { renderPersonLookTiles } from './assetCenterPersonLooks.js?v=20260826-production-v230i';
 import { mediaSection } from './assetCenterDossierSections.js?v=20260826-production-v230i';
 import { assetCardMedia } from './sceneDossierCard.js?v=20260826-production-v230i';
@@ -143,7 +143,6 @@ function assetCard(item, group) {
     ? personState !== 'complete_dossier'
     : (GENERATABLE.has(group) && !hasGeneratedMedia(item));
   const needsProductVerification = group === 'products' && Boolean(item.image_url) && item.status !== 'verified';
-  const sceneGenerated = group === 'scenes' && Boolean(item.layout?.image_url || item.view_images?.length || item.cameras?.some(camera => camera.image_url));
   const recovery = item.checkpoint_recovery_summary || {};
   const retryBlocked = group === 'people' && recovery.retry_blocked === true;
   const cardMedia = assetCardMedia(item, group);
@@ -163,7 +162,6 @@ function assetCard(item, group) {
       ${group === 'people' && item.status === 'verified' && !item.provider_asset_id ? `<button class="btn small" type="button" data-history-safe data-sync-person-provider="${escapeHtml(item.id)}">同步 / 重试 Seedance 人物 ID</button>` : ''}
       ${group === 'products' ? `<button class="btn small" type="button" data-upload-product="${escapeHtml(item.id)}">${item.image_url ? '更换主体图片' : '上传主体图片'}</button>` : ''}
       ${group === 'scenes' ? `<button class="btn small" type="button" data-edit-scene-world="${escapeHtml(item.id)}">查看 / 修改场景设定</button>` : ''}
-      ${group === 'scenes' ? `<button class="btn small primary" type="button" data-generate-scene="${escapeHtml(item.id)}">${sceneGenerated ? '重新生成场景' : '生成场景'}</button>` : ''}
       ${needsProductVerification ? `<button class="btn small primary" type="button" data-history-safe data-verify-product="${escapeHtml(item.id)}">验证商品素材</button>` : ''}
     </div>
   </article>`;
@@ -310,28 +308,6 @@ export async function mount(host, context) {
     } catch (error) { toast(error.message, 'danger'); return false; } finally { setButtonBusy(button, false); }
   };
 
-  const generateScene = async (item, button = null) => {
-    const sceneGenerated = Boolean(item.layout?.image_url || item.view_images?.length || item.cameras?.some(camera => camera.image_url));
-    const repairKeys = item.repair_plan?.action === 'regenerate_failed_views' && Array.isArray(item.repair_plan?.view_keys)
-      ? item.repair_plan.view_keys.filter(Boolean) : [];
-    const repairing = sceneGenerated && repairKeys.length > 0;
-    const prompt = repairing
-      ? `本次只补齐“${item.name}”未通过的场景视图，保留已成功图片。`
-      : `本次只生成“${item.name}”的场景母图、场景视图、人物站位和移动轨迹，不生成人物资产。`;
-    const confirmationResult = await confirmBillingAwareAction({
-      bundle, lane: 'scenes', sceneId: item.id, message: prompt,
-      title: sceneGenerated ? '重新生成场景与机位' : '生成场景与机位',
-      confirmText: sceneGenerated ? '确认重新生成' : '确认生成',
-    });
-    if (!confirmationResult.accepted) return false;
-    try {
-      setButtonBusy(button, true, '正在提交场景生成…', { elapsed: true });
-      await store.runStage('scene-assets', { space_id: item.id, scene_id: item.id, name: item.name, regenerate: sceneGenerated, repair_existing: repairing });
-      toast(`${sceneGenerated ? '场景与机位重新生成' : '场景与机位生成'}已提交，进度和耗时将在页面顶部显示。`, 'success');
-      return true;
-    } catch (error) { toast(error.message, 'danger'); return false; } finally { setButtonBusy(button, false); }
-  };
-
   const savePerson = async (item, values, button = null) => {
     const normalizedValues = {
       ...(item.profile || {}),
@@ -464,11 +440,6 @@ export async function mount(host, context) {
     const item = (assets.scenes || []).find(asset => String(asset.id) === button.dataset.editSceneWorld);
     if (item) openDrawer(item, 'scenes', { readOnly: historicalReadOnly, onSaveScene: saveScene, onAssistScene: assistScene, returnFocus: button });
   }));
-  host.querySelectorAll('[data-generate-scene]').forEach(button => button.addEventListener('click', event => {
-    event.stopPropagation();
-    const item = (assets.scenes || []).find(asset => String(asset.id) === button.dataset.generateScene);
-    if (item) generateScene(item, button);
-  }));
   host.querySelectorAll('[data-sync-person-provider]').forEach(button => button.addEventListener('click', async event => {
     event.stopPropagation();
     try {
@@ -508,7 +479,7 @@ export async function mount(host, context) {
     const button = event.currentTarget;
     try {
       setButtonBusy(button, true, '正在确认…');
-      await store.updateRequest({ asset_setup_confirmed: true });
+      await store.updateRequest({ asset_setup_confirmed: true }, { skipRefresh: true });
       toast('资产方案已确认，场景与分镜将使用当前人物、动物、商品和地点规划。', 'success');
       context.navigate(`/story-ad/projects/${encodeURIComponent(bundle.project.id)}?view=scene`);
     } catch (error) {

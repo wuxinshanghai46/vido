@@ -1239,6 +1239,7 @@ function buildContext(body = {}, user = {}) {
     cast_intent: castIntent,
     story_setup_confirmed: body.story_setup_confirmed === true || body.storySetupConfirmed === true,
     asset_setup_confirmed: body.asset_setup_confirmed === true || body.assetSetupConfirmed === true,
+    scene_setup_confirmed: body.scene_setup_confirmed === true || body.sceneSetupConfirmed === true,
     shot_design_confirmed: body.shot_design_confirmed === true || body.shotDesignConfirmed === true,
     voice_id: voiceId,
     voice_name: cleanText(body.voice_name || body.voiceName || '', 120),

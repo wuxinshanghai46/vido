@@ -44,6 +44,7 @@ function project(context = {}, task = {}, clean = value => String(value || '').t
       cast_intent: castIntent,
     },
     asset_setup_confirmed: context.asset_setup_confirmed === true,
+    scene_setup_confirmed: context.scene_setup_confirmed === true,
     shot_design_confirmed: context.shot_design_confirmed === true,
     creative_direction: context.creative_direction || null,
     benchmark_strategy: benchmarkStrategy.resolve({ ...context, product_presentation: presentation }),

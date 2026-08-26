@@ -567,15 +567,16 @@ assert.match(assets, /先完善剧情所需的人物、动物或场景/, '纯剧
 assert.doesNotMatch(assetPlanStageStatus, /商品|场景方案/, '纯剧情人物步骤不得要求核对商品或混入场景流程');
 assert.doesNotMatch(assets, /版本合同未通过|Active Plan|合同通过后/, '普通用户界面不得暴露内部版本合同术语');
 assert.match(planningStatusSource, /人物方案/, '人物页必须显示独立的人物方案状态');
-assert.match(scenePlanningStatusSource, /场景方案/, '场景页必须显示独立的场景方案状态');
+assert.match(scenePlanningStatusSource, /生成场景/, '场景页主操作必须使用用户可理解的“生成场景”');
 assert.match(planningStatusSource, /已确认剧情和现有人物资产补全详细人物方案/, '人物方案必须明确使用已确认剧情和现有人物资产');
-assert.match(scenePlanningStatusSource, /不修改人物身份、人物图片和人物造型/, '场景方案更新必须明确保护人物资产');
+assert.match(scenePlanningStatusSource, /不修改人物身份、人物图片和人物造型/, '场景生成必须明确保护人物资产');
 assert.match(planningStatusSource, /继续生成缺失的人物图片/, '人物方案动作必须真实串联缺失人物图片生成');
 assert.match(assets, /generationActive/, '资产中心必须统一读取当前生成状态');
 assert.match(planningStatusSource, /正在生成人物方案/, '人物方案运行中必须显示准确名称和进行中状态');
-assert.match(scenePlanningStatusSource, /正在更新场景方案/, '场景方案运行中必须显示准确名称和进行中状态');
+assert.match(scenePlanningStatusSource, /正在生成场景提示词/, '场景提示词运行中必须显示准确名称和进行中状态');
 assert.match(planningStatusSource, /data-update-person-plan/, '人物方案必须使用独立提交入口');
-assert.match(scenePlanningStatusSource, /data-update-scene-plan/, '场景方案必须使用独立提交入口');
+assert.match(scenePlanningStatusSource, /data-update-scene-plan/, '场景提示词必须使用独立提交入口');
+assert.doesNotMatch(scenePlanningStatusSource, /需要更新|更新场景方案|confirmDialog|status-tag/, '普通场景入口不得显示内部更新告警或二次提醒');
 assert.match(assets, /data-select-person \$\{generationDisabled\}/, '后台生成运行中不得继续选择或替换人物素材');
 assert.doesNotMatch(planningStatusSource, /文字方案确认后，再单独生成图片|人物方案需要更新|status-tag/, '人物方案不得保留旧两步式提示或冗余状态标签');
 const blockedVisualFailure = {
@@ -617,8 +618,11 @@ assert.match(assetPlanStageStatus, /场景模块单独生成/, '人物入口必�
 assert.match(assetPlanStageStatus, /data-generate-subject-assets/, '必须提供独立人物生成入口');
 assert.doesNotMatch(assetPlanStageStatus, /data-generate-missing-subjects/, '不得继续暴露旧的缺失人物单项生成入口');
 assert.doesNotMatch(assets, /data-show-pending-scenes/, '人物资产步骤不得继续混入待生成场景入口');
-assert.doesNotMatch(sceneWorldPage, /data-generate-base-scene|data-generate-all-panoramas|data-generate-panorama=/, '场景世界不得继续暴露旧的单场景或独立全景生成入口');
-assert.match(sceneWorldPage, /统一制作图谱尚未完整/, '场景世界必须引导用户回到统一制作图谱补齐资产');
+assert.match(sceneWorldPage, /data-generate-scene/, '场景页面必须成为场景画面的唯一生成入口');
+assert.match(sceneWorldPage, /data-scene-detail-tab="prompt"/, '场景详情必须提供提示词标签页');
+assert.match(sceneWorldPage, /data-scene-detail-tab="images"/, '场景详情必须提供场景画面标签页');
+assert.match(sceneWorldPage, /scene_setup_confirmed:\s*true/, '场景生成完成后必须显式确认才能进入线稿');
+assert.doesNotMatch(sceneWorldPage, /进入第 5 步：线稿与分镜|统一制作图谱尚未完整|请返回资产中心/, '场景页不得提前显示线稿入口或把用户踢回资产中心');
 assert.equal(assetModule.sceneNeedsGeneration({ id: 'scene-missing' }), true);
 assert.equal(assetModule.sceneNeedsGeneration({ id: 'scene-ready', layout: { image_url: '/scene.png' } }), false);
 const legacyPerson = {
@@ -756,8 +760,9 @@ const resumePayload = assetModule.subjectGenerationPayload({
 assert.equal(resumePayload.resume_partial_checkpoint, true, '批量入口遇到部分成功检查点时必须进入只补缺失项模式');
 assert.equal(resumePayload.regenerate_selected, false, '恢复部分检查点不得误标为重新生成并重复付费');
 const sceneWorldPageSource = fs.readFileSync(path.join(__dirname, '../public/story-ad/views/sceneWorldPage.js'), 'utf8');
-assert.doesNotMatch(sceneWorldPageSource, /runStage\(['"]scene-assets|request_key:\s*requestKey/, '场景世界不得再提交旧的单场景生成任务');
-assert.match(sceneWorldPageSource, /production_graph_v1/, '场景世界放行线稿前必须读取统一制作图谱状态');
+assert.match(sceneWorldPageSource, /runStage\(['"]scene-assets/, '场景页必须成为场景画面的唯一正常生成入口');
+assert.match(sceneWorldPageSource, /scene_setup_confirmed:\s*true/, '场景画面核对完成后必须显式确认才放行线稿');
+assert.doesNotMatch(sceneWorldPageSource, /production_graph_v1/, '场景放行不得继续读取项目大包中不存在的旧 outputs 投影');
 const newStoryAdRouteSource = fs.readFileSync(path.join(__dirname, '../src/routes/newStoryAd.js'), 'utf8');
 assert.match(newStoryAdRouteSource, /body\.request_key\s*\|\|\s*body\.requestKey/, '排队幂等键必须承接界面 request_key');
 assert.match(newStoryAdRouteSource, /body\.scene_id\s*\|\|\s*body\.sceneId\s*\|\|\s*body\.space_id/, '没有 request_key 时也必须把场景身份纳入幂等键');

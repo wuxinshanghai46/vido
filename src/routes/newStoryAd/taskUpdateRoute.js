@@ -17,7 +17,7 @@ function registerTaskUpdateRoute(router, { asyncRoute, taskForReq, userFromReq }
       ? (req.body?.reference_video_analysis ?? req.body?.referenceVideoAnalysis ?? null)
       : undefined;
     const metadataKeys = new Set(['base_content_revision', 'baseContentRevision', 'client_edit_seq', 'clientEditSeq']);
-    const workflowKeys = new Set(['asset_setup_confirmed', 'assetSetupConfirmed', 'shot_design_confirmed', 'shotDesignConfirmed']);
+    const workflowKeys = new Set(['asset_setup_confirmed', 'assetSetupConfirmed', 'scene_setup_confirmed', 'sceneSetupConfirmed', 'shot_design_confirmed', 'shotDesignConfirmed']);
     const businessKeys = Object.keys(req.body || {}).filter(key => !metadataKeys.has(key));
     if (!businessKeys.length) return res.json({
       success: true,

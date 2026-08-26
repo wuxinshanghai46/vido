@@ -101,6 +101,7 @@ export function createProjectStore() {
         content_mode_source: context.content_mode_source ?? current.brief?.content_mode_source,
         brief_intake: context.brief_intake ?? current.brief?.brief_intake,
         asset_setup_confirmed: context.asset_setup_confirmed === true,
+        scene_setup_confirmed: context.scene_setup_confirmed === true,
         shot_design_confirmed: context.shot_design_confirmed === true,
         creative_direction: context.creative_direction ?? current.brief?.creative_direction,
         world_setting: context.world_setting ?? current.brief?.world_setting,
@@ -130,7 +131,14 @@ export function createProjectStore() {
         };
         const data = await request(`/api/new-story-ad/tasks/${encodeURIComponent(taskId)}`, { method: 'PUT', body, timeoutMs: 120000 });
         applyMutationResult(data);
-        const bundle = await refreshSections(options.refreshSections || 'summary');
+        if (options.skipRefresh === true) {
+          const workflowKeys = ['asset_setup_confirmed', 'scene_setup_confirmed', 'shot_design_confirmed'];
+          const workflowPatch = Object.fromEntries(workflowKeys.filter(key => Object.hasOwn(patch || {}, key)).map(key => [key, patch[key] === true]));
+          if (Object.keys(workflowPatch).length) set({ bundle: { ...state.bundle, brief: { ...(state.bundle?.brief || {}), ...workflowPatch } } });
+        }
+        const bundle = options.skipRefresh === true
+          ? state.bundle
+          : await refreshSections(options.refreshSections || 'summary');
         set({ saving: false });
         return options.returnMutationResult === true ? { bundle, mutation: data } : bundle;
       } catch (error) {

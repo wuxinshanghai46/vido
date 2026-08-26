@@ -31,7 +31,11 @@ assert.equal(state.steps.scene.enabled, false, 'generated plan alone must not op
 state = build({ task: {}, context: { ...brief, asset_setup_confirmed: true }, outputs: { blueprint, asset_plan: assetPlan, asset_plan_eligibility: eligible } });
 assert.equal(state.steps.assets.completed, true, 'confirmed assets complete asset step');
 assert.equal(state.steps.scene.enabled, true, 'confirmed assets open scene');
-assert.equal(state.steps.storyboard.enabled, true, 'confirmed assets and plot open storyboard');
+assert.equal(state.steps.storyboard.enabled, false, '人物确认只能打开场景，不能提前显示或进入线稿');
+
+state = build({ task: {}, context: { ...brief, asset_setup_confirmed: true, scene_setup_confirmed: true }, outputs: { blueprint, asset_plan: assetPlan, asset_plan_eligibility: eligible } });
+assert.equal(state.steps.scene.completed, true, '场景生成并确认后才完成场景步骤');
+assert.equal(state.steps.storyboard.enabled, true, '场景确认后才开放线稿与分镜');
 
 const briefView = read('public/story-ad/views/briefView.js');
 const panel = read('public/story-ad/views/briefDialoguePanel.js');
@@ -41,9 +45,10 @@ assert.match(briefView, /runStage\('blueprint',\s*\{[\s\S]*expected_content_revi
 assert.doesNotMatch(briefView, /createAssetPlanAndRefresh/, 'brief must not create asset plan before plot');
 assert.match(panel, /由你发起对话/, 'new dialogue must remain empty until the user initiates it');
 assert.match(panel, /data-dialogue-professional>手动编辑<\/button>/, 'compact advanced settings entry must remain available');
-assert.match(plotView, /确认剧情，进入人物/, 'plot should lead to people');
-assert.match(sceneView, /进入第 5 步：线稿与分镜/, 'scene should lead to storyboard');
+assert.match(plotView, /确认(?:剧情)?并进入人物/, 'plot should lead to people');
+assert.match(sceneView, /确认场景，进入线稿/, '场景生成完成后必须由顶部确认入口进入线稿');
+assert.doesNotMatch(sceneView, /进入第 5 步：线稿与分镜/, '页面底部不得提前显示线稿入口');
 assert.equal(fs.existsSync(path.join(root, 'public/story-ad/dialogue-demo.html')), false, '旧对话 Demo 入口必须退役，不能与正式立项页并行');
 assert.equal(fs.existsSync(path.join(root, 'public/story-ad/dialogue-demo.js')), false, '旧对话 Demo 运行代码必须退出发布闭包');
 
-console.log(JSON.stringify({ passed: true, order: ['brief', 'plot', 'assets', 'scene', 'storyboard', 'final'], checks: 17 }));
+console.log(JSON.stringify({ passed: true, order: ['brief', 'plot', 'assets', 'scene', 'storyboard', 'final'], checks: 21 }));

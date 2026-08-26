@@ -22,6 +22,7 @@ function buildDetachPatch(previous = {}, scenePlan = null, body = {}) {
       active_dialogue_topic: '',
     },
     asset_setup_confirmed: false,
+    scene_setup_confirmed: false,
     story_setup_confirmed: false,
     shot_design_confirmed: false,
     changed_domains: ['source'],
