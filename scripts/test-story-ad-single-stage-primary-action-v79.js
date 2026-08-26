@@ -30,7 +30,7 @@ assert.match(ready, /data-confirm-assets[^>]*>人物资产已完成，进入场�
 assert.doesNotMatch(ready, /data-generate-production-assets|data-generate-subject-assets|data-generate-recovery|data-update-person-plan/);
 
 const liveSource = read('public/story-ad/views/assetCenterView.js');
-const sceneSource = read('public/story-ad/views/sceneWorldPage.js');
+const sceneSource = `${read('public/story-ad/views/sceneWorldPage.js')}\n${read('public/story-ad/views/scenePromptPreview.js')}\n${read('public/story-ad/views/sceneCardInteractions.js')}`;
 assert.doesNotMatch(liveSource, /checkpointRecoveryBanner\s*\(/);
 assert.doesNotMatch(liveSource, /querySelectorAll\('\[data-generate-subjects\]/);
 assert.match(liveSource, /data-generate-subject-assets/);

@@ -55,7 +55,8 @@ const fullPlan = cast => ({ cast_profiles: [cast], prop_plan: [], scene_plan: sc
   assert.match(formSource, /data-ai-assist-person/, '完整视图的修改区必须保留 AI 辅助完善入口');
   assert.doesNotMatch(drawerSource, /data-drawer-generate/, '完整视图不得重复挂载人物生成入口');
   assert.match(uiSource, /data-generate-subject-assets/, '人物、配饰、动作和表情必须由独立人物入口生成');
-  assert.match(uiSource, /data-generate-scene/, '场景必须由独立场景入口生成');
+  const sceneSource = `${fs.readFileSync(path.join(__dirname, '../public/story-ad/views/scenePromptPreview.js'), 'utf8')}\n${fs.readFileSync(path.join(__dirname, '../public/story-ad/views/sceneCardInteractions.js'), 'utf8')}`;
+  assert.match(sceneSource, /data-generate-scene/, '场景必须由独立场景入口生成');
   console.log(JSON.stringify({ passed: true, model_calls: calls, detail_issues: 0, user_text_preserved: true, sparse_plan_rejected: true, separated_generation: true }, null, 2));
 })().finally(() => {
   gateway.generateText = originalGenerate;
