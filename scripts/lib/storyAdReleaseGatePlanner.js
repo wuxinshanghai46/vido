@@ -145,6 +145,7 @@ const DOMAIN_RULES = [
       /^scripts\/check-story-ad-workspace/i,
       /^src\/services\/newStoryAd\/briefDialogueHistoryService\.js$/,
       /^scripts\/test-story-ad-historical-asset-actions-v61\.js$/,
+      /^scripts\/test-story-ad-scene-card-v66\.js$/i,
       /^src\/routes\/assets\.js$/i,
       /^scripts\/test-story-ad-(?:asset-center-person-provider|character-library)/i,
     ],

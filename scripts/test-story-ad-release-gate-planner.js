@@ -24,6 +24,7 @@ function plan(files, options = {}) {
 
 assert.equal(plan(['public/story-ad/views/briefView.js']).profile, 'ui');
 assert.deepEqual(plan(['public/story-ad/views/briefView.js']).gates.map(row => row.id), ['workspace_ui', 'release_core']);
+assert.equal(plan(['scripts/test-story-ad-scene-card-v66.js']).profile, 'ui');
 assert.equal(plan(['scripts/test-story-ad-historical-asset-actions-v61.js']).profile, 'ui');
 assert.deepEqual(plan(['scripts/test-story-ad-historical-asset-actions-v61.js']).gates.map(row => row.id), ['workspace_ui', 'release_core']);
 assert.equal(plan(['src/services/storyAdWorkspace/authoritativeReferenceProjectionService.js']).profile, 'reference');
