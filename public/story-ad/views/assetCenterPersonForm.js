@@ -1,4 +1,4 @@
-import { escapeHtml } from '../components/ui.js?v=20260826-production-v232a';
+import { escapeHtml } from '../components/ui.js?v=20260826-production-v232b';
 
 export function personEditForm(item = {}) {
   const profile = item.profile || {};
