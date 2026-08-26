@@ -1,4 +1,4 @@
-import { setButtonBusy, toast } from '../components/ui.js?v=20260826-production-v231e';
+import { setButtonBusy, toast } from '../components/ui.js?v=20260826-production-v231f';
 
 export function bindScenePromptEditor(card, context) {
   const button = card?.querySelector('[data-save-scene-prompt]');
