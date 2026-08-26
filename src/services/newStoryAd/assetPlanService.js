@@ -1907,7 +1907,100 @@ async function replanScope(taskId, scope, options = {}) {
 }
 
 async function replanPerson(taskId, options = {}) { return replanScope(taskId, 'person', options); }
-async function replanScene(taskId, options = {}) { return replanScope(taskId, 'scene', options); }
+
+function initialScenePlanSource(plan = {}, ctx = {}) {
+  if (!plan || typeof plan !== 'object') return false;
+  const valid = new Set(validAssetPlanSections(plan, ctx));
+  const missing = missingAssetPlanSections(plan, ctx);
+  return valid.has('cast_profiles')
+    && valid.has('prop_plan')
+    && missing.length > 0
+    && missing.every(section => section === 'scene_plan' || section === 'story_seed')
+    && !hasPhysicalSpaces(plan);
+}
+
+function assertInitialScenePlanIsolation(previous = {}, next = {}) {
+  const protectedSections = ['cast_profiles', 'narrative_cast_profiles', 'pet_profiles', 'prop_plan', 'advertised_subject_contract'];
+  protectedSections.forEach((key) => {
+    if (JSON.stringify(canonical(previous[key])) === JSON.stringify(canonical(next[key]))) return;
+    const error = new Error(`首次场景规划越界修改了 ${key}，候选方案未发布`);
+    error.code = 'ASSET_PLAN_INITIAL_SCENE_CROSSTALK';
+    error.status = 422;
+    error.retryable = false;
+    throw error;
+  });
+  return true;
+}
+
+async function initializeScenePlan(taskId, options = {}) {
+  const task = storage.getTask(taskId);
+  if (!task) throw new Error('任务不存在');
+  const ctx = assertContextConsistent(storage.getOutput(taskId, 'context') || task.request || {});
+  const previous = assetPlanPublication.currentPlan(taskId);
+  if (!initialScenePlanSource(previous, ctx)) {
+    const error = new Error('当前人物与道具方案不足以安全补齐场景，请先完成资产方案');
+    error.code = 'ASSET_PLAN_INITIAL_SCENE_SOURCE_REQUIRED';
+    error.status = 409;
+    error.retryable = false;
+    throw error;
+  }
+  const generationId = cleanText(options.generation_id || options.generationId || '', 160);
+  const currentFingerprint = fingerprint(task, ctx);
+  const missing = missingAssetPlanSections(previous, ctx)
+    .filter(section => section === 'scene_plan' || section === 'story_seed');
+  storage.updateTask(taskId, { status: 'running', stage: 'scene_plan' });
+  storage.saveStage(taskId, 'scene_plan', { status: 'running', input_summary: ctx.brief });
+  const recovered = await recoverAssetPlanSections(taskId, ctx, previous, {
+    ...options,
+    generation_id: generationId,
+    fingerprint: currentFingerprint,
+    required_sections: missing,
+    replace_incompatible: true,
+  });
+  const next = assertContentModeIsolation(normalizePlan(recovered.payload, ctx), ctx);
+  if (!complete(next, ctx)) {
+    const error = new Error(`首次场景规划补齐后仍不完整：${missingAssetPlanSections(next, ctx).join('、')}`);
+    error.code = 'ASSET_PLAN_INITIAL_SCENE_INCOMPLETE';
+    error.status = 502;
+    error.retryable = true;
+    throw error;
+  }
+  assertInitialScenePlanIsolation(normalizePlan(previous, ctx, { allowPartialScene: true }), next);
+  briefAuthority.assertPlanAuthority(next, ctx);
+  const saved = persist(taskId, ctx, next, {
+    fingerprint: currentFingerprint,
+    source: 'initial_scene_plan_section_completion',
+    model_meta: {
+      ...(recovered.model_meta || {}),
+      scope: 'scene_initialization',
+      recovered_sections: recovered.recovered_sections || missing,
+    },
+    completed_at: new Date().toISOString(),
+    generation_id: generationId,
+  }, 'scene');
+  storage.deleteOutput(taskId, ASSET_PLAN_DRAFT_CHECKPOINT_KIND);
+  storage.saveStage(taskId, 'scene_plan', {
+    status: 'done',
+    output_summary: `${saved.scene_plan?.spaces?.length || 0} 个场景提示词已建立`,
+    diagnostics: {
+      fingerprint: saved.fingerprint,
+      scope: 'scene_initialization',
+      recovered_sections: recovered.recovered_sections || missing,
+      model_call_count: Number(recovered.model_meta?.model_call_count || 0),
+    },
+  });
+  markSceneConfigDone(taskId, generationId);
+  return saved.scene_plan;
+}
+
+async function replanScene(taskId, options = {}) {
+  const task = storage.getTask(taskId);
+  const ctx = assertContextConsistent(storage.getOutput(taskId, 'context') || task?.request || {});
+  const previous = assetPlanPublication.currentPlan(taskId);
+  return initialScenePlanSource(previous, ctx)
+    ? initializeScenePlan(taskId, options)
+    : replanScope(taskId, 'scene', options);
+}
 
 function syncPrevious(taskId) {
   const task = storage.getTask(taskId);
@@ -2262,6 +2355,9 @@ module.exports = {
   assertGeneratedContentMode,
   assertContentModeIsolation,
   assertScopedPlanIsolation,
+  initialScenePlanSource,
+  assertInitialScenePlanIsolation,
+  initializeScenePlan,
   markSceneConfigDone,
   replanPerson,
   replanScene,

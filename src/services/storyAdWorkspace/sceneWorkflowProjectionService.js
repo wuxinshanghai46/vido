@@ -27,9 +27,41 @@ function projectBundleState(scenes = [], context = {}, outputs = {}) {
   const planned = list(scenes).filter(scene => scene.planned !== false && scene.reference_only !== true);
   const generated = planned.filter(scene => Boolean(scene.image_url || scene.layout?.image_url || scene.view_images?.some(view => view?.image_url)));
   const locked = planned.filter(scene => scene.qa?.full_space_lock === true);
+  const blueprintBeats = list(outputs.blueprint?.beats);
+  const previewByScene = new Map();
+  blueprintBeats.forEach((beat, index) => {
+    const label = clean(beat.scene || beat.location || beat.setting || beat.title || `场景 ${index + 1}`, 240);
+    const key = label || `scene-${index + 1}`;
+    if (previewByScene.has(key)) return;
+    const visual = clean(beat.visual || beat.story_visual || beat.plot || beat.summary || '', 900);
+    const action = clean(beat.action || '', 500);
+    previewByScene.set(key, {
+      id: `scene-preview-${previewByScene.size + 1}`,
+      name: label || `场景 ${previewByScene.size + 1}`,
+      generation_prompt: [
+        `场景：${label || `场景 ${previewByScene.size + 1}`}`,
+        visual ? `画面内容：${visual}` : '',
+        action ? `人物动作：${action}` : '',
+        beat.lighting_mood ? `光线氛围：${clean(beat.lighting_mood, 300)}` : '',
+        '提示：这是根据已确认剧情即时整理的预览；正式场景规划完成后会替换为完整空间、材质、光线与人物路线提示词。',
+      ].filter(Boolean).join('\n\n'),
+      provisional: true,
+    });
+  });
+  const previewScenes = [...previewByScene.values()].slice(0, 24);
   return {
     asset_editor: { scene_plan: outputs.scene_config && typeof outputs.scene_config === 'object' ? outputs.scene_config : (context.scene_plan && typeof context.scene_plan === 'object' ? context.scene_plan : { scene_mode: 'auto', spaces: [] }) },
-    scene_workflow: { planned_count: planned.length, generated_count: generated.length, locked_count: locked.length, prompts_ready: planned.length > 0, visuals_complete: planned.length > 0 && locked.length === planned.length, confirmed: context.scene_setup_confirmed === true },
+    scene_workflow: {
+      planned_count: planned.length,
+      estimated_count: planned.length || previewScenes.length,
+      generated_count: generated.length,
+      locked_count: locked.length,
+      prompts_ready: planned.length > 0,
+      initialization_required: planned.length === 0 && previewScenes.length > 0 && context.asset_setup_confirmed === true,
+      preview_scenes: planned.length ? [] : previewScenes,
+      visuals_complete: planned.length > 0 && locked.length === planned.length,
+      confirmed: context.scene_setup_confirmed === true,
+    },
   };
 }
 
