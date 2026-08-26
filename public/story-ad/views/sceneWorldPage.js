@@ -1,8 +1,8 @@
-import { renderSceneWorldWorkspace, bindSceneWorldWorkspace } from './sceneWorldView.js?v=20260826-production-v230r';
-import { escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260826-production-v230r';
-import { confirmBillingAwareAction } from './assetCenterBillingRetry.js?v=20260826-production-v230r';
-import { renderSceneCoverCard, sceneNeedsGeneration } from './sceneDossierCard.js?v=20260826-production-v230r';
-import { bindScenePlanUpdate, scenePlanBlockedView } from './scenePlanStatus.js?v=20260826-production-v230r';
+import { renderSceneWorldWorkspace, bindSceneWorldWorkspace } from './sceneWorldView.js?v=20260826-production-v230s';
+import { escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260826-production-v230s';
+import { confirmBillingAwareAction } from './assetCenterBillingRetry.js?v=20260826-production-v230s';
+import { renderSceneCoverCard, sceneNeedsGeneration } from './sceneDossierCard.js?v=20260826-production-v230s';
+import { bindScenePlanUpdate, scenePlanBlockedView } from './scenePlanStatus.js?v=20260826-production-v230s';
 
 const autoScenePlanRequests = new Set();
 
