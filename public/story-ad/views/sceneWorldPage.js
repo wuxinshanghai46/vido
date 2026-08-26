@@ -1,8 +1,8 @@
-import { renderSceneWorldWorkspace, bindSceneWorldWorkspace } from './sceneWorldView.js?v=20260826-production-v231a';
-import { setButtonBusy, toast } from '../components/ui.js?v=20260826-production-v231a';
-import { confirmBillingAwareAction } from './assetCenterBillingRetry.js?v=20260826-production-v231a';
-import { bindScenePlanUpdate, scenePlanBlockedView } from './scenePlanStatus.js?v=20260826-production-v231a';
-import { renderSceneProductionCard, scenePromptPreviewMarkup, scenePromptPreviewState, startInitialScenePlan } from './scenePromptPreview.js?v=20260826-production-v231a';
+import { renderSceneWorldWorkspace, bindSceneWorldWorkspace } from './sceneWorldView.js?v=20260826-production-v231b';
+import { setButtonBusy, toast } from '../components/ui.js?v=20260826-production-v231b';
+import { confirmBillingAwareAction } from './assetCenterBillingRetry.js?v=20260826-production-v231b';
+import { bindScenePlanUpdate, scenePlanBlockedView } from './scenePlanStatus.js?v=20260826-production-v231b';
+import { renderSceneProductionCard, scenePromptPreviewMarkup, scenePromptPreviewState, startInitialScenePlan } from './scenePromptPreview.js?v=20260826-production-v231b';
 
 function bindSceneCards(host, context) {
   host.querySelectorAll('[data-scene-detail-tab]').forEach(button => {

@@ -1,8 +1,8 @@
-import { request, uploadAsset, uploadReferenceVideo } from '../api.js?v=20260826-production-v231a';
-import { beginReferenceReplacement, referenceSyncInterrupted, replacementCurrent, removeProjectReference, restoreReferenceReplacement } from './referenceReplacementState.js?v=20260826-production-v231a';
-import { cancelReferenceAnalysisRequest, retryReferenceAnalysisRequest, retryReferenceImportRequest } from './referenceRetryStore.js?v=20260826-production-v231a';
-import { loadProjectList } from './projectListStore.js?v=20260826-production-v231a';
-import { loadProjectBundle, refreshProjectBundle } from './projectBundleStore.js?v=20260826-production-v231a';
+import { request, uploadAsset, uploadReferenceVideo } from '../api.js?v=20260826-production-v231b';
+import { beginReferenceReplacement, referenceSyncInterrupted, replacementCurrent, removeProjectReference, restoreReferenceReplacement } from './referenceReplacementState.js?v=20260826-production-v231b';
+import { cancelReferenceAnalysisRequest, retryReferenceAnalysisRequest, retryReferenceImportRequest } from './referenceRetryStore.js?v=20260826-production-v231b';
+import { loadProjectList } from './projectListStore.js?v=20260826-production-v231b';
+import { loadProjectBundle, refreshProjectBundle } from './projectBundleStore.js?v=20260826-production-v231b';
 export function createProjectStore() {
   const state = {
     projects: [],
@@ -55,7 +55,7 @@ export function createProjectStore() {
     hydrateReferenceFailure();
     return bundle;
   }
-  const mediaStore = () => import('./mediaCatalogStore.js?v=20260826-production-v231a'), loadMediaPage = async options => (await mediaStore()).loadMediaPage({ request, state }, options);
+  const mediaStore = () => import('./mediaCatalogStore.js?v=20260826-production-v231b'), loadMediaPage = async options => (await mediaStore()).loadMediaPage({ request, state }, options);
   const loadMoreMedia = async (kind = 'keyframes', limit = 24) => (await mediaStore()).loadMoreMedia({ request, state, set }, kind, limit);
 
   async function refreshSections(sections) {
@@ -577,7 +577,7 @@ export function createProjectStore() {
     refreshSections,
     updateRequest,
     runStage,
-    confirmScenePrompt: async scene => (await import('./scenePromptConfirmationStore.js?v=20260826-production-v231a')).confirmScenePrompt({ state, request, refreshSections }, scene),
+    confirmScenePrompt: async scene => (await import('./scenePromptConfirmationStore.js?v=20260826-production-v231b')).confirmScenePrompt({ state, request, refreshSections }, scene),
     saveBlueprint,
     saveStoryboard,
     saveSketches,
