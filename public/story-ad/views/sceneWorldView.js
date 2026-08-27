@@ -124,31 +124,6 @@ function transitionCards(bundle = {}) {
   }).join('')}</div>`;
 }
 
-export function renderSceneWorldWorkspace(bundle = {}) {
-  const counts = bundle.production_manifest?.counts || {};
-  const ready = Number(counts.worlds || 0);
-  const planned = Number(counts.planned_scenes || bundle.assets?.scenes?.length || 0);
-  if (!ready) return `<section class="scene-world-locked" data-scene-world-locked><div><span>第 3 步 · 场景世界</span><h2>尚未建立场景文字方案</h2><p>请先返回目标与材料建立人物和场景规划；此处不会要求先生成付费图片。</p></div><span class="status-tag is-neutral">等待文字规划</span></section>`;
-  const visualReady = list(bundle.scene_worlds).filter(world => world.visual_authority_ready).length;
-  const partial = visualReady < planned ? `<div class="scene-world-partial">${planned} 个文字场景均已进入预分配；其中 ${visualReady} 个已有视觉资产。请先确认出场、造型、机位与地点关系，再按场景单独生成。</div>` : '';
-  return `<section class="scene-world-workspace" data-scene-world-workspace>
-    <header>
-      <div><small>SCENEWORLD · 通用场景生产</small><h2>生产清单与场景世界</h2><p>人物档案保持独立；这里负责人物与场景分配、动态观察点、机位以及跨场景衔接。</p></div>
-      <div><button class="btn" type="button" data-scene-world-tab-target="matrix">人物×场景</button><button class="btn" type="button" data-scene-world-tab-target="transitions">场景衔接</button></div>
-    </header>
-    ${partial}<div class="scene-world-tabs">
-      <button class="active" type="button" data-scene-world-tab="overview">生产清单</button>
-      <button type="button" data-scene-world-tab="worlds">场景世界</button>
-      <button type="button" data-scene-world-tab="matrix">人物×场景</button>
-      <button type="button" data-scene-world-tab="transitions">场景衔接</button>
-    </div>
-    <div data-scene-world-pane="overview">${manifestSummary(bundle)}${worldCards(bundle)}</div>
-    <div data-scene-world-pane="worlds" hidden>${worldCards(bundle)}</div>
-    <div data-scene-world-pane="matrix" hidden>${characterWorldMatrix(bundle)}</div>
-    <div data-scene-world-pane="transitions" hidden>${transitionCards(bundle)}</div>
-  </section>`;
-}
-
 function initNativeSceneWorldViewer({ overlay, bundle, world }) {
   const host = overlay.querySelector('[data-scene-world-canvas]');
   host.innerHTML = '<canvas class="scene-world-native-canvas" aria-label="可旋转场景模型"></canvas>';
@@ -468,6 +443,10 @@ async function openSceneWorldStudio(bundle, world) {
 }
 
 export function bindSceneWorldWorkspace(host, bundle = {}, store = null) {
+  host.querySelectorAll('[data-enter-scene-world]').forEach(button => button.addEventListener('click', () => {
+    const world = worldById(bundle, button.dataset.enterSceneWorld);
+    if (world) openSceneWorldStudio(bundle, world);
+  }));
   const root = host.querySelector('[data-scene-world-workspace]');
   if (!root) return;
   const activate = name => {
@@ -476,10 +455,6 @@ export function bindSceneWorldWorkspace(host, bundle = {}, store = null) {
   };
   root.querySelectorAll('[data-scene-world-tab]').forEach(button => button.addEventListener('click', () => activate(button.dataset.sceneWorldTab)));
   root.querySelectorAll('[data-scene-world-tab-target]').forEach(button => button.addEventListener('click', () => activate(button.dataset.sceneWorldTabTarget)));
-  root.querySelectorAll('[data-enter-scene-world]').forEach(button => button.addEventListener('click', () => {
-    const world = worldById(bundle, button.dataset.enterSceneWorld);
-    if (world) openSceneWorldStudio(bundle, world);
-  }));
   root.querySelectorAll('[data-plan-scene-experience]').forEach(button => button.addEventListener('click', () => {
     const world = worldById(bundle, button.dataset.planSceneExperience);
     if (world) openSceneExperiencePlanner(bundle, world);

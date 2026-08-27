@@ -132,6 +132,22 @@ async function main() {
   );
   seedSingleSceneTask(taskId, 'spatial generation order', 'locked-room');
 
+  const contaminatedCheckpoint = {
+    task_id: taskId, scene_id: 'contaminated-room', status: 'published', views: {
+      layout: { status: 'succeeded', image_url: 'https://test.invalid/layout-with-stranger.png', billing_state: 'confirmed' },
+      master: { status: 'succeeded', image_url: 'https://test.invalid/clean-master.png', billing_state: 'confirmed' },
+    },
+  };
+  sceneCheckpoint.invalidateSucceededView(contaminatedCheckpoint, 'layout', { source: 'regression_visual_audit' });
+  const invalidated = storage.getOutput(taskId, 'scene_asset_checkpoint:contaminated-room');
+  assert.equal(invalidated.status, 'partial');
+  assert.equal(invalidated.views.layout.error_code, 'SCENE_UNEXPECTED_PERSON');
+  assert.equal(invalidated.views.layout.rejected_image_url, 'https://test.invalid/layout-with-stranger.png');
+  assert.equal(invalidated.views.layout.image_url, '');
+  assert.equal(invalidated.views.layout.billing_state, 'confirmed', '已完成调用的费用事实必须保留，质检失败不得伪装为未提交');
+  assert.equal(sceneCheckpoint.reusableView(invalidated.views.layout), false, '夹带陌生人物的空镜不得再次复用');
+  assert.equal(sceneCheckpoint.reusableView(invalidated.views.master), true, '同场景干净视图必须继续复用，不得整场重生成');
+
   const calls = [];
   let activeImageCalls = 0;
   let peakImageCalls = 0;

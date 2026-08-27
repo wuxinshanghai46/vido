@@ -14,14 +14,14 @@ export function renderSceneProductionCard(scene = {}, index = 0, options = {}) {
     || ['queued', 'running', 'processing', 'generating'].includes(String(scene.status || scene.generation_status || '').toLowerCase()));
   const preferredTab = generationStarted ? 'images' : 'prompt';
   const promptPane = provisional
-    ? `<pre>${escapeHtml(prompt || '场景提示词尚未生成。')}</pre>`
-    : `<textarea data-scene-prompt-editor="${sceneId}" maxlength="12000">${escapeHtml(prompt || '')}</textarea><div class="scene-prompt-editor-actions"><small>修改后自动保存；生成时只使用已保存的最新版本。</small><span data-autosave-state="saved">已自动保存</span></div>`;
+    ? `<pre>${escapeHtml(prompt || '待生成场景提示词。')}</pre>`
+    : `<textarea data-scene-prompt-editor="${sceneId}" maxlength="12000">${escapeHtml(prompt || '')}</textarea><div class="scene-prompt-editor-actions"><small>自动保存；生成时使用最新版本。</small><span data-autosave-state="saved">已自动保存</span></div>`;
   return `<article class="scene-production-card" data-scene-card data-scene-id="${sceneId}" data-prompt-version-id="${escapeHtml(promptState.prompt_version_id || '')}" data-default-scene-tab="${preferredTab}">
-    <header><div><small>场景 ${index + 1}</small><h3>${escapeHtml(scene.name || `场景 ${index + 1}`)}</h3></div><span class="status-tag ${needsGeneration || provisional ? 'is-neutral' : 'is-ready'}">${provisional ? '提示词预览' : (needsGeneration ? '待生成画面' : `已生成 ${imageCount} 张`)}</span></header>
+    <header><div><small>场景 ${index + 1}</small><h3>${escapeHtml(scene.name || `场景 ${index + 1}`)}</h3></div><div class="scene-view-actions">${imageCount ? `<button class="btn primary compact" data-enter-scene-world="${sceneId}">进入场景</button>` : ''}<span class="status-tag ${needsGeneration || provisional ? 'is-neutral' : 'is-ready'}">${provisional ? '提示词预览' : (needsGeneration ? '待生成画面' : `已生成 ${imageCount} 张`)}</span></div></header>
     <nav class="scene-production-tabs"><button class="${preferredTab === 'prompt' ? 'is-active' : ''}" data-scene-detail-tab="prompt">提示词</button><button class="${preferredTab === 'images' ? 'is-active' : ''}" data-scene-detail-tab="images">场景画面 ${imageCount ? `(${imageCount})` : ''}</button></nav>
     <section class="scene-production-pane" data-scene-detail-pane="prompt" ${preferredTab === 'prompt' ? '' : 'hidden'}>${promptPane}</section>
     <section class="scene-production-pane" data-scene-detail-pane="images" ${preferredTab === 'images' ? '' : 'hidden'}>${renderSceneCoverCard(scene)}</section>
-    <footer><span>${provisional ? '正式规划完成后可生成画面' : (options.generationActive ? '该场景正在生成，其他场景仍可继续提交' : (needsGeneration ? '编辑会自动保存，可直接生成场景画面' : '画面已就绪，可按需重新生成'))}</span>${!provisional ? `<button class="btn primary compact" data-generate-scene="${sceneId}" ${options.generationActive ? 'disabled' : ''}>${options.generationActive ? '正在生成…' : (needsGeneration ? '生成该场景' : '重新生成')}</button>` : ''}</footer>
+    <footer><span>${provisional ? '正式规划后可生成画面' : (options.generationActive ? '该场景正在生成' : (needsGeneration ? '已自动保存，可生成画面' : '画面已就绪，可重新生成'))}</span>${!provisional ? `<button class="btn primary compact" data-generate-scene="${sceneId}" ${options.generationActive ? 'disabled' : ''}>${options.generationActive ? '正在生成…' : (needsGeneration ? '生成该场景' : '重新生成')}</button>` : ''}</footer>
   </article>`;
 }
 

@@ -28,7 +28,11 @@ export async function loadBillingReviews(options = {}) {
   return (await billingReviewDialog()).loadBillingReviews(options);
 }
 export async function confirmBillingAwareAction(options = {}) {
-  return (await billingReviewDialog()).confirmBillingAwareAction(options);
+  const result = await (await billingReviewDialog()).confirmBillingAwareAction(options);
+  if (result.accepted && options.authorizeReviews && result.reviewBatch?.reviews?.length) {
+    await authorizeBillingReviews({ ...options, reviewBatch: result.reviewBatch });
+  }
+  return result;
 }
 
 export function startBillingReviewPolling({ bundle, store, host, initialDelay = 4000 } = {}) {

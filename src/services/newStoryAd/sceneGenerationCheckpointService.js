@@ -448,6 +448,42 @@ function markFailed(checkpoint = {}, viewKey = '', error = null, budget = null) 
   return save(checkpoint);
 }
 
+function invalidateSucceededView(checkpoint = {}, viewKey = '', reason = {}) {
+  const existing = checkpoint.views?.[viewKey] || {};
+  if (!reusableView(existing)) {
+    const error = new Error(`场景视图 ${viewKey} 不是可复用成功资产，不能执行质检作废。`);
+    error.code = 'SCENE_VIEW_INVALIDATION_NOT_APPLICABLE';
+    throw error;
+  }
+  const rejectedUrl = viewUrl(existing);
+  checkpoint.status = 'partial';
+  checkpoint.views[viewKey] = {
+    ...existing,
+    key: viewKey,
+    status: 'failed',
+    image_url: '',
+    url: '',
+    rejected_image_url: rejectedUrl,
+    error: String(reason.message || '场景空镜出现未授权人物，已退出复用队列。').slice(0, 500),
+    error_code: String(reason.code || 'SCENE_UNEXPECTED_PERSON').slice(0, 100),
+    retryable: true,
+    billing_state: 'confirmed',
+    provider_submission_state: 'completed',
+    qa: {
+      ...(existing.qa && typeof existing.qa === 'object' ? existing.qa : {}),
+      pass: false,
+      unexpected_person: true,
+      source: String(reason.source || 'manual_visual_audit').slice(0, 100),
+      checked_at: nowIso(),
+    },
+    failed_at: nowIso(),
+    updated_at: nowIso(),
+  };
+  checkpoint.last_error = checkpoint.views[viewKey].error;
+  checkpoint.last_error_code = checkpoint.views[viewKey].error_code;
+  return save(checkpoint);
+}
+
 function setLayoutAcquisition(checkpoint = {}, value = null) {
   checkpoint.layout_acquisition = value;
   return save(checkpoint);
@@ -511,6 +547,7 @@ module.exports = {
   markSubmitting,
   markSubmitted,
   markFailed,
+  invalidateSucceededView,
   setLayoutAcquisition,
   markReadyForQa,
   markPartial,
