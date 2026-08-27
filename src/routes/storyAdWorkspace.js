@@ -88,9 +88,9 @@ function graphForRequest(req, options = {}) {
   );
   const graph = graphProjection.projectGraph(bundle);
   const allowedNodeIds = new Set((graph.nodes || []).map(item => item.id));
-  if (options.withLayout === false) return { graph, allowedNodeIds };
+  if (options.withLayout === false) return { graph, allowedNodeIds, bundle };
   const layout = graphLayouts.getLayout(req.params.taskId, { allowedNodeIds });
-  return { graph: graphLayouts.mergeGraph(graph, layout), allowedNodeIds, layout };
+  return { graph: graphLayouts.mergeGraph(graph, layout), allowedNodeIds, layout, bundle };
 }
 
 router.get('/projects', asyncRoute(async (req, res) => {
@@ -121,10 +121,20 @@ router.post('/projects', asyncRoute(async (req, res) => {
 
 router.get('/projects/:taskId/bundle', asyncRoute(async (req, res) => {
   projectForRequest(req);
-  const bundle = attachSceneWorldProjection(req.params.taskId, projectBundles.buildProjectBundle(req.params.taskId, {
-    sections: req.query.sections || '',
-    user: currentUser(req),
-  }));
+  const requestedSections = String(req.query.sections || '');
+  const wantsGraph = requestedSections.split(',').map(item => item.trim()).includes('graph');
+  let bundle;
+  if (wantsGraph) {
+    const projected = graphForRequest(req);
+    bundle = projected.bundle;
+    bundle.workflow_graph = projected.graph;
+    bundle.loaded_sections = [...new Set([...(bundle.loaded_sections || []), 'graph'])];
+  } else {
+    bundle = attachSceneWorldProjection(req.params.taskId, projectBundles.buildProjectBundle(req.params.taskId, {
+      sections: requestedSections,
+      user: currentUser(req),
+    }));
+  }
   res.setHeader('Cache-Control', 'private, no-store, no-cache, must-revalidate');
   res.setHeader('Vary', 'Authorization');
   res.json({ success: true, bundle });

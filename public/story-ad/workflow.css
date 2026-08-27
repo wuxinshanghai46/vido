@@ -131,16 +131,18 @@
 .mini-map .viewport-box { position: absolute; border: 1px solid var(--mint); background: color-mix(in srgb, var(--mint) 12%, transparent); }
 .node-panel {
   position: absolute;
-  z-index: 8;
-  top: 58px;
-  right: 0;
-  width: 400px;
-  height: calc(100vh - 122px);
+  z-index: 7;
+  width: 460px;
+  max-height: 680px;
   padding: 18px;
   overflow-y: auto;
-  border-left: 1px solid var(--line);
+  border: 1px solid color-mix(in srgb, var(--mint) 45%, var(--line));
+  border-radius: 14px;
   background: var(--surface);
   box-shadow: var(--shadow);
+  cursor: default;
+  touch-action: pan-y;
+  user-select: text;
 }
 .node-panel[hidden] { display: none; }
 .node-panel header { display: flex; align-items: flex-start; gap: 10px; }
@@ -158,6 +160,10 @@
 .node-readable-list article p { margin: 5px 0 0; color: var(--muted); line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; }
 .node-panel .meta-list:empty { display: none; }
 .node-panel .panel-route { width: 100%; margin-top: 16px; }
+.node-direct-editor { display: grid; gap: 10px; margin-top: 12px; }
+.node-direct-editor > div { display: grid; gap: 3px; }
+.node-direct-editor > div > b { color: var(--mint); font-size: 13px; }
+.node-direct-editor > div > small { color: var(--muted); font-size: 10px; }
 .node-inline-editor { display: grid; gap: 12px; margin-top: 14px; padding: 14px; border: 1px solid color-mix(in srgb, var(--mint) 38%, var(--line)); border-radius: 12px; background: var(--surface-2); }
 .node-inline-editor .textarea { min-height: 82px; }
 .node-inline-beats { display: grid; gap: 10px; }
@@ -167,5 +173,5 @@
 
 @media (max-width: 1250px) {
   .workflow-view { margin-left: -22px; margin-right: -22px; }
-  .node-panel { width: 360px; }
+  .node-panel { width: 420px; }
 }

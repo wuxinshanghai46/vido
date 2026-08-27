@@ -211,9 +211,16 @@ function supportsReferenceImages(config = {}) {
   return /deyunai|漫路/i.test(family);
 }
 
-function buildOpenAiCompatibleGptImage2Request(config = {}, { prompt = '', size = '1024x1024', referenceImages = [], inputFidelity = 'high' } = {}) {
-  const body = deyunaiService.buildGptImage2RequestBody({ prompt, n: 1, size, referenceImages, inputFidelity });
+function providerQuality(value = 'standard') {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (normalized === 'low' || normalized === 'high') return normalized;
+  return 'medium';
+}
+
+function buildOpenAiCompatibleGptImage2Request(config = {}, { prompt = '', size = '1024x1024', referenceImages = [], inputFidelity = 'high', quality = 'standard' } = {}) {
+  const body = deyunaiService.buildGptImage2RequestBody({ prompt, n: 1, size, referenceImages, inputFidelity, quality: providerQuality(quality) });
   body.model = String(config.modelId || 'gpt-image-2').trim();
+  body.quality = providerQuality(quality);
   const imageConfig = config.provider?.adapter_config?.image || {};
   if (imageConfig.input_fidelity === false) delete body.input_fidelity;
   const endpointPath = Array.isArray(body.images) && body.images.length
@@ -230,7 +237,7 @@ function isWebangMaasConfig(config = {}) {
     .filter(Boolean).join(' '));
 }
 
-async function buildWebangGptImage2EditForm(config = {}, { prompt = '', size = '1024x1024', referenceImages = [] } = {}) {
+async function buildWebangGptImage2EditForm(config = {}, { prompt = '', size = '1024x1024', referenceImages = [], quality = 'standard' } = {}) {
   const refs = (Array.isArray(referenceImages) ? referenceImages : []).filter(Boolean).slice(0, 6);
   if (!refs.length) throw new Error('微众 GPT Image 2 edits 至少需要一个参考图文件');
   const FormData = require('form-data');
@@ -238,7 +245,7 @@ async function buildWebangGptImage2EditForm(config = {}, { prompt = '', size = '
   form.append('model', String(config.modelId || 'gpt-image-2'));
   form.append('prompt', String(prompt || '').slice(0, 32000));
   if (size) form.append('size', String(size));
-  form.append('quality', 'high');
+  form.append('quality', providerQuality(quality));
   for (let index = 0; index < refs.length; index += 1) {
     const buffer = await imageBufferFromResult({ image_url: refs[index] });
     form.append('image[]', buffer, { filename: `reference_${index + 1}.png`, contentType: 'image/png' });
@@ -246,9 +253,9 @@ async function buildWebangGptImage2EditForm(config = {}, { prompt = '', size = '
   return form;
 }
 
-function buildWebangGptImage2GenerationBody(config = {}, { prompt = '', size = '1024x1024' } = {}) {
+function buildWebangGptImage2GenerationBody(config = {}, { prompt = '', size = '1024x1024', quality = 'standard' } = {}) {
   return { model: String(config.modelId || 'gpt-image-2'), prompt: String(prompt || '').slice(0, 32000),
-    n: 1, size: String(size || '1024x1024'), quality: 'high' };
+    n: 1, size: String(size || '1024x1024'), quality: providerQuality(quality) };
 }
 
 function normalizeCompatibleImageResponse(payload = {}) {
@@ -715,6 +722,7 @@ async function generateImage({
   filename = '',
   aspectRatio = '9:16',
   resolution = '2K',
+  quality = 'standard',
   imageModel = 'auto',
   referenceImages = [],
   requireReferences = false,
@@ -812,6 +820,7 @@ async function generateImage({
           aspectRatio,
           referenceImages: referenceCapable ? references : [],
           inputFidelity,
+          quality: providerQuality(quality),
           signal: cancellation.signal(),
           clientRequestId,
           onSubmitting: observeSubmitting,
@@ -895,6 +904,7 @@ async function generateImage({
               size: sizeFor(config, aspectRatio),
               referenceImages: referenceCapable ? references : [],
               inputFidelity,
+              quality,
               signal: cancellation.signal(),
               clientRequestId,
               onSubmitting: observeSubmitting,
@@ -910,6 +920,7 @@ async function generateImage({
                 prompt: genericPrompt,
                 size: sizeFor(config, aspectRatio),
                 n: 1,
+                quality: providerQuality(quality),
               }, { signal: cancellation.signal() });
               await observeSubmitted({
                 clientRequestId, providerRequestId: String(generated?._request_id || ''),
@@ -1056,6 +1067,7 @@ async function generateImage({
   aspectRatio = '3:4',
     imageModel = 'auto',
     resolution = '2K',
+    quality = 'standard',
   referenceImages = [],
   requireReferences = false,
   inputFidelity = 'high',
@@ -1073,6 +1085,7 @@ async function generateImage({
     aspectRatio,
       imageModel,
       resolution,
+      quality,
     referenceImages,
     requireReferences,
     inputFidelity,

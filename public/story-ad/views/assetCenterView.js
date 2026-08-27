@@ -54,6 +54,7 @@ export function subjectGenerationPayload(bundle = {}, target = null, requestKey 
     expected_animals: petProfiles.length,
     cast_profiles: castProfiles,
     pet_profiles: petProfiles,
+    content_mode: bundle.brief?.content_mode || bundle.project?.content_mode || bundle.project?.request?.content_mode || '',
     request_key: requestKey,
     person_spec: {
       castMode: bundle.brief?.cast_mode || (castProfiles.length > 1 ? 'group' : (castProfiles.length ? 'single' : 'no_human')),
@@ -313,8 +314,13 @@ export async function mount(host, context) {
       ...(item.profile || {}),
       generation_prompt: String(values.generation_prompt || '').trim(),
       generation_prompt_source: 'user',
+      generation_settings: {
+        ...(item.profile?.generation_settings || {}),
+        ...(values.generation_settings || {}),
+        count: 1,
+      },
     };
-    const userFields = ['generation_prompt']; normalizedValues.field_authority = { ...(item.profile?.field_authority || {}), generation_prompt: 'user' }; normalizedValues.user_edited_fields = [...new Set([...(item.profile?.user_edited_fields || []), ...userFields])];
+    const userFields = ['generation_prompt', 'generation_settings']; normalizedValues.field_authority = { ...(item.profile?.field_authority || {}), generation_prompt: 'user', generation_settings: 'user' }; normalizedValues.user_edited_fields = [...new Set([...(item.profile?.user_edited_fields || []), ...userFields])];
     const profiles = (assets.people || []).map(row => row.profile || {}).map(profile => (
       String(profile.id || '') === String(item.profile?.id || '') ? { ...profile, ...normalizedValues } : profile
     ));

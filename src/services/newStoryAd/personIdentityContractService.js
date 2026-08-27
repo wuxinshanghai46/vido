@@ -15,6 +15,15 @@ function score(value) {
   return Math.max(0, Math.min(1, n > 1 && n <= 100 ? n / 100 : n));
 }
 
+function requiredPersonViewKeys(asset = {}, spec = {}) {
+  const generationType = String(spec.generation_settings?.generation_type
+    || spec.generationSettings?.generation_type
+    || asset.generation_type
+    || asset.generation_summary?.generation_type
+    || 'four_view');
+  return generationType === 'three_view' ? ['front', 'side', 'back'] : PERSON_VIEW_KEYS;
+}
+
 function personViews(asset = {}) {
   const views = Array.isArray(asset.view_images) ? asset.view_images : [];
   const normalized = views.map((view, index) => ({
@@ -71,6 +80,7 @@ function contractFingerprint(contract = {}) {
 
 function buildPersonContract(asset = {}, spec = {}, options = {}) {
   const views = personViews(asset);
+  const requiredViewKeys = requiredPersonViewKeys(asset, spec);
   const revision = Math.max(1, Number(options.revision || asset.person_revision || asset.person_contract?.person_revision || 1) || 1);
   const existing = asset.person_contract && typeof asset.person_contract === 'object' ? asset.person_contract : {};
   const existingQa = existing.cross_view_qa || asset.cross_view_qa || {};
@@ -122,7 +132,9 @@ function buildPersonContract(asset = {}, spec = {}, options = {}) {
         : (wardrobeContract.palette?.colors || []).map(value => cleanText(value, 60)).filter(Boolean)).slice(0, 8),
     },
     look_profiles: personLooks.normalizeLookProfiles(spec, { ensure: true }),
-    reference_views: Object.fromEntries(PERSON_VIEW_KEYS.map(key => [key, views.find(view => view.key === key)?.url || ''])),
+    generation_type: requiredViewKeys.length === 3 ? 'three_view' : String(spec.generation_settings?.generation_type || asset.generation_type || 'four_view'),
+    required_view_keys: requiredViewKeys,
+    reference_views: Object.fromEntries(requiredViewKeys.map(key => [key, views.find(view => view.key === key)?.url || ''])),
     cross_view_qa: qa,
     verification: existing.verification || verification.pending(),
     updated_at: new Date().toISOString(),
@@ -139,18 +151,20 @@ function buildPersonContract(asset = {}, spec = {}, options = {}) {
 async function verifyPersonAsset({ taskId = '', asset = {}, spec = {}, revision = 1, force = false, gateway = modelGateway, repair = jsonRepair, qaAttempts = 1 } = {}) {
   const contract = buildPersonContract(asset, spec, { revision });
   const views = personViews(asset);
+  const requiredViewKeys = requiredPersonViewKeys(asset, spec);
   if (!force && contract.status === 'verified' && contract.cross_view_qa.pass) return contract;
-  if (views.length < 4 || PERSON_VIEW_KEYS.some(key => !views.some(view => view.key === key))) {
+  if (views.length < requiredViewKeys.length || requiredViewKeys.some(key => !views.some(view => view.key === key))) {
     contract.status = 'unverified';
     contract.cross_view_qa = normalizeQa({
       pass: false,
-      mismatch_reasons: ['人物参考必须包含 front、side、back、action 四个独立视图'],
+      mismatch_reasons: [`人物参考必须包含 ${requiredViewKeys.join('、')} ${requiredViewKeys.length} 个独立视图`],
     });
     contract.verification = verification.rejected(contract.cross_view_qa.mismatch_reasons, '人物参考视图不完整');
     return contract;
   }
-  const normalizedReferences = publicReferences.normalizeVisionReferences(views.map(view => view.url), { max: PERSON_VIEW_KEYS.length });
-  if (normalizedReferences.urls.length !== PERSON_VIEW_KEYS.length) {
+  const orderedViews = requiredViewKeys.map(key => views.find(view => view.key === key)).filter(Boolean);
+  const normalizedReferences = publicReferences.normalizeVisionReferences(orderedViews.map(view => view.url), { max: requiredViewKeys.length });
+  if (normalizedReferences.urls.length !== requiredViewKeys.length) {
     const error = new Error('人物参考图片地址无法提供给视觉审核');
     error.code = 'VISION_REFERENCE_UNAVAILABLE';
     error.retryable = true;
@@ -316,4 +330,4 @@ function assertVerifiedPerson(ctx = {}) {
   throw error;
 }
 
-module.exports = { PERSON_VIEW_KEYS, THRESHOLDS, personViews, normalizeQa, contractFingerprint, buildPersonContract, verifyPersonAsset, personRequired, shotPersonPresence, shotPersonRequired, shotForbidsPerson, assertVerifiedPerson };
+module.exports = { PERSON_VIEW_KEYS, THRESHOLDS, requiredPersonViewKeys, personViews, normalizeQa, contractFingerprint, buildPersonContract, verifyPersonAsset, personRequired, shotPersonPresence, shotPersonRequired, shotForbidsPerson, assertVerifiedPerson };

@@ -111,8 +111,8 @@ function projectGraph(bundle = {}) {
   const usedEdgeIds = new Set();
   const columns = {
     input: 60,
-    assets: 520,
-    story: 1020,
+    story: 520,
+    assets: 1020,
     director: 1460,
     shots: 1900,
     media: 2380,
@@ -239,8 +239,6 @@ function projectGraph(bundle = {}) {
         },
       });
       assetNodes.push(assetId);
-      if (understandingId) connect(understandingId, assetId, 'extracts');
-      else if (inputRoot) connect(inputRoot, assetId, 'defines');
     });
   };
   addAssets(assets.people, 'person', 'assets');
@@ -340,7 +338,14 @@ function projectGraph(bundle = {}) {
         beats: (Array.isArray(blueprint.beats) ? blueprint.beats : []).slice(0, 40).map(beatDetail),
       },
     });
-    (assetNodes.length ? assetNodes : [understandingId || inputRoot]).filter(Boolean).forEach(source => connect(source, storyId, 'informs'));
+    const storySource = understandingId || inputRoot;
+    if (storySource) connect(storySource, storyId, 'informs');
+    assetNodes.forEach(assetId => connect(storyId, assetId, 'defines'));
+  } else {
+    assetNodes.forEach(assetId => {
+      if (understandingId) connect(understandingId, assetId, 'extracts');
+      else if (inputRoot) connect(inputRoot, assetId, 'defines');
+    });
   }
 
   const shots = Array.isArray(bundle.storyboard?.shots) ? bundle.storyboard.shots : [];
@@ -501,8 +506,8 @@ function projectGraph(bundle = {}) {
 
   const clusters = [
     ['input', '输入与目标'],
-    ['assets', '身份资产'],
     ['story', '剧情'],
+    ['assets', '身份资产'],
     ['director', '导演台与运动设计'],
     ['shots', '分镜与镜头'],
     ['media', '生成结果'],

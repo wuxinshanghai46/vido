@@ -462,7 +462,10 @@ function humanMemberSpecs(spec = {}, body = {}, count = 1) {
       wardrobe_contract: primary?.wardrobe_contract || null,
       style_richness: primary?.style_richness || 'auto',
       generation_prompt: personGenerationPrompt.compile(source),
-      generation_settings: personGenerationPrompt.normalizeSettings(source.generation_settings || source.generationSettings),
+      generation_settings: personGenerationPrompt.normalizeSettings(
+        source.generation_settings || source.generationSettings,
+        { content_mode: body.content_mode || body.contentMode || body.project_content_mode },
+      ),
       owned_props: personGenerationPrompt.normalizeOwnedProps(source),
     };
   });
@@ -538,8 +541,10 @@ function subjectReferenceUrls(asset = null) {
 }
 
 function reusableHumanAsset(asset = null) {
+  const generationType = String(asset?.generation_type || asset?.generation_summary?.generation_type || 'four_view');
+  const requiredViews = generationType === 'three_view' ? 3 : HUMAN_VIEW_KEYS.length;
   return !!(asset && (asset.actor_id || asset.id)
-    && subjectReferenceUrls(asset).length >= HUMAN_VIEW_KEYS.length);
+    && subjectReferenceUrls(asset).length >= requiredViews);
 }
 
 function reusablePetAsset(asset = null) {
@@ -1198,7 +1203,8 @@ async function generateSubjectBundle(options = {}, deps = {}) {
     const bodyFront = compiled.atomic_assets.find(item => item.kind === 'body' && item.key === 'front');
     const bodySide = compiled.atomic_assets.find(item => item.kind === 'body' && item.key === 'side');
     const bodyBack = compiled.atomic_assets.find(item => item.kind === 'body' && item.key === 'back');
-    const baseAction = compiled.atomic_assets.find(item => item.kind === 'action' && item.key === 'neutral_stand');
+    const baseAction = compiled.atomic_assets.find(item => item.key === 'action')
+      || compiled.atomic_assets.find(item => item.kind === 'action' && item.key === 'neutral_stand');
     const views = [
       { ...bodyFront, key: 'front', url: bodyFront?.image_url },
       { ...bodySide, key: 'side', url: bodySide?.image_url },
@@ -1349,6 +1355,7 @@ async function generateSubjectBundle(options = {}, deps = {}) {
       dossier_sheet: dossierSheet,
       dossier_schema_version: compiled.schema_version,
       quality_status: compiled.quality_status,
+      generation_type: compiled.generation_type,
       native_masters: compiled.native_masters,
       category_atlases: compiled.category_atlases,
       atomic_assets: compiled.atomic_assets,

@@ -152,7 +152,19 @@ function peopleAssets(context = {}, projectedProps = []) {
   });
   return rows.slice(0, MAX_MEDIA_ITEMS).map(({ profile, asset: item, index }) => {
     // 当前任务人物档案是用户可编辑的权威输入；生成资产里的 subject_profile 只能补缺，不能覆盖后续编辑。
-    const canonical = personLookProjection.personProfile({ ...(item.subject_profile || {}), ...profile }, index);
+    const authoredGenerationSettings = profile.generation_settings || profile.generationSettings
+      || item.subject_profile?.generation_settings || item.subject_profile?.generationSettings;
+    const defaultGenerationType = item.generation_type || (item.dossier_sheet?.image_url
+      ? 'global_dossier'
+      : (clean(context.content_mode, 40) === 'narrative_story' ? 'global_dossier' : 'three_view'));
+    const canonical = personLookProjection.personProfile({
+      ...(item.subject_profile || {}),
+      ...profile,
+      generation_settings: {
+        ...(authoredGenerationSettings || {}),
+        generation_type: authoredGenerationSettings?.generation_type || defaultGenerationType,
+      },
+    }, index);
     const views = projectedViews(item);
     const dossierUrl = mediaUrl(item.dossier_sheet || {});
     const coverUrl = clean(item.cover_image_url, 1200) || dossierUrl || mediaUrl(item) || views[0]?.image_url || '';
@@ -195,7 +207,15 @@ function peopleAssets(context = {}, projectedProps = []) {
       provider_asset_status: clean(item.deyunai_asset_status || item.provider_asset_status, 40),
       provider_asset_group_id: clean(item.deyunai_asset_group_id || '', 160),
       owned_props: ownedProps,
-      generation_runtime: personGenerationRuntime.inspect({ look_count: canonical.look_profiles?.length || 1 }),
+      generation_runtime: personGenerationRuntime.inspect({
+        look_count: canonical.look_profiles?.length || 1,
+        generation_settings: {
+          ...canonical.generation_settings,
+          generation_type: clean(item.generation_type
+            || item.subject_profile?.generation_settings?.generation_type
+            || (dossierUrl ? 'global_dossier' : canonical.generation_settings?.generation_type), 40),
+        },
+      }),
       status: clean(item.person_contract?.status || item.verification_status || context.person_contract?.status || 'draft', 50),
       revision: Number(item.person_revision || item.revision || context.person_contract?.person_revision || 0) || 0,
       source: clean(item.source || master?.source, 100), knowledge_policy: knowledgePolicyRuntime.trace(item.knowledge_policy || item.knowledge_policy_trace || {}),

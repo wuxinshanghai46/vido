@@ -31,10 +31,10 @@ const VIEW_SECTIONS = Object.freeze({
   brief: 'summary,reference',
   assets: 'summary,assets',
   scene: 'summary,assets,shots',
-  plot: 'summary,assets,story',
+  plot: 'summary,story',
   storyboard: 'summary,assets,story,shots',
   final: 'summary,shots,media',
-  workflow: 'summary,reference,assets,story,shots,media',
+  workflow: 'summary,reference,assets,story,shots,media,graph',
 });
 function sectionsForView(view = 'brief') { return VIEW_SECTIONS[view] || VIEW_SECTIONS.brief; }
 let activeViewCleanup = null;

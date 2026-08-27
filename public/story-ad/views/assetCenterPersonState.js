@@ -73,10 +73,11 @@ function canonicalPrompt(value = '') {
 function canonicalGenerationSettings(settings = {}) {
   return {
     model: String(settings.model || 'gpt-image-2'),
-    aspect_ratio: String(settings.aspect_ratio || '2:1'),
-    quality: 'high',
+    aspect_ratio: String(settings.aspect_ratio || 'auto'),
+    quality: String(settings.quality || 'standard'),
     resolution: String(settings.resolution || '2K'),
-    count: Math.max(1, Number(settings.count || 1) || 1),
+    count: 1,
+    generation_type: String(settings.generation_type || 'three_view'),
   };
 }
 

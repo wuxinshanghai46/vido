@@ -81,6 +81,34 @@ const NATIVE_MASTER_SPECS = [
   },
 ];
 
+const COMPACT_VIEW_SPECS = Object.freeze({
+  three_view: {
+    kind: 'body', keys: ['front', 'side', 'back'], columns: 3, rows: 1,
+    aspectRatio: '3:2', outputWidth: 768, outputHeight: 1024,
+    instruction: 'Exactly three full-body casting views: front, side, back. Complete shoes visible.',
+  },
+  four_view: {
+    kind: 'body', keys: ['front', 'side', 'back', 'action'], columns: 2, rows: 2,
+    aspectRatio: '1:1', outputWidth: 768, outputHeight: 1024,
+    instruction: 'Exactly four full-body casting views: front, side, back, and one natural role-appropriate action. Complete shoes visible.',
+  },
+});
+
+function generationPlan(settings = {}) {
+  const generationType = ['three_view', 'four_view', 'global_dossier'].includes(String(settings.generation_type || ''))
+    ? String(settings.generation_type)
+    : 'global_dossier';
+  const categorySpecs = generationType === 'global_dossier'
+    ? CATEGORY_SPECS
+    : [COMPACT_VIEW_SPECS[generationType]];
+  return {
+    generationType,
+    categorySpecs,
+    nativeMasterSpecs: NATIVE_MASTER_SPECS,
+    expectedAtomicCount: categorySpecs.reduce((sum, spec) => sum + spec.keys.length, 0),
+  };
+}
+
 function compactAssetToken(...values) {
   return crypto.createHash('sha256')
     .update(values.map(value => String(value || '')).join('\n'))
@@ -199,6 +227,7 @@ async function generateCategory({
         aspectRatio: spec.aspectRatio,
         imageModel: generationSettings.model || 'gpt-image-2',
         resolution: generationSettings.resolution || '2K',
+        quality: generationSettings.quality || 'standard',
         referenceImages: anchorUrl ? [anchorUrl] : [],
         requireReferences,
         inputFidelity: 'high',
@@ -259,6 +288,7 @@ async function generateNativeMaster({
         aspectRatio: spec.aspectRatio,
         imageModel: generationSettings.model || 'gpt-image-2',
         resolution: generationSettings.resolution || '2K',
+        quality: generationSettings.quality || 'standard',
         referenceImages: anchorUrl ? [anchorUrl] : [],
         requireReferences,
         inputFidelity: 'high',
@@ -309,9 +339,10 @@ async function compilePersonDossier(options = {}, deps = {}) {
   const checkpointService = deps.checkpointService || checkpointServiceDefault;
   const concurrencyService = deps.concurrencyService || concurrencyDefault;
   let completed = 0;
+  const plan = generationPlan(generationSettings);
   const units = [
-    ...CATEGORY_SPECS.map(spec => ({ type: 'category', spec })),
-    ...NATIVE_MASTER_SPECS.map(spec => ({ type: 'native_master', spec })),
+    ...plan.categorySpecs.map(spec => ({ type: 'category', spec })),
+    ...plan.nativeMasterSpecs.map(spec => ({ type: 'native_master', spec })),
   ];
   const generated = await concurrencyService.map(
     'new_story_ad.person_dossier',
@@ -349,13 +380,14 @@ async function compilePersonDossier(options = {}, deps = {}) {
   const nativeMasterRows = generated.filter(item => item.unit_type === 'native_master').map(item => item.result);
   const nativeMasters = Object.fromEntries(nativeMasterRows.map(item => [item.key, item]));
   const atomicAssets = categories.flatMap(item => item.atomic_assets);
-  if (atomicAssets.length !== EXPECTED_ATOMIC_COUNT) {
-    const error = new Error(`人物档案原子资产不完整：期望${EXPECTED_ATOMIC_COUNT}项，实际${atomicAssets.length}项`);
+  if (atomicAssets.length !== plan.expectedAtomicCount) {
+    const error = new Error(`人物档案原子资产不完整：期望${plan.expectedAtomicCount}项，实际${atomicAssets.length}项`);
     error.code = 'PERSON_DOSSIER_ATOMIC_COUNT_INVALID';
     throw error;
   }
   return {
     schema_version: PERSON_DOSSIER_SCHEMA_VERSION,
+    generation_type: plan.generationType,
     quality_status: nativeMasters.face?.image_url && nativeMasters.body?.image_url ? 'native_masters_ready' : 'legacy_view_only',
     native_masters: nativeMasters,
     category_atlases: categories.map(item => item.atlas),
@@ -372,6 +404,7 @@ async function compilePersonDossier(options = {}, deps = {}) {
       atomic_count: atomicAssets.length,
       checkpoint_hits: generated.filter(item => item.reused).length,
       provider_calls_this_run: generated.filter(item => !item.reused).length,
+      generation_type: plan.generationType,
     },
     knowledge_policy_trace: {
       rule_ids: (knowledgePolicy.rule_ids || []).slice(0, 24),
@@ -391,6 +424,8 @@ module.exports = {
   EXPECTED_ATOMIC_COUNT,
   CATEGORY_SPECS,
   NATIVE_MASTER_SPECS,
+  COMPACT_VIEW_SPECS,
+  generationPlan,
   compactAssetToken,
   personAtlasFilename,
   personViewPrefix,

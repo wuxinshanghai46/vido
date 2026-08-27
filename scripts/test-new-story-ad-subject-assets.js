@@ -218,11 +218,11 @@ function harness({ cancelAt = 0 } = {}) {
       pet_profiles: [petProfile(1, { name: '豆包', type: '金毛犬' })],
     },
   }, batch.deps);
-  assert.strictEqual(batch.submissions(), 19, 'three complete 4-atlas plus 2-native-master people and one pet sheet must submit nineteen calls');
+  assert.strictEqual(batch.submissions(), 10, '广告默认三视图：每个人物一张三视图图集加两个身份主图，另含一张宠物图集');
   assert.strictEqual(bundle.cast_assets.length, 3);
-  assert(bundle.cast_assets.every(asset => asset.atomic_assets.length === 20));
-  assert(bundle.cast_assets.every(asset => asset.category_atlases.length === 4));
-  assert(bundle.cast_assets.every(asset => asset.generation_summary.planned_provider_calls === 6));
+  assert(bundle.cast_assets.every(asset => asset.atomic_assets.length === 3));
+  assert(bundle.cast_assets.every(asset => asset.category_atlases.length === 1));
+  assert(bundle.cast_assets.every(asset => asset.generation_summary.planned_provider_calls === 3));
   assert(bundle.cast_assets.every(asset => asset.quality_status === 'native_masters_ready'));
   assert(bundle.cast_assets.every(asset => asset.native_masters.face.image_url && asset.native_masters.body.image_url));
   assert.strictEqual(bundle.pet_profiles.length, 1);
@@ -231,8 +231,8 @@ function harness({ cancelAt = 0 } = {}) {
     [{ id: 'library_actor', image_url: '/library/cover.jpg', metadata: {} }],
     [bundle.cast_assets[0]],
   )[0];
-  assert.strictEqual(persistedDossier.atomic_assets.length, 20, 'actor-library persistence must not truncate the unified dossier');
-  assert.strictEqual(persistedDossier.category_atlases.length, 4);
+  assert.strictEqual(persistedDossier.atomic_assets.length, 3, 'actor-library persistence must not truncate the selected three-view dossier');
+  assert.strictEqual(persistedDossier.category_atlases.length, 1);
   assert.ok(persistedDossier.native_masters.face.image_url);
   assert.ok(persistedDossier.cover_image_url);
   assert.strictEqual(bundle.person_contract.status, 'verified');
@@ -240,8 +240,8 @@ function harness({ cancelAt = 0 } = {}) {
   assert.strictEqual(bundle.pet_contract.status, 'verified');
   assert.strictEqual(bundle.pet_profiles[0].reference_images.length, 4);
   assert(batch.prompts[0].includes('妈妈林悦') && !batch.prompts[0].includes('爸爸周屿'), 'each human prompt must contain only the selected member');
-  assert(batch.prompts[6].includes('爸爸周屿') && !batch.prompts[6].includes('妈妈林悦'), 'the second human prompt must not contain the first member');
-  assert(batch.prompts[18].includes('豆包') && !batch.prompts[18].includes('妈妈林悦'), 'pet prompt must not contain any human member');
+  assert(batch.prompts[3].includes('爸爸周屿') && !batch.prompts[3].includes('妈妈林悦'), 'the second human prompt must not contain the first member');
+  assert(batch.prompts[9].includes('豆包') && !batch.prompts[9].includes('妈妈林悦'), 'pet prompt must not contain any human member');
   const normalizedContext = contextBuilder.buildContext({
     brief: '一家三口与一只金毛在客厅互动',
     cast_mode: 'human_pet',
@@ -265,8 +265,8 @@ function harness({ cancelAt = 0 } = {}) {
       cast_assets: [bundle.cast_assets[0]],
     },
   });
-  assert.strictEqual(normalizedDossierContext.person_asset.cast_assets[0].atomic_assets.length, 20, 'context normalization must preserve all 20 dossier items');
-  assert.strictEqual(normalizedDossierContext.person_asset.cast_assets[0].category_atlases.length, 4, 'context normalization must preserve four category atlases');
+  assert.strictEqual(normalizedDossierContext.person_asset.cast_assets[0].atomic_assets.length, 3, 'context normalization must preserve all selected three-view dossier items');
+  assert.strictEqual(normalizedDossierContext.person_asset.cast_assets[0].category_atlases.length, 1, 'context normalization must preserve the selected three-view atlas');
   assert.ok(normalizedDossierContext.person_asset.cast_assets[0].cover_image_url, 'context normalization must preserve the dossier cover');
   assert.notStrictEqual(
     subjectAssets.checkpointKind('task', 'brief', {}, { people: 1, pets: 1 }, {
@@ -338,7 +338,7 @@ function harness({ cancelAt = 0 } = {}) {
     },
   };
   const legacyInitial = await subjectAssets.generateSubjectBundle(legacyCompatibilityRequest, legacyCompatibility.deps);
-  assert.strictEqual(legacyCompatibility.submissions(), 6);
+  assert.strictEqual(legacyCompatibility.submissions(), 3);
   const storedCheckpoint = legacyCompatibility.outputs.get(
     `${legacyCompatibilityRequest.taskId}:${legacyInitial.checkpoint_kind}`,
   );
@@ -356,10 +356,10 @@ function harness({ cancelAt = 0 } = {}) {
   }, legacyCompatibility.deps);
   assert.strictEqual(
     legacyCompatibility.submissions(),
-    6,
+    3,
     'a complete semantically compatible legacy checkpoint must migrate without another paid image submission',
   );
-  assert.strictEqual(legacyReused.cast_assets[0].atomic_assets.length, 20);
+  assert.strictEqual(legacyReused.cast_assets[0].atomic_assets.length, 3);
 
   const multiLookBatch = harness();
   const multiLookProfile = castProfile(1, {
@@ -391,16 +391,16 @@ function harness({ cancelAt = 0 } = {}) {
       cast_profiles: [multiLookProfile],
     },
   }, multiLookBatch.deps);
-  assert.strictEqual(multiLookBatch.submissions(), 12, 'two same-era looks for one identity must create two isolated six-call dossiers');
+  assert.strictEqual(multiLookBatch.submissions(), 6, 'two same-era looks for one identity must create two isolated three-call dossiers');
   assert.strictEqual(multiLookBundle.cast_assets.length, 1, 'same-era multiple looks must not increase the character count');
   assert.strictEqual(multiLookBundle.cast_assets[0].look_assets.length, 2, 'both declared looks must be persisted as independent assets');
   assert.deepStrictEqual(
     multiLookBundle.cast_assets[0].look_assets.map(look => look.id),
     ['lin_jing_formal', 'lin_jing_casual'],
   );
-  assert(multiLookBatch.prompts.slice(0, 6).every(prompt => prompt.includes('tailored suit') && !prompt.includes('linen shirt')),
+  assert(multiLookBatch.prompts.slice(0, 3).every(prompt => prompt.includes('tailored suit') && !prompt.includes('linen shirt')),
     'the formal dossier must never receive casual wardrobe text');
-  const casualDossierPrompts = multiLookBatch.prompts.slice(6, 12);
+  const casualDossierPrompts = multiLookBatch.prompts.slice(3, 6);
   const contaminatedCasualPrompts = casualDossierPrompts.filter(prompt => (
     !prompt.includes('linen shirt') || prompt.includes('tailored suit')
   ));
@@ -461,7 +461,7 @@ function harness({ cancelAt = 0 } = {}) {
       subject_targets: [{ kind: 'human', index: 0, id: 'cast_1' }],
     },
   }, scoped.deps);
-  assert.strictEqual(scoped.submissions(), 6, 'scoped subject regeneration must submit only the selected complete person dossier');
+  assert.strictEqual(scoped.submissions(), 3, 'scoped subject regeneration must submit only the selected three-view person dossier');
   assert.strictEqual(scopedBundle.generated_counts.people, 1);
   assert.strictEqual(scopedBundle.generated_counts.pets, 0);
   assert.notStrictEqual(scopedBundle.cast_assets[0].actor_id, bundle.cast_assets[0].actor_id, 'selected person must receive a new asset');
@@ -706,7 +706,7 @@ function harness({ cancelAt = 0 } = {}) {
     },
   };
   await assert.rejects(() => subjectAssets.generateSubjectBundle(request, first.deps), error => error.code === 'USER_CANCELLED');
-  assert.strictEqual(first.submissions(), 12,
+  assert.strictEqual(first.submissions(), 6,
     'cancellation may let both already-running person dossiers finish, but must preserve both checkpoints');
   const cancelledCheckpoint = Array.from(resumeStore.entries())
     .find(([key]) => key.includes(':subject_asset_checkpoint:'))?.[1];
@@ -791,7 +791,7 @@ function harness({ cancelAt = 0 } = {}) {
     'concurrent requests for the same task must be rejected even when their checkpoint kinds differ',
   );
   await firstConcurrent;
-  assert.strictEqual(concurrent.submissions(), 12, 'only one concurrent batch may submit two complete dossiers');
+  assert.strictEqual(concurrent.submissions(), 6, 'only one concurrent batch may submit two complete three-view dossiers');
 
   const missingProfiles = harness();
   await assert.rejects(
@@ -824,7 +824,7 @@ function harness({ cancelAt = 0 } = {}) {
   }, single.deps);
   assert.strictEqual(singleBundle.cast_assets.length, 1);
   assert.strictEqual(singleBundle.pet_profiles.length, 0);
-  assert.strictEqual(single.submissions(), 6, 'single person must use one independent profile, four category atlases and two native masters');
+  assert.strictEqual(single.submissions(), 3, 'single ad person must use one independent three-view atlas and two native masters');
 
   const petOnly = harness();
   const petOnlyBundle = await subjectAssets.generateSubjectBundle({

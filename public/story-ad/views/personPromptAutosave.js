@@ -16,6 +16,29 @@ export function bindPersonPromptAutosave(drawer, item, { onSavePerson, onGenerat
     onError: error => toast(error.message || '人物提示词自动保存失败', 'danger'),
   });
   form.addEventListener('submit', event => event.preventDefault());
+  form.querySelectorAll('[name="generation_type"], [name="quality"], [name="resolution"]').forEach(select => {
+    select.addEventListener('change', async () => {
+      const status = form.querySelector('[data-autosave-state]');
+      try {
+        if (status) status.textContent = '正在保存…';
+        const saved = await onSavePerson?.(item, {
+          generation_prompt: input.value,
+          generation_settings: {
+            ...(item.profile?.generation_settings || {}),
+            generation_type: form.elements.generation_type.value,
+            quality: form.elements.quality.value,
+            resolution: form.elements.resolution.value,
+            count: 1,
+          },
+        });
+        if (!saved) throw new Error('人物生成设置保存失败');
+        if (status) status.textContent = '已自动保存';
+      } catch (error) {
+        if (status) status.textContent = '保存失败';
+        toast(error.message || '人物生成设置保存失败', 'danger');
+      }
+    });
+  });
   form.querySelector('[data-generate-person]')?.addEventListener('click', async event => {
     const button = event.currentTarget;
     try {

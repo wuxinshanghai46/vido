@@ -165,7 +165,8 @@ export async function mount(host, context) {
   host.innerHTML = '<div class="workflow-view"><div class="workflow-bar"><div><h1>工作流画布</h1><p>正在读取当前项目关系…</p></div></div><div class="view-loading">正在加载画布…</div></div>';
   let graph;
   try {
-    const data = await request(`/api/story-ad/projects/${encodeURIComponent(taskId)}/graph`);
+    const suppliedGraph = context.bundle?.workflow_graph;
+    const data = suppliedGraph ? { graph: suppliedGraph } : await request(`/api/story-ad/projects/${encodeURIComponent(taskId)}/graph`);
     graph = projectWorkflowDirectorNodes(data.graph || { nodes: [], edges: [], clusters: [] }, context.bundle || {});
   } catch (error) {
     host.innerHTML = `<section class="card">${emptyState({ title: '工作流暂时无法读取', body: error.message })}</section>`;
@@ -181,8 +182,8 @@ export async function mount(host, context) {
     host.querySelector('[data-empty-action="back-brief"]')?.addEventListener('click', () => context.navigate(`/story-ad/projects/${encodeURIComponent(taskId)}?view=brief`));
     return;
   }
-  const stageWidth = Math.max(MIN_STAGE_WIDTH, ...graph.nodes.map(node => Number(node.position?.x || 0) + NODE_WIDTH + 120));
-  const stageHeight = Math.max(MIN_STAGE_HEIGHT, ...graph.nodes.map(node => Number(node.position?.y || 0) + NODE_HEIGHT + 120));
+  const stageWidth = Math.max(MIN_STAGE_WIDTH, ...graph.nodes.map(node => Number(node.position?.x || 0) + NODE_WIDTH + 560));
+  const stageHeight = Math.max(MIN_STAGE_HEIGHT, ...graph.nodes.map(node => Number(node.position?.y || 0) + NODE_HEIGHT + 720));
   host.innerHTML = `
     <div class="workflow-view">
       <div class="workflow-bar">
@@ -198,6 +199,7 @@ export async function mount(host, context) {
           ${(graph.clusters || []).map(cluster => `<section class="canvas-cluster" data-cluster-id="${escapeHtml(cluster.id)}" style="left:${Number(cluster.x || 0)}px;top:${Number(cluster.y || 0)}px;width:${Number(cluster.width || 360)}px;height:${Number(cluster.height || 260)}px"><label>${escapeHtml(cluster.label || '')}</label></section>`).join('')}
           <svg class="graph-lines" viewBox="0 0 ${stageWidth} ${stageHeight}" style="width:${stageWidth}px;height:${stageHeight}px" aria-hidden="true" data-graph-lines>${graphEdges(graph)}</svg>
           ${(graph.nodes || []).map(graphNode).join('')}
+          <aside class="node-panel node-inline-panel" data-node-panel hidden></aside>
         </div>
         <div class="canvas-controls">
           <button type="button" data-zoom-out aria-label="缩小">−</button>
@@ -207,7 +209,6 @@ export async function mount(host, context) {
         </div>
         <div class="mini-map" aria-label="画布导航图" data-minimap>${minimap(graph)}<span class="viewport-box" data-minimap-viewport></span></div>
       </div>
-      <aside class="node-panel" data-node-panel hidden></aside>
     </div>`;
 
   const viewport = host.querySelector('[data-viewport]');
@@ -285,6 +286,12 @@ export async function mount(host, context) {
       element.style.left = `${Number(node.position?.x || 0)}px`;
       element.style.top = `${Number(node.position?.y || 0)}px`;
     });
+    const openPanel = host.querySelector('[data-node-panel]');
+    const selectedNode = openPanel?.dataset.nodePanelFor ? nodeById.get(openPanel.dataset.nodePanelFor) : null;
+    if (openPanel && selectedNode && !openPanel.hidden) {
+      openPanel.style.left = `${Number(selectedNode.position?.x || 0)}px`;
+      openPanel.style.top = `${Number(selectedNode.position?.y || 0) + NODE_HEIGHT + 14}px`;
+    }
     updateBoundsAndClusters();
     lines.innerHTML = graphEdges(graph);
     renderMinimapNodes();
@@ -361,7 +368,7 @@ export async function mount(host, context) {
   };
 
   viewport.addEventListener('pointerdown', event => {
-    if (event.button !== 0 || event.target.closest('[data-node-id], .canvas-controls, .mini-map')) return;
+    if (event.button !== 0 || event.target.closest('[data-node-id], .node-panel, .canvas-controls, .mini-map')) return;
     panDrag = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, panX, panY, moved: false };
     viewport.setPointerCapture(event.pointerId);
     viewport.classList.add('is-panning');
@@ -385,6 +392,7 @@ export async function mount(host, context) {
   viewport.addEventListener('pointerup', finishPan);
   viewport.addEventListener('pointercancel', finishPan);
   viewport.addEventListener('wheel', event => {
+    if (event.target.closest('.node-panel')) return;
     event.preventDefault();
     const rect = viewport.getBoundingClientRect();
     setZoom(zoom * (event.deltaY > 0 ? .9 : 1.1), event.clientX - rect.left, event.clientY - rect.top);
@@ -428,15 +436,21 @@ export async function mount(host, context) {
     });
     const panel = host.querySelector('[data-node-panel]');
     panel.hidden = false;
+    panel.dataset.nodePanelFor = node.id;
+    panel.style.left = `${Number(node.position?.x || 0)}px`;
+    panel.style.top = `${Number(node.position?.y || 0) + NODE_HEIGHT + 14}px`;
     const isTextNode = TEXT_NODE_TYPES.has(node.type);
+    const canEditInline = ['story', 'shot'].includes(node.type);
+    const editor = canEditInline ? inlineNodeEditor(node, context.bundle) : '';
     panel.innerHTML = `<header><div><h2>${escapeHtml(node.title || node.label)}</h2>${isTextNode ? '' : `<p>${escapeHtml(node.subtitle || '')}</p>`}</div><button class="icon-btn" type="button" data-panel-close aria-label="关闭节点详情">×</button></header>
       ${node.media_url ? mediaPreview(node, { label: node.title || '节点', width: 720, symbol: node.type || '节点' }) : (isTextNode ? '' : mediaPreview(node, { label: node.title || '节点', width: 720, symbol: node.type || '节点' }))}
-      ${structuredNodeDetail(node)}
+      ${canEditInline ? `<section class="node-direct-editor"><div><b>直接编辑并同步</b><small>保存后写入对应环节的同一份权威数据。</small></div>${editor}</section>` : structuredNodeDetail(node)}
       ${workflowNodePanelMarkup(node)}
       <div class="meta-list">${detailRows(remainingDetail(node.detail, node.type))}</div>
-      ${['story', 'shot'].includes(node.type) ? `<button class="btn primary panel-route" type="button" data-edit-node-inline>在此编辑${node.type === 'story' ? '剧情' : '分镜'}</button><div data-node-editor-host hidden>${inlineNodeEditor(node, context.bundle)}</div>` : (node.target_route ? '<button class="btn primary panel-route" type="button" data-node-route>打开对应编辑页</button>' : '')}`;
+      ${node.target_route ? `<button class="btn ${canEditInline ? '' : 'primary'} panel-route" type="button" data-node-route>打开完整${node.type === 'story' ? '剧情与对白' : node.type === 'shot' ? '分镜' : '操作'}环节</button>` : ''}`;
     const closePanel = () => {
       panel.hidden = true;
+      panel.dataset.nodePanelFor = '';
       host.querySelectorAll('[data-node-id]').forEach(item => {
         item.classList.remove('active');
         item.setAttribute('aria-pressed', 'false');
@@ -456,19 +470,7 @@ export async function mount(host, context) {
         toast(error.message || '导演台加载失败', 'danger');
       }
     });
-    panel.querySelector('[data-edit-node-inline]')?.addEventListener('click', event => {
-      const editorHost = panel.querySelector('[data-node-editor-host]');
-      if (!editorHost) return;
-      editorHost.hidden = false;
-      event.currentTarget.hidden = true;
-      editorHost.querySelector('input, textarea')?.focus();
-    });
-    panel.querySelector('[data-cancel-node-inline]')?.addEventListener('click', () => {
-      const editorHost = panel.querySelector('[data-node-editor-host]');
-      if (editorHost) editorHost.hidden = true;
-      const editButton = panel.querySelector('[data-edit-node-inline]');
-      if (editButton) editButton.hidden = false;
-    });
+    panel.querySelector('[data-cancel-node-inline]')?.addEventListener('click', closePanel);
     panel.querySelector('[data-node-inline-editor]')?.addEventListener('submit', async event => {
       event.preventDefault();
       const form = event.currentTarget;
@@ -540,7 +542,9 @@ export async function mount(host, context) {
   host.querySelector('[data-zoom-in]').addEventListener('click', () => { setZoom(zoom * 1.18); scheduleSave(); });
   host.querySelector('[data-zoom-out]').addEventListener('click', () => { setZoom(zoom / 1.18); scheduleSave(); });
   host.querySelector('[data-close-panel]').addEventListener('click', () => {
-    host.querySelector('[data-node-panel]').hidden = true;
+    const panel = host.querySelector('[data-node-panel]');
+    panel.hidden = true;
+    panel.dataset.nodePanelFor = '';
     host.querySelectorAll('[data-node-id]').forEach(item => {
       item.classList.remove('active');
       item.setAttribute('aria-pressed', 'false');

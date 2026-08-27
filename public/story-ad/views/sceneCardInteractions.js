@@ -35,9 +35,13 @@ export function bindSceneCards(host, context) {
     const card = button?.closest('[data-scene-card]') || cardFor(sceneId);
     setButtonBusy(button, true, '正在生成…');
     const promptState = scene.prompt_state || {};
+    const quality = card?.querySelector('[data-scene-quality]')?.value || 'standard';
+    const resolution = card?.querySelector('[data-scene-resolution]')?.value || '2K';
+    const aspectRatio = context.bundle?.brief?.output_ratio || context.bundle?.project?.request?.output_ratio || '16:9';
     const result = await context.store.runStage('scene-assets', {
       space_id: sceneId, scene_id: sceneId, name: scene.name,
       prompt_version_id: card?.dataset.promptVersionId || promptState.prompt_version_id || '',
+      quality, resolution, aspect_ratio: aspectRatio, count: 1,
     });
     if (!result.accepted) throw new Error(result.message || '生成未被接受');
     if (card) switchTab(card, 'images');

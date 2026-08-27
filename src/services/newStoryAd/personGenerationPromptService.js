@@ -89,14 +89,29 @@ function compile(profile = {}) {
   return alignAgeAuthority(ensurePropsLine(authored || fallbackPrompt(profile), profile), profile);
 }
 
-function normalizeSettings() {
-  const quality = 'high';
+const GENERATION_TYPES = new Set(['three_view', 'four_view', 'global_dossier']);
+const QUALITY_LEVELS = new Set(['low', 'standard', 'high']);
+const RESOLUTION_LEVELS = new Set(['1K', '2K', '4K']);
+
+function defaultGenerationType(contentMode = '') {
+  return String(contentMode || '').trim() === 'narrative_story' ? 'global_dossier' : 'three_view';
+}
+
+function normalizeSettings(input = {}, options = {}) {
+  const source = input && typeof input === 'object' ? input : {};
+  const requestedType = clean(source.generation_type || source.generationType, 40).toLowerCase();
+  const generationType = GENERATION_TYPES.has(requestedType)
+    ? requestedType
+    : defaultGenerationType(options.content_mode || options.contentMode);
+  const requestedQuality = clean(source.quality, 20).toLowerCase();
+  const requestedResolution = clean(source.resolution, 20).toUpperCase();
   return {
-    model: 'gpt-image-2',
-    aspect_ratio: '2:1',
-    quality,
-    resolution: '2K',
+    model: clean(source.model || 'gpt-image-2', 120),
+    aspect_ratio: clean(source.aspect_ratio || source.aspectRatio || 'auto', 20),
+    quality: QUALITY_LEVELS.has(requestedQuality) ? requestedQuality : 'standard',
+    resolution: RESOLUTION_LEVELS.has(requestedResolution) ? requestedResolution : '2K',
     count: 1,
+    generation_type: generationType,
   };
 }
 
@@ -113,4 +128,8 @@ function project(profile = {}) {
   };
 }
 
-module.exports = { clean, normalizeOwnedProps, propsText, performanceOnly, fallbackPrompt, ensurePropsLine, alignAgeAuthority, compile, normalizeSettings, project };
+module.exports = {
+  GENERATION_TYPES, QUALITY_LEVELS, RESOLUTION_LEVELS,
+  clean, normalizeOwnedProps, propsText, performanceOnly, fallbackPrompt, ensurePropsLine,
+  alignAgeAuthority, compile, defaultGenerationType, normalizeSettings, project,
+};
