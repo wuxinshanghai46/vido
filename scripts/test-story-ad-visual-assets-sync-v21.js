@@ -103,7 +103,9 @@ assert(billingRetryView.includes("progress.billing_state === 'unknown'"), '再�
 assert(billingRetryView.includes("subjectLane.billing_state === 'unknown'"), '主体分支未知计费必须继续锁定通用生成入口');
 
 const jobs = read('src/services/newStoryAd/jobService.js');
-assert(jobs.includes("function jobKey(taskId)"), 'single outer task lock must remain');
+assert(jobs.includes("function jobKey(taskId, stage = '', scopeId = '')"), '任务锁必须支持按阶段和目标精确隔离');
+assert(jobs.includes('runningJobs.get(key)') && jobs.includes("['queued', 'running'].includes(active.status)"), '同一阶段目标的重复提交仍必须被原子拦截');
+assert(jobs.includes('activeJobsForTask(taskId)'), '取消和中断恢复必须能枚举同一任务的所有并行目标');
 assert(jobs.includes("'visual_assets'"));
 const store = read('public/story-ad/store/projectStore.js');
 assert(store.includes('if (data.accepted === false)'), 'duplicate jobs must not be reported as submitted');
