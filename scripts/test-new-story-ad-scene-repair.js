@@ -250,7 +250,8 @@ async function main() {
   assert.match(auditSafePrompt, /near-vertical top-down whole-space layout/i);
   assert.match(auditSafePrompt, /brushed stainless steel/i);
   assert.match(auditSafePrompt, /remove the ceiling.*low cutaway perimeter boundaries/i);
-  assert.doesNotMatch(auditSafePrompt, /arms|hands|legs|body|silhouette|fingerprints/i);
+  assert.match(auditSafePrompt, /empty scene, no people, no person, no human figure, no face, no body, no hand, no silhouette/i);
+  assert.doesNotMatch(auditSafePrompt, /believable body proportions|relaxed hands|body-language|fingerprints/i);
   const gptPrompt = mediaAdapter.promptForImageCandidate('normal provider prompt', { modelId: 'gpt-image-2' }, auditSafePrompt);
   assert.match(gptPrompt, /^normal provider prompt/);
   assert.match(gptPrompt, /Domestic image review contract:/);
