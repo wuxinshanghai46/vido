@@ -178,10 +178,15 @@ async function main() {
 
   const subjectSource = fs.readFileSync(path.join(__dirname, '../src/services/newStoryAd/subjectAssetBundleService.js'), 'utf8');
   const sceneSource = fs.readFileSync(path.join(__dirname, '../src/services/newStoryAd/sceneAssetService.js'), 'utf8');
-  assert(sceneSource.includes("body: { ...body, allow_incomplete_scene_spec: true }"), '场景生成必须允许补齐器接收不完整的逐空间合同');
+  assert(sceneSource.includes('scene_spec: undefined')
+    && sceneSource.includes('sceneSpec: undefined')
+    && sceneSource.includes('allow_incomplete_scene_spec: false')
+    && sceneSource.includes('require_complete_scene_spec: true'),
+  '场景生成必须只使用已保存的完整逐空间合同，拒绝请求体注入或生成阶段临时补齐');
   const uiSource = fs.readFileSync(path.join(__dirname, '../public/story-ad/views/assetCenterView.js'), 'utf8');
   assert(subjectSource.indexOf('const completion = await generationSpecCompletion.completePersonProfiles') < subjectSource.indexOf('assertCompleteSubjectProfiles(counts, humans, pets)'), '人物补齐必须发生在完整性门禁和图片生成之前');
-  assert(sceneSource.indexOf('const sceneCompletion = await generationSpecCompletion.completeSceneSpec') < sceneSource.indexOf('assertCompleteUpgradeSceneSpec(body)'), '场景补齐必须发生在付费图片生成门禁之前');
+  assert(!sceneSource.includes('const sceneCompletion = await generationSpecCompletion.completeSceneSpec'), '新合同禁止在付费场景生成阶段再调用文本模型临时补齐');
+  assert(sceneSource.indexOf('require_complete_scene_spec: true') < sceneSource.indexOf('assertCompleteUpgradeSceneSpec(body)'), '已保存场景合同的完整性门禁必须发生在付费图片生成之前');
   assert.doesNotMatch(uiSource.slice(uiSource.indexOf('function generationValidation'), uiSource.indexOf('function assetCard')), /\['服装',\s*profile\.wardrobeText\]/);
   assert.match(uiSource, /本次会生成完整人物、穿搭配饰、随身物、动作表情。/);
   assert.doesNotMatch(uiSource, /自动补齐缺少的服装、鞋履、配饰、配色和面料/);
