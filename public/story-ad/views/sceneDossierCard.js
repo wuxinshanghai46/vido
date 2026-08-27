@@ -1,4 +1,5 @@
-import { escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260827-production-v238d';
+import { escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260827-production-v238e';
+import { sceneRuntimeFailureMarkup } from './sceneRuntimeFailureView.js?v=20260827-production-v238e';
 
 export function assetCardMedia(item = {}, group = '') {
   if (group === 'scenes') return renderSceneCoverCard(item);
@@ -139,34 +140,10 @@ export function sceneQaFailureDetails(item = {}) {
   };
 }
 
-export function sceneViewFailureDetails(item = {}) {
-  return SCENE_VIEW_ORDER.map(key => {
-    const status = item.view_statuses?.[key] || {};
-    const state = text(status.state).toLowerCase().replaceAll('_', '-');
-    if (!['failed', 'billing-review', 'pending'].includes(state)) return null;
-    const route = [text(status.provider_id), text(status.model_id)].filter(Boolean).join(' / ');
-    return {
-      key,
-      label: SCENE_VIEW_LABELS[key],
-      state,
-      route,
-      httpStatus: text(status.http_status),
-      errorCode: text(status.error_code),
-      platformRequestId: text(status.platform_request_id),
-      providerRequestId: text(status.provider_request_id),
-      providerTaskId: text(status.provider_task_id),
-      billingState: text(status.billing_state),
-      submissionState: text(status.submission_state),
-      message: text(status.message),
-    };
-  }).filter(Boolean);
-}
-
 export function renderSceneCoverCard(item = {}) {
   const dossier = normalizeSceneDossier(item);
   const master = dossier.views.master;
   const qaFailure = sceneQaFailureDetails(item);
-  const viewFailures = sceneViewFailureDetails(item);
   return `<div class="scene-cover-board is-${dossier.state}" aria-label="${escapeHtml(item.name || '场景')}场景资产摘要">
     <div class="scene-cover-visual">${master?.image_url
       ? mediaPreview(master, { label: `${item.name || '场景'} · 主视总览`, width: 960, zoomWidth: 1600, symbol: '场景主视', zoomable: true, zoomGroup: `scene-cover-${item.id || 'current'}` })
@@ -174,7 +151,7 @@ export function renderSceneCoverCard(item = {}) {
       <span class="scene-cover-state">${escapeHtml(statusText(dossier.state, dossier.completed))} · 视图 ${dossier.completed}/${dossier.total}</span>
     </div>
     <div class="scene-cover-slots" aria-label="五类场景证据完整度">${SCENE_VIEW_ORDER.map(key => `<span class="is-${dossier.views[key]?.image_url ? 'complete' : dossier.viewStatuses[key]?.state || 'missing'}"><i aria-hidden="true"></i>${escapeHtml(SCENE_VIEW_LABELS[key])}</span>`).join('')}</div>
-    ${viewFailures.length ? `<div class="scene-cover-runtime-failure" role="alert">${viewFailures.map(failure => `<div><b>${escapeHtml(failure.label)}：${failure.state === 'billing-review' ? '计费待核对' : (failure.state === 'pending' ? '尚未提交' : '生成失败')}</b><span>${escapeHtml([failure.route, failure.httpStatus ? `HTTP ${failure.httpStatus}` : '', failure.errorCode].filter(Boolean).join(' · ') || failure.message || '供应商未返回结构化错误')}</span>${failure.platformRequestId ? `<small>平台请求：${escapeHtml(failure.platformRequestId)}</small>` : ''}${failure.providerRequestId || failure.providerTaskId ? `<small>厂商请求：${escapeHtml(failure.providerRequestId || failure.providerTaskId)}</small>` : ''}<small>提交：${escapeHtml(failure.submissionState || '未知')} · 计费：${escapeHtml(failure.billingState || '未知')}</small></div>`).join('')}</div>` : ''}
+    ${sceneRuntimeFailureMarkup(item)}
     ${dossier.state === 'conflict' ? `<div class="scene-cover-qa-failure" role="status"><b>未通过：${escapeHtml(qaFailure.labels.join('、') || '一致性 QA')}</b>${qaFailure.reasons.length ? `<ul>${qaFailure.reasons.slice(0, 3).map(reason => `<li>${escapeHtml(reason)}</li>`).join('')}</ul>` : '<span>未返回可定位的逐图证据，请先再次验证，不要直接重复生成。</span>'}</div>` : ''}
   </div>`;
 }
@@ -207,7 +184,7 @@ export function bindSceneDossierCard(scope, item = {}) {
   button.addEventListener('click', async () => {
     try {
       setButtonBusy(button, true, '正在本地合成…', { elapsed: true });
-      const exporter = await import('./sceneDossierExport.js?v=20260827-production-v238d');
+      const exporter = await import('./sceneDossierExport.js?v=20260827-production-v238e');
       const result = await exporter.exportSceneDossierPng(item);
       const palette = scope.querySelector('[data-scene-dossier-palette]');
       if (palette && result.palette?.length) palette.innerHTML = result.palette.map(color => `<i style="--scene-swatch:${escapeHtml(color)}" title="${escapeHtml(color)}"></i>`).join('');

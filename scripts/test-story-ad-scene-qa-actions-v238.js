@@ -15,6 +15,7 @@ function loadDossier() {
   const sandbox = {
     escapeHtml,
     mediaPreview: item => `<img src="${escapeHtml(item.image_url || item.url || '')}">`,
+    sceneRuntimeFailureMarkup: () => '',
     setButtonBusy() {},
     toast() {},
   };
@@ -89,14 +90,13 @@ async function testReverifyBinding() {
     setButtonBusy() {},
     toast() {},
     confirmBillingAwareAction: async () => { confirmationCalls += 1; return { accepted: true }; },
-    sceneNeedsGeneration: () => false,
   };
-  vm.runInNewContext(`${executable('public/story-ad/views/sceneCardInteractions.js')}\nglobalThis.__bind=bindSceneCards;`, sandbox);
-  sandbox.__bind(host, {
+  vm.runInNewContext(`${executable('public/story-ad/views/sceneQaActions.js')}\nglobalThis.__bind=bindSceneQaActions;`, sandbox);
+  sandbox.__bind({ host, context: {
     bundle: { project: { id: 'task-qa' }, assets: { scenes: [{ id: 'scene-reverify', name: '复验场景' }] } },
     store: { async runStage(pathname, body) { requests.push({ pathname, body }); return { scene_asset: { scene_contract: { full_space_lock: true } } }; } },
     async refreshShell() {},
-  });
+  }, controllerFor: async () => null, cardFor: () => null });
   await button.clickHandler();
   assert.equal(confirmationCalls, 0, 'reverify must not open a billing confirmation');
   assert.deepEqual(requests, [{ pathname: 'scene-assets/scene-reverify/verify', body: undefined }]);
@@ -129,9 +129,9 @@ async function main() {
   assert.match(fullHtml, /data-generate-scene="scene-regenerate_full_scene"/);
   assert.match(fullHtml, /完整重新生成当前场景/);
 
-  const interactions = read('public/story-ad/views/sceneCardInteractions.js');
+  const interactions = read('public/story-ad/views/sceneQaActions.js');
   const verifyBlock = interactions.slice(interactions.indexOf("host.querySelectorAll('[data-reverify-scene]')"), interactions.indexOf("host.querySelectorAll('[data-repair-scene]')"));
-  const repairBlock = interactions.slice(interactions.indexOf("host.querySelectorAll('[data-repair-scene]')"), interactions.indexOf("host.querySelectorAll('[data-generate-scene]')"));
+  const repairBlock = interactions.slice(interactions.indexOf("host.querySelectorAll('[data-repair-scene]')"));
   assert.match(verifyBlock, /scene-assets\/\$\{encodeURIComponent\(sceneId\)\}\/verify/);
   assert.doesNotMatch(verifyBlock, /confirmBillingAwareAction|\/repair/);
   assert.match(verifyBlock, /图片调用 0 次/);

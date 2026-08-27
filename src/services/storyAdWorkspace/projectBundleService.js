@@ -11,6 +11,7 @@ const { projectedDossierItems } = require('./dossierItemProjectionService'), per
 const personOwnedPropProjection = require('./personOwnedPropProjectionService'), personGenerationRuntime = require('../newStoryAd/personGenerationRuntimeContractService'), personGenerationSettingsProjection = require('./personGenerationSettingsProjectionService');
 const { projectSceneWorldAssets } = require('./sceneWorldAssetProjectionService'), { projectSceneDossier } = require('./sceneDossierProjectionService'), subjectCheckpointProjection = require('../newStoryAd/subjectCheckpointProjectionService');
 const sceneWorkflowProjection = require('./sceneWorkflowProjectionService'), scenePromptConfirmation = require('../newStoryAd/scenePromptConfirmationService');
+const sceneAssetRuntimeProjection = require('./sceneAssetRuntimeProjectionService');
 const MAX_MEDIA_ITEMS = 120;
 function clean(value = '', max = 240) { return String(value || '').replace(/\s+/g, ' ').trim().slice(0, max); }
 function cleanMultiline(value = '', max = 5000) { return multilineTextContract.normalize(value, max); }
@@ -53,9 +54,6 @@ function projectedViews(source = {}, fallback = []) {
   }).filter(view => view.image_url);
 }
 
-/** 将单个场景机位与对应视图稳定关联；layout 只由独立布局合同投影。 */
-/** 压缩人物档案的分类图集和原子素材，供详情抽屉按原型分区展示。 */
-/** 生成稳定可读的任务编号，不修改现有任务主键。 */
 function displayId(task = {}) {
   const date = new Date(task.created_at || task.updated_at || Date.now());
   const stamp = Number.isNaN(date.getTime())
@@ -342,7 +340,7 @@ function sceneAssets(outputs = {}, context = {}) {
       view_images: views,
       scene_world_assets: projectedWorldAssets,
       status: clean(contract.status || asset.status || (candidateCount ? 'selecting' : (imageUrl ? 'generated' : 'planned')), 50),
-      partial_checkpoint: asset.partial_checkpoint === true, checkpoint_status: clean(asset.checkpoint_status, 40), checkpoint_error_code: clean(asset.checkpoint_error_code, 120), completed_view_keys: list(asset.completed_view_keys).slice(0, 8).map(key => clean(key, 40)), failed_view_keys: list(asset.failed_view_keys).slice(0, 8).map(key => clean(key, 40)), view_statuses: Object.fromEntries(Object.entries(asset.view_statuses || {}).slice(0, 8).map(([key, value = {}]) => [clean(key, 40), { state: clean(value.state, 40), status: clean(value.status, 40), error_code: clean(value.error_code, 120), billing_state: clean(value.billing_state, 40), submission_state: clean(value.submission_state, 60), provider_id: clean(value.provider_id, 120), model_id: clean(value.model_id, 160), http_status: clean(value.http_status || value.provider_status, 60), platform_request_id: clean(value.platform_request_id || value.submission_id, 120), provider_request_id: clean(value.provider_request_id, 180), provider_task_id: clean(value.provider_task_id, 180), message: clean(value.message, 220) }])), billing_review_required: asset.billing_review_required === true, repair_plan: asset.repair_plan && typeof asset.repair_plan === 'object' ? { version: Number(asset.repair_plan.version || 0), action: clean(asset.repair_plan.action, 80), view_keys: list(asset.repair_plan.view_keys).slice(0, 8).map(key => clean(key, 40)), view_labels: list(asset.repair_plan.view_labels).slice(0, 8).map(label => clean(label, 80)), count: Number(asset.repair_plan.count || 0), provider_image_call_count: Number(asset.repair_plan.provider_image_call_count || 0), reasons: list(asset.repair_plan.reasons).slice(0, 6).map(reason => clean(reason, 220)), issue_codes: list(asset.repair_plan.issue_codes).slice(0, 8).map(code => clean(code, 120)), requires_billing_review: asset.repair_plan.requires_billing_review === true, message: clean(asset.repair_plan.message, 260) } : null, checkpoint_verification: asset.verification && typeof asset.verification === 'object' ? asset.verification : null,
+      ...sceneAssetRuntimeProjection.project(asset, { clean, list }),
       revision: Number(asset.scene_revision || asset.revision || contract.scene_revision || 0) || 0, knowledge_policy: knowledgePolicyRuntime.trace(asset.knowledge_policy || asset.knowledge_policy_trace || {}),
       planned: options.planned === true,
       reference_only: options.referenceOnly === true,
