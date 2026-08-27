@@ -1,5 +1,5 @@
-import { toast } from '../components/ui.js?v=20260827-production-v237b';
-import { bindTextAutosave } from '../components/textAutosave.js?v=20260827-production-v237b';
+import { toast } from '../components/ui.js?v=20260827-production-v237c';
+import { bindTextAutosave } from '../components/textAutosave.js?v=20260827-production-v237c';
 
 export function bindPersonPromptAutosave(drawer, item, { onSavePerson, onGenerate, group = 'people', close } = {}) {
   const form = drawer?.querySelector('[data-person-edit]');
