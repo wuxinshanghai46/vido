@@ -83,16 +83,14 @@ function worldCards(bundle = {}) {
       <div class="scene-place-lineage"><b>地点血缘：${escapeHtml(lineage.place_lineage_id || lineage.place_id || '独立地点')}</b><span>${escapeHtml([lineage.era, lineage.continuity_type, lineage.access_route].filter(Boolean).join(' · '))}</span>${lineage.preserved_anchors?.length ? `<small>保留：${escapeHtml(lineage.preserved_anchors.join('、'))}</small>` : ''}${lineage.rebuilt_elements?.length ? `<small>重建：${escapeHtml(lineage.rebuilt_elements.join('、'))}</small>` : ''}${lineage.forbidden_elements?.length ? `<small>禁止：${escapeHtml(lineage.forbidden_elements.join('、'))}</small>` : ''}</div>
       <div class="scene-world-capabilities">${capabilityChips(world)}</div>
       <small>${world.zones?.length || 0} 个区域 · ${world.observation_nodes?.length || 0} 个观察点 · ${world.cameras?.length || 0} 个机位 · ${escapeHtml({ photo_views: '多视角图片', panorama_360: '3DoF原地环视', spatial_3d: '6DoF可移动空间', structure_proxy: '结构代理' }[world.experience?.current_mode] || '待建立空间')} · 版本 ${world.revision || 1}</small>
-      <span class="scene-panorama-status is-${escapeHtml(panoramaStatus)}" data-panorama-status="${escapeHtml(world.id)}">${panoramaReady ? '全景已就绪 · 3DoF' : '尚未生成360全景'}</span>
+      <span class="scene-panorama-status is-${escapeHtml(panoramaStatus)}" data-panorama-status="${escapeHtml(world.id)}">${panoramaReady ? '全景已就绪 · 3DoF' : '360全景需单独生成 · 当前按钮不可用'}</span>
       <span class="scene-panorama-status">当前选择：${escapeHtml(selectedExperience)}</span>
     </div>
     <div class="scene-world-card-actions">
       <button class="btn small primary" type="button" data-enter-scene-world="${escapeHtml(world.id)}">进入场景</button>
       <button class="btn small" type="button" data-edit-scene-world="${escapeHtml(world.id)}">编辑场景设定</button>
-      <button class="btn small" type="button" data-plan-scene-experience="${escapeHtml(world.id)}">选择360 / 3D模式</button><button class="btn small" type="button" data-enter-scene-world="${escapeHtml(world.id)}">打开3D导演预演（免供应商）</button>
-      <span class="status-tag ${panoramaReady ? 'is-ready' : 'is-neutral'}">${panoramaReady ? '360°全景已纳入制作图谱' : '返回资产中心统一补齐360°全景'}</span>
-      <button class="btn small" type="button" data-scene-world-tab-target="matrix">人物×场景</button>
-      <button class="btn small" type="button" data-scene-world-tab-target="transitions">查看衔接</button>
+      <button class="btn small" type="button" data-plan-scene-experience="${escapeHtml(world.id)}">选择360 / 3D模式</button>
+      <span class="status-tag ${panoramaReady ? 'is-ready' : 'is-neutral'}">${panoramaReady ? '360°全景已纳入制作图谱' : '普通场景默认不额外扣费生成360°'}</span>
     </div>
   </article>`;
   }).join('')}</div>`;
@@ -515,13 +513,20 @@ export function bindSceneWorldWorkspace(host, bundle = {}, store = null) {
 
 function openSceneExperiencePlanner(bundle, world) {
   const current = world.experience || {};
+  const spatialReady = world.capabilities?.supports_spatial_model === true;
   const overlay = document.createElement('div');
   overlay.className = 'scene-experience-planner';
   overlay.innerHTML = `<form><header><div><small>场景空间能力</small><h2>${escapeHtml(world.name)}</h2><p>按当前故事选择空间体验；结构化3D导演预演可立即使用，真实6DoF需要额外空间模型。</p></div><button type="button" data-close>×</button></header><div class="scene-experience-form"><label><span>目标体验</span><select name="requested_mode"><option value="photo_views">多视角图片</option><option value="panorama_360">360原地环视（3DoF）</option><option value="director_3d">3D导演预演（结构化）</option><option value="spatial_3d">真实可移动空间（6DoF，需供应商）</option></select></label><label><span>场景来源</span><select name="source_mode"><option value="existing_assets">沿用现有图片</option><option value="ai_concept">AI概念空间</option><option value="real_capture">真实场地拍摄/扫描</option></select></label><label><span>观察点数量</span><input name="observation_point_target" type="number" min="1" max="30" value="${Number(current.observation_point_target || 1)}"></label><label class="full"><span>进入路线和希望查看的区域</span><textarea name="route_brief" rows="4" placeholder="说明希望查看的区域、镜头方向，以及是否需要摄像机或人物真实位移。">${escapeHtml(current.route_brief || '')}</textarea></label><div class="scene-experience-warning"><b>能力边界</b><p>3D导演预演使用可旋转结构、区域、人物站位和镜头路线，不调用图像模型；3DoF只能原地转向；真实6DoF还需要深度、几何、碰撞与遮挡验证，当前未配置重建供应商。</p></div></div><footer><button class="btn" type="button" data-ai-assist-experience>AI 完善规划</button><button class="btn" type="button" data-close>取消</button><button class="btn primary" type="submit">保存空间规划</button></footer></form>`;
   document.body.appendChild(overlay);
   document.body.classList.add('modal-open');
   const form = overlay.querySelector('form');
-  form.elements.requested_mode.value = current.requested_mode || current.current_mode || 'photo_views';
+  const spatialOption = form.elements.requested_mode.querySelector('option[value="spatial_3d"]');
+  if (spatialOption && !spatialReady) {
+    spatialOption.disabled = true;
+    spatialOption.textContent = '真实可移动空间（6DoF，当前不可用）';
+  }
+  form.elements.requested_mode.value = !spatialReady && (current.requested_mode === 'spatial_3d' || current.current_mode === 'spatial_3d')
+    ? 'photo_views' : (current.requested_mode || current.current_mode || 'photo_views');
   form.elements.source_mode.value = current.source_mode || 'existing_assets';
   const close = () => { overlay.remove(); document.body.classList.remove('modal-open'); };
   overlay.querySelectorAll('[data-close]').forEach(button => button.addEventListener('click', close));
@@ -553,7 +558,7 @@ function openSceneExperiencePlanner(bundle, world) {
         user_instruction: instruction,
       } });
       const plan = data.experience_plan || {};
-      if (plan.requested_mode) form.elements.requested_mode.value = plan.requested_mode;
+      if (plan.requested_mode && (plan.requested_mode !== 'spatial_3d' || spatialReady)) form.elements.requested_mode.value = plan.requested_mode;
       if (plan.source_mode) form.elements.source_mode.value = plan.source_mode;
       if (plan.observation_point_target) form.elements.observation_point_target.value = plan.observation_point_target;
       if (plan.route_brief) form.elements.route_brief.value = plan.route_brief;

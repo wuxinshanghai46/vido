@@ -326,6 +326,12 @@ assert.throws(
   error => error?.code === 'AUTHORITY_PROMOTION_BLOCKED',
   '计费未核清的隔离 run 也必须阻止切换新 Active',
 );
+assert.throws(
+  () => generationPermit.issue(guarded.taskId, 'scene_asset', { idempotencyKey: 'billing-review-copy' }),
+  error => error?.code === 'GENERATION_BILLING_REVIEW_REQUIRED'
+    && /历史图片调用的计费状态尚未核清/.test(error.message),
+  '生成入口必须显示历史计费待核对，不能继续误报为没有本版本 Active Plan',
+);
 storage.updateGenerationRun('quarantine-unknown-historical', { state: 'failed', billing_state: 'confirmed' });
 storage.saveModelCall({ id: 'unknown-historical', task_id: guarded.taskId, stage: 'person_plan', status: 'failed', billing_state: 'confirmed', provider_submission_state: 'failed' });
 assert.equal(publication.migrateCompatibleRelease(guarded.taskId, { fingerprint: guarded.fingerprint }).migrated, true);

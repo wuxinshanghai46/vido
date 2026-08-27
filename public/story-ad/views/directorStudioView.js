@@ -2,7 +2,7 @@ import * as THREE from '../vendor/three.module.min.js?v=20260827-production-v234
 import { request, uploadAsset } from '../api.js?v=20260827-production-v234c';
 import { escapeHtml, toast } from '../components/ui.js?v=20260827-production-v234c';
 
-const VERSION = '20260803-photoreal-director-v8';
+const VERSION = '20260827-director-clarity-v9';
 
 function list(value) { return Array.isArray(value) ? value.filter(Boolean) : []; }
 function number(value, fallback = 0) { const parsed = Number(value); return Number.isFinite(parsed) ? parsed : fallback; }
@@ -89,18 +89,41 @@ export async function openDirectorStudio({ taskId, world }) {
   const mouse = new THREE.Vector2();
   const ground = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
 
-  const entityGeometry = item => item.kind === 'person'
-    ? new THREE.CapsuleGeometry(.32, 1.15, 6, 12)
-    : (item.kind === 'product' ? new THREE.BoxGeometry(.8, .8, .8) : new THREE.SphereGeometry(.5, 18, 12));
+  const personAvatar = color => {
+    const group = new THREE.Group();
+    const skin = new THREE.MeshStandardMaterial({ color: 0xf0c4a3, roughness: .72 });
+    const cloth = new THREE.MeshStandardMaterial({ color, roughness: .62 });
+    const dark = new THREE.MeshStandardMaterial({ color: 0x183038, roughness: .8 });
+    const part = (geometry, material, position) => {
+      const mesh = new THREE.Mesh(geometry, material); mesh.position.set(...position); mesh.castShadow = true; group.add(mesh); return mesh;
+    };
+    part(new THREE.SphereGeometry(.20, 18, 14), skin, [0, 1.73, 0]);
+    part(new THREE.CapsuleGeometry(.24, .55, 6, 12), cloth, [0, 1.12, 0]);
+    part(new THREE.CapsuleGeometry(.07, .56, 5, 9), skin, [-.31, 1.18, 0]).rotation.z = -.12;
+    part(new THREE.CapsuleGeometry(.07, .56, 5, 9), skin, [.31, 1.18, 0]).rotation.z = .12;
+    part(new THREE.CapsuleGeometry(.085, .68, 5, 9), dark, [-.13, .43, 0]);
+    part(new THREE.CapsuleGeometry(.085, .68, 5, 9), dark, [.13, .43, 0]);
+    return group;
+  };
+  const wireEntity = item => {
+    const geometry = item.kind === 'product' ? new THREE.BoxGeometry(.8, .8, .8) : new THREE.SphereGeometry(.5, 18, 12);
+    const group = new THREE.Group();
+    group.add(new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({ color: entityColor(item.kind), transparent: true, opacity: .12, roughness: .75 })));
+    group.add(new THREE.LineSegments(new THREE.EdgesGeometry(geometry), new THREE.LineBasicMaterial({ color: entityColor(item.kind) })));
+    return group;
+  };
+  const entityObject = item => item.kind === 'person' ? personAvatar(entityColor(item.kind)) : wireEntity(item);
   const syncEntityMesh = (item, mesh) => {
     mesh.position.fromArray(item.position || [0, 0, 0]);
-    if (item.kind === 'person') mesh.position.y = Math.max(.9, mesh.position.y || 0) + .05;
+    if (item.kind === 'person') mesh.position.y = Math.max(0, mesh.position.y || 0);
     mesh.rotation.set(...(item.rotation || [0, 0, 0]).map(value => THREE.MathUtils.degToRad(value)));
     mesh.scale.fromArray(item.scale || [1, 1, 1]); mesh.visible = item.visible !== false;
   };
   list(state.entities).forEach(item => {
-    const mesh = new THREE.Mesh(entityGeometry(item), new THREE.MeshStandardMaterial({ color: entityColor(item.kind), roughness: .58, metalness: item.kind === 'product' ? .18 : 0 }));
-    mesh.castShadow = true; mesh.userData = { type: 'entity', id: item.entity_id }; syncEntityMesh(item, mesh); scene.add(mesh); entityMeshes.set(item.entity_id, mesh);
+    const mesh = entityObject(item);
+    mesh.userData = { type: 'entity', id: item.entity_id };
+    mesh.traverse(child => { child.userData = mesh.userData; });
+    syncEntityMesh(item, mesh); scene.add(mesh); entityMeshes.set(item.entity_id, mesh);
   });
   list(state.cameras).forEach(item => {
     const group = new THREE.Group();

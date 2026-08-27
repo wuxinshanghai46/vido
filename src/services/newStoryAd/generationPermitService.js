@@ -35,10 +35,21 @@ function issue(taskId, stage, { idempotencyKey = '' } = {}) {
   if (!eligibility.eligible
     && eligibility.release_migration?.compatible === true
     && eligibility.release_migration?.migration_required === true) {
-    const migrated = publication.migrateCompatibleRelease(taskId, {
-      fingerprint: active?.fingerprint || '',
-      reason: `${String(stage || 'generation')}_permit_release_sync`,
-    });
+    let migrated;
+    try {
+      migrated = publication.migrateCompatibleRelease(taskId, {
+        fingerprint: active?.fingerprint || '',
+        reason: `${String(stage || 'generation')}_permit_release_sync`,
+      });
+    } catch (error) {
+      if (error?.code !== 'AUTHORITY_PROMOTION_BLOCKED') throw error;
+      const blocked = new Error('当前任务有历史图片调用的计费状态尚未核清，已锁定且不会自动重试；请先逐条完成计费核对，再继续生成。');
+      blocked.code = 'GENERATION_BILLING_REVIEW_REQUIRED';
+      blocked.status = 409;
+      blocked.retryable = false;
+      blocked.details = { blocking_generation_ids: error.blocking_generation_ids || [], release_migration: eligibility.release_migration };
+      throw blocked;
+    }
     if (migrated.migrated) {
       active = publication.activeRecord(taskId);
       eligibility = publication.eligibility(taskId, { fingerprint: active?.fingerprint || '' });

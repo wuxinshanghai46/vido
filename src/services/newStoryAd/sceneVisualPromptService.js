@@ -54,7 +54,7 @@ function buildSceneSheetPrompt({ ctx = {}, sceneConfig = {}, body = {}, outputRo
       ? 'The correction feedback has higher authority than appearance inherited from previous images. Preserve valid geometry, but replace any rejected appearance instead of imitating it.'
       : '',
   ].filter(Boolean).join(' ');
-  const occupancyContract = 'Occupancy contract: capture the task-defined location before cast or action blocking, with every circulation path and interaction zone clear. Furnish the frame only with explicitly defined fixed structures, fixtures and spatial anchors.';
+  const occupancyContract = 'Occupancy contract: capture the task-defined location before cast or action blocking, with every circulation path and interaction zone clear. Zero visible humans are permitted in this scene asset: no people, no person, face, head, hair, body, hand, silhouette, mannequin or human reflection. Furnish the frame only with explicitly defined fixed structures, fixtures and spatial anchors. 空场景资产必须完全无人，不得出现真人、背影、侧脸、手、身体局部、人形剪影、模特或人物倒影。';
   const photographicRealism = [
     worldSetting.visualMediumPrompt(visualMedium, outputRole === 'layout' ? 'near-vertical whole-space layout' : 'scene master'),
     liveActionMedium && outputRole === 'layout'
@@ -129,6 +129,7 @@ function buildLayoutAcquisitionPrompt({ ctx = {}, body = {}, knowledgePolicy = {
     ? shotDesign.surfacePrompt(requested.surface_topology, 'environment')
     : '';
   return [
+    'Strict occupancy gate: empty scene, no people, no person, no human figure, no face, no body, no hand, no silhouette, no mannequin and no human reflection. 空场景必须完全无人。',
     worldSetting.visualMediumPrompt(visualMedium, 'near-vertical whole-space layout'),
     `Create one NEAR-VERTICAL TOP-DOWN WHOLE-SPACE LAYOUT in the selected ${visualMedium} medium of the exact task-appropriate location in the supplied master, whether enclosed, semi-open or outdoor.`,
     'Camera contract: relocate to an 82 to 90 degree downward camera with near-orthographic perspective. Do not preserve the master crop, eye-level height, frontal wall angle, azimuth or foreground/background arrangement.',
@@ -314,6 +315,7 @@ function buildSceneAuditSafePrompt({ ctx = {}, body = {}, viewKey = 'master', kn
     interaction: 'Create a distinct practical interaction-position camera view inside the supplied scene. Clearly reveal the empty action clearance, reachable target surface and circulation route while preserving the same space.',
     detail: 'Create a close material and construction view inside the supplied scene. Make the task-required finish, its supported cues, surface transition, fixture edge and material scale clearly readable.',
   }[viewKey] || 'Create a coherent scene reference in the selected visual medium.';
+  const occupancyGate = 'Strict occupancy gate: empty scene, no people, no person, no human figure, no face, no body, no hand, no silhouette, no mannequin and no human reflection. 空场景必须完全无人。';
   const topology = requested.surface_topology
     ? shotDesign.surfacePrompt(requested.surface_topology, 'environment')
     : '';
@@ -324,6 +326,7 @@ function buildSceneAuditSafePrompt({ ctx = {}, body = {}, viewKey = 'master', kn
     ? 'Use the attached task material reference only for colour, grain, reflectance and micro-relief; never copy its sample boundaries into the scene.'
     : 'No material sample is attached. Convert trade or proprietary names only into explicitly requested observable cues, without inventing panels, bands or region boundaries.';
   return [
+    occupancyGate,
     worldSetting.visualMediumPrompt(visualMedium, `audit-safe ${viewKey} scene view`),
     roleInstruction,
     liveActionMedium

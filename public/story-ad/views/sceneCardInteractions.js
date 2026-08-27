@@ -16,6 +16,12 @@ export function bindSceneCards(host, context) {
   };
   host.querySelectorAll('[data-scene-card]').forEach(card => {
     card.querySelector('[data-generate-scene]')?.insertAdjacentHTML('beforebegin', sceneGenerationSettingsMarkup());
+    const qualitySelect = card.querySelector('[data-scene-quality]');
+    const resolutionSelect = card.querySelector('[data-scene-resolution]');
+    qualitySelect?.addEventListener('change', () => {
+      const linked = { low: '720P', standard: '2K', high: '2K' }[qualitySelect.value] || '2K';
+      if (resolutionSelect?.querySelector(`option[value="${linked}"]:not([disabled])`)) resolutionSelect.value = linked;
+    });
     switchTab(card, recalledTab(tabKey(card.dataset.sceneId || '')) || card.dataset.defaultSceneTab || 'prompt', false);
     const promise = import('./scenePromptEditor.js?v=20260827-production-v234c').then(module => {
       const controller = module.bindScenePromptEditor(card, context);

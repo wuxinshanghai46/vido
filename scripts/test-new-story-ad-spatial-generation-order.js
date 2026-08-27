@@ -882,6 +882,7 @@ async function main() {
     transientFailureMessage = 'socket hang up ECONNRESET';
     transientFailureCode = '';
 
+    assert(calls.every(call => /no people/i.test(call.prompt)), '每一张场景图片提示词都必须明确禁止随机人物');
     console.log(JSON.stringify({
       success: true,
       generation_order: asset.view_acquisition.generation_order,
@@ -891,6 +892,7 @@ async function main() {
       real_progress_views: progress.succeeded,
       generic_material_cases: genericCases.length,
       all_views_empty_scene: calls.every(call => /no people/i.test(call.prompt)),
+      empty_scene_missing_stages: calls.filter(call => !/no people/i.test(call.prompt)).map(call => call.stage),
       primary_view_backward_compatible: asset.image_url === '/mock-scene-view-1.png',
       model_management_image2_only: true,
       task_extra_attempt_budget: sceneAssets.SCENE_IMAGE_EXTRA_ATTEMPTS,

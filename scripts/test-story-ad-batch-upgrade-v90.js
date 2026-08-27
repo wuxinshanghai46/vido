@@ -78,7 +78,8 @@ assert.match(productionAssetOrchestratorSource, /sceneAssetService\.repairSceneA
 
 const sceneWorld = fs.readFileSync(path.join(root, 'public/story-ad/views/sceneWorldView.js'), 'utf8');
 assert.match(sceneWorld, /选择360 \/ 3D模式/);
-assert.match(sceneWorld, /打开3D导演预演（免供应商）/);
+assert.match(sceneWorld, /data-enter-scene-world/);
+assert.doesNotMatch(sceneWorld, /打开3D导演预演（免供应商）/);
 assert.match(sceneWorld, /当前选择：\$\{escapeHtml\(selectedExperience\)\}/);
 
 console.log(JSON.stringify({
