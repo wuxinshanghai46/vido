@@ -1,13 +1,35 @@
-import { escapeHtml, toast } from '../components/ui.js?v=20260827-production-v237c';
-import { normalizeSceneDossier, renderSceneCoverCard, sceneNeedsGeneration } from './sceneDossierCard.js?v=20260827-production-v237c';
+import { escapeHtml, toast } from '../components/ui.js?v=20260827-production-v238';
+import { normalizeSceneDossier, renderSceneCoverCard, sceneNeedsGeneration } from './sceneDossierCard.js?v=20260827-production-v238';
+import { sceneGenerationSettingsMarkup } from './sceneDossierCardSettings.js?v=20260827-production-v238';
 
 const submitted = new Set();
+
+export function sceneProductionAction(scene = {}) {
+  const plan = scene.repair_plan && typeof scene.repair_plan === 'object' ? scene.repair_plan : {};
+  const action = String(plan.action || '');
+  const labels = Array.isArray(plan.view_labels) ? plan.view_labels.filter(Boolean) : [];
+  if (action === 'reverify') return {
+    kind: 'reverify', button: '再次验证（不生成图片）', status: '图片已保存；只重新执行一致性 QA，图片调用 0 次。', billable: false,
+  };
+  if (action === 'regenerate_failed_views') return {
+    kind: 'repair', button: `只修复${labels.length ? `：${labels.join('、')}` : '失败视图'}（${Number(plan.count || labels.length || 0)} 张）`, status: plan.message || '仅重做有逐图证据的失败视图，其余图片保留。', billable: true,
+  };
+  if (action === 'rebuild_atlas') return {
+    kind: 'repair', button: '重建空间母图与布局（2 次图片调用）', status: plan.message || '透视视图来自同一母图，需要重建母图与俯视布局。', billable: true,
+  };
+  if (action === 'regenerate_full_scene') return {
+    kind: 'generate', button: '完整重新生成当前场景', status: plan.message || '旧版空间合同需要完整升级，不能局部修复。', billable: true,
+  };
+  const needsGeneration = sceneNeedsGeneration(scene);
+  return { kind: 'generate', button: needsGeneration ? '生成该场景' : '重新生成', status: needsGeneration ? '已自动保存，可生成画面' : '画面已就绪，可重新生成', billable: true };
+}
 
 export function renderSceneProductionCard(scene = {}, index = 0, options = {}) {
   const prompt = String(scene.generation_prompt || scene.prompt || scene.description || '').trim();
   const imageCount = normalizeSceneDossier(scene).completed;
   const provisional = options.provisional === true || scene.provisional === true;
   const needsGeneration = !provisional && sceneNeedsGeneration(scene);
+  const productionAction = sceneProductionAction(scene);
   const sceneId = escapeHtml(scene.id || scene.scene_id || `scene-${index + 1}`);
   const promptState = scene.prompt_state || {};
   const generationStarted = !provisional && Boolean(imageCount || options.generationActive
@@ -21,7 +43,7 @@ export function renderSceneProductionCard(scene = {}, index = 0, options = {}) {
     <nav class="scene-production-tabs"><button class="${preferredTab === 'prompt' ? 'is-active' : ''}" data-scene-detail-tab="prompt">提示词</button><button class="${preferredTab === 'images' ? 'is-active' : ''}" data-scene-detail-tab="images">场景画面 ${imageCount ? `(${imageCount})` : ''}</button></nav>
     <section class="scene-production-pane" data-scene-detail-pane="prompt" ${preferredTab === 'prompt' ? '' : 'hidden'}>${promptPane}</section>
     <section class="scene-production-pane" data-scene-detail-pane="images" ${preferredTab === 'images' ? '' : 'hidden'}>${renderSceneCoverCard(scene)}</section>
-    <footer><span>${provisional ? '正式规划后可生成画面' : (options.generationActive ? '该场景正在生成' : (needsGeneration ? '已自动保存，可生成画面' : '画面已就绪，可重新生成'))}</span>${!provisional ? `<button class="btn primary compact scene-card-generate" data-generate-scene="${sceneId}" ${options.generationActive ? 'disabled' : ''}>${options.generationActive ? '正在生成…' : (needsGeneration ? '生成该场景' : '重新生成')}</button>` : ''}</footer>
+    <footer><span>${provisional ? '正式规划后可生成画面' : (options.generationActive ? '该场景正在处理' : productionAction.status)}</span>${!provisional ? `<div class="scene-card-controls">${productionAction.billable ? sceneGenerationSettingsMarkup() : ''}<button class="btn primary compact scene-card-generate" data-${productionAction.kind}-scene="${sceneId}" ${options.generationActive ? 'disabled' : ''}>${options.generationActive ? '正在处理…' : escapeHtml(productionAction.button)}</button></div>` : ''}</footer>
   </article>`;
 }
 

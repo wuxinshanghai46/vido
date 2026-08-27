@@ -160,6 +160,10 @@ function visionUseMatches(model) {
     || (storyUseMatches(model) && /(?:gpt-4o(?:-mini)?|gemini-(?:2|3))/.test(id));
 }
 
+function imageUseMatches(model) {
+  return ['image', 'img', 'avatar'].includes(String(model?.use || model?.type || '').toLowerCase());
+}
+
 function providerMatches(provider, providerId) {
   const target = String(providerId || '').toLowerCase();
   return [provider.id, provider.preset, provider.name]
@@ -173,17 +177,23 @@ function settingsIndex() {
   return { settings, providers };
 }
 
-function isConfiguredAndUsable(model, capability = 'story') {
+function isConfiguredAndUsable(model, capability = 'story', settingsOverride = null) {
   if (!model || model.enabled === false || !model.provider_id || !model.model_id) return { ok: false, reason: 'disabled_or_incomplete' };
-  const { providers } = settingsIndex();
+  const providers = Array.isArray(settingsOverride?.providers)
+    ? settingsOverride.providers
+    : settingsIndex().providers;
   const provider = providers.find(p => p.enabled && p.api_key && providerMatches(p, model.provider_id));
   if (!provider) return { ok: false, reason: 'provider_disabled_or_missing_key' };
   const providerModel = (provider.models || []).find(m => String(m.id || '') === String(model.model_id || ''));
   if (!providerModel) return { ok: false, reason: 'model_not_found' };
   if (providerModel.enabled === false) return { ok: false, reason: 'model_disabled' };
-  if (capability === 'vision' ? !visionUseMatches(providerModel) : !storyUseMatches(providerModel)) {
-    return { ok: false, reason: capability === 'vision' ? 'model_not_vision' : 'model_not_text' };
+  const capabilityMatches = capability === 'vision'
+    ? visionUseMatches(providerModel)
+    : (capability === 'image' ? imageUseMatches(providerModel) : storyUseMatches(providerModel));
+  if (!capabilityMatches) {
+    return { ok: false, reason: capability === 'vision' ? 'model_not_vision' : (capability === 'image' ? 'model_not_image' : 'model_not_text') };
   }
+  if (capability === 'image') return { ok: true, provider, providerModel };
   const contract = providerAdapters.validateDeyunaiTextContract(provider, providerModel);
   if (!contract.ok) return contract;
   return { ok: true, provider, providerModel };

@@ -815,9 +815,9 @@ assert.match(sceneWithCameraImage, /scene-camera-card has-image/);
 assert.match(sceneWithCameraImage, /scene-camera-card is-missing-image/);
 assert.match(sceneWithCameraImage, /data-scene-dossier=/, '场景详情回归夹具必须覆盖完整场景档案渲染');
 
-const generateFunction = assets.slice(assets.indexOf('const generate = async'), assets.indexOf("host.querySelectorAll('[data-asset-filter]"));
-assert(generateFunction.indexOf('confirmDialog') >= 0, '人物生成必须包含一次简洁确认');
-assert(generateFunction.indexOf('confirmDialog') < generateFunction.indexOf("store.runStage('person-plan'"), '确认必须发生在真实规划模型请求前');
+const generateFunction = assets.slice(assets.indexOf('const generate = async'), assets.indexOf('const verifyProduct = async'));
+assert(generateFunction.indexOf('confirmDialog') < 0, '普通人物生成按钮本身已构成明确授权，不得再次弹出生成确认');
+assert(generateFunction.indexOf('setButtonBusy') < generateFunction.indexOf("store.runStage('person-plan'"), '人物生成必须先显示提交状态再发起真实规划请求');
 const verifyProductFunction = assets.slice(assets.indexOf('const verifyProduct = async'), assets.indexOf("host.querySelectorAll('[data-asset-filter]"));
 assert(verifyProductFunction.indexOf('confirmDialog') >= 0, '商品视觉验证必须包含显式费用确认');
 assert(verifyProductFunction.indexOf('confirmDialog') < verifyProductFunction.indexOf('/product-verify'), '商品验证确认必须发生在视觉模型请求前');
@@ -996,7 +996,8 @@ const progressPanel = sandbox.__generationProgressPanel({
 });
 assert.match(progressPanel, /33%/);
 assert.match(progressPanel, /已耗时 \d+分\d{2}秒/);
-assert.match(progressPanel, /已完成 2\/6/);
+assert.match(progressPanel, /处理进度 2\/6/);
+assert.match(progressPanel, /处理进度 33%/, '百分比必须明确表示处理进度，不能被误读为成功率');
 assert.match(progressPanel, /正在生成第 3、4 镜/);
 assert.match(progressPanel, /data-cancel-generation/);
 const legacyFractionalVisualAssetPanel = sandbox.__generationProgressPanel({

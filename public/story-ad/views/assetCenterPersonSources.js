@@ -1,6 +1,5 @@
-import { request } from '../api.js?v=20260827-production-v237c';
-import { escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260827-production-v237c';
-import { confirmDialog } from '../components/dialog.js?v=20260827-production-v237c';
+import { request } from '../api.js?v=20260827-production-v238';
+import { escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260827-production-v238';
 
 function assetModal(title = '') {
   const previouslyFocused = document.activeElement;
@@ -194,7 +193,6 @@ export function openRealPersonFlow({ context, taskId }) {
     const fd = new FormData(form);
     const file = fd.get('file');
     if (!(file instanceof File) || !file.size) return toast('请选择真人照片。', 'warning');
-    if (!await confirmDialog('将先生成 2 张身份一致性候选用于人工选择；确认候选后，完整档案会按 4 个分类图集生成并拆分为 20 项视图。', { title: '确认启动真人 AI 补全', confirmText: '确认开始' })) return;
     setButtonBusy(button, true, '正在安全上传…', { elapsed: true });
     try {
       const upload = new FormData();
@@ -208,7 +206,6 @@ export function openRealPersonFlow({ context, taskId }) {
         modal.body.querySelectorAll('[data-candidate]').forEach(candidateButton => candidateButton.addEventListener('click', async () => {
           try {
             await request(`/api/new-story-ad/tasks/${encodeURIComponent(taskId)}/person-outfit-candidates/${encodeURIComponent(candidateButton.dataset.candidate)}/approve`, { method: 'POST' });
-            if (!await confirmDialog('下一步生成完整人物档案：身体视角、身份细节、6种表情和6种动作。共 4 次图像模型调用，生成后仍需人工确认。', { title: '生成完整人物档案', confirmText: '确认生成' })) return;
             await request(`/api/new-story-ad/tasks/${encodeURIComponent(taskId)}/person-dossiers`, { method: 'POST' });
             const completed = await waitForPersonJob(taskId, 'dossier_job', current => { modal.body.innerHTML = `${inlineJobProgress(current)}<p>正在补全人物视角、表情、细节与动作类别…</p>`; });
             if (completed.dossier_job?.status !== 'completed' || !completed.dossier) throw new Error(completed.dossier_job?.error?.message || '完整人物档案生成失败');

@@ -1,7 +1,7 @@
-import { request } from '../api.js?v=20260827-production-v237c';
-import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260827-production-v237c';
-import { confirmDialog } from '../components/dialog.js?v=20260827-production-v237c';
-import { applyBeat, beatEditor, collectBeat, collectBlueprint, productionIssues, syncFloatingEditor } from './plotBeatEditor.js?v=20260827-production-v237c';
+import { request } from '../api.js?v=20260827-production-v238';
+import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260827-production-v238';
+import { confirmDialog } from '../components/dialog.js?v=20260827-production-v238';
+import { applyBeat, beatEditor, collectBeat, collectBlueprint, productionIssues, syncFloatingEditor } from './plotBeatEditor.js?v=20260827-production-v238';
 
 function characterEditor(character = {}, index = 0) {
   const gender = String(character.gender || '').toLowerCase();
@@ -76,7 +76,7 @@ export async function mount(host, context) {
   }
 
   const characterAutosave = characters.length
-    ? (await import('./plotCharacterAutosave.js?v=20260827-production-v237c'))
+    ? (await import('./plotCharacterAutosave.js?v=20260827-production-v238'))
       .bindCharacterAutosave({ host, blueprint, store, collectBlueprint, toast })
     : null;
 
@@ -96,9 +96,6 @@ export async function mount(host, context) {
   host.querySelector('[data-empty-action="generate-story"]')?.addEventListener('click', event => generate(event.currentTarget));
   host.querySelector('[data-recheck-story]')?.addEventListener('click', event => generate(event.currentTarget));
   host.querySelector('[data-regenerate-story]')?.addEventListener('click', async event => {
-    if (!await confirmDialog('将重新生成故事标题、一句话剧情和全部情节点；当前剧情及已有分镜、线稿和下游媒体会按版本失效。', {
-      title: '批量重生成全部剧情', confirmText: '确认批量生成',
-    })) return;
     await generate(event.currentTarget, true);
   });
 
@@ -153,11 +150,11 @@ export async function mount(host, context) {
   };
   const openEditor = async (button, row, group) => {
     if (group === 'prompt_notes') {
-      promptModule ||= await import('./plotPromptPreview.js?v=20260827-production-v237c');
+      promptModule ||= await import('./plotPromptPreview.js?v=20260827-production-v238');
       await promptModule.openPromptPreview({ pop, row, host, projectId: bundle.project.id, place: () => place(button), closeAll });
       return;
     }
-    cellEditorModule ||= await import('./plotBeatCellPopover.js?v=20260827-production-v237c');
+    cellEditorModule ||= await import('./plotBeatCellPopover.js?v=20260827-production-v238');
     const currentCharacters = collectBlueprint(host, blueprint).characters;
     closeAll(); active = row; pop.innerHTML = cellEditorModule.beatCellEditor(row, group, currentCharacters); pop.dataset.group = group; pop.dataset.dialogueEditor = group === 'spoken_line' ? 'true' : 'false'; pop.showPopover(); place(button);
     pop.querySelector('[data-floating-field]')?.focus();

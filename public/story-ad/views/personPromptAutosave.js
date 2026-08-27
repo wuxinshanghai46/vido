@@ -1,5 +1,5 @@
-import { toast } from '../components/ui.js?v=20260827-production-v237c';
-import { bindTextAutosave } from '../components/textAutosave.js?v=20260827-production-v237c';
+import { setButtonBusy, toast } from '../components/ui.js?v=20260827-production-v238';
+import { bindTextAutosave } from '../components/textAutosave.js?v=20260827-production-v238';
 
 export function bindPersonPromptAutosave(drawer, item, { onSavePerson, onGenerate, group = 'people', close } = {}) {
   const form = drawer?.querySelector('[data-person-edit]');
@@ -41,10 +41,13 @@ export function bindPersonPromptAutosave(drawer, item, { onSavePerson, onGenerat
   });
   form.querySelector('[data-generate-person]')?.addEventListener('click', async event => {
     const button = event.currentTarget;
+    setButtonBusy(button, true, '正在准备…');
     try {
       await controller.flush();
-      if (await onGenerate?.(item, group, button) === true) close?.({ flush: false });
-    } catch {}
+      const generated = await onGenerate?.(item, group, button) === true;
+      if (generated) close?.({ flush: false });
+      else setButtonBusy(button, false);
+    } catch { setButtonBusy(button, false); }
   });
   return controller;
 }

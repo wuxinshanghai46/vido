@@ -212,6 +212,29 @@ const fullSceneUpgradePlan = () => sceneGenerationPolicy.fullUpgradePlan({
 });
 const sceneMaterialReferenceImages = productAssetResolver.sceneMaterialReferenceImages;
 
+function sceneFailureDiagnostics(error = null) {
+  const uncertain = Array.isArray(error?.attempts)
+    ? error.attempts.find(item => item?.billing_state === 'unknown'
+      || item?.provider_submission_state === 'submitted_unknown'
+      || item?.code === 'PROVIDER_5XX_AMBIGUOUS')
+    : null;
+  const source = uncertain || error || {};
+  const [routeProvider = '', routeModel = ''] = String(source.model || '').split('/', 2);
+  return {
+    error_code: cleanText(error?.code || source.code || '', 120),
+    provider_id: cleanText(error?.providerId || error?.provider_id || source.provider_id || routeProvider, 120),
+    model_id: cleanText(error?.modelId || error?.model_id || source.model_id || routeModel, 160),
+    http_status: cleanText(error?.providerStatus || error?.provider_status || source.provider_status || '', 60),
+    provider_reason: cleanText(error?.providerReason || error?.provider_reason || source.provider_reason || '', 240),
+    provider_error_code: cleanText(error?.providerErrorCode || error?.provider_error_code || source.provider_error_code || '', 120),
+    platform_request_id: cleanText(error?.platformRequestId || error?.platform_request_id || error?.submissionId || error?.submission_id || source.submission_id || '', 120),
+    provider_request_id: cleanText(error?.providerRequestId || error?.provider_request_id || source.provider_request_id || '', 180),
+    provider_task_id: cleanText(error?.providerTaskId || error?.provider_task_id || source.provider_task_id || '', 180),
+    provider_submission_state: cleanText(error?.providerSubmissionState || error?.provider_submission_state || source.provider_submission_state || '', 60),
+    billing_state: cleanText(error?.billingState || error?.billing_state || source.billing_state || '', 60),
+  };
+}
+
 function updateSceneGenerationProgress(taskId, update = {}) {
   const task = storage.getTask(taskId);
   if (!task) return null;
@@ -249,6 +272,10 @@ function updateSceneGenerationProgress(taskId, update = {}) {
           attempt: Math.max(1, Number(update.attempt || current.attempt || 1) || 1),
           max_attempts: Math.max(1, Number(update.maxAttempts || current.max_attempts || SCENE_IMAGE_MAX_ATTEMPTS) || SCENE_IMAGE_MAX_ATTEMPTS),
           retrying: update.retrying === true,
+          ...(update.viewStatus === 'succeeded' ? {
+            error_code: '', provider_id: '', model_id: '', http_status: '', provider_reason: '', provider_error_code: '',
+            platform_request_id: '', provider_request_id: '', provider_task_id: '', provider_submission_state: '', billing_state: '',
+          } : (update.diagnostics || {})),
           updated_at: now,
         }
       : current;
@@ -353,6 +380,7 @@ async function generateTrackedSceneView(taskId, key, options = {}, progress = {}
         attempt: willRetry ? attempt + 1 : attempt,
         maxAttempts: attempt + (willRetry ? 1 : 0),
         retrying: willRetry,
+        diagnostics: sceneFailureDiagnostics(error),
       });
       if (!willRetry) throw error;
       cancellation.throwIfCancelled(taskId);
@@ -1795,4 +1823,4 @@ async function reverifySceneAsset(taskId, sceneId) {
   saveSceneAssetsToTask(taskId, assets);
   return { scene_asset: assets[index], scene_assets: assets };
 }
-module.exports = { SCENE_VIEW_KEYS, REQUIRED_SCENE_VIEW_KEYS, SCENE_GENERATION_ORDER, SCENE_IMAGE_STAGE_BY_VIEW, SCENE_IMAGE_MAX_ATTEMPTS, SCENE_IMAGE_EXTRA_ATTEMPTS, SCENE_GENERATION_CONTRACT_VERSION, sceneViewLabel, sceneImageStage, sceneViewContentHash, exactSceneViewDuplicate, assertCompleteUpgradeSceneSpec, assertSceneRightsPreflight, sceneMaterialReferenceImages, authoritativeSceneGenerationBody, buildSceneSheetPrompt, sceneStructuredContract: sceneStructuredContract.compile, sceneDescriptionForSpec: sceneSpecProjection.sceneDescriptionForSpec, buildLayoutAcquisitionPrompt, legacyScenePromptFingerprintText, buildDerivedViewPrompt, buildSceneAuditSafePrompt, sceneVisionThumbnailUrl, needsLayoutView, sceneRequest, buildSceneRepairPlan, sceneGenerationUpgradeRequired, normalizeSceneAssets, localizeSceneViews, localizeSceneAssets, saveSceneAssetsToTask, generateSceneAsset, repairSceneAsset, reverifySceneAsset, _resetSceneImageCircuit: resetSceneImageCircuit };
+module.exports = { SCENE_VIEW_KEYS, REQUIRED_SCENE_VIEW_KEYS, SCENE_GENERATION_ORDER, SCENE_IMAGE_STAGE_BY_VIEW, SCENE_IMAGE_MAX_ATTEMPTS, SCENE_IMAGE_EXTRA_ATTEMPTS, SCENE_GENERATION_CONTRACT_VERSION, sceneViewLabel, sceneImageStage, sceneViewContentHash, exactSceneViewDuplicate, assertCompleteUpgradeSceneSpec, assertSceneRightsPreflight, sceneMaterialReferenceImages, authoritativeSceneGenerationBody, buildSceneSheetPrompt, sceneStructuredContract: sceneStructuredContract.compile, sceneDescriptionForSpec: sceneSpecProjection.sceneDescriptionForSpec, buildLayoutAcquisitionPrompt, legacyScenePromptFingerprintText, buildDerivedViewPrompt, buildSceneAuditSafePrompt, sceneFailureDiagnostics, sceneVisionThumbnailUrl, needsLayoutView, sceneRequest, buildSceneRepairPlan, sceneGenerationUpgradeRequired, normalizeSceneAssets, localizeSceneViews, localizeSceneAssets, saveSceneAssetsToTask, generateSceneAsset, repairSceneAsset, reverifySceneAsset, _resetSceneImageCircuit: resetSceneImageCircuit };

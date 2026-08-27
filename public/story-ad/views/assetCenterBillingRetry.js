@@ -1,5 +1,5 @@
-import { request } from '../api.js?v=20260827-production-v237c';
-import { setButtonBusy, toast } from '../components/ui.js?v=20260827-production-v237c';
+import { request } from '../api.js?v=20260827-production-v238';
+import { setButtonBusy, toast } from '../components/ui.js?v=20260827-production-v238';
 
 export function visualGenerationState(bundle, missingSubjectCount, missingSceneCount) {
   const progress = bundle.generation?.progress || {};
@@ -21,7 +21,7 @@ export function visualGenerationState(bundle, missingSubjectCount, missingSceneC
 
 let billingReviewDialogPromise;
 function billingReviewDialog() {
-  billingReviewDialogPromise ||= import('./assetCenterBillingReviewDialog.js?v=20260827-production-v237c');
+  billingReviewDialogPromise ||= import('./assetCenterBillingReviewDialog.js?v=20260827-production-v238');
   return billingReviewDialogPromise;
 }
 export async function loadBillingReviews(options = {}) {
@@ -118,14 +118,15 @@ export function bindCombinedVisualGeneration({
     const confirmation = billingReviewRequired
       ? '当前存在计费未知图片。本次只继续缺失单元，已有成功资产会继续复用；需要接受的重复计费风险会合并在这一次确认中。'
       : `将同步生成${summary}。${missingSubjectCount ? '人物档案会把穿搭与配饰生成为独立物件图，并按实际单品类别产生对应图片模型调用。' : ''}${sceneCostNotice}人物与场景分别保存进度；任一分支失败不会删除另一分支已完成的资产，再次提交只会继续缺失项。`;
-    const confirmationResult = await confirmBillingAwareAction({
-      bundle,
-      message: confirmation,
-      title: billingReviewRequired ? '接受可能重复计费并继续' : '确认同步生成人物与场景',
-      confirmText: billingReviewRequired ? '我接受风险，继续缺失项' : '开始同步生成',
-    });
-    if (!confirmationResult.accepted) return;
+    setButtonBusy(button, true, '正在准备…');
     try {
+      const confirmationResult = await confirmBillingAwareAction({
+        bundle,
+        message: confirmation,
+        title: billingReviewRequired ? '接受可能重复计费并继续' : '确认同步生成人物与场景',
+        confirmText: billingReviewRequired ? '我接受风险，继续缺失项' : '开始同步生成',
+      });
+      if (!confirmationResult.accepted) return;
       setButtonBusy(button, true, '正在提交同步生成…', { elapsed: true });
       if (billingReviewRequired) await authorizeBillingReviews({ bundle, reviewBatch: confirmationResult.reviewBatch });
       await store.runStage('visual-assets', {

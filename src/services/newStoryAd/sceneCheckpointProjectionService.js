@@ -64,6 +64,12 @@ function checkpointPreview(row = {}, sceneConfig = {}) {
       error_code: errorCode,
       billing_state: billingState,
       submission_state: submissionState,
+      provider_id: text(view.provider_id, 120),
+      model_id: text(view.model_id, 160),
+      http_status: text(view.provider_status, 60),
+      platform_request_id: text(view.platform_request_id || view.submission_id, 120),
+      provider_request_id: text(view.provider_request_id, 180),
+      provider_task_id: text(view.provider_task_id, 180),
       message: text(view.error || view.message, 220),
     }];
   }));

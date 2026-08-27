@@ -1,6 +1,5 @@
-import { request } from '../api.js?v=20260827-production-v237c';
-import { toast } from '../components/ui.js?v=20260827-production-v237c';
-import { confirmDialog } from '../components/dialog.js?v=20260827-production-v237c';
+import { request } from '../api.js?v=20260827-production-v238';
+import { toast } from '../components/ui.js?v=20260827-production-v238';
 
 const rows = value => Array.isArray(value) ? value.filter(Boolean) : [];
 
@@ -16,6 +15,10 @@ function matching(root, selector, key, value) {
 export async function runPanoramaGeneration({ root, bundle, store, worldId } = {}) {
   const world = worldById(bundle, worldId);
   if (!world) return toast('没有找到当前场景，请刷新资产中心后重试。', 'danger');
+  const buttons = matching(root, '[data-generate-panorama]', 'generatePanorama', world.id);
+  const statuses = matching(root, '[data-panorama-status]', 'panoramaStatus', world.id);
+  buttons.forEach(item => { item.dataset.idleLabel ||= item.textContent; item.disabled = true; item.textContent = '正在准备…'; });
+  const restoreButtons = () => buttons.forEach(item => { item.disabled = false; item.textContent = item.dataset.idleLabel || '生成360全景'; });
   let plan;
   try {
     plan = await request(`/api/new-story-ad/tasks/${encodeURIComponent(bundle.project.id)}/scene-assets/${encodeURIComponent(world.id)}/panorama/plan`, {
@@ -23,23 +26,13 @@ export async function runPanoramaGeneration({ root, bundle, store, worldId } = {
       timeoutMs: 30000,
     });
   } catch (error) {
+    restoreButtons();
     return toast(`无法取得最新调用计划：${error.message}`, 'danger');
   }
   if (plan.blocked) {
+    restoreButtons();
     return toast('上次供应商提交或QA状态仍未核对，系统已阻止重复付费。请先完成计费状态恢复。', 'danger');
   }
-  const operationText = plan.operation === 'reuse'
-    ? '已有同来源的可用全景，将直接复用。'
-    : plan.operation === 'reverify'
-      ? '将复用已有全景并重新检查质量。'
-      : '将基于当前场景图生成360全景并完成质量检查。';
-  const approved = await confirmDialog(operationText, {
-    title: `确认生成「${world.name || '当前场景'}」360全景`,
-    confirmText: '确认生成并质检',
-  });
-  if (!approved) return;
-  const buttons = matching(root, '[data-generate-panorama]', 'generatePanorama', world.id);
-  const statuses = matching(root, '[data-panorama-status]', 'panoramaStatus', world.id);
   if (plan.operation === 'reuse') {
     statuses.forEach(item => { item.className = 'scene-panorama-status is-ready'; item.textContent = '全景已就绪 · 3DoF'; });
     store?.load?.({ force: true });
@@ -77,6 +70,8 @@ export async function runPanoramaGeneration({ root, bundle, store, worldId } = {
 }
 
 export async function runPanoramaBatchGeneration({ root, bundle, store, button } = {}) {
+  const idleLabel = button?.textContent || '统一生成全部360全景';
+  if (button) { button.disabled = true; button.textContent = '正在准备…'; }
   let plan;
   try {
     plan = await request(`/api/new-story-ad/tasks/${encodeURIComponent(bundle.project.id)}/scene-assets/panoramas/plan`, {
@@ -84,15 +79,13 @@ export async function runPanoramaBatchGeneration({ root, bundle, store, button }
       timeoutMs: 30000,
     });
   } catch (error) {
+    if (button) { button.disabled = false; button.textContent = idleLabel; }
     return toast(`无法取得统一360调用计划：${error.message}`, 'danger');
   }
-  if (!Number(plan.scene_count || 0)) return toast('当前没有可生成360全景的场景主视图。', 'warning');
-  const blocked = Number(plan.blocked_count || 0);
-  const approved = await confirmDialog(
-    `将为 ${Number(plan.scene_count || 0)} 个场景生成或复用360全景，并逐一完成质量检查。${blocked ? `其中 ${blocked} 个待核对场景会先跳过，已有结果不会被覆盖。` : ''} 单个场景失败不会影响其他场景。`,
-    { title: '确认统一生成全部360全景', confirmText: '确认批量生成并质检' },
-  );
-  if (!approved) return;
+  if (!Number(plan.scene_count || 0)) {
+    if (button) { button.disabled = false; button.textContent = idleLabel; }
+    return toast('当前没有可生成360全景的场景主视图。', 'warning');
+  }
   if (button) { button.disabled = true; button.textContent = '统一360任务提交中…'; }
   try {
     await request(`/api/new-story-ad/tasks/${encodeURIComponent(bundle.project.id)}/scene-assets/panoramas`, {
@@ -114,7 +107,7 @@ export async function runPanoramaBatchGeneration({ root, bundle, store, button }
     store?.syncProgressPolling?.(true);
     toast('统一360任务已提交；系统会逐场景保存并继续，单个失败不会要求整批重来。', 'success');
   } catch (error) {
-    if (button) { button.disabled = false; button.textContent = '统一生成全部360全景'; }
+    if (button) { button.disabled = false; button.textContent = idleLabel; }
     toast(error.message, 'danger');
   }
 }

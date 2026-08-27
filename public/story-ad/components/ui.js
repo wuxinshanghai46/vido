@@ -177,12 +177,19 @@ export function generationProgressView(bundle = {}) {
   const stage = normalizeGenerationStage(progress.stage || project.active_stage || project.stage || 'full') || 'full';
   const checkpointRecovery = checkpointRecoveryView(bundle);
   const total = checkpointRecovery?.total || Math.max(1, Math.floor(Number(progress.target_total || progress.total || 1) || 1));
-  const completed = checkpointRecovery?.completed ?? Math.floor(Math.max(0, Math.min(total, Number(progress.completed ?? progress.processed ?? 0) || 0)));
+  const processed = checkpointRecovery?.completed ?? Math.floor(Math.max(0, Math.min(total, Number(progress.processed ?? progress.completed ?? 0) || 0)));
+  const failedCount = checkpointRecovery
+    ? Math.max(0, checkpointRecovery.total - checkpointRecovery.completed)
+    : Math.floor(Math.max(0, Math.min(processed, Number(progress.failed ?? progress.qa_failed ?? progress.units_failed ?? 0) || 0)));
+  const succeededCount = checkpointRecovery?.completed
+    ?? Math.floor(Math.max(0, Math.min(processed, Number.isFinite(Number(progress.succeeded))
+      ? Number(progress.succeeded)
+      : processed - failedCount)));
   const percent = checkpointRecovery
-    ? Math.round((completed / total) * 100)
+    ? Math.round((processed / total) * 100)
     : Math.max(0, Math.min(100, Number.isFinite(Number(progress.percent))
       ? Math.round(Number(progress.percent))
-      : Math.round((completed / total) * 100)));
+      : Math.round((processed / total) * 100)));
   const activeIndexes = Array.isArray(progress.active_indexes)
     ? progress.active_indexes.map(value => Math.round(Number(value) || 0)).filter(value => value > 0).slice(0, 8)
     : [];
@@ -212,7 +219,7 @@ export function generationProgressView(bundle = {}) {
   else if (currentIndex && ['storyboard', 'keyframes', 'video', 'media'].includes(stage)) liveText = `正在生成第 ${currentIndex} 镜`;
   else liveText = progress.phase ? String(progress.phase).replaceAll('_', ' ') : '正在处理';
   return {
-    active, failed, stage, stageLabel, unitLabel, total, completed, percent, liveText, failureTitle,
+    active, failed, stage, stageLabel, unitLabel, total, completed: processed, processed, succeededCount, failedCount, percent, liveText, failureTitle,
     lanes: progress.lanes && typeof progress.lanes === 'object' ? progress.lanes : null,
     message: failureCode === 'BLUEPRINT_POLISH_QUALITY_FAILED'
       ? blueprintQualityFailureMessage(failureText)
@@ -249,13 +256,17 @@ export function generationProgressPanel(bundle = {}, currentView = '') {
     const retained = laneRows || checkpointRows || recovery
       ? `<details class="project-progress-details"><summary>查看已保留内容</summary>${checkpointRows}${laneRows}${recovery && !view.checkpointRecovery?.retryBlocked ? `<div class="project-progress-foot">${recovery}</div>` : ''}</details>`
       : '';
+    const terminalCounts = view.failedCount > 0
+      ? `<span>处理 ${view.processed}/${view.total}：成功 ${view.succeededCount}，失败 ${view.failedCount}</span>`
+      : '';
     return `<section class="project-generation-progress is-failed is-terminal" role="alert">
-      <div class="project-progress-head"><div><b>${escapeHtml(view.failureTitle)}</b><span>${escapeHtml(view.liveText)}</span></div><span class="status-tag is-danger">已停止</span></div>
+      <div class="project-progress-head"><div><b>${escapeHtml(view.failureTitle)}</b><span>${escapeHtml(view.liveText)}</span>${terminalCounts}</div><span class="status-tag is-danger">已停止</span></div>
       ${retained}
     </section>`;
   }
+  const outcomeCounts = view.failedCount > 0 ? ` · 成功 ${view.succeededCount}，失败 ${view.failedCount}` : '';
   return `<section class="project-generation-progress ${view.failed ? 'is-failed' : ''}" role="status" aria-live="polite">
-    <div class="project-progress-head"><div><b>${escapeHtml(view.failed ? `${view.stageLabel}需要处理` : `正在生成${view.stageLabel}`)}</b><span>已完成 ${view.completed}/${view.total} ${escapeHtml(view.unitLabel)} · ${escapeHtml(view.liveText)}</span></div><span class="project-progress-stats">${elapsedTimeTag({ startedAt: view.startedAt, finishedAt: view.finishedAt, active: view.active })}<strong>${view.percent}%</strong></span></div>
+    <div class="project-progress-head"><div><b>${escapeHtml(view.failed ? `${view.stageLabel}需要处理` : `正在生成${view.stageLabel}`)}</b><span>处理进度 ${view.processed}/${view.total} ${escapeHtml(view.unitLabel)}${outcomeCounts} · ${escapeHtml(view.liveText)}</span></div><span class="project-progress-stats">${elapsedTimeTag({ startedAt: view.startedAt, finishedAt: view.finishedAt, active: view.active })}<strong>处理进度 ${view.percent}%</strong></span></div>
     <div class="project-progress-track" aria-hidden="true"><i style="width:${view.percent}%"></i></div>${laneRows}
     <div class="project-progress-foot"><small>${escapeHtml(view.message)}</small>${view.active ? `<button class="btn small danger" type="button" data-cancel-generation data-generation-id="${escapeHtml(view.generationId)}">停止生成</button>` : ''}</div>
   </section>`;

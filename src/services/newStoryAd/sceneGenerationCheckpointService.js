@@ -160,16 +160,11 @@ function hasUnknownBillingRisk(view = {}) {
     || view.error_code === 'PROVIDER_5XX_AMBIGUOUS';
 }
 
-function terminalSynchronousProviderFailure(view = {}) {
-  return view?.status === 'failed'
-    && view.error_code === 'PROVIDER_5XX_AMBIGUOUS'
-    && !String(view.provider_task_id || '').trim()
-    && !String(view.provider_request_id || '').trim()
-    && !viewUrl(view);
-}
-
 function requiresBillingReview(view = {}) {
-  return hasUnknownBillingRisk(view) && !terminalSynchronousProviderFailure(view);
+  // Absence of a provider handle is not evidence that a synchronous 5xx was not
+  // accepted or billed. Only an explicit not-submitted/not-billed result may
+  // bypass review; those states do not satisfy hasUnknownBillingRisk().
+  return hasUnknownBillingRisk(view);
 }
 
 function retryReviewKey(taskId = '', sceneId = '', viewKey = '') {
@@ -437,6 +432,12 @@ function markFailed(checkpoint = {}, viewKey = '', error = null, budget = null) 
     provider_submission_state: String(error?.providerSubmissionState || error?.provider_submission_state || (billingState === 'unknown' ? 'submitted_unknown' : '')),
     provider_request_id: String(error?.providerRequestId || error?.provider_request_id || '').slice(0, 180),
     provider_task_id: providerTaskId.slice(0, 180),
+    provider_id: String(error?.providerId || error?.provider_id || '').slice(0, 120),
+    model_id: String(error?.modelId || error?.model_id || '').slice(0, 160),
+    provider_status: String(error?.providerStatus || error?.provider_status || '').slice(0, 60),
+    provider_reason: String(error?.providerReason || error?.provider_reason || '').slice(0, 240),
+    provider_error_code: String(error?.providerErrorCode || error?.provider_error_code || '').slice(0, 120),
+    platform_request_id: String(error?.platformRequestId || error?.platform_request_id || error?.submissionId || error?.submission_id || '').slice(0, 120),
     failed_at: nowIso(),
     updated_at: nowIso(),
   };
@@ -565,7 +566,6 @@ module.exports = {
   markReviewRequired,
   cleanupUnpublishedFiles,
   hasUnknownBillingRisk,
-  terminalSynchronousProviderFailure,
   requiresBillingReview,
   retryReviewKey,
   hasRetryAuthorization,

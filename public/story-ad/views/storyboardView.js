@@ -1,7 +1,6 @@
-import { request } from '../api.js?v=20260827-production-v237c';
-import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260827-production-v237c';
-import { bindMediaLightbox } from './mediaLightbox.js?v=20260827-production-v237c';
-import { confirmDialog } from '../components/dialog.js?v=20260827-production-v237c';
+import { request } from '../api.js?v=20260827-production-v238';
+import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260827-production-v238';
+import { bindMediaLightbox } from './mediaLightbox.js?v=20260827-production-v238';
 
 export function friendlyBindings(bundle = {}, shot = {}) {
   const assets = bundle.assets || {};
@@ -167,7 +166,7 @@ function sketchGateReason(gate = {}, fallback = '文字分镜审核通过后才�
 
 export async function mount(host, context) {
   if (context.route?.params?.get('stage') === 'shot') {
-    const shotDesigner = await import('./shotDesignerView.js?v=20260827-production-v237c');
+    const shotDesigner = await import('./shotDesignerView.js?v=20260827-production-v238');
     return shotDesigner.mount(host, context);
   }
   const { bundle, store } = context;
@@ -261,9 +260,6 @@ export async function mount(host, context) {
   host.querySelector('[data-generate-storyboard]')?.addEventListener('click', event => generateStoryboard(event.currentTarget));
   host.querySelector('[data-empty-action="generate-storyboard"]')?.addEventListener('click', event => generateStoryboard(event.currentTarget));
   host.querySelector('[data-regenerate-storyboard]')?.addEventListener('click', async event => {
-    if (!await confirmDialog(`将一次性重新生成 ${shots.length} 镜文字分镜。已手动编辑的内容可能被新版覆盖，旧线稿和下游结果会按版本失效。`, {
-      title: '批量重生成文字分镜', confirmText: '确认批量生成',
-    })) return;
     await generateStoryboard(event.currentTarget);
   });
   host.querySelector('[data-open-sketches]')?.addEventListener('click', () => host.querySelector('[data-board-tab="sketches"]')?.click());
@@ -327,12 +323,6 @@ export async function mount(host, context) {
   batchButton?.addEventListener('click', async event => {
     const regenerateAll = event.currentTarget.dataset.regenerateAll === 'true';
     const targetCount = regenerateAll ? shots.length : missingSketchCount;
-    const confirmBody = regenerateAll
-      ? `将按已审核通过的文字分镜一次性重新生成 ${targetCount} 张线稿，每镜调用一次 gpt-image-2，并覆盖现有线稿。人物、商品与场景参考图会重新绑定。`
-      : `将按文字分镜顺序一次性生成 ${targetCount} 张缺失线稿，每镜调用一次 gpt-image-2。已存在的线稿不会重复生成；失败后重试只补缺失项。`;
-    if (!await confirmDialog(confirmBody, {
-      title: regenerateAll ? '批量重生成全部线稿' : '批量生成线稿', confirmText: `确认生成 ${targetCount} 张`,
-    })) return;
     const button = event.currentTarget;
     try {
       batchFinalizing = false;
@@ -483,10 +473,6 @@ export async function mount(host, context) {
       }
     });
     card.querySelector('[data-generate-sketch]').addEventListener('click', async event => {
-      if (!await confirmDialog(`将为镜头 ${shotIndex} 调用一次图片生成，用于低成本线稿确认。`, {
-        title: '生成镜头线稿',
-        confirmText: '确认生成',
-      })) return;
       const button = event.currentTarget;
       try {
         setButtonBusy(button, true, '生成中…', { elapsed: true });

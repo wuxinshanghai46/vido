@@ -23,6 +23,6 @@ const source = fs.readFileSync(path.resolve(__dirname, '../src/services/newStory
 const genericStart = source.indexOf(': (async () => {');
 assert(genericStart > 0);
 const genericBlock = source.slice(genericStart, source.indexOf('})(),', genericStart) + 5);
-assert(genericBlock.indexOf('notifyGenerationObserver(onSubmitting') < genericBlock.indexOf('client.images.generate'));
-assert(genericBlock.indexOf('client.images.generate') < genericBlock.indexOf('notifyGenerationObserver(onSubmitted'));
+assert(genericBlock.indexOf('observeSubmitting') < genericBlock.indexOf('client.images.generate'));
+assert(genericBlock.indexOf('client.images.generate') < genericBlock.indexOf('observeSubmitted'));
 console.log(JSON.stringify({ passed: true, exact_provider_model_route_preserved: true, exact_route_fails_closed: true, generic_submission_audited_before_network: true }));

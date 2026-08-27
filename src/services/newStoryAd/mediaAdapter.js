@@ -57,7 +57,11 @@ function stageCandidates(stage) {
   }
   const configured = pipeline.pickAllEnabled(configStage);
   const defaults = (pipeline.getStageDefaults(configStage) || []).filter(x => x.enabled !== false);
-  return pipeline.hasStageConfig(configStage) ? configured : defaults;
+  const routed = pipeline.hasStageConfig(configStage) ? configured : defaults;
+  // Pipeline routing and provider credentials are stored independently. Build the
+  // executable image route once, here, so logs, preferred selection and the
+  // adapter invocation cannot disagree about a disabled or credential-less route.
+  return routed.filter(model => modelGateway.isConfiguredAndUsable(model, 'image').ok);
 }
 
 function modelKey(model = {}) {
@@ -1115,7 +1119,8 @@ async function generateImage({
   const error = new Error(uncertainAttempt
     ? '当前图片任务已停止；已生成资产均已保留。提交或计费状态需要管理员核对，确认前不能安全重试。'
     : `图片生成未完成；已生成资产均已保留。${errors.some(item => item.retryable) ? '可以稍后安全重试。' : '请修改生成要求或联系管理员核对。'}`);
-  error.code = errors.some(item => item.retryable) ? 'IMAGE_ATTEMPTS_EXHAUSTED' : (errors[0]?.code || 'IMAGE_MODEL_UNAVAILABLE');
+  error.code = uncertainAttempt?.code
+    || (errors.some(item => item.retryable) ? 'IMAGE_ATTEMPTS_EXHAUSTED' : (errors[0]?.code || 'IMAGE_MODEL_UNAVAILABLE'));
   error.retryable = errors.some(item => item.retryable);
   error.attempts = errors;
   const uncertain = errors.find(item => item.billing_state === 'unknown' || item.provider_submission_state === 'submitted_unknown' || item.code === 'PROVIDER_5XX_AMBIGUOUS');
@@ -1124,6 +1129,13 @@ async function generateImage({
     error.providerSubmissionState = uncertain.provider_submission_state || 'submitted_unknown';
     error.providerRequestId = uncertain.provider_request_id || '';
     error.providerTaskId = uncertain.provider_task_id || '';
+    const [providerId = '', modelId = ''] = String(uncertain.model || '').split('/', 2);
+    error.providerId = providerId;
+    error.modelId = modelId;
+    error.providerStatus = uncertain.provider_status || '';
+    error.providerReason = uncertain.provider_reason || '';
+    error.providerErrorCode = uncertain.provider_error_code || '';
+    error.platformRequestId = String(clientRequestId || '').slice(0, 100);
   }
   error.generationId = String(generationId || '').slice(0, 100);
   error.submissionId = String(clientRequestId || '').slice(0, 100);

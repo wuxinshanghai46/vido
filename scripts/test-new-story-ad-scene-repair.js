@@ -579,10 +579,19 @@ async function main() {
     sceneSpace.analyzeSceneViews = async () => {
       throw new SyntaxError('Unexpected end of JSON input');
     };
-    const unavailableResult = await sceneAssets.repairSceneAsset(unavailableTaskId, unavailableSceneId, {
-      scene_spec: sceneSpec,
-      aspect_ratio: '16:9',
-    });
+    let unavailableResult;
+    try {
+      await sceneAssets.repairSceneAsset(unavailableTaskId, unavailableSceneId, {
+        scene_spec: sceneSpec,
+        aspect_ratio: '16:9',
+      });
+      assert.fail('QA unavailable must not report the paid image revision as a successful scene stage');
+    } catch (error) {
+      assert.equal(error.code, 'SCENE_VISUAL_QA_UNAVAILABLE');
+      assert.equal(error.retryable, true);
+      assert(error.scene_asset, 'the rejected stage must still return the persisted paid image revision for recovery');
+      unavailableResult = error;
+    }
     assert.equal(calls.length, 2, 'the failed reverse view should be generated exactly once before QA fails');
     assert.equal(unavailableResult.scene_asset.scene_revision, 2);
     assert.equal(unavailableResult.scene_asset.scene_contract.qa_unavailable, true);

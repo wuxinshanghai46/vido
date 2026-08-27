@@ -12,11 +12,19 @@ const read = file => fs.readFileSync(path.join(root, file), 'utf8');
 
 function fixtureScene(id, suffix, options = {}) {
   const keys = options.keys || ['master', 'reverse', 'interaction', 'detail', 'layout'];
+  const rejected = options.locked === false;
   return {
     scene_id: id,
     name: `场景${suffix}`,
     view_images: keys.map(key => ({ key, image_url: `/${suffix}-${key}.png` })),
     failed_view_keys: options.failed || [],
+    view_statuses: options.failed?.length ? {
+      interaction: {
+        state: 'billing_review', status: 'failed', error_code: 'PROVIDER_5XX_AMBIGUOUS',
+        provider_id: 'webang-maas', model_id: 'gpt-image-2', provider_status: '504',
+        platform_request_id: 'scene_request_fixture', provider_submission_state: 'submitted_unknown', billing_state: 'unknown',
+      },
+    } : {},
     requested_prop_placements: [{ id: `prop-${suffix}`, label: `道具${suffix}`, detail: `只属于${suffix}` }],
     surface_topology: { mode: 'segmented', notes: `表面${suffix}` },
     material_contract: { primary: `材质${suffix}` },
@@ -27,9 +35,22 @@ function fixtureScene(id, suffix, options = {}) {
       materials: [`材质证据${suffix}`],
       lighting: { direction: `灯光${suffix}` },
       layout_contract: { reference_image_url: `/${suffix}-layout.png` },
-      requirement_qa: { pass: options.locked !== false, mismatch_reasons: options.locked === false ? [`冲突${suffix}`] : [] },
+      requirement_qa: { pass: !rejected, mismatch_reasons: rejected ? [`需求冲突${suffix}`] : [] },
       cross_view_qa: { pass: options.locked !== false },
+      camera_design_qa: { pass: !rejected, reasons: rejected ? [`机位原因${suffix}`] : [] },
+      photographic_realism_qa: { pass: !rejected, mismatch_reasons: rejected ? [`真实性原因${suffix}`] : [] },
     },
+    repair_plan: rejected ? {
+      version: 5,
+      action: 'regenerate_failed_views',
+      view_keys: ['interaction'],
+      view_labels: ['互动区域'],
+      count: 1,
+      provider_image_call_count: 1,
+      reasons: [`逐图证据${suffix}`],
+      issue_codes: ['INTERACTION_ZONE_MISMATCH'],
+      message: '仅重做有证据的失败视图。',
+    } : null,
   };
 }
 
@@ -60,11 +81,19 @@ function testProjectionAndIsolation() {
   assert(scenes[0].scene_card.surface_topology.some(row => /表面a|segmented/.test(`${row.label}${row.detail}`)));
   assert(scenes[0].scene_card.qa_checks.some(row => row.label === '空间锁' && row.pass === true));
   assert(scenes[1].scene_card.qa_checks.some(row => row.label === '空间锁' && row.pass === false));
+  assert(scenes[1].scene_card.qa_checks.some(row => row.label === '机位设计' && row.reasons.includes('机位原因b')), '逐项 QA 原因必须保留在场景卡投影中');
+  assert(scenes[1].qa.reasons.includes('机位原因b') && scenes[1].qa.reasons.includes('真实性原因b'), 'QA 汇总不得丢失机位与摄影真实性原因');
+  assert.deepEqual(scenes[1].repair_plan.reasons, ['逐图证据b'], '修复依据必须投影给前端，不能只显示泛化失败状态');
+  assert.deepEqual(scenes[1].repair_plan.issue_codes, ['INTERACTION_ZONE_MISMATCH']);
+  assert.equal(scenes[1].repair_plan.provider_image_call_count, 1, '修复预计图片调用数必须可核对');
   assert.deepEqual(scenes[0].shot_refs, ['SH-A']);
   assert.deepEqual(scenes[1].shot_refs, ['SH-B']);
   assert(!JSON.stringify(scenes[0]).includes('只属于b'), '多场景资产不得串用');
   assert(!JSON.stringify(scenes[1]).includes('只属于a'), '多场景资产不得串用');
   assert.deepEqual(scenes[1].failed_view_keys, ['interaction']);
+  assert.equal(scenes[1].view_statuses.interaction.provider_id, 'webang-maas', '失败视图必须投影供应商而不是只显示泛化失败');
+  assert.equal(scenes[1].view_statuses.interaction.http_status, '504');
+  assert.equal(scenes[1].view_statuses.interaction.platform_request_id, 'scene_request_fixture');
   assert.match(scenes[0].generation_prompt, /场景：场景A[\s\S]*空间结构：布局A[\s\S]*视觉风格：/, '场景卡必须直接提供可核对的结构化生图提示词');
   assert.equal(scenes[0].generation_prompt_source, 'scene_plan_compiled');
 }
@@ -91,6 +120,7 @@ function testUiAndExportBoundaries() {
   const assetCenter = read('public/story-ad/views/assetCenterView.js');
   const sceneWorldPage = read('public/story-ad/views/sceneWorldPage.js');
   const scenePromptPreview = read('public/story-ad/views/scenePromptPreview.js');
+  const sceneCardInteractions = read('public/story-ad/views/sceneCardInteractions.js');
   const scenePromptEditor = read('public/story-ad/views/scenePromptEditor.js');
   const details = read('public/story-ad/views/assetCenterPlanningDetails.js');
   const world = read('public/story-ad/views/sceneWorldView.js');
@@ -101,13 +131,16 @@ function testUiAndExportBoundaries() {
 
   assert(card.includes("['master', 'reverse', 'interaction', 'detail', 'layout']"), '场景档案必须固定五类证据槽位');
   assert(card.includes('视图齐全，QA 未通过') && card.includes('QA 已通过并锁定'), '五张图片齐全与 QA 放行状态必须明确区分');
+  assert(card.includes('scene-cover-runtime-failure') && card.includes('平台请求：'), '场景摘要必须展示脱敏供应商、HTTP与平台请求诊断');
   assert(card.includes('usedUrls.has(url)') && card.includes('没有使用其他视图冒充'), '同一图片不得跨槽复用');
   assert(card.includes("import('./sceneDossierExport.js"), '高清导出必须按需加载');
   assert(assetCenter.includes("group === 'scenes' ? sceneDetail") && scenePromptPreview.includes('data-enter-scene-world='), '场景摘要与顶部进入场景入口必须同时存在，并由独立场景流程承载');
   assert(!sceneWorldPage.includes('scene-advanced-details') && world.includes("host.querySelectorAll('[data-enter-scene-world]')"), '场景世界必须由卡片顶部入口以弹窗打开，不得保留底部内联展开区');
   assert(!assetCenter.includes('data-generate-scene='), '资产中心不得继续保留场景生成入口');
   const sceneWorldModules = `${sceneWorldPage}\n${scenePromptPreview}`;
-  assert(sceneWorldModules.includes('data-generate-scene=') && sceneWorldModules.includes('data-scene-detail-tab="prompt"'), '场景生成与提示词核对必须归属场景页模块');
+  assert(scenePromptPreview.includes('data-${productionAction.kind}-scene=')
+    && sceneCardInteractions.includes("host.querySelectorAll('[data-generate-scene]')")
+    && sceneWorldModules.includes('data-scene-detail-tab="prompt"'), '场景生成、复验、修复与提示词核对必须归属场景页模块');
   assert.match(scenePromptPreview, /generationStarted \? 'images' : 'prompt'/u, '未生图场景默认提示词，已有或生成中的场景默认画面');
   assert.match(scenePromptPreview, /data-default-scene-tab/u, '场景卡必须显式投影默认标签页');
   assert(scenePromptPreview.includes('normalizeSceneDossier(scene).completed'), '场景卡计数必须按五类语义槽去重，不能重复计算相机投影');

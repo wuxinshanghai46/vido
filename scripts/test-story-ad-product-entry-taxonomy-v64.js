@@ -37,6 +37,7 @@ vm.runInNewContext(`${billingBindingSource}\nglobalThis.__bindSubjectBillingReco
 const realBindSubjectBillingRecovery = billingBindingSandbox.__bindSubjectBillingRecovery;
 const billingRecoveryBindings = [];
 let subjectConfirmationCalls = 0;
+let subjectStageCalls = 0;
 const sandbox = {
   __loadAssetCheckpointRecovery: async () => ({
     checkpointRecoverySummary: () => ({ completed: 0, total: 0, missing: [], retry_blocked: false }),
@@ -49,7 +50,7 @@ const sandbox = {
   escapeHtml,
   setButtonBusy() {},
   toast() {},
-  confirmDialog: async message => { subjectConfirmationCalls += 1; assert.equal(message, '本次会生成完整人物、穿搭配饰、随身物、动作表情。'); return false; },
+  confirmDialog: async () => { subjectConfirmationCalls += 1; return false; },
   openActorLibrary() {},
   openRealPersonFlow() {},
   authorizeBillingReviews: async () => {},
@@ -147,7 +148,7 @@ async function render(contentMode, products = [], { includePerson = true } = {})
     assets: { people: includePerson ? [person()] : [], animals: [], products, logos: [], scenes: [] },
   };
   await sandbox.__tested.mount(host, {
-    store: { runStage: async () => {}, updateRequest: async () => bundle },
+    store: { runStage: async path => { if (path === 'person-plan') subjectStageCalls += 1; }, updateRequest: async () => bundle },
     bundle, refreshShell: async () => {}, refreshCurrentView: async () => {}, navigate() {},
   });
   return { html: host.innerHTML, host, filters, sections, controls };
@@ -178,7 +179,8 @@ function viewHead(html) {
   const subjectButton = narrativeResult.controls.get('[data-generate-subject-assets]');
   assert(subjectButton, '人物主按钮必须完成真实事件绑定');
   await subjectButton.click();
-  assert.equal(subjectConfirmationCalls, 1, '点击人物主按钮必须进入确认框，不能因未定义的恢复状态静默失败');
+  assert.equal(subjectConfirmationCalls, 0, '普通人物生成不得再次弹确认框');
+  assert.equal(subjectStageCalls, 1, '点击人物主按钮必须直接提交一次生成任务');
 
   const narrativeNoAssets = (await render('narrative_story', [], { includePerson: false })).html;
   assert.match(narrativeNoAssets, /当前项目还没有可用资产/, '剧情总资产为0时必须保留正常空状态');
