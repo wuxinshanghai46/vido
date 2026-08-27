@@ -40,6 +40,22 @@ assert.deepEqual(
   '家庭电脑的角色库只读投影和交互测试必须走工作台 UI 定向门禁，不得误触资产方案生成或完整回归',
 );
 assert.equal(plan(['src/services/newStoryAd/referenceVideoUploadService.js']).profile, 'upload_media');
+const sceneRecoveryPlan = planner.createPlan({
+  root: process.cwd(), baseRevision: 'a'.repeat(40), targetRevision: 'b'.repeat(40), sourceTree: 'c'.repeat(40),
+  files: [
+    'src/services/newStoryAd/sceneCheckpointProjectionService.js',
+    'src/services/newStoryAd/sceneSpaceContractService.js',
+    'src/services/newStoryAd/taskViewService.js',
+    'src/services/storyAdWorkspace/sceneAssetRuntimeProjectionService.js',
+    'scripts/inspect-prod-story-ad-scene-recovery.js',
+    'scripts/test-story-ad-scene-qa-actions-v238.js',
+    'scripts/test-story-ad-scene-recovery-v239.js',
+    'scripts/test-visual-asset-recovery-v50.js',
+  ],
+  reliable: true, targetedHome: true,
+});
+assert.equal(sceneRecoveryPlan.unknown_files.length, 0, '场景修复、QA证据和诊断投影必须归入定向门禁，不能误触家庭电脑完整回归');
+assert.deepEqual(sceneRecoveryPlan.gates.map(row => row.id), ['upload_media', 'workspace_ui', 'release_core']);
 assert.equal(plan(['src/services/newStoryAd/blueprintQualityService.js']).profile, 'story_content');
 assert.deepEqual(plan(['src/services/newStoryAd/blueprintQualityService.js']).gates.map(row => row.id), ['story_content', 'workspace_ui', 'release_core']);
 assert.equal(plan(['src/services/newStoryAd/storyboardTableService.js', 'src/services/newStoryAd/referenceDetachService.js']).profile, 'reference_story_content');

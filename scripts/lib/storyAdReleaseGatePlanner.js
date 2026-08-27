@@ -113,8 +113,10 @@ const DOMAIN_RULES = [
     patterns: [
       /(?:upload|multipart|mediaAdapter|mediaCatalog|fileStorage|videoAnalysis)/i,
       /^scripts\/test-new-story-ad-visual-asset-failure-recovery\.js$/i,
-      /^src\/services\/newStoryAd\/(?:sceneAssetService|scenePanoramaService)\.js$/i,
+      /^src\/services\/newStoryAd\/(?:sceneAssetService|scenePanoramaService|sceneCheckpointProjectionService|sceneSpaceContractService)\.js$/i,
+      /^src\/services\/storyAdWorkspace\/sceneAssetRuntimeProjectionService\.js$/i,
       /^scripts\/test-new-story-ad-(?:duration-contract|multi-space-cast-recovery|panorama|scene-atlas-v7|scene-repair|spatial-generation-order|verification-lifecycle)\.js$/i,
+      /^scripts\/(?:inspect-prod-story-ad-scene-recovery|test-story-ad-scene-recovery-v239|test-visual-asset-recovery-v50)\.js$/i,
     ],
   },
   {
@@ -146,6 +148,8 @@ const DOMAIN_RULES = [
       /^src\/services\/newStoryAd\/briefDialogueHistoryService\.js$/,
       /^scripts\/test-story-ad-historical-asset-actions-v61\.js$/,
       /^scripts\/test-story-ad-scene-card-v66\.js$/i,
+      /^scripts\/test-story-ad-scene-qa-actions-v238\.js$/i,
+      /^src\/services\/newStoryAd\/taskViewService\.js$/i,
       /^src\/routes\/assets\.js$/i,
       /^scripts\/test-story-ad-(?:asset-center-person-provider|character-library)/i,
     ],

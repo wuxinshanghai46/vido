@@ -57,14 +57,16 @@ for (const registration of registrations) {
   cursor = registration.index;
 }
 routeSignatures.push(...rootRoutes.filter(item => item.index > cursor).map(item => item.signature));
-assert.equal(routeSignatures.length, 89,
-  '当前 89 个权威路由必须包含参考链接重新导入、逐场景提示词编辑与确认，不能丢失或重复其它路由');
+assert.equal(routeSignatures.length, 90,
+  '当前 90 个权威路由必须包含统一场景修复入口、参考链接重新导入、逐场景提示词编辑与确认，不能丢失或重复其它路由');
 assert.equal(routeSignatures.filter(value => value === 'PUT /tasks/:id/scene-prompts/:sceneId').length, 1,
   '逐场景提示词编辑路由必须且只能注册一次');
 assert.equal(routeSignatures.filter(value => value === 'POST /tasks/:id/scene-prompts/:sceneId/confirm').length, 1,
   '逐场景提示词确认路由必须且只能注册一次');
 assert.equal(routeSignatures.filter(value => value === 'POST /reference-video-analyses/:analysisId/reimport').length, 1,
   '超大参考链接恢复入口必须且只能注册一次');
+assert.equal(routeSignatures.filter(value => value === 'POST /tasks/:id/scene-assets/:sceneId/fix').length, 1,
+  '统一场景定位、修复与自动复核入口必须且只能注册一次');
 const singleRetry = 'POST /tasks/:id/visual-assets/retry-authorization';
 const batchRetry = 'POST /tasks/:id/visual-assets/retry-authorizations';
 const billingReviews = 'GET /tasks/:id/visual-assets/billing-reviews';
@@ -83,7 +85,7 @@ assert.equal(routeSignatures.filter(value => value === 'POST /tasks/:id/producti
   '统一制作图谱执行路由必须且只能注册一次');
 assert.equal(
   crypto.createHash('sha256').update(JSON.stringify(routeSignatures)).digest('hex'),
-  'd124c99988b95aede843454c95dbd1cedc24f4c88f65c639d811ee835b7fd130',
+  'dce8e50daa253cd80767ac10277373cf2c4a827d33781628e37c6bc7d946dfc1',
   '当前合并路由方法、路径及注册顺序必须与审计签名一致',
 );
 
@@ -126,5 +128,5 @@ console.log(JSON.stringify({
   full_platform_gates: fullPlatformGates,
   route_lines: lines,
   root_route_count: routeSignatures.length,
-  route_signature_sha256: 'd124c99988b95aede843454c95dbd1cedc24f4c88f65c639d811ee835b7fd130',
+  route_signature_sha256: 'dce8e50daa253cd80767ac10277373cf2c4a827d33781628e37c6bc7d946dfc1',
 }));
