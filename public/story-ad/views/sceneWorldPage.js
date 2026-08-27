@@ -1,8 +1,8 @@
-import { renderSceneWorldWorkspace, bindSceneWorldWorkspace } from './sceneWorldView.js?v=20260827-production-v233d';
-import { setButtonBusy, toast } from '../components/ui.js?v=20260827-production-v233d';
-import { bindScenePlanUpdate, scenePlanBlockedView } from './scenePlanStatus.js?v=20260827-production-v233d';
-import { renderSceneProductionCard, scenePromptPreviewMarkup, scenePromptPreviewState, startInitialScenePlan } from './scenePromptPreview.js?v=20260827-production-v233d';
-import { sceneNeedsGeneration } from './sceneDossierCard.js?v=20260827-production-v233d';
+import { renderSceneWorldWorkspace, bindSceneWorldWorkspace } from './sceneWorldView.js?v=20260827-production-v233e';
+import { setButtonBusy, toast } from '../components/ui.js?v=20260827-production-v233e';
+import { bindScenePlanUpdate, scenePlanBlockedView } from './scenePlanStatus.js?v=20260827-production-v233e';
+import { renderSceneProductionCard, scenePromptPreviewMarkup, scenePromptPreviewState, startInitialScenePlan } from './scenePromptPreview.js?v=20260827-production-v233e';
+import { sceneNeedsGeneration } from './sceneDossierCard.js?v=20260827-production-v233e';
 
 export async function mount(host, context) {
   const { bundle, store } = context;
@@ -30,7 +30,7 @@ export async function mount(host, context) {
     ${scenes.length && (workflow.generated_count || 0) > 0 ? `<details class="scene-advanced-details"><summary>查看空间、机位与人物关系</summary>${renderSceneWorldWorkspace(bundle)}</details>` : ''}`;
 
   bindScenePlanUpdate(host, context);
-  const cleanupSceneCards = (await import('./sceneCardInteractions.js?v=20260827-production-v233d')).bindSceneCards(host, context);
+  const cleanupSceneCards = (await import('./sceneCardInteractions.js?v=20260827-production-v233e')).bindSceneCards(host, context);
   if (preview.autoInitialize) startInitialScenePlan(bundle, store);
   if (scenes.length && (workflow.generated_count || 0) > 0) bindSceneWorldWorkspace(host, bundle, store);
   host.querySelector('[data-confirm-scenes]')?.addEventListener('click', async event => {
