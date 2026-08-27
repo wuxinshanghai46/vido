@@ -73,19 +73,27 @@ async function testRollingPoolRefillsFreedSlot() {
   const events = [];
   let active = 0;
   let peak = 0;
-  const schedule = await scheduler.runSchedule({
+  let releaseSlowWorker;
+  const slowWorker = new Promise(resolve => { releaseSlowWorker = resolve; });
+  const schedulePromise = scheduler.runSchedule({
     indexes: [0, 1, 2, 3],
     concurrency: 2,
     worker: async index => {
       events.push(`start:${index}`);
       active += 1;
       peak = Math.max(peak, active);
-      await delay(index === 1 ? 55 : 8);
+      if (index === 1) await slowWorker;
+      else await delay(2);
       active -= 1;
       events.push(`end:${index}`);
       return { index, usable: true };
     },
   });
+  const deadline = Date.now() + 2000;
+  while (!events.includes('start:3') && Date.now() < deadline) await delay(2);
+  assert(events.includes('start:3'), '调度器应在慢任务释放前连续补满空闲槽位');
+  releaseSlowWorker();
+  const schedule = await schedulePromise;
   assert.strictEqual(peak, 2);
   assert(events.indexOf('start:2') > events.indexOf('end:0'), '空闲槽位应由下一镜补入');
   assert(events.indexOf('start:2') < events.indexOf('end:1'), '不得等待同批慢任务完成后再补位');
