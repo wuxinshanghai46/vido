@@ -1,7 +1,7 @@
-import { setButtonBusy, toast } from '../components/ui.js?v=20260827-production-v236c';
-import { confirmBillingAwareAction } from './assetCenterBillingRetry.js?v=20260827-production-v236c';
-import { sceneNeedsGeneration } from './sceneDossierCard.js?v=20260827-production-v236c';
-import { sceneGenerationSettingsMarkup } from './sceneDossierCardSettings.js?v=20260827-production-v236c';
+import { setButtonBusy, toast } from '../components/ui.js?v=20260827-production-v236d';
+import { confirmBillingAwareAction } from './assetCenterBillingRetry.js?v=20260827-production-v236d';
+import { sceneNeedsGeneration } from './sceneDossierCard.js?v=20260827-production-v236d';
+import { sceneGenerationSettingsMarkup } from './sceneDossierCardSettings.js?v=20260827-production-v236d';
 
 export function bindSceneCards(host, context) {
   const editorControllers = new Map(); const editorPromises = new Map();
@@ -21,7 +21,7 @@ export function bindSceneCards(host, context) {
   host.querySelectorAll('[data-scene-card]').forEach(card => {
     card.querySelector('[data-generate-scene]')?.insertAdjacentHTML('beforebegin', sceneGenerationSettingsMarkup());
     switchTab(card, recalledTab(tabKey(card.dataset.sceneId || '')) || card.dataset.defaultSceneTab || 'prompt', false);
-    const promise = import('./scenePromptEditor.js?v=20260827-production-v236c').then(module => {
+    const promise = import('./scenePromptEditor.js?v=20260827-production-v236d').then(module => {
       const controller = module.bindScenePromptEditor(card, context);
       if (controller) editorControllers.set(card.dataset.sceneId || '', controller);
       return controller;
