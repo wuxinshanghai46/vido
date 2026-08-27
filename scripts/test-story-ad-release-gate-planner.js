@@ -48,6 +48,7 @@ const sceneRecoveryPlan = planner.createPlan({
     'src/services/newStoryAd/sceneSpaceContractService.js',
     'src/services/newStoryAd/taskViewService.js',
     'src/services/storyAdWorkspace/sceneAssetRuntimeProjectionService.js',
+    'src/services/storyAdWorkspace/sceneQaProjectionService.js',
     'scripts/inspect-prod-story-ad-scene-recovery.js',
     'scripts/test-story-ad-scene-qa-actions-v238.js',
     'scripts/test-story-ad-scene-recovery-v239.js',

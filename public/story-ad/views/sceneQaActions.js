@@ -1,5 +1,5 @@
-import { setButtonBusy, toast } from '../components/ui.js?v=20260828-production-v239b';
-import { authorizeBillingReviews } from './assetCenterBillingRetry.js?v=20260828-production-v239b';
+import { setButtonBusy, toast } from '../components/ui.js?v=20260828-production-v239c';
+import { authorizeBillingReviews } from './assetCenterBillingRetry.js?v=20260828-production-v239c';
 
 export async function submitSceneFix({ context, controllerFor, cardFor, scene, button, refresh = true }) {
   const sceneId = String(scene.id || scene.scene_id || '');

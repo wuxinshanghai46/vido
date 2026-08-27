@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260828-production-v239b';
-import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260828-production-v239b';
-import { bindMediaLightbox } from './mediaLightbox.js?v=20260828-production-v239b';
+import { request } from '../api.js?v=20260828-production-v239c';
+import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260828-production-v239c';
+import { bindMediaLightbox } from './mediaLightbox.js?v=20260828-production-v239c';
 
 export function friendlyBindings(bundle = {}, shot = {}) {
   const assets = bundle.assets || {};
@@ -166,7 +166,7 @@ function sketchGateReason(gate = {}, fallback = '文字分镜审核通过后才�
 
 export async function mount(host, context) {
   if (context.route?.params?.get('stage') === 'shot') {
-    const shotDesigner = await import('./shotDesignerView.js?v=20260828-production-v239b');
+    const shotDesigner = await import('./shotDesignerView.js?v=20260828-production-v239c');
     return shotDesigner.mount(host, context);
   }
   const { bundle, store } = context;

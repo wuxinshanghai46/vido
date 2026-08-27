@@ -114,7 +114,7 @@ const DOMAIN_RULES = [
       /(?:upload|multipart|mediaAdapter|mediaCatalog|fileStorage|videoAnalysis)/i,
       /^scripts\/test-new-story-ad-visual-asset-failure-recovery\.js$/i,
       /^src\/services\/newStoryAd\/(?:sceneAssetService|sceneAssetFixService|scenePanoramaService|sceneCheckpointProjectionService|sceneSpaceContractService)\.js$/i,
-      /^src\/services\/storyAdWorkspace\/sceneAssetRuntimeProjectionService\.js$/i,
+      /^src\/services\/storyAdWorkspace\/(?:sceneAssetRuntimeProjectionService|sceneQaProjectionService)\.js$/i,
       /^scripts\/test-new-story-ad-(?:duration-contract|multi-space-cast-recovery|panorama|scene-atlas-v7|scene-repair|spatial-generation-order|verification-lifecycle)\.js$/i,
       /^scripts\/(?:inspect-prod-story-ad-scene-recovery|test-story-ad-scene-recovery-v239|test-visual-asset-recovery-v50)\.js$/i,
     ],
