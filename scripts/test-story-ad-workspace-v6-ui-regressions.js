@@ -528,6 +528,10 @@ const personVoiceModule = loadBrowserModule(
   ['renderPersonVoiceBinding'],
   { escapeHtml },
 );
+const personGenerationSettingsModule = loadBrowserModule(
+  'public/story-ad/views/assetCenterPlanningDetailsGenerationSettings.js',
+  ['personGenerationSettingsControls'],
+);
 const assetModule = loadBrowserModule(
   'public/story-ad/views/assetCenterView.js',
   ['assetCard', 'personAssetState', 'subjectNeedsGeneration', 'sceneNeedsGeneration', 'subjectGenerationPayload', 'profileDetails'],
@@ -536,7 +540,7 @@ const assetModule = loadBrowserModule(
 const personFormModule = loadBrowserModule(
   'public/story-ad/views/assetCenterPersonForm.js',
   ['personEditForm'],
-  { escapeHtml, ...personLookModule, ...assetPersonStateModule, ...personVoiceModule, renderPersonEvolutionEditor() { return ''; } },
+  { escapeHtml, ...personLookModule, ...assetPersonStateModule, ...personVoiceModule, ...personGenerationSettingsModule, renderPersonEvolutionEditor() { return ''; } },
 );
 const uiModule = loadBrowserModule(
   'public/story-ad/components/ui.js',
