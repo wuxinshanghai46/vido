@@ -1,4 +1,4 @@
-import { escapeHtml, mediaPreview } from '../components/ui.js?v=20260827-production-v234';
+import { escapeHtml, mediaPreview } from '../components/ui.js?v=20260827-production-v234a';
 
 const labels = {
   front: '正面', three_quarter: '三分之四侧', side: '侧面', back: '背面',

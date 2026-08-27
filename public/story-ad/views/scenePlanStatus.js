@@ -1,4 +1,4 @@
-import { setButtonBusy, toast } from '../components/ui.js?v=20260827-production-v234';
+import { setButtonBusy, toast } from '../components/ui.js?v=20260827-production-v234a';
 
 export function scenePlanBlockedView(eligibility = {}, generationActive = false, options = {}) {
   const automatic = options.automatic === true;
