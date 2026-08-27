@@ -35,7 +35,7 @@ assert(sceneActions.includes('sceneGenerationSettingsMarkup'));
 assert(sceneSettings.includes('data-scene-quality') && sceneSettings.includes('data-scene-resolution'));
 assert(sceneSettings.includes('value="720P"'));
 assert(sceneSettings.includes('4K（当前模型不支持）') && sceneSettings.includes('value="4K" disabled'));
-assert(sceneActions.includes("event.target.value === 'low' ? '720P' : '2K'"));
+assert(/(?:event\.target|target)\.value\s*===\s*'low'\s*\?\s*'720P'\s*:\s*'2K'/.test(sceneActions));
 assert(sceneActions.includes('aspect_ratio: aspectRatio, count: 1'));
 assert(sceneService.includes("quality: body.quality || 'standard'"));
 console.log(JSON.stringify({ passed: true, ad_default: ad.generation_type, story_default: story.generation_type, provider_calls: { three_view: 3, four_view: 3, global_dossier: 6 }, quantity_per_group: 1, paid_model_calls: 0 }));
