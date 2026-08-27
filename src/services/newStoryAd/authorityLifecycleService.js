@@ -61,7 +61,8 @@ function promotionBlockers(taskId, options = {}) {
     const ownedPromotion = options.production_graph_authority === true
       || options.person_plan_authority === true
       || options.scene_plan_authority === true;
-    if (billingUnknown && ownedPromotion && quarantinedBillingUnknown(run)) return false;
+    if (billingUnknown && quarantinedBillingUnknown(run)
+      && (ownedPromotion || options.allow_quarantined_billing_unknown === true)) return false;
     return ACTIVE_RUN_STATES.has(state) || billingUnknown;
   });
 }

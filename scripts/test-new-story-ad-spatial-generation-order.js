@@ -535,24 +535,12 @@ async function main() {
       image_url: '/api/new-story-ad/assets/checkpoint-room-r1.png',
       view_images: [],
     }]);
-    await assert.rejects(
-      () => sceneAssets.generateSceneAsset(checkpointTaskId, {
-        scene_id: 'checkpoint-room',
-        scene_spec: context.scene_spec,
-        aspect_ratio: '16:9',
-      }),
-      error => error?.code === 'SCENE_ASSET_BILLING_UNKNOWN'
-        && error?.details?.requires_billing_acknowledgement === true,
-      'unknown billing must block a blind checkpoint resubmission before another provider call',
-    );
-    assert.equal(calls.length - callsBeforeCheckpoint, 5, 'billing review gate must not call the provider');
     const resumedCheckpoint = await sceneAssets.generateSceneAsset(checkpointTaskId, {
       scene_id: 'checkpoint-room',
       scene_spec: context.scene_spec,
       aspect_ratio: '16:9',
-      acknowledge_billing_unknown: true,
     });
-    assert.equal(calls.length - callsBeforeCheckpoint, 6, 'resume must call the provider only for the one missing view');
+    assert.equal(calls.length - callsBeforeCheckpoint, 6, 'terminal sync 500 without a provider handle must continue only the one missing view');
     assert.equal(resumedCheckpoint.scene_asset.view_count, 5);
     assert.equal(resumedCheckpoint.scene_asset.view_acquisition.resumed_from_checkpoint, true);
     assert.equal(storage.getOutput(checkpointTaskId, 'scene_asset_checkpoint:checkpoint-room').status, 'published');
@@ -618,13 +606,6 @@ async function main() {
     assert.equal(multiCheckpoint.scene_id, 'park');
     assert.ok(sceneCheckpoint.checkpointView(multiCheckpoint, 'master'), 'paid master must remain reusable');
     assert.equal(multiCheckpoint.views.layout.billing_state, 'unknown');
-    const callsAfterMultiFailure = calls.length;
-    await assert.rejects(
-      () => sceneAssets.generateSceneAsset(multiSpaceTaskId, { scene_id: 'park', aspect_ratio: '16:9' }),
-      error => error?.code === 'SCENE_ASSET_BILLING_UNKNOWN',
-      'layout unknown billing must not be blindly resubmitted',
-    );
-    assert.equal(calls.length, callsAfterMultiFailure);
     transientFailuresRemaining = 0;
     transientFilenamePattern = null;
     transientFailureMessage = 'socket hang up ECONNRESET';
@@ -632,7 +613,6 @@ async function main() {
     transientBillingUnknown = false;
     const resumedMulti = await sceneAssets.generateSceneAsset(multiSpaceTaskId, {
       scene_id: 'park',
-      acknowledge_billing_unknown: true,
       aspect_ratio: '16:9',
     });
     const multiCalls = calls.slice(callsBeforeMissingTarget);

@@ -49,6 +49,17 @@ assert.strictEqual(mediaAdapter.shouldStopImageFallback({
   classified: { code: 'PROVIDER_CONTENT_AUDIT', terminal: true },
 }), true, '计费未知时必须停止所有备用路由');
 assert.strictEqual(mediaAdapter.shouldStopImageFallback({
+  billingUnknown: true,
+  classified: { code: 'PROVIDER_5XX_AMBIGUOUS', terminal: true },
+  providerTaskId: '',
+  providerRequestId: '',
+}), false, '同步 500 且没有任何厂商任务/请求句柄时应结束该候选并切换独立备用路由');
+assert.strictEqual(mediaAdapter.shouldStopImageFallback({
+  billingUnknown: true,
+  classified: { code: 'PROVIDER_5XX_AMBIGUOUS', terminal: true },
+  providerTaskId: 'provider-task-1',
+}), true, '已有厂商任务号的 500 仍必须等待核账，不能自动切换');
+assert.strictEqual(mediaAdapter.shouldStopImageFallback({
   billingUnknown: false,
   classified: { code: 'PROVIDER_RIGHTS_AUDIT', terminal: true },
 }), true, '版权审核拒绝不得切换供应商绕过');

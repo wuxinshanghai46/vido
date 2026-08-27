@@ -378,6 +378,7 @@ function migrateCompatibleRelease(taskId, {
     production_graph_authority: ownedDomain === 'production_assets',
     person_plan_authority: ownedDomain === 'person_plan',
     scene_plan_authority: ownedDomain === 'scene_plan',
+    allow_quarantined_billing_unknown: true,
   };
   // This migration is scoped to one task. Reading the whole SQLite database
   // makes the Python bridge serialize every historical payload and can exceed

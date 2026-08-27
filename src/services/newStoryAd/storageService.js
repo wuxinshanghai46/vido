@@ -598,6 +598,22 @@ function updateArtifact(artifactId, patch = {}) {
 }
 
 function listArtifacts(taskId, kind = '') {
+  const owner = String(taskId || '');
+  const wantedKind = String(kind || '');
+  if (owner && wantedKind && useSqlite()) {
+    ensureDbSeeded();
+    const persisted = contentRecords.listByProjectAndKind(COLLECTIONS.artifacts, owner, wantedKind);
+    if (!sqliteBatchDb) return persisted;
+    const change = sqliteBatchChange('artifacts');
+    const rowsById = new Map(persisted.map(row => [String(row.id), row]));
+    change.removeIds.forEach(id => rowsById.delete(String(id)));
+    change.upserts.forEach((row, id) => {
+      if (String(row.task_id || row.project_id || '') === owner && String(row.kind || '') === wantedKind) rowsById.set(String(id), row);
+      else rowsById.delete(String(id));
+    });
+    return [...rowsById.values()].sort((left, right) => Date.parse(right.updated_at || right.created_at || 0)
+      - Date.parse(left.updated_at || left.created_at || 0));
+  }
   return listArtifactIds(taskId).map(getArtifact).filter(Boolean)
     .filter(row => String(row.task_id) === String(taskId)
       && (!kind || String(row.kind) === String(kind)))

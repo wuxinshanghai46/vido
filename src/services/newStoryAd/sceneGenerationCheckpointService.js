@@ -160,6 +160,18 @@ function hasUnknownBillingRisk(view = {}) {
     || view.error_code === 'PROVIDER_5XX_AMBIGUOUS';
 }
 
+function terminalSynchronousProviderFailure(view = {}) {
+  return view?.status === 'failed'
+    && view.error_code === 'PROVIDER_5XX_AMBIGUOUS'
+    && !String(view.provider_task_id || '').trim()
+    && !String(view.provider_request_id || '').trim()
+    && !viewUrl(view);
+}
+
+function requiresBillingReview(view = {}) {
+  return hasUnknownBillingRisk(view) && !terminalSynchronousProviderFailure(view);
+}
+
 function retryReviewKey(taskId = '', sceneId = '', viewKey = '') {
   return `${outputKind(sceneId)}#${safePart(viewKey, 40)}`;
 }
@@ -245,7 +257,7 @@ function open({
   const kind = outputKind(sceneId);
   const existing = storage.getOutput(taskId, kind);
   const unknownBillingViews = Object.entries(existing?.views || {})
-    .filter(([, view]) => hasUnknownBillingRisk(view))
+    .filter(([, view]) => requiresBillingReview(view))
     .map(([key, view]) => ({
       key,
       generation_id: String(view.generation_id || ''),
@@ -506,6 +518,8 @@ module.exports = {
   markPublished,
   cleanupUnpublishedFiles,
   hasUnknownBillingRisk,
+  terminalSynchronousProviderFailure,
+  requiresBillingReview,
   retryReviewKey,
   hasRetryAuthorization,
   authorizeRetry,

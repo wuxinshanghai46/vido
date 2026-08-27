@@ -1,3 +1,5 @@
+const sceneCheckpoints = require('./sceneGenerationCheckpointService');
+
 const VIEW_ORDER = ['master', 'reverse', 'interaction', 'detail', 'layout'];
 const VIEW_LABELS = {
   master: '主视角',
@@ -52,7 +54,7 @@ function checkpointPreview(row = {}, sceneConfig = {}) {
     const errorCode = text(view.error_code, 120);
     let state = view.status === 'succeeded' ? 'complete' : 'missing';
     if (view.status === 'failed') {
-      if (billingState === 'unknown' || submissionState === 'submitted_unknown' || errorCode === 'PROVIDER_5XX_AMBIGUOUS') state = 'billing_review';
+      if (sceneCheckpoints.requiresBillingReview(view)) state = 'billing_review';
       else if (billingState === 'not_submitted' || submissionState === 'not_submitted' || errorCode === 'GENERATION_STOPPED_AFTER_BILLING_UNKNOWN') state = 'pending';
       else state = 'failed';
     }
@@ -65,9 +67,7 @@ function checkpointPreview(row = {}, sceneConfig = {}) {
       message: text(view.error || view.message, 220),
     }];
   }));
-  const unknownBilling = failed.some(([, view]) => view?.billing_state === 'unknown'
-    || view?.provider_submission_state === 'submitted_unknown'
-    || view?.error_code === 'PROVIDER_5XX_AMBIGUOUS');
+  const unknownBilling = failed.some(([, view]) => sceneCheckpoints.requiresBillingReview(view));
   const repairKeys = VIEW_ORDER.filter(key => failedKeys.includes(key));
   return {
     id: sceneId,

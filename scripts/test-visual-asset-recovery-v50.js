@@ -87,7 +87,7 @@ function testExactAuthorization() {
       kind: 'scene_asset_checkpoint:scene-1',
       payload: {
         task_id: 'task-a', scene_id: 'scene-1', status: 'partial',
-        views: { layout: { key: 'layout', status: 'failed', billing_state: 'unknown', provider_submission_state: 'submitted_unknown', error_code: 'PROVIDER_5XX_AMBIGUOUS', billing_review: { state: 'unverifiable', revision: 2, reviewer: 'test-reviewer', evidence: 'provider lookup inconclusive' } } },
+        views: { layout: { key: 'layout', status: 'failed', billing_state: 'unknown', provider_submission_state: 'submitted_unknown', provider_task_id: 'provider-task-layout', error_code: 'PROVIDER_5XX_AMBIGUOUS', billing_review: { state: 'unverifiable', revision: 2, reviewer: 'test-reviewer', evidence: 'provider lookup inconclusive' } } },
       },
     },
   ];
@@ -176,7 +176,7 @@ function testPartialProjection() {
   });
   assert.equal(merged[0].partial_checkpoint, true);
   assert.match(merged[0].image_url, /success-/);
-  assert.equal(merged[0].category_atlases.length, projection.MAX_PROJECTED_MEDIA, 'projection payload must be bounded');
+  assert.ok(merged[0].category_atlases.length <= projection.MAX_PROJECTED_MEDIA, 'projection payload must remain bounded without requiring deprecated generic atlas promotion');
   assert.ok(!JSON.stringify(merged[0]).includes('provider 500'), 'failed/unknown provider result must not be presented as successful media');
 
   const scenes = sceneProjection.projectSceneAssets([
@@ -224,9 +224,11 @@ function testPartialProjection() {
 function testUiScope() {
   const view = fs.readFileSync(path.join(root, 'public/story-ad/views/assetCenterView.js'), 'utf8');
   const retry = fs.readFileSync(path.join(root, 'public/story-ad/views/assetCenterBillingRetry.js'), 'utf8');
+  const sceneInteractions = fs.readFileSync(path.join(root, 'public/story-ad/views/sceneCardInteractions.js'), 'utf8');
   assert.ok(!view.includes('当前人物配饰存在计费未知记录'));
-  assert.ok(view.includes("lane: 'subjects'"));
-  assert.ok(view.includes("lane: 'scenes'"));
+  assert.ok(retry.includes("lane: 'subjects'"));
+  assert.ok(sceneInteractions.includes("lane: 'scenes'"));
+  assert.ok(sceneInteractions.includes('authorizeBillingReviews'), 'scene recovery must write the same one-time authorization as subject recovery');
   assert.ok(retry.includes('checkpoint_keys: reviews.map(review => review.review_key)'));
   assert.ok(retry.includes('expected_review_revisions:'), 'unknown units must be authorized by one revision-bound batch');
   assert.ok(view.includes('resume_partial_checkpoint = target.partial_checkpoint === true'));

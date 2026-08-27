@@ -21,6 +21,10 @@ base.requireDatabase = () => ({
       },
       all(...args) {
         selectedParams = args.length === 1 && Array.isArray(args[0]) ? args[0] : args;
+        if (/SELECT\s+payload_json/i.test(selectedSql)) return [
+          { payload_json: JSON.stringify({ id: 'storyboard-1', task_id: 'large-task', kind: 'storyboard_table', payload: [{ shot: 1 }] }) },
+          { payload_json: JSON.stringify({ id: 'context-1', task_id: 'large-task', kind: 'context', payload: {} }) },
+        ];
         return Array.from({ length: 1200 }, (_, index) => ({ id: `artifact_${index}` }));
       },
     };
@@ -33,6 +37,13 @@ assert.equal(ids.length, 1200);
 assert.match(selectedSql, /SELECT\s+id\s+FROM content_records/i);
 assert.doesNotMatch(selectedSql, /payload_json/i, 'metadata scan must not stream full historical asset plans through the SQLite bridge');
 assert.deepEqual(selectedParams, ['new_story_ad_artifacts', 'large-task']);
+const storyboardArtifacts = records.listByProjectAndKind('new_story_ad_artifacts', 'large-task', 'storyboard_table');
+assert.equal(storyboardArtifacts.length, 1);
+assert.equal(storyboardArtifacts[0].id, 'storyboard-1');
+assert.match(selectedSql, /project_id\s*=\s*\?/i);
+assert.match(selectedSql, /payload_json\s+LIKE\s+\?/i);
+assert.doesNotMatch(selectedSql, /json_extract/i, 'baseline production SQLite must not require JSON1');
+assert.deepEqual(selectedParams, ['new_story_ad_artifacts', 'large-task', '%\"kind\":\"storyboard_table\"%']);
 assert.equal(records.hasAny('new_story_ad_artifacts'), true);
 assert.match(selectedSql, /SELECT\s+1\s+AS present/i);
 assert.doesNotMatch(selectedSql, /payload_json/i, 'seed detection must not deserialize an existing collection');
@@ -45,6 +56,7 @@ assert(storageSource.includes('contentRecords.listIds(COLLECTIONS.artifacts'), '
 assert(storageSource.includes('contentRecords.hasAny(collection)'), 'SQLite seed detection must use metadata existence checks');
 assert(!storageSource.includes('const existing = contentRecords.list(collection)'), 'seed detection must not load every payload');
 assert(storageSource.includes('listArtifactIds(taskId).map(getArtifact)'), 'large artifact payloads must be loaded one at a time');
+assert(storageSource.includes('contentRecords.listByProjectAndKind(COLLECTIONS.artifacts'), 'typed artifact reads must filter inside SQLite before payload hydration');
 assert(storageSource.includes('sqliteBatchDb = { changes: new Map() }'), 'SQLite write batches must use a touched-row overlay');
 assert(!storageSource.includes('const before = readDb()'), 'SQLite write batches must not snapshot every historical payload');
 assert(storageSource.includes('contentRecords.applyAtomicChanges(changes)'), 'touched rows must still commit atomically');

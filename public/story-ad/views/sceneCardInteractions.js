@@ -1,5 +1,5 @@
 import { setButtonBusy, toast } from '../components/ui.js?v=20260827-production-v235c';
-import { confirmBillingAwareAction } from './assetCenterBillingRetry.js?v=20260827-production-v235c';
+import { authorizeBillingReviews, confirmBillingAwareAction } from './assetCenterBillingRetry.js?v=20260827-production-v235c';
 import { sceneNeedsGeneration } from './sceneDossierCard.js?v=20260827-production-v235c';
 import { sceneGenerationSettingsMarkup } from './sceneDossierCardSettings.js?v=20260827-production-v235c';
 
@@ -62,6 +62,9 @@ export function bindSceneCards(host, context) {
       title: `生成${scene.name || '场景'}`, message: '根据自动保存的最新提示词生成场景画面，将调用图片模型并产生费用。', confirmText: '确认生成' });
     if (!confirmation.accepted) return;
     try {
+      if (confirmation.reviewBatch?.reviews?.length) await authorizeBillingReviews({
+        bundle: context.bundle, lane: 'scenes', sceneId, reviewBatch: confirmation.reviewBatch,
+      });
       await submitScene(scene, button);
       toast('任务已提交'); await context.refreshShell();
     } catch (error) { toast(error.message || '生成场景失败', 'error'); setButtonBusy(button, false); }
@@ -86,6 +89,14 @@ export function bindSceneCards(host, context) {
       title: `生成全部缺失场景（${targets.length}）`, message: `将根据各场景自动保存的最新提示词，同时提交 ${targets.length} 个独立场景任务，并产生图片模型费用。`, confirmText: '确认全部生成' });
     if (!confirmation.accepted) return;
     setButtonBusy(batchButton, true, '正在提交…');
+    if (confirmation.reviewBatch?.reviews?.length) {
+      try {
+        await authorizeBillingReviews({ bundle: context.bundle, lane: 'scenes', reviewBatch: confirmation.reviewBatch });
+      } catch (error) {
+        setButtonBusy(batchButton, false);
+        return toast(error.message || '计费风险授权失败', 'error');
+      }
+    }
     const results = await Promise.allSettled(targets.map(scene => {
       const sceneId = String(scene.id || scene.scene_id || '');
       const button = [...host.querySelectorAll('[data-generate-scene]')]

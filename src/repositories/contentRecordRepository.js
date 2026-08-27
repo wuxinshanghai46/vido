@@ -313,6 +313,27 @@ function listIds(collection, filters = {}) {
   `).all(params).map(row => String(row.id));
 }
 
+function listByProjectAndKind(collection, projectId, kind) {
+  const owner = String(projectId || '');
+  const wantedKind = String(kind || '');
+  if (!owner || !wantedKind) return [];
+  const db = requireDatabase();
+  // Production uses the baseline Python SQLite bridge without JSON1. Restrict
+  // the scan by indexed collection/project columns, then use the canonical
+  // JSON serialization only as a candidate filter and verify the parsed value.
+  const rows = db.prepare(`
+    SELECT payload_json
+    FROM content_records
+    WHERE collection = ?
+      AND project_id = ?
+      AND payload_json LIKE ?
+    ORDER BY COALESCE(updated_at, created_at) DESC
+  `).all(collection, owner, `%\"kind\":${jsonStringify(wantedKind)}%`)
+    .map(row => jsonParse(row.payload_json))
+    .filter(row => String(row?.kind || '') === wantedKind);
+  return rows;
+}
+
 function hasAny(collection) {
   const db = requireDatabase();
   return Boolean(db.prepare(`
@@ -437,6 +458,7 @@ module.exports = {
   get,
   hasAny,
   list,
+  listByProjectAndKind,
   listActiveTaskStates,
   listIds,
   listUnknownBillingStates,

@@ -520,7 +520,10 @@ function promptForImageCandidate(prompt = '', config = {}, auditSafePrompt = '',
   return compactImagePrompt(governed, limit);
 }
 
-function shouldStopImageFallback({ billingUnknown = false, classified = {} } = {}) {
+function shouldStopImageFallback({ billingUnknown = false, classified = {}, providerTaskId = '', providerRequestId = '' } = {}) {
+  if (classified?.code === 'PROVIDER_5XX_AMBIGUOUS'
+    && !String(providerTaskId || '').trim()
+    && !String(providerRequestId || '').trim()) return false;
   if (billingUnknown) return true;
   // 明确未计费的内容审核拒绝允许切换到下一条已配置图片路由；
   // 版权审核及其它终止错误仍然立即停止。
@@ -1033,7 +1036,12 @@ async function generateImage({
         provider_submission_state: evidenceSubmission,
         billing_state: evidenceBilling,
       });
-      if (shouldStopImageFallback({ billingUnknown, classified })) break;
+      if (shouldStopImageFallback({
+        billingUnknown,
+        classified,
+        providerTaskId: err.providerTaskId || err.provider_task_id || submissionEvidence.provider_task_id,
+        providerRequestId: err.providerRequestId || err.provider_request_id || submissionEvidence.provider_request_id,
+      })) break;
     }
   }
   const ignoredPreferred = preferred && preferred !== 'auto' && !preferredCandidates.length

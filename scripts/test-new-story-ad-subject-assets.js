@@ -515,6 +515,7 @@ function harness({ cancelAt = 0 } = {}) {
             error_code: 'PROVIDER_5XX_AMBIGUOUS',
             billing_state: 'unknown',
             provider_submission_state: 'submitted_unknown',
+            provider_task_id: 'provider-task-interaction',
           },
           detail: {
             status: 'failed',

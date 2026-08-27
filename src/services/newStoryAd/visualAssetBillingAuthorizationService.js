@@ -45,7 +45,7 @@ function ambiguousUnits(taskId) {
     return true;
   });
   const scenes = sceneCheckpointRows(taskId).flatMap(row => Object.entries(row.payload?.views || {})
-    .filter(([, view]) => sceneCheckpoints.hasUnknownBillingRisk(view))
+    .filter(([, view]) => sceneCheckpoints.requiresBillingReview(view))
     .map(([key, view]) => {
       const reviewKey = sceneCheckpoints.retryReviewKey(taskId, row.payload?.scene_id, key);
       return {
