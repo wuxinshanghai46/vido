@@ -111,12 +111,12 @@ function projectGraph(bundle = {}) {
   const usedEdgeIds = new Set();
   const columns = {
     input: 60,
-    story: 520,
-    assets: 1020,
-    director: 1460,
-    shots: 1900,
-    media: 2380,
-    final: 2840,
+    story: 680,
+    assets: 1300,
+    director: 1940,
+    shots: 2580,
+    media: 3220,
+    final: 3860,
   };
 
   const add = (value) => {
@@ -236,6 +236,9 @@ function projectGraph(bundle = {}) {
         detail: {
           revision: item.revision || 0,
           views: Array.isArray(item.view_images) ? item.view_images.length : 0,
+          description: detailText(item.description || item.profile?.appearanceText || item.profile?.appearance, 2400),
+          wardrobe: detailText(item.profile?.wardrobeText || item.wardrobe, 2400),
+          generation_prompt: detailText(item.generation_prompt || item.profile?.generation_prompt, 8000),
         },
       });
       assetNodes.push(assetId);

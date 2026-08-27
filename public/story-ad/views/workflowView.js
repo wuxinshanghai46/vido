@@ -2,7 +2,6 @@ import { request } from '../api.js?v=20260827-production-v236b';
 import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260827-production-v236b';
 import { inlineNodeEditor, saveInlineNode } from './workflowInlineEditor.js?v=20260827-production-v236b';
 import { bindWorkflowDirectorSync, ensureWorkflowDirectorStyles, openWorkflowDirector, projectWorkflowDirectorNodes, workflowNodePanelMarkup, workflowNodePortMarkup } from './workflowDirectorNodes.js?v=20260827-production-v236b';
-
 const MIN_STAGE_WIDTH = 3400;
 const MIN_STAGE_HEIGHT = 1500;
 const NODE_WIDTH = 220;
@@ -91,7 +90,7 @@ function readableList(items = [], { titleKey = 'title', bodyKeys = [] } = {}) {
 
 function readableSection(title, body = '') {
   if (!body) return '';
-  return `<section class="node-readable-section"><h3>${escapeHtml(title)}</h3><p>${escapeHtml(body)}</p></section>`;
+  return `<details class="node-readable-section" open><summary><h3>${escapeHtml(title)}</h3><span>收起</span></summary><p>${escapeHtml(body)}</p></details>`;
 }
 
 function structuredNodeDetail(node = {}) {
@@ -108,7 +107,7 @@ function structuredNodeDetail(node = {}) {
     const beats = Array.isArray(detail.beats) ? detail.beats : (Array.isArray(detail.story_beats) ? detail.story_beats : []);
     return `<div class="node-structured-detail is-story">
       ${readableSection('故事概述', firstText(detail.logline, detail.summary, detail.full_text, node.subtitle))}
-      ${beats.length ? `<section class="node-readable-section"><h3>剧情情节点</h3>${readableList(beats, { bodyKeys: ['content', 'description', 'summary', 'action'] })}</section>` : ''}
+      ${beats.length ? `<details class="node-readable-section" open><summary><h3>剧情情节点</h3><span>收起</span></summary>${readableList(beats, { bodyKeys: ['content', 'description', 'summary', 'action'] })}</details>` : ''}
     </div>`;
   }
   if (node.type === 'shot') {
@@ -132,13 +131,17 @@ function structuredNodeDetail(node = {}) {
       transition.requires_previous_frame === true ? '需要继承上一镜尾帧' : '',
     ].filter(Boolean).join(' · ');
     return `<div class="node-structured-detail is-shot">
-      ${readableSection('画面与动作', firstText(detail.visual, detail.visual_description, detail.action, detail.full_text, node.subtitle))}
+      ${readableSection('画面、动作与生成提示词', firstText(detail.visual, detail.visual_description, detail.action, detail.full_text, node.subtitle))}
       ${readableSection('旁白 / 台词', dialogueText)}
-      ${dialogueLines.length ? `<section class="node-readable-section"><h3>角色台词</h3>${readableList(dialogueLines, { titleKey: 'speaker', bodyKeys: ['text', 'line', 'dialogue', 'content'] })}</section>` : ''}
+      ${dialogueLines.length ? `<details class="node-readable-section" open><summary><h3>角色台词</h3><span>收起</span></summary>${readableList(dialogueLines, { titleKey: 'speaker', bodyKeys: ['text', 'line', 'dialogue', 'content'] })}</details>` : ''}
       ${readableSection('镜头目的', firstText(detail.purpose, detail.objective))}
       ${readableSection('绑定资产', bindingText)}
       ${readableSection('前后镜衔接', transitionText)}
     </div>`;
+  }
+  if (['person', 'animal', 'product', 'scene'].includes(node.type)) {
+    return `<div class="node-structured-detail is-asset">${readableSection(node.type === 'scene' ? '场景描述' : '资产描述', firstText(detail.description, node.subtitle))}
+      ${readableSection('服装与造型', firstText(detail.wardrobe))}${readableSection('生成提示词', firstText(detail.generation_prompt, detail.prompt))}</div>`;
   }
   return '';
 }
@@ -150,7 +153,9 @@ function remainingDetail(detail = {}, type = '') {
       ? ['logline', 'summary', 'full_text', 'beats', 'story_beats']
       : type === 'shot'
         ? ['visual', 'visual_description', 'action', 'full_text', 'voiceover', 'narration', 'dialogue', 'dialogue_lines', 'purpose', 'objective', 'bindings', 'character_ids', 'camera_id', 'continuity', 'transition']
-        : []);
+        : ['person', 'animal', 'product', 'scene'].includes(type)
+          ? ['description', 'wardrobe', 'generation_prompt', 'prompt']
+          : []);
   return Object.fromEntries(Object.entries(detail).filter(([key]) => !hiddenKeys.has(key)));
 }
 
@@ -199,8 +204,8 @@ export async function mount(host, context) {
           ${(graph.clusters || []).map(cluster => `<section class="canvas-cluster" data-cluster-id="${escapeHtml(cluster.id)}" style="left:${Number(cluster.x || 0)}px;top:${Number(cluster.y || 0)}px;width:${Number(cluster.width || 360)}px;height:${Number(cluster.height || 260)}px"><label>${escapeHtml(cluster.label || '')}</label></section>`).join('')}
           <svg class="graph-lines" viewBox="0 0 ${stageWidth} ${stageHeight}" style="width:${stageWidth}px;height:${stageHeight}px" aria-hidden="true" data-graph-lines>${graphEdges(graph)}</svg>
           ${(graph.nodes || []).map(graphNode).join('')}
-          <aside class="node-panel node-inline-panel" data-node-panel hidden></aside>
         </div>
+        <aside class="node-panel node-focus-panel" data-node-panel hidden></aside>
         <div class="canvas-controls">
           <button type="button" data-zoom-out aria-label="缩小">−</button>
           <button type="button" data-zoom-in aria-label="放大">＋</button>
@@ -323,6 +328,7 @@ export async function mount(host, context) {
   const layoutBody = () => ({
     layout_revision: Number(graph.layout_revision || 0),
     source_graph_revision: Number(graph.revision || 0),
+    spacing_version: Number(graph.layout?.spacing_version || 2),
     nodes: graph.nodes.map(node => ({ id: node.id, x: Number(node.position?.x || 0), y: Number(node.position?.y || 0) })),
     viewport: { zoom, pan_x: panX, pan_y: panY },
   });
@@ -430,11 +436,10 @@ export async function mount(host, context) {
     });
     const panel = host.querySelector('[data-node-panel]');
     panel.hidden = false;
-    panel.style.left = `${Number(node.position?.x || 0)}px`;
-    panel.style.top = `${Number(node.position?.y || 0) + NODE_HEIGHT + 14}px`;
+    viewport.classList.add('has-node-focus');
     const isTextNode = TEXT_NODE_TYPES.has(node.type);
     const editor = ['story', 'shot'].includes(node.type) ? inlineNodeEditor(node, context.bundle) : '';
-    panel.innerHTML = `<header><div><h2>${escapeHtml(node.title || node.label)}</h2>${isTextNode ? '' : `<p>${escapeHtml(node.subtitle || '')}</p>`}</div><button class="icon-btn" type="button" data-panel-close aria-label="关闭节点详情">×</button></header>
+    panel.innerHTML = `<header><div><small>画布节点 · 聚焦查看</small><h2>${escapeHtml(node.title || node.label)}</h2>${isTextNode ? '' : `<p>${escapeHtml(node.subtitle || '')}</p>`}</div><button class="icon-btn" type="button" data-panel-close aria-label="收起节点详情" title="收起（Esc）">↙</button></header>
       ${node.media_url ? mediaPreview(node, { label: node.title || '节点', width: 720, symbol: node.type || '节点' }) : (isTextNode ? '' : mediaPreview(node, { label: node.title || '节点', width: 720, symbol: node.type || '节点' }))}
       ${editor ? `<section class="node-direct-editor"><b>直接编辑并同步</b>${editor}</section>` : structuredNodeDetail(node)}
       ${workflowNodePanelMarkup(node)}
@@ -442,6 +447,7 @@ export async function mount(host, context) {
       ${node.target_route ? `<button class="btn ${editor ? '' : 'primary'} panel-route" type="button" data-node-route>打开对应环节</button>` : ''}`;
     const closePanel = () => {
       panel.hidden = true;
+      viewport.classList.remove('has-node-focus');
       host.querySelectorAll('[data-node-id]').forEach(item => {
         item.classList.remove('active');
         item.setAttribute('aria-pressed', 'false');
@@ -503,8 +509,8 @@ export async function mount(host, context) {
       if (!nodeDrag.moved && Math.hypot(screenDx, screenDy) < DRAG_THRESHOLD) return;
       nodeDrag.moved = true;
       nodeDrag.node.position = {
-        x: clamp(nodeDrag.originX + screenDx / zoom, 20, stageWidth - NODE_WIDTH - 20),
-        y: clamp(nodeDrag.originY + screenDy / zoom, 56, stageHeight - NODE_HEIGHT - 20),
+        x: clamp(nodeDrag.originX + screenDx / zoom, -20000, 20000),
+        y: clamp(nodeDrag.originY + screenDy / zoom, -20000, 20000),
       };
       renderGeometry();
     });
@@ -535,11 +541,17 @@ export async function mount(host, context) {
   host.querySelector('[data-close-panel]').addEventListener('click', () => {
     const panel = host.querySelector('[data-node-panel]');
     panel.hidden = true;
+    viewport.classList.remove('has-node-focus');
     host.querySelectorAll('[data-node-id]').forEach(item => {
       item.classList.remove('active');
       item.setAttribute('aria-pressed', 'false');
     });
   });
+  const closeOnEscape = event => {
+    const panel = host.querySelector('[data-node-panel]');
+    if (event.key === 'Escape' && !panel.hidden) panel.querySelector('[data-panel-close]')?.click();
+  };
+  document.addEventListener('keydown', closeOnEscape);
   host.querySelector('[data-reset-layout]').addEventListener('click', async event => {
     const button = event.currentTarget;
     button.disabled = true;
@@ -582,6 +594,7 @@ export async function mount(host, context) {
     panDrag = null;
     nodeDrag = null;
     minimapDrag = null;
+    document.removeEventListener('keydown', closeOnEscape);
     disposeDirectorSync();
   };
 }

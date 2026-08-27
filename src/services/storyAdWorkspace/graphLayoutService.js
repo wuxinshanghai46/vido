@@ -1,7 +1,9 @@
 const storage = require('../newStoryAd/storageService');
 
 const OUTPUT_KIND = 'workspace_graph_layout';
-const SCHEMA_VERSION = 'story-ad-graph-layout-v1';
+const SCHEMA_VERSION = 'story-ad-graph-layout-v2';
+const SPACING_VERSION = 2;
+const GROUP_GAP = 320;
 const MIN_ZOOM = 0.2;
 const MAX_ZOOM = 1.8;
 const MAX_COORDINATE = 20000;
@@ -21,6 +23,7 @@ function emptyLayout(taskId = '') {
     task_id: clean(taskId, 120),
     layout_revision: 0,
     source_graph_revision: 0,
+    spacing_version: 0,
     nodes: [],
     viewport: null,
     reset: false,
@@ -69,6 +72,7 @@ function normalizeLayout(taskId, value = {}, allowedNodeIds = null) {
     schema_version: SCHEMA_VERSION,
     layout_revision: Math.max(0, Math.floor(Number(value.layout_revision || 0) || 0)),
     source_graph_revision: Math.max(0, Math.floor(Number(value.source_graph_revision || value.graph_revision || 0) || 0)),
+    spacing_version: Math.max(0, Math.floor(Number(value.spacing_version || 0) || 0)),
     nodes: normalizeNodes(value.nodes, allowedNodeIds),
     viewport: normalizeViewport(value.viewport),
     reset: value.reset === true,
@@ -114,6 +118,7 @@ function fingerprint(layout = {}) {
     nodes: normalizeNodes(layout.nodes),
     viewport: normalizeViewport(layout.viewport),
     reset: layout.reset === true,
+    spacing_version: Math.max(0, Math.floor(Number(layout.spacing_version || 0) || 0)),
   });
 }
 
@@ -132,6 +137,7 @@ function persist(taskId, body = {}, options = {}) {
     nodes: body.nodes,
     viewport: body.viewport,
     source_graph_revision: body.source_graph_revision ?? body.graph_revision,
+    spacing_version: body.spacing_version ?? current.spacing_version,
     reset: body.reset === true,
   }, allowedNodeIds);
   if (fingerprint(current) === fingerprint(candidate)
@@ -198,33 +204,29 @@ function recomputeGeometry(graph) {
 }
 
 /**
- * 旧任务可能保存过“身份资产在剧情之前”的横向坐标。业务阶段顺序升级后，
- * 继续原样叠加这些坐标会把新版投影重新覆盖成旧顺序。这里只迁移发生倒置的
- * 两个阶段，并整体平移各阶段内的节点，保留用户原有的纵向排列和组内间距。
+ * 旧任务保存过阶段倒置或过密坐标。新间距合同只迁移一次，整体平移阶段，
+ * 保留组内纵向排列；保存 spacing_version 后继续尊重用户自由拖动。
  */
-function enforceStoryBeforeAssets(nodes = []) {
-  const storyNodes = nodes.filter(item => item.group === 'story');
-  const assetNodes = nodes.filter(item => item.group === 'assets');
-  if (!storyNodes.length || !assetNodes.length) return { nodes, rebased: false };
-
-  const storyX = Math.min(...storyNodes.map(item => Number(item.position?.x || 0)));
-  const assetX = Math.min(...assetNodes.map(item => Number(item.position?.x || 0)));
-  if (storyX < assetX) return { nodes, rebased: false };
-
-  const storyShift = assetX - storyX;
-  const assetShift = storyX - assetX;
-  return {
-    nodes: nodes.map(item => {
-      if (item.group === 'story') {
-        return { ...item, position: { ...item.position, x: Number(item.position?.x || 0) + storyShift } };
-      }
-      if (item.group === 'assets') {
-        return { ...item, position: { ...item.position, x: Number(item.position?.x || 0) + assetShift } };
-      }
-      return item;
-    }),
-    rebased: true,
-  };
+function enforceStageOrderAndSpacing(nodes = []) {
+  const order = ['input', 'story', 'assets', 'director', 'shots', 'media', 'final'];
+  let output = nodes;
+  let previousMax = null;
+  let rebased = false;
+  order.forEach(group => {
+    const grouped = output.filter(item => item.group === group);
+    if (!grouped.length) return;
+    const minX = Math.min(...grouped.map(item => Number(item.position?.x || 0)));
+    const maxX = Math.max(...grouped.map(item => Number(item.position?.x || 0) + 220));
+    const shift = previousMax === null ? 0 : Math.max(0, previousMax + GROUP_GAP - minX);
+    if (shift) {
+      rebased = true;
+      output = output.map(item => item.group === group
+        ? { ...item, position: { ...item.position, x: Number(item.position?.x || 0) + shift } }
+        : item);
+    }
+    previousMax = maxX + shift;
+  });
+  return { nodes: output, rebased };
 }
 
 function mergeGraph(graph = {}, layout = {}) {
@@ -234,12 +236,15 @@ function mergeGraph(graph = {}, layout = {}) {
     const saved = positions.get(item.id);
     return saved ? { ...item, position: { x: saved.x, y: saved.y }, read_only: false } : { ...item, read_only: false };
   });
-  const ordered = enforceStoryBeforeAssets(mergedNodes);
+  const ordered = normalized.spacing_version >= SPACING_VERSION
+    ? { nodes: mergedNodes, rebased: false }
+    : enforceStageOrderAndSpacing(mergedNodes);
   graph.nodes = ordered.nodes;
   graph.read_only = false;
   graph.layout_revision = normalized.layout_revision;
   graph.layout = {
     ...normalized,
+    spacing_version: SPACING_VERSION,
     nodes: graph.nodes.map(item => ({ id: item.id, x: item.position.x, y: item.position.y })),
     stage_order_rebased: ordered.rebased,
   };
@@ -250,7 +255,7 @@ module.exports = {
   OUTPUT_KIND,
   SCHEMA_VERSION,
   emptyLayout,
-  enforceStoryBeforeAssets,
+  enforceStageOrderAndSpacing,
   fingerprint,
   getLayout,
   mergeGraph,

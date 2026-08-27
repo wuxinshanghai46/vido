@@ -102,6 +102,7 @@ function main() {
   const personFormLazyJsFiles = allJsFiles.filter(file => /assetCenterPersonForm/.test(file));
   const personEvolutionLazyJsFiles = allJsFiles.filter(file => /assetCenterPersonEvolution/.test(file));
   const featureLazyJsFiles = allJsFiles.filter(file => /(?:referenceUnderstandingView|workflowDirectorNodes)/.test(file));
+  const workflowLazyJsFiles = allJsFiles.filter(file => /workflowView/.test(file));
   const recognitionLazyJsFiles = allJsFiles.filter(file => /briefNarrativeRecognition/.test(file));
   const briefLazyJsFiles = allJsFiles.filter(file => /(?:briefTextContract|briefContentModeMigration|briefSettingsSummary|briefWorldSettings)/.test(file));
   const briefMaterialsLazyJsFiles = allJsFiles.filter(file => /briefMaterials/.test(file));
@@ -126,7 +127,7 @@ function main() {
   const plotCharacterLazyJsFiles = allJsFiles.filter(file => /plotCharacterAutosave/.test(file));
   const plotEditorJsFiles = allJsFiles.filter(file => /plotBeatEditor/.test(file));
   const plotCellLazyJsFiles = allJsFiles.filter(file => /plotBeatCellPopover/.test(file));
-  const coreJsFiles = allJsFiles.filter(file => !lazyJsFiles.includes(file) && !assetEditorLazyJsFiles.includes(file) && !promptAutosaveLazyJsFiles.includes(file) && !planMigrationLazyJsFiles.includes(file) && !personFormLazyJsFiles.includes(file) && !personEvolutionLazyJsFiles.includes(file) && !featureLazyJsFiles.includes(file) && !recognitionLazyJsFiles.includes(file) && !briefLazyJsFiles.includes(file) && !briefMaterialsLazyJsFiles.includes(file) && !briefAdvancedLazyJsFiles.includes(file) && !briefPageLazyJsFiles.includes(file) && !panoramaLazyJsFiles.includes(file) && !sceneWorldLazyJsFiles.includes(file) && !dossierLazyJsFiles.includes(file) && !mediaLazyJsFiles.includes(file) && !lightboxLazyJsFiles.includes(file) && !checkpointRecoveryLazyJsFiles.includes(file) && !assetStageLazyJsFiles.includes(file) && !recoveryPreflightLazyJsFiles.includes(file) && !dialogueFlowJsFiles.includes(file) && !dialogueDataJsFiles.includes(file) && !dialogueGuidanceLazyJsFiles.includes(file) && !dialogueSupportLazyJsFiles.includes(file) && !dialogueSpecificationLazyJsFiles.includes(file) && !referenceDialogueStateJsFiles.includes(file) && !dialoguePolicyJsFiles.includes(file) && !plotRoomLazyJsFiles.includes(file) && !plotCharacterLazyJsFiles.includes(file) && !plotEditorJsFiles.includes(file) && !plotCellLazyJsFiles.includes(file));
+  const coreJsFiles = allJsFiles.filter(file => !lazyJsFiles.includes(file) && !assetEditorLazyJsFiles.includes(file) && !promptAutosaveLazyJsFiles.includes(file) && !planMigrationLazyJsFiles.includes(file) && !personFormLazyJsFiles.includes(file) && !personEvolutionLazyJsFiles.includes(file) && !featureLazyJsFiles.includes(file) && !workflowLazyJsFiles.includes(file) && !recognitionLazyJsFiles.includes(file) && !briefLazyJsFiles.includes(file) && !briefMaterialsLazyJsFiles.includes(file) && !briefAdvancedLazyJsFiles.includes(file) && !briefPageLazyJsFiles.includes(file) && !panoramaLazyJsFiles.includes(file) && !sceneWorldLazyJsFiles.includes(file) && !dossierLazyJsFiles.includes(file) && !mediaLazyJsFiles.includes(file) && !lightboxLazyJsFiles.includes(file) && !checkpointRecoveryLazyJsFiles.includes(file) && !assetStageLazyJsFiles.includes(file) && !recoveryPreflightLazyJsFiles.includes(file) && !dialogueFlowJsFiles.includes(file) && !dialogueDataJsFiles.includes(file) && !dialogueGuidanceLazyJsFiles.includes(file) && !dialogueSupportLazyJsFiles.includes(file) && !dialogueSpecificationLazyJsFiles.includes(file) && !referenceDialogueStateJsFiles.includes(file) && !dialoguePolicyJsFiles.includes(file) && !plotRoomLazyJsFiles.includes(file) && !plotCharacterLazyJsFiles.includes(file) && !plotEditorJsFiles.includes(file) && !plotCellLazyJsFiles.includes(file));
   const coreJsBytes = coreJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
   const lazyJsBytes = lazyJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
   const assetEditorLazyJsBytes = assetEditorLazyJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
@@ -135,6 +136,7 @@ function main() {
   const personFormLazyJsBytes = personFormLazyJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
   const personEvolutionLazyJsBytes = personEvolutionLazyJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
   const featureLazyJsBytes = featureLazyJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
+  const workflowLazyJsBytes = workflowLazyJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
   const recognitionLazyJsBytes = recognitionLazyJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
   const briefLazyJsBytes = briefLazyJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
   const briefMaterialsLazyJsBytes = briefMaterialsLazyJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
@@ -168,6 +170,7 @@ function main() {
   const personFormLazyJsGzip = gzipBytes(personFormLazyJsFiles);
   const personEvolutionLazyJsGzip = gzipBytes(personEvolutionLazyJsFiles);
   const featureLazyJsGzip = gzipBytes(featureLazyJsFiles);
+  const workflowLazyJsGzip = gzipBytes(workflowLazyJsFiles);
   const recognitionLazyJsGzip = gzipBytes(recognitionLazyJsFiles);
   const briefLazyJsGzip = gzipBytes(briefLazyJsFiles);
   const briefMaterialsLazyJsGzip = gzipBytes(briefMaterialsLazyJsFiles);
@@ -229,6 +232,8 @@ function main() {
   assert(plotCellLazyJsGzip <= 2 * 1024, `单元格浮层按需模块 gzip ${plotCellLazyJsGzip} bytes 超过 2 KiB`);
   assert(featureLazyJsBytes <= 60 * 1024, `参考理解与画布导演功能模块 ${featureLazyJsBytes} bytes 超过 60 KiB`);
   assert(featureLazyJsGzip <= 16 * 1024, `参考理解与画布导演功能模块 gzip ${featureLazyJsGzip} bytes 超过 16 KiB`);
+  assert(workflowLazyJsBytes <= 40 * 1024, `工作流画布按需模块 ${workflowLazyJsBytes} bytes 超过 40 KiB`);
+  assert(workflowLazyJsGzip <= 12 * 1024, `工作流画布按需模块 gzip ${workflowLazyJsGzip} bytes 超过 12 KiB`);
   assert(recognitionLazyJsBytes <= 4 * 1024, `目标页识别预览模块 ${recognitionLazyJsBytes} bytes 超过 4 KiB`);
   assert(recognitionLazyJsGzip <= 2 * 1024, `目标页识别预览模块 gzip ${recognitionLazyJsGzip} bytes 超过 2 KiB`);
   assert(briefLazyJsBytes <= 10 * 1024, `目标页按需辅助模块 ${briefLazyJsBytes} bytes 超过 10 KiB`);

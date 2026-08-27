@@ -132,9 +132,11 @@
 .node-panel {
   position: absolute;
   z-index: 7;
-  width: 460px;
-  max-height: 680px;
-  padding: 18px;
+  top: 24px;
+  left: 50%;
+  width: min(1040px, calc(100% - 120px));
+  max-height: calc(100% - 96px);
+  padding: 22px;
   overflow-y: auto;
   border: 1px solid color-mix(in srgb, var(--mint) 45%, var(--line));
   border-radius: 14px;
@@ -143,7 +145,9 @@
   cursor: default;
   touch-action: pan-y;
   user-select: text;
+  transform: translateX(-50%);
 }
+.canvas-viewport.has-node-focus .node-panel { box-shadow: 0 0 0 9999px rgb(3 6 14 / 58%), var(--shadow); }
 .node-panel[hidden] { display: none; }
 .node-panel header { display: flex; align-items: flex-start; gap: 10px; }
 .node-panel header .icon-btn { margin-left: auto; }
@@ -152,7 +156,13 @@
 .node-panel p { color: var(--muted); margin-top: 6px; line-height: 1.6; }
 .node-structured-detail { display: grid; gap: 12px; margin-top: 16px; }
 .node-readable-section { padding: 14px; border: 1px solid var(--line); border-radius: 11px; background: var(--surface-2); }
-.node-readable-section h3 { margin: 0 0 8px; color: var(--mint); font-size: 13px; }
+.node-readable-section summary { display:flex; align-items:center; justify-content:space-between; gap:12px; cursor:pointer; list-style:none; }
+.node-readable-section summary::-webkit-details-marker { display:none; }
+.node-readable-section summary span { color:var(--muted); font-size:11px; }
+.node-readable-section:not([open]) summary span { font-size:0; }
+.node-readable-section:not([open]) summary span::after { content:'展开'; font-size:11px; }
+.node-readable-section h3 { margin: 0; color: var(--mint); font-size: 13px; }
+.node-readable-section[open] h3 { margin-bottom:8px; }
 .node-readable-section > p { margin: 0; color: var(--text); line-height: 1.75; white-space: pre-wrap; overflow-wrap: anywhere; }
 .node-readable-list { display: grid; gap: 8px; }
 .node-readable-list article { padding: 10px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); }
@@ -173,5 +183,5 @@
 
 @media (max-width: 1250px) {
   .workflow-view { margin-left: -22px; margin-right: -22px; }
-  .node-panel { width: 420px; }
+  .node-panel { width: calc(100% - 48px); }
 }

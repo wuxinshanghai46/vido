@@ -295,6 +295,7 @@ async function main() {
   const savedLayout = graphLayouts.saveLayout(taskId, {
     layout_revision: 0,
     source_graph_revision: graph.revision,
+    spacing_version: 2,
     nodes: [
       { id: movedNode.id, x: 880, y: 420 },
       { id: 'stale-node', x: 50, y: 50 },
@@ -335,6 +336,7 @@ async function main() {
   const unchangedLayout = graphLayouts.saveLayout(taskId, {
     layout_revision: 1,
     source_graph_revision: graph.revision,
+    spacing_version: 2,
     nodes: restoredLayout.nodes,
     viewport: restoredLayout.viewport,
   }, { allowedNodeIds, user: owner });

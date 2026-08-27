@@ -18,10 +18,13 @@ assert(app.includes("workflow: 'summary,reference,assets,story,shots,media,graph
 assert(workspaceRoute.includes("includes('graph')"), 'bundle 路由必须识别 graph section');
 assert(workspaceRoute.includes('bundle.workflow_graph = projected.graph'), 'bundle 与图谱必须来自同一次权威投影');
 assert(workflow.includes('context.bundle?.workflow_graph'), '画布必须复用 bundle 内图谱，避免第二次全项目读取');
-assert(workflow.includes('node-inline-panel'), '节点详情必须在画布节点附近展开');
+assert(workflow.includes('node-focus-panel'), '节点详情必须在画布中央聚焦展开');
+assert(workflow.includes("event.key === 'Escape'"), '聚焦详情必须支持 Esc 收起');
+assert(workflow.includes('-20000, 20000'), '节点拖动不得被画布左边界锁死');
 assert(workflow.includes('直接编辑并同步'), '画布编辑器必须明确写回对应权威环节');
 assert(workflowCss.includes('.node-direct-editor'), '节点内直接编辑样式缺失');
 assert(workflowCss.includes('user-select: text'), '展开编辑器必须允许选择和编辑文本');
+assert(workflowCss.includes('.node-readable-section summary'), '提示词详情必须支持逐段收缩');
 
 const graph = graphProjection.projectGraph({
   project: { id: 'task-v234' },

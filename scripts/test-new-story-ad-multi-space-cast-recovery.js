@@ -551,23 +551,20 @@ async function assertMultiSpacePromptsAndRecovery() {
     const unknownStart = calls.length;
     await assert.rejects(
       () => sceneAssets.generateSceneAsset(unknownTask, { space_id: 'space_park' }),
-      error => error?.code === 'PROVIDER_5XX_AMBIGUOUS'
-        && error?.partial_scene_checkpoint === true,
+      error => error?.code === 'PROVIDER_5XX_AMBIGUOUS' && error?.partial_scene_checkpoint === true,
     );
-    assert.strictEqual(calls.length - unknownStart, 3, 'unknown layout must still allow the independent master-only detail unit to complete');
+    assert.strictEqual(calls.length - unknownStart, 3, 'first ambiguous layout attempt must preserve independently completed views');
     const partial = storage.getOutput(unknownTask, sceneCheckpoint.outputKind('space_park'));
     assert.strictEqual(partial.scene_id, 'space_park');
     assert.strictEqual(partial.views.master.status, 'succeeded');
     assert.strictEqual(partial.views.layout.status, 'failed');
     assert.strictEqual(partial.views.layout.billing_state, 'unknown');
     assert.strictEqual(partial.views.detail.status, 'succeeded');
-
-    await assert.rejects(
-      () => sceneAssets.generateSceneAsset(unknownTask, { space_id: 'space_park' }),
-      error => error?.code === 'SCENE_ASSET_BILLING_UNKNOWN'
-        && error?.details?.requires_billing_acknowledgement === true,
-    );
-    assert.strictEqual(calls.length - unknownStart, 3, 'unacknowledged unknown billing must make zero new supplier calls');
+    const recoveredResult = await sceneAssets.generateSceneAsset(unknownTask, { space_id: 'space_park' });
+    assert.strictEqual(calls.length - unknownStart, 6, 'handleless synchronous HTTP 500 must permit one later independent recovery pass');
+    const recovered = storage.getOutput(unknownTask, sceneCheckpoint.outputKind('space_park'));
+    assert.strictEqual(recovered.views.layout.status, 'succeeded');
+    assert.strictEqual(recoveredResult.scene_asset.view_acquisition.resumed_from_checkpoint, true);
 
     const legacyUnknownTask = 'multi-space-legacy-layout-unknown';
     storage.createTask({ id: legacyUnknownTask, title: legacyUnknownTask, request: baseContext });
@@ -593,28 +590,16 @@ async function assertMultiSpacePromptsAndRecovery() {
         },
       },
     });
-    const callsBeforeLegacyGuard = calls.length;
-    await assert.rejects(
-      () => sceneAssets.generateSceneAsset(legacyUnknownTask, { space_id: 'space_park' }),
-      error => error?.code === 'SCENE_ASSET_BILLING_UNKNOWN'
-        && error?.details?.failed_views?.[0]?.key === 'layout',
-    );
-    assert.strictEqual(
-      calls.length,
-      callsBeforeLegacyGuard,
-      'legacy ambiguous 5xx without billing fields must make zero supplier calls',
-    );
+    const callsBeforeLegacyRecovery = calls.length;
+    await sceneAssets.generateSceneAsset(legacyUnknownTask, { space_id: 'space_park' });
+    const legacyRecoveryCalls = calls.slice(callsBeforeLegacyRecovery);
+    assert.strictEqual(legacyRecoveryCalls.filter(call => /_master_/.test(call.filename)).length, 1, 'stale legacy fingerprint must rebuild master safely');
+    assert.strictEqual(legacyRecoveryCalls.length, 5, 'stale legacy handleless synchronous 500 must rebuild one complete current-contract scene');
 
-    const recovered = await sceneAssets.generateSceneAsset(unknownTask, {
-      space_id: 'space_park',
-      acknowledge_billing_unknown: true,
-    });
-    const recoveryCalls = calls.slice(unknownStart);
+    const recoveryCalls = calls.slice(unknownStart, callsBeforeLegacyRecovery);
     assert.strictEqual(recoveryCalls.filter(call => /_master_/.test(call.filename)).length, 1);
     assert.strictEqual(recoveryCalls.filter(call => /_layout_/.test(call.filename)).length, 2);
     assert.strictEqual(recoveryCalls.length, 6, 'recovery must add only layout plus three derived views');
-    assert.strictEqual(recovered.scene_asset.scene_id, 'space_park');
-    assert.strictEqual(recovered.scene_asset.view_acquisition.resumed_from_checkpoint, true);
   } finally {
     mediaAdapter.generateImage = originalGenerateImage;
     sceneSpace.analyzeSceneViews = originalAnalyze;
