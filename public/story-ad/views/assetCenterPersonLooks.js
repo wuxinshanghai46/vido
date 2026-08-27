@@ -1,4 +1,4 @@
-import { escapeHtml } from '../components/ui.js?v=20260827-production-v236f';
+import { escapeHtml } from '../components/ui.js?v=20260827-production-v236g';
 
 function rows(profile = {}) {
   const source = Array.isArray(profile.look_profiles) ? profile.look_profiles : [];
