@@ -54,6 +54,21 @@ assert.strictEqual(mediaAdapter.shouldStopImageFallback({
   providerTaskId: '',
   providerRequestId: '',
 }), false, '同步 500 且没有任何厂商任务/请求句柄时应结束该候选并切换独立备用路由');
+const normalizedSynchronous500 = mediaAdapter.normalizeHandlelessSynchronous5xx({
+  classified: { code: 'PROVIDER_5XX_AMBIGUOUS', retryable: false, terminal: true },
+  providerTaskId: '', providerRequestId: '', submission: 'submitted_unknown', billing: 'unknown',
+});
+assert.strictEqual(normalizedSynchronous500.normalized, true);
+assert.strictEqual(normalizedSynchronous500.classified.code, 'PROVIDER_5XX_NOT_SUBMITTED');
+assert.strictEqual(normalizedSynchronous500.classified.retryable, true);
+assert.strictEqual(normalizedSynchronous500.submission, 'submission_rejected');
+assert.strictEqual(normalizedSynchronous500.billing, 'not_billed');
+const retainedAsUnknown = mediaAdapter.normalizeHandlelessSynchronous5xx({
+  classified: { code: 'PROVIDER_5XX_AMBIGUOUS', retryable: false, terminal: true },
+  providerTaskId: 'provider-task-1', providerRequestId: '', submission: 'submitted_unknown', billing: 'unknown',
+});
+assert.strictEqual(retainedAsUnknown.normalized, false);
+assert.strictEqual(retainedAsUnknown.billing, 'unknown');
 assert.strictEqual(mediaAdapter.shouldStopImageFallback({
   billingUnknown: true,
   classified: { code: 'PROVIDER_5XX_AMBIGUOUS', terminal: true },

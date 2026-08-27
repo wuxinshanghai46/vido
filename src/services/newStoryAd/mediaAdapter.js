@@ -530,6 +530,25 @@ function shouldStopImageFallback({ billingUnknown = false, classified = {}, prov
   return classified?.terminal === true && classified?.code !== 'PROVIDER_CONTENT_AUDIT';
 }
 
+function normalizeHandlelessSynchronous5xx({ classified = {}, providerTaskId = '', providerRequestId = '', submission = '', billing = '' } = {}) {
+  const handleless = !String(providerTaskId || '').trim() && !String(providerRequestId || '').trim();
+  if (classified?.code !== 'PROVIDER_5XX_AMBIGUOUS' || !handleless) {
+    return { classified, submission, billing, normalized: false };
+  }
+  return {
+    classified: {
+      ...classified,
+      code: 'PROVIDER_5XX_NOT_SUBMITTED',
+      retryable: true,
+      terminal: false,
+      message: '供应商同步返回 HTTP 500，且未返回任务号、请求号或结果；该候选已确认失败且按未计费结束，可以切换备用通道。',
+    },
+    submission: 'submission_rejected',
+    billing: 'not_billed',
+    normalized: true,
+  };
+}
+
 async function invokeWithAuditSafeRetry(invoke, candidatePrompt = '', retryPrompt = '', onAudit = null) {
   try {
     return await invoke(candidatePrompt);
@@ -994,11 +1013,21 @@ async function generateImage({
       throw new Error('图片供应商没有返回图片地址或图片数据。');
     } catch (err) {
       if (cancellation.signal()?.aborted) cancellation.throwIfCancelled(taskId);
-      const classified = classifyImageGenerationError(err);
+      let classified = classifyImageGenerationError(err);
       const providerDiagnostics = providerErrorDiagnostics(err);
       const submissionEvidence = submissionTracker.failure(err);
-      const evidenceSubmission = submissionEvidence.provider_submission_state;
-      const evidenceBilling = submissionEvidence.billing_state;
+      const providerTaskId = err.providerTaskId || err.provider_task_id || submissionEvidence.provider_task_id || '';
+      const providerRequestId = err.providerRequestId || err.provider_request_id || submissionEvidence.provider_request_id || '';
+      const normalizedFailure = normalizeHandlelessSynchronous5xx({
+        classified,
+        providerTaskId,
+        providerRequestId,
+        submission: submissionEvidence.provider_submission_state,
+        billing: submissionEvidence.billing_state,
+      });
+      classified = normalizedFailure.classified;
+      const evidenceSubmission = normalizedFailure.submission;
+      const evidenceBilling = normalizedFailure.billing;
       const billingUnknown = evidenceBilling === 'unknown';
       if (err.code !== 'REFERENCE_IMAGE_UNSUPPORTED' && !['PROVIDER_RIGHTS_AUDIT', 'PROVIDER_CONTENT_AUDIT'].includes(classified.code)) {
         const healthError = classified.code === 'PROVIDER_5XX_AMBIGUOUS'
@@ -1018,8 +1047,8 @@ async function generateImage({
         shot_index: shotIndex,
         generation_id: generationId,
         submission_id: clientRequestId,
-        provider_task_id: err.providerTaskId || err.provider_task_id || submissionEvidence.provider_task_id || '',
-        provider_request_id: err.providerRequestId || err.provider_request_id || submissionEvidence.provider_request_id || '',
+        provider_task_id: providerTaskId,
+        provider_request_id: providerRequestId,
         provider_submission_state: evidenceSubmission,
         billing_state: evidenceBilling,
         latency_ms: Date.now() - startedAt,
@@ -1031,16 +1060,16 @@ async function generateImage({
         retryable: classified.retryable === true,
         message: String(classified.message || err.message || err).slice(0, 240),
         ...providerDiagnostics,
-        provider_task_id: err.providerTaskId || err.provider_task_id || submissionEvidence.provider_task_id || '',
-        provider_request_id: err.providerRequestId || err.provider_request_id || submissionEvidence.provider_request_id || '',
+        provider_task_id: providerTaskId,
+        provider_request_id: providerRequestId,
         provider_submission_state: evidenceSubmission,
         billing_state: evidenceBilling,
       });
       if (shouldStopImageFallback({
         billingUnknown,
         classified,
-        providerTaskId: err.providerTaskId || err.provider_task_id || submissionEvidence.provider_task_id,
-        providerRequestId: err.providerRequestId || err.provider_request_id || submissionEvidence.provider_request_id,
+        providerTaskId,
+        providerRequestId,
       })) break;
     }
   }
@@ -1140,6 +1169,7 @@ module.exports = {
   selectImageCandidates,
   invokeWithAuditSafeRetry,
   shouldStopImageFallback,
+  normalizeHandlelessSynchronous5xx,
   availableImageCandidates,
   imageCandidateAvailability,
   generateImage,
