@@ -1,7 +1,7 @@
-import { escapeHtml, mediaPreview } from '../components/ui.js?v=20260827-production-v236d';
-import { bindMediaLightbox } from './mediaLightbox.js?v=20260827-production-v236d';
-import { personDossierShowcase } from './personDossierShowcase.js?v=20260827-production-v236d';
-import { bindSceneDossierCard, renderSceneDossierCard } from './sceneDossierCard.js?v=20260827-production-v236d';
+import { escapeHtml, mediaPreview } from '../components/ui.js?v=20260827-production-v236e';
+import { bindMediaLightbox } from './mediaLightbox.js?v=20260827-production-v236e';
+import { personDossierShowcase } from './personDossierShowcase.js?v=20260827-production-v236e';
+import { bindSceneDossierCard, renderSceneDossierCard } from './sceneDossierCard.js?v=20260827-production-v236e';
 
 export function productDetails(item = {}) {
   const presentation = item.presentation || {};
@@ -198,7 +198,7 @@ export function openAssetDrawer(item, group, handlers = {}, renderers = {}) {
   drawer.querySelector('[data-ai-assist-scene]')?.addEventListener('click', event => onAssistScene?.(item, drawer.querySelector('[data-scene-edit]'), event.currentTarget));
   drawer.querySelector('[data-drawer-upload-product]')?.addEventListener('click', () => { close(); onUploadProduct?.(item); });
   document.body.append(backdrop, drawer);
-  if (editablePerson && drawer.querySelector('[name="generation_prompt"]')) import('./personPromptAutosave.js?v=20260827-production-v236d').then(module => {
+  if (editablePerson && drawer.querySelector('[name="generation_prompt"]')) import('./personPromptAutosave.js?v=20260827-production-v236e').then(module => {
     if (!closed) personAutosave = module.bindPersonPromptAutosave(drawer, item, { onSavePerson, onGenerate, close });
   });
   bindMediaLightbox(drawer);
