@@ -173,6 +173,37 @@ function absolutePublicImageUrl(value = '') {
   return publicReferences.absolutePublicUrl(value);
 }
 
+function localStoryAssetName(value = '') {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  try {
+    const parsed = new URL(raw, 'http://local.invalid');
+    const prefix = '/api/new-story-ad/assets/';
+    if (!parsed.pathname.startsWith(prefix)) return '';
+    return path.basename(decodeURIComponent(parsed.pathname.slice(prefix.length)));
+  } catch (_) {
+    return '';
+  }
+}
+
+async function providerReferenceImageUrl(value = '', width = 960) {
+  const absolute = absolutePublicImageUrl(value);
+  const filename = localStoryAssetName(absolute);
+  if (!filename) return absolute;
+  await ensureAssetThumbnail(filename, width);
+  const parsed = new URL(absolute);
+  parsed.searchParams.set('thumb', String(Math.max(160, Math.min(960, Number(width) || 960))));
+  return parsed.toString();
+}
+
+async function providerReferenceImageUrls(values = [], width = 960) {
+  const prepared = await Promise.all((Array.isArray(values) ? values : [])
+    .filter(Boolean)
+    .slice(0, 4)
+    .map(value => providerReferenceImageUrl(value, width)));
+  return prepared.filter(Boolean);
+}
+
 function supportsReferenceImages(config = {}) {
   const declared = config.provider?.adapter_config?.image?.reference_images;
   if (declared === true) return true;
@@ -745,10 +776,10 @@ async function generateImage({
       if (!/(openai|compatible|apismile|webang|deyunai|bridgellm)/i.test(config.family + ' ' + config.adapter)) {
         throw new Error(`当前图片适配方式 ${config.adapter} 尚未实现。`);
       }
-      const references = (Array.isArray(referenceImages) ? referenceImages : [])
-        .map(absolutePublicImageUrl)
-        .filter(Boolean)
-        .slice(0, 4);
+      // Providers fetch reference URLs on a short timeout. Generated master PNGs can
+      // exceed 2 MB, so publish the existing 960px WebP derivative instead of the raw
+      // asset. External references are kept unchanged.
+      const references = await providerReferenceImageUrls(referenceImages, 960);
       const referenceCapable = supportsReferenceImages(config);
       if (requireReferences && (!references.length || !referenceCapable)) {
         const reason = !references.length ? '没有可访问的公网参考图' : '模型适配器未声明参考图能力';
@@ -1061,6 +1092,9 @@ module.exports = {
   ensureAssetThumbnail,
   publicAssetUrl,
   absolutePublicImageUrl,
+  localStoryAssetName,
+  providerReferenceImageUrl,
+  providerReferenceImageUrls,
   persistImageResult,
   supportsReferenceImages,
   imagePromptLimit,

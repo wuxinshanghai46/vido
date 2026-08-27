@@ -4,8 +4,8 @@
 
 ## 基础配置
 
-- MaaS Base URL：`https://test-tk.iserviceapi.com/api/v1`
-- Seedance/素材库 API Root：`https://test-tk.iserviceapi.com/api`
+- MaaS Base URL：`https://tk.iserviceapi.com/api/v1`
+- Seedance/素材库 API Root：`https://tk.iserviceapi.com/api`
 - 鉴权：`Authorization: Bearer ${WEBANG_MAAS_API_KEY}`
 - 模型权限：以 `GET /v1/models` 对当前 Key 的返回为准；未在白名单的模型会返回 HTTP 403。
 

@@ -1359,7 +1359,7 @@ async function generateArkSeedanceClip({ prompt, duration = 5, outputDir, filena
 }
 
 function _normaliseWebangBaseUrl(apiUrl = '') {
-  let base = (apiUrl || 'https://test-tk.iserviceapi.com/api').replace(/\/$/, '');
+  let base = (apiUrl || 'https://tk.iserviceapi.com/api').replace(/\/$/, '');
   if (base.endsWith('/api/v1')) return base;
   if (base.endsWith('/v1')) return base;
   if (base.endsWith('/api')) return `${base}/v1`;
@@ -1367,7 +1367,7 @@ function _normaliseWebangBaseUrl(apiUrl = '') {
 }
 
 function _normaliseWebangApiRoot(apiUrl = '') {
-  let root = (apiUrl || 'https://test-tk.iserviceapi.com/api').replace(/\/+$/, '');
+  let root = (apiUrl || 'https://tk.iserviceapi.com/api').replace(/\/+$/, '');
   if (root.endsWith('/api/v1')) return root.replace(/\/v1$/, '');
   if (root.endsWith('/v1')) return root.replace(/\/v1$/, '');
   if (root.endsWith('/api')) return root;
@@ -1385,7 +1385,7 @@ function _webangAssetBaseUrls(provider = {}) {
     || process.env.WEBANG_SEEDANCE_ASSET_API_URL
     || process.env.WEBANG_ASSET_API_URL
     || provider.api_url
-    || 'https://test-tk.iserviceapi.com/api'
+    || 'https://tk.iserviceapi.com/api'
   ).trim().replace(/\/+$/, '');
   return [_normaliseWebangBaseUrl(base)];
 }

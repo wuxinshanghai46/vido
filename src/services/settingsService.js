@@ -52,7 +52,7 @@ const PROVIDER_PRESETS = {
     { id: 'fal-ai/seedance/v2/text-to-video', name: 'Seedance 2.0 T2V（12文件多模态·动作最强·角色一致性）', type: 'video', use: 'video' },
     { id: 'fal-ai/seedance/v2/image-to-video', name: 'Seedance 2.0 I2V（多参考图·角色一致性引擎）', type: 'video', use: 'video' },
   ] },
-  'webang-seedance': { name: '微众 · Seedance 2.0', api_url: 'https://test-tk.iserviceapi.com/api', defaultModels: [
+  'webang-seedance': { name: '微众 · Seedance 2.0', api_url: 'https://tk.iserviceapi.com/api', defaultModels: [
     { id: 'doubao-seedance-2-0-260128', name: 'Seedance 2.0（视频编辑·图生视频·文生视频）', type: 'video', use: 'video' },
     { id: 'doubao-seedance-2-0-fast-260128', name: 'Seedance 2.0 Fast（图生视频·文生视频）', type: 'video', use: 'video' },
   ] },
@@ -252,7 +252,7 @@ const PROVIDER_PRESETS = {
   bridgellm: { name: 'BridgeLLM（ApiSmile 兼容）', api_url: 'http://43.98.167.151:3000/v1', defaultModels: [
     { id: 'gpt-image-2', name: 'GPT Image 2', type: 'image', use: 'image', enabled: false },
   ] },
-  'webang-maas': { name: '微众 MaaS（OpenAI 兼容）', api_url: 'https://test-tk.iserviceapi.com/api/v1', defaultModels: [
+  'webang-maas': { name: '微众 MaaS（OpenAI 兼容）', api_url: 'https://tk.iserviceapi.com/api/v1', defaultModels: [
     // 中文说明：按《一站式AI模型服务平台-接入文档（海外maas）》维护，接口路径统一走 /v1。
     { id: 'gpt-5.6-sol', name: 'GPT-5.6 Sol（旗舰）', type: 'chat', use: 'story' },
     { id: 'gpt-5.6-terra', name: 'GPT-5.6 Terra（均衡）', type: 'chat', use: 'story' },
@@ -450,8 +450,8 @@ function inferProviderAdapter(provider = {}) {
     .filter(Boolean)
     .join(' ')
     .toLowerCase();
-  if (/test-tk\.iserviceapi\.com\/api\/v1|webang.*maas|微众.*maas/.test(text)) return PROVIDER_ADAPTER_DEFAULTS['webang-maas'];
-  if (/test-tk\.iserviceapi\.com\/api|doubao-seedance|webang.*seedance|微众.*seedance/.test(text)) return PROVIDER_ADAPTER_DEFAULTS['webang-seedance'];
+  if (/(?:test-)?tk\.iserviceapi\.com\/api\/v1|webang.*maas|微众.*maas/.test(text)) return PROVIDER_ADAPTER_DEFAULTS['webang-maas'];
+  if (/(?:test-)?tk\.iserviceapi\.com\/api|doubao-seedance|webang.*seedance|微众.*seedance/.test(text)) return PROVIDER_ADAPTER_DEFAULTS['webang-seedance'];
   if (/api\.apismile\.ai/.test(text)) return PROVIDER_ADAPTER_DEFAULTS.apismile;
   if (/ai\.smscrw\.cn\/v1|smscrw/.test(text)) return PROVIDER_ADAPTER_DEFAULTS.smscrw;
   if (/43\.98\.167\.151:3000\/v1|bridgellm/.test(text)) return PROVIDER_ADAPTER_DEFAULTS.bridgellm;
@@ -616,7 +616,7 @@ function normalizeWebangSeedanceModels(settings = {}) {
       provider?.api_url,
       ...(Array.isArray(provider?.models) ? provider.models.map(m => m?.id) : []),
     ].filter(Boolean).join(' ');
-    if (!/webang|test-tk\.iserviceapi\.com|doubao-seedance/i.test(text)) continue;
+    if (!/webang|(?:test-)?tk\.iserviceapi\.com|doubao-seedance/i.test(text)) continue;
     const current = Array.isArray(provider.models) ? provider.models : [];
     const next = [];
     for (const model of PROVIDER_PRESETS['webang-seedance'].defaultModels) {
@@ -666,7 +666,7 @@ function getApiKey(providerId) {
           p.api_url,
           ...(Array.isArray(p.models) ? p.models.map(m => m && m.id) : []),
         ].filter(Boolean).join(' ');
-        return /webang|微众|test-tk\.iserviceapi\.com|doubao-seedance/i.test(text);
+        return /webang|微众|(?:test-)?tk\.iserviceapi\.com|doubao-seedance/i.test(text);
       }
       return false;
     });

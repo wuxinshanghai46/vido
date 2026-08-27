@@ -50,6 +50,8 @@ async function main() {
   );
 
   const preset = settings.PROVIDER_PRESETS['webang-maas'];
+  assert.equal(preset.api_url, 'https://tk.iserviceapi.com/api/v1', '微众 MaaS 必须使用生产基地址');
+  assert.equal(settings.PROVIDER_PRESETS['webang-seedance'].api_url, 'https://tk.iserviceapi.com/api', '微众 Seedance 必须使用生产基地址');
   const ids = new Set(preset.defaultModels.map(model => model.id));
   ['gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna', 'gpt-image-2', 'claude-opus-5', 'gemini-3.5-flash',
     'gemini-2.5-flash-image', 'gemini-3.1-flash-image-preview'].forEach(id => assert(ids.has(id), `微众模型清单缺少 ${id}`));
@@ -88,6 +90,9 @@ async function main() {
   fs.mkdirSync(mediaAdapter.ASSET_DIR, { recursive: true });
   fs.writeFileSync(fixturePath, Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Z9mAAAAAASUVORK5CYII=', 'base64'));
   try {
+    const providerReference = await mediaAdapter.providerReferenceImageUrl(`/api/new-story-ad/assets/${fixtureName}`, 960);
+    assert.match(providerReference, /\/api\/new-story-ad\/assets\/[^?]+\?thumb=960$/, '本地原始参考图必须转换为轻量 WebP 公网地址');
+    assert(fs.existsSync(mediaAdapter.assetThumbPathFromName(fixtureName, 960)), '必须在调用厂商前生成参考图缩略图');
     const form = await mediaAdapter.buildWebangGptImage2EditForm(
       { modelId: 'gpt-image-2' },
       { prompt: '保持结构修改灯光', size: '1024x1024', referenceImages: [`/api/new-story-ad/assets/${fixtureName}`] },
@@ -98,6 +103,7 @@ async function main() {
     assert(!body.includes('name="images"'), '微众 edits 不得发送 DeyunAI JSON images 字段');
   } finally {
     fs.rmSync(fixturePath, { force: true });
+    fs.rmSync(mediaAdapter.assetThumbPathFromName(fixtureName, 960), { force: true });
   }
 
   const digitalHuman = read('src/routes/digitalHuman.js');

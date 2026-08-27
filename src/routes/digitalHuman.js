@@ -7641,7 +7641,7 @@ function _isWebangMaasProvider(provider = {}, providerId = '') {
     .filter(Boolean)
     .join(' ')
     .toLowerCase();
-  return /webang-maas|微众.*maas|test-tk\.iserviceapi\.com\/api\/v1/.test(text);
+  return /webang-maas|微众.*maas|(?:test-)?tk\.iserviceapi\.com\/api\/v1/.test(text);
 }
 
 function _isGeminiImageChatModel(modelId = '') {
