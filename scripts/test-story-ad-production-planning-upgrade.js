@@ -179,9 +179,9 @@ async function main() {
   assert.match(planningUi, /data-scene-edit/);
   assert.match(planningUi, /data-product-edit/);
   assert.match(assetUi, /standalone_generation_supported/);
-  assert.match(assetUi, /AI 生成商品资产/);
-  assert.match(assetUi, /AI 生成展示主体参考图/);
-  assert.match(assetUi, /不会伪装成独立商品四视图/);
+  assert.doesNotMatch(assetUi, /data-generate-product=|data-generate-product-main/, '商品必须进入统一制作图谱，不得恢复旧独立生成入口');
+  assert.match(assetUi, /上传商品\/展示主体素材/);
+  assert.match(assetUi, /验证商品素材/);
   assert.match(assetUi, /data-upload-product/);
   assert.doesNotMatch(assetUi, /重新生成场景与机位|data-generate-scene/, '资产中心不得继续拥有场景生成入口');
   assert.match(sceneProductionUi, /data-generate-scene/);
