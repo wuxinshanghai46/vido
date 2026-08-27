@@ -1,4 +1,4 @@
-import { escapeHtml } from '../components/ui.js?v=20260827-production-v233i';
+import { escapeHtml } from '../components/ui.js?v=20260827-production-v234';
 
 export function renderPersonVoiceBinding(profile = {}) {
   const bound = Boolean(profile.voice_id);

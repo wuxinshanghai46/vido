@@ -1,5 +1,5 @@
-import { escapeHtml, toast } from '../components/ui.js?v=20260827-production-v233i';
-import { renderSceneCoverCard, sceneNeedsGeneration } from './sceneDossierCard.js?v=20260827-production-v233i';
+import { escapeHtml, toast } from '../components/ui.js?v=20260827-production-v234';
+import { renderSceneCoverCard, sceneNeedsGeneration } from './sceneDossierCard.js?v=20260827-production-v234';
 
 const submitted = new Set();
 
