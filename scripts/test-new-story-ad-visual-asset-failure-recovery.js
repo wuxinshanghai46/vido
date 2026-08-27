@@ -133,7 +133,7 @@ async function main() {
   };
 
   await subjectAssets.generateSubjectBundle({ taskId: 'visual-recovery-task', body, personDossierConcurrency: 1 }, deps);
-  assert.strictEqual(personProviderCalls, 6, 'all core person dossier units should finish before the accessory failure');
+  assert.strictEqual(personProviderCalls, 3, 'default three-view dossier must finish its one atlas and two native masters before the accessory failure');
   assert.strictEqual(isolatedAccessoryCalls, 2, 'the declared watch and completed footwear must each be generated once as isolated catalog objects');
   assert.strictEqual(detailProviderCalls, 0, 'core subject generation must not submit the separately managed wardrobe-detail stage');
   assert.strictEqual(petProviderCalls, 1, 'pet generation must complete independently from person detail generation');
@@ -148,7 +148,7 @@ async function main() {
   assert.strictEqual(accessoryCheckpoint.billing_state, 'confirmed');
 
   await subjectAssets.generateSubjectBundle({ taskId: 'visual-recovery-task', body, personDossierConcurrency: 1 }, deps);
-  assert.strictEqual(personProviderCalls, 6, 'core person checkpoints must be reused');
+  assert.strictEqual(personProviderCalls, 3, 'default three-view dossier checkpoints must be reused');
   assert.strictEqual(isolatedAccessoryCalls, 2, 'completed isolated accessories must be reused after a later wardrobe failure');
   assert.strictEqual(petProviderCalls, 1, 'completed pet checkpoint must be reused');
 
