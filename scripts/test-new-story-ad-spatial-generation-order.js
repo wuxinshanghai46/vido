@@ -545,6 +545,11 @@ async function main() {
     transientFailureMessage = 'socket hang up ECONNRESET';
     transientFailureCode = '';
     transientBillingUnknown = false;
+    sceneCheckpoint.authorizeRetry(partialCheckpoint, 'detail', {
+      accept_duplicate_charge_risk: true,
+      accepted_by: 'direct-fix-contract-test',
+      reason: 'single direct repair click authorizes exactly one retry',
+    });
     storage.saveOutput(checkpointTaskId, 'scene_assets', [{
       id: 'checkpoint-room',
       scene_id: 'checkpoint-room',
@@ -630,6 +635,11 @@ async function main() {
     transientFailureMessage = 'socket hang up ECONNRESET';
     transientFailureCode = '';
     transientBillingUnknown = false;
+    sceneCheckpoint.authorizeRetry(multiCheckpoint, 'layout', {
+      accept_duplicate_charge_risk: true,
+      accepted_by: 'direct-fix-contract-test',
+      reason: 'single direct repair click authorizes exactly one retry',
+    });
     const resumedMulti = await sceneAssets.generateSceneAsset(multiSpaceTaskId, {
       scene_id: 'park',
       aspect_ratio: '16:9',

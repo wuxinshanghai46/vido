@@ -1,5 +1,5 @@
-import { escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260827-production-v238e';
-import { sceneRuntimeFailureMarkup } from './sceneRuntimeFailureView.js?v=20260827-production-v238e';
+import { escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260827-production-v239';
+import { sceneRuntimeFailureMarkup } from './sceneRuntimeFailureView.js?v=20260827-production-v239';
 
 export function assetCardMedia(item = {}, group = '') {
   if (group === 'scenes') return renderSceneCoverCard(item);
@@ -151,8 +151,8 @@ export function renderSceneCoverCard(item = {}) {
       <span class="scene-cover-state">${escapeHtml(statusText(dossier.state, dossier.completed))} · 视图 ${dossier.completed}/${dossier.total}</span>
     </div>
     <div class="scene-cover-slots" aria-label="五类场景证据完整度">${SCENE_VIEW_ORDER.map(key => `<span class="is-${dossier.views[key]?.image_url ? 'complete' : dossier.viewStatuses[key]?.state || 'missing'}"><i aria-hidden="true"></i>${escapeHtml(SCENE_VIEW_LABELS[key])}</span>`).join('')}</div>
-    ${sceneRuntimeFailureMarkup(item)}
-    ${dossier.state === 'conflict' ? `<div class="scene-cover-qa-failure" role="status"><b>未通过：${escapeHtml(qaFailure.labels.join('、') || '一致性 QA')}</b>${qaFailure.reasons.length ? `<ul>${qaFailure.reasons.slice(0, 3).map(reason => `<li>${escapeHtml(reason)}</li>`).join('')}</ul>` : '<span>未返回可定位的逐图证据，请先再次验证，不要直接重复生成。</span>'}</div>` : ''}
+    ${sceneRuntimeFailureMarkup({ ...item, completed_view_keys: SCENE_VIEW_ORDER.filter(key => dossier.views[key]?.image_url) })}
+    ${dossier.state === 'conflict' ? `<div class="scene-cover-qa-failure" role="status"><b>未通过：${escapeHtml(qaFailure.labels.join('、') || '一致性 QA')}</b>${qaFailure.reasons.length ? `<ul>${qaFailure.reasons.slice(0, 3).map(reason => `<li>${escapeHtml(reason)}</li>`).join('')}</ul>` : '<span>尚无可定位的逐图证据；点击“修复未通过项”后，系统会先定位问题，再只修复对应图片并自动复核。</span>'}</div>` : ''}
   </div>`;
 }
 
@@ -173,7 +173,7 @@ export function renderSceneDossierCard(item = {}) {
     <div class="scene-dossier-evidence-grid">${['reverse', 'interaction', 'detail'].map(key => viewSlot(item, dossier, key, { width: 960 })).join('')}</div>
     <div class="scene-dossier-lower"><div class="scene-dossier-layout">${viewSlot(item, dossier, 'layout', { width: 1400 })}</div><div class="scene-dossier-contract"><h3>场景视觉合同</h3><dl><div><dt>空间布局</dt><dd>${escapeHtml(spec.layout || spec.layoutText || '待补齐')}</dd></div><div><dt>材质与表面</dt><dd>${escapeHtml(spec.materials || spec.materialLightText || '待补齐')}</dd></div><div><dt>天气 / 时间 / 灯光</dt><dd>${escapeHtml([spec.weather, spec.time, spec.light].filter(Boolean).join(' · ') || '待补齐')}</dd></div><div><dt>互动与路线</dt><dd>${escapeHtml(spec.interaction || spec.interactionText || '待补齐')}</dd></div><div class="is-negative"><dt>禁止出现</dt><dd>${escapeHtml(spec.negative || spec.negativeText || '没有额外禁止项')}</dd></div></dl></div></div>
     <div class="scene-dossier-assets"><section><h3>固定空间与结构</h3><ul>${chips(structures)}</ul></section><section><h3>道具与摆放</h3><ul>${chips(props, '当前场景没有结构化道具摆放')}</ul></section><section><h3>材质与表面证据</h3><ul>${chips(materials)}</ul></section><section><h3>灯光证据</h3><ul>${chips(lighting, '灯光信息保留在上方视觉合同')}</ul></section></div>
-    <div class="scene-dossier-footer"><section><h3>一致性 QA</h3><div class="scene-dossier-qa">${qa.length ? qa.map(row => `<span class="is-${row.pass === true ? 'pass' : (row.pass === false ? 'fail' : 'unknown')}"><i aria-hidden="true"></i>${escapeHtml(row.label)}：${row.pass === true ? '通过' : (row.pass === false ? '未通过' : '待确认')}${row.pass === false && list(row.reasons).length ? `<small>${escapeHtml(list(row.reasons).slice(0, 3).join('；'))}</small>` : ''}</span>`).join('') : '<span class="is-unknown">尚无正式 QA 结论</span>'}</div>${qaFailure.labels.length && !qaFailure.reasons.length ? '<p class="scene-dossier-qa-guidance">当前审核没有返回可定位的逐图证据，应先再次验证，不应直接付费重生成。</p>' : ''}</section><section><h3>生产引用</h3><p>${item.shot_refs?.length ? `用于 ${item.shot_refs.length} 个镜头：${escapeHtml(item.shot_refs.slice(0, 8).join('、'))}` : '尚未被分镜引用'} · 知识规则 ${escapeHtml(item.knowledge_policy?.rule_ids?.join('、') || '沿用任务快照')}</p><div class="scene-dossier-palette"><b>图片提取色</b><span>导出时从主视原图确定性取样，不伪造色彩合同。</span><div data-scene-dossier-palette aria-label="主视图颜色取样"></div></div></section></div>
+    <div class="scene-dossier-footer"><section><h3>一致性 QA</h3><div class="scene-dossier-qa">${qa.length ? qa.map(row => `<span class="is-${row.pass === true ? 'pass' : (row.pass === false ? 'fail' : 'unknown')}"><i aria-hidden="true"></i>${escapeHtml(row.label)}：${row.pass === true ? '通过' : (row.pass === false ? '未通过' : '待确认')}${row.pass === false && list(row.reasons).length ? `<small>${escapeHtml(list(row.reasons).slice(0, 3).join('；'))}</small>` : ''}</span>`).join('') : '<span class="is-unknown">尚无正式 QA 结论</span>'}</div>${qaFailure.labels.length && !qaFailure.reasons.length ? '<p class="scene-dossier-qa-guidance">当前审核没有返回可定位的逐图证据；“修复未通过项”会先定位，再执行一次有边界的定向修复并自动复核。</p>' : ''}</section><section><h3>生产引用</h3><p>${item.shot_refs?.length ? `用于 ${item.shot_refs.length} 个镜头：${escapeHtml(item.shot_refs.slice(0, 8).join('、'))}` : '尚未被分镜引用'} · 知识规则 ${escapeHtml(item.knowledge_policy?.rule_ids?.join('、') || '沿用任务快照')}</p><div class="scene-dossier-palette"><b>图片提取色</b><span>导出时从主视原图确定性取样，不伪造色彩合同。</span><div data-scene-dossier-palette aria-label="主视图颜色取样"></div></div></section></div>
     <p class="scene-dossier-boundary">3D、360°、机位和路线继续使用页面下方“场景世界”，本档案卡只读取已有资产。</p>
   </section>`;
 }
@@ -184,7 +184,7 @@ export function bindSceneDossierCard(scope, item = {}) {
   button.addEventListener('click', async () => {
     try {
       setButtonBusy(button, true, '正在本地合成…', { elapsed: true });
-      const exporter = await import('./sceneDossierExport.js?v=20260827-production-v238e');
+      const exporter = await import('./sceneDossierExport.js?v=20260827-production-v239');
       const result = await exporter.exportSceneDossierPng(item);
       const palette = scope.querySelector('[data-scene-dossier-palette]');
       if (palette && result.palette?.length) palette.innerHTML = result.palette.map(color => `<i style="--scene-swatch:${escapeHtml(color)}" title="${escapeHtml(color)}"></i>`).join('');

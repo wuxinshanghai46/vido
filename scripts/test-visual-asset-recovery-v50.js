@@ -249,7 +249,8 @@ function testUiScope() {
   assert.ok(!view.includes('当前人物配饰存在计费未知记录'));
   assert.ok(retry.includes("lane: 'subjects'"));
   assert.ok(sceneInteractions.includes("lane: 'scenes'"));
-  assert.ok(sceneInteractions.includes('authorizeReviews: true') && retry.includes('await authorizeBillingReviews({ ...options'), 'scene recovery must write the same one-time authorization as subject recovery through the shared confirmation path');
+  assert.ok(sceneInteractions.includes('await authorizeBillingReviews({ bundle: context.bundle')
+    && !sceneInteractions.includes('confirmBillingAwareAction'), 'scene recovery click must write the revision-bound authorization directly without a second confirmation dialog');
   assert.ok(retry.includes('checkpoint_keys: reviews.map(review => review.review_key)'));
   assert.ok(retry.includes('expected_review_revisions:'), 'unknown units must be authorized by one revision-bound batch');
   assert.ok(view.includes('resume_partial_checkpoint = target.partial_checkpoint === true'));

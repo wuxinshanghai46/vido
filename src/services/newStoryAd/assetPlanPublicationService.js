@@ -550,6 +550,31 @@ function eligibility(taskId, { fingerprint = '' } = {}) {
   };
 }
 
+function publicEligibility(taskId, options = {}) {
+  const result = eligibility(taskId, options);
+  const migration = result.release_migration || {};
+  const releaseOnlyIssues = new Set([
+    'active_plan_bundle_mismatch',
+    'person_plan_stale',
+    'scene_plan_stale',
+  ]);
+  const compatibleReleaseOnly = migration.compatible === true
+    && migration.migration_required === true
+    && migration.fingerprint_basis === 'same_contract_strict_hash'
+    && result.issues.length > 0
+    && result.issues.every(issue => releaseOnlyIssues.has(issue));
+  if (!compatibleReleaseOnly) return result;
+  return {
+    ...result,
+    eligible: true,
+    issues: [],
+    person: { ...result.person, eligible: true, issues: [] },
+    scene: { ...result.scene, eligible: true, issues: [] },
+    release_sync_pending: true,
+    release_sync_issues: result.issues,
+  };
+}
+
 module.exports = {
   CANDIDATE_KIND,
   ACTIVE_KIND,
@@ -568,4 +593,5 @@ module.exports = {
   publish,
   carryForward,
   eligibility,
+  publicEligibility,
 };

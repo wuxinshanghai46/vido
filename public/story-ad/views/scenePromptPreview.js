@@ -1,6 +1,6 @@
-import { escapeHtml, toast } from '../components/ui.js?v=20260827-production-v238e';
-import { normalizeSceneDossier, renderSceneCoverCard, sceneNeedsGeneration } from './sceneDossierCard.js?v=20260827-production-v238e';
-import { sceneGenerationSettingsMarkup } from './sceneDossierCardSettings.js?v=20260827-production-v238e';
+import { escapeHtml, toast } from '../components/ui.js?v=20260827-production-v239';
+import { normalizeSceneDossier, renderSceneCoverCard, sceneNeedsGeneration } from './sceneDossierCard.js?v=20260827-production-v239';
+import { sceneGenerationSettingsMarkup } from './sceneDossierCardSettings.js?v=20260827-production-v239';
 
 const submitted = new Set();
 
@@ -9,19 +9,27 @@ export function sceneProductionAction(scene = {}) {
   const action = String(plan.action || '');
   const labels = Array.isArray(plan.view_labels) ? plan.view_labels.filter(Boolean) : [];
   if (action === 'reverify') return {
-    kind: 'reverify', button: '再次验证（不生成图片）', status: '图片已保存；只重新执行一致性 QA，图片调用 0 次。', billable: false,
+    kind: 'fix', button: '修复未通过项', status: '系统将先定位未通过视图；若定位成功，只修复对应图片并自动复核。', billable: true,
   };
   if (action === 'regenerate_failed_views') return {
-    kind: 'repair', button: `只修复${labels.length ? `：${labels.join('、')}` : '失败视图'}（${Number(plan.count || labels.length || 0)} 张）`, status: plan.message || '仅重做有逐图证据的失败视图，其余图片保留。', billable: true,
+    kind: 'fix', button: `修复${labels.length ? `：${labels.join('、')}` : '失败视图'}（${Number(plan.count || labels.length || 0)} 张）`, status: `${plan.message || '仅重做有逐图证据的失败视图，其余图片保留。'} 完成后自动复核。`, billable: true,
   };
   if (action === 'rebuild_atlas') return {
-    kind: 'repair', button: '重建空间母图与布局（2 次图片调用）', status: plan.message || '透视视图来自同一母图，需要重建母图与俯视布局。', billable: true,
+    kind: 'fix', button: '修复空间母图与布局（2 次图片调用）', status: `${plan.message || '透视视图来自同一母图，需要重建母图与俯视布局。'} 完成后自动复核。`, billable: true,
   };
   if (action === 'regenerate_full_scene') return {
-    kind: 'generate', button: '完整重新生成当前场景', status: plan.message || '旧版空间合同需要完整升级，不能局部修复。', billable: true,
+    kind: 'fix', button: '修复并升级当前场景', status: `${plan.message || '旧版空间合同需要完整升级，不能局部修复。'} 完成后自动复核。`, billable: true,
   };
   const needsGeneration = sceneNeedsGeneration(scene);
   return { kind: 'generate', button: needsGeneration ? '生成该场景' : '重新生成', status: needsGeneration ? '已自动保存，可生成画面' : '画面已就绪，可重新生成', billable: true };
+}
+
+export function scenePendingAction(scene = {}) {
+  const action = String(scene.repair_plan?.action || '');
+  if (['reverify', 'regenerate_failed_views', 'rebuild_atlas', 'regenerate_full_scene'].includes(action)) {
+    return sceneProductionAction(scene);
+  }
+  return sceneNeedsGeneration(scene) ? sceneProductionAction(scene) : null;
 }
 
 export function renderSceneProductionCard(scene = {}, index = 0, options = {}) {

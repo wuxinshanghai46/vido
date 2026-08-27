@@ -115,7 +115,10 @@ function createTaskViewService(deps = {}) {
     // must never be promoted back into the current UI after the authoritative
     // scene plan or scene assets were invalidated.
     const projectedSceneAssets = hasCurrentSceneConfig
-      ? sceneCheckpointProjection.projectSceneAssets(sceneProjectionRows(rawOutputs, sceneAssetsInvalidation))
+      ? sceneCheckpointProjection.projectSceneAssets(
+        sceneProjectionRows(rawOutputs, sceneAssetsInvalidation),
+        storage.listModelCalls(taskId),
+      )
       : [];
     const videoShotStatuses = (rawBundle.outputs || [])
       .filter(row => String(row.kind || '').startsWith('video_shot_status_'))
@@ -188,7 +191,7 @@ function createTaskViewService(deps = {}) {
       ? assetPlanFingerprint(bundle.task || {}, outputs.context || bundle.task?.request || {})
       : (activePlanRecord?.fingerprint || '');
     outputs.asset_plan_eligibility = assetPlanPublication
-      ? assetPlanPublication.eligibility(taskId, { fingerprint: currentPlanFingerprint })
+      ? assetPlanPublication.publicEligibility(taskId, { fingerprint: currentPlanFingerprint })
       : { eligible: false, issues: ['asset_plan_publication_service_missing'] };
     outputs.video_clips = videoClipStatusRecovery.recoverFromOutputRows(rawBundle.outputs || [], outputs.video_clips || []);
     const currentStoryboardStatus = storyboardStatus(bundle, outputs);

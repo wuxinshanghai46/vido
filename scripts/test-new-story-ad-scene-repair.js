@@ -535,7 +535,8 @@ async function main() {
   };
   sceneSpace.analyzeSceneViews = async options => passingContract(options.views);
   try {
-    const result = await sceneAssets.repairSceneAsset(taskId, sceneId, { scene_spec: sceneSpec, aspect_ratio: '16:9' });
+    const result = await sceneAssets.fixSceneAsset(taskId, sceneId, { scene_spec: sceneSpec, aspect_ratio: '16:9' });
+    assert.equal(result.fix_status, 'repaired_and_verified');
     assert.equal(calls.length, 1, 'only the rejected reverse view should be regenerated');
     assert.match(calls[0].filename, /_reverse_/);
     assert.deepEqual(calls[0].referenceImages, ['/old-master.png', '/old-layout.png']);
@@ -604,10 +605,21 @@ async function main() {
     assert.equal(persistedUnavailable.scene_contract.spatial_coverage_qa.layout_topology_score, null);
     assert.equal(persistedUnavailable.scene_contract.spatial_coverage_qa.coverage_status, 'unavailable');
 
+    const callsBeforeEvidenceFailure = calls.length;
+    try {
+      await sceneAssets.fixSceneAsset(unavailableTaskId, unavailableSceneId, { scene_spec: sceneSpec, aspect_ratio: '16:9' });
+      assert.fail('unified fix must stop when QA still has no locatable evidence');
+    } catch (error) {
+      assert.equal(error.code, 'SCENE_QA_EVIDENCE_UNAVAILABLE');
+      assert.equal(error.provider_image_call_count, 0);
+    }
+    assert.equal(calls.length, callsBeforeEvidenceFailure, 'evidence-unavailable fix must not call the image generator');
+
     sceneSpace.analyzeSceneViews = async options => passingContract(options.views);
-    const callsBeforeReverify = calls.length;
-    const reverified = await sceneAssets.reverifySceneAsset(unavailableTaskId, unavailableSceneId);
-    assert.equal(calls.length, callsBeforeReverify, 'reverification must never call the image generator');
+    const callsBeforeFix = calls.length;
+    const reverified = await sceneAssets.fixSceneAsset(unavailableTaskId, unavailableSceneId, { scene_spec: sceneSpec, aspect_ratio: '16:9' });
+    assert.equal(calls.length, callsBeforeFix, 'a diagnosis that passes must finish without image regeneration');
+    assert.equal(reverified.fix_status, 'verified_without_image_repair');
     assert.equal(reverified.scene_asset.scene_revision, 2);
     assert.equal(reverified.scene_asset.scene_contract.full_space_lock, true);
     assert.equal(reverified.scene_asset.photographic_realism_qa.pass, true);
@@ -633,7 +645,8 @@ async function main() {
       malformed_json_code: 'VISION_QA_SCHEMA_INVALID',
       truncated_optional_json_salvaged: true,
       preserved_revision_after_qa_failure: unavailableResult.scene_asset.scene_revision,
-      reverify_image_calls: calls.length - callsBeforeReverify,
+      evidence_unavailable_image_calls: callsBeforeEvidenceFailure - calls.length,
+      diagnose_pass_image_calls: calls.length - callsBeforeFix,
     }, null, 2));
   } finally {
     mediaAdapter.generateImage = originalGenerateImage;

@@ -1,8 +1,9 @@
-import { setButtonBusy, toast } from '../components/ui.js?v=20260827-production-v238e';
-import { confirmBillingAwareAction } from './assetCenterBillingRetry.js?v=20260827-production-v238e';
-import { sceneNeedsGeneration } from './sceneDossierCard.js?v=20260827-production-v238e';
-import { bindSceneQaActions } from './sceneQaActions.js?v=20260827-production-v238e';
-import { createSceneCardEditorRuntime } from './sceneCardEditorRuntime.js?v=20260827-production-v238e';
+import { setButtonBusy, toast } from '../components/ui.js?v=20260827-production-v239';
+import { authorizeBillingReviews } from './assetCenterBillingRetry.js?v=20260827-production-v239';
+import { sceneNeedsGeneration } from './sceneDossierCard.js?v=20260827-production-v239';
+import { scenePendingAction } from './scenePromptPreview.js?v=20260827-production-v239';
+import { bindSceneQaActions, submitSceneFix } from './sceneQaActions.js?v=20260827-production-v239';
+import { createSceneCardEditorRuntime } from './sceneCardEditorRuntime.js?v=20260827-production-v239';
 
 export function bindSceneCards(host, context) {
   const editorRuntime = createSceneCardEditorRuntime(host, context);
@@ -32,9 +33,7 @@ export function bindSceneCards(host, context) {
     setButtonBusy(button, true, '正在准备…');
     try {
       await (await controllerFor(sceneId))?.flush();
-      const confirmation = await confirmBillingAwareAction({ bundle: context.bundle, lane: 'scenes', sceneId, authorizeReviews: true,
-        title: `生成${scene.name || '场景'}`, message: '使用已保存提示词生成画面，将调用图片模型并产生费用。', confirmText: '确认生成' });
-      if (!confirmation.accepted) { setButtonBusy(button, false); return; }
+      await authorizeBillingReviews({ bundle: context.bundle, lane: 'scenes', sceneId });
       await submitScene(scene, button);
       toast('任务已提交'); await context.refreshShell();
     } catch (error) { toast(error.message || '生成场景失败', 'error'); setButtonBusy(button, false); }
@@ -56,9 +55,7 @@ export function bindSceneCards(host, context) {
         await (await controllerFor(sceneId))?.flush();
       }));
     } catch { setButtonBusy(batchButton, false); return; }
-    const confirmation = await confirmBillingAwareAction({ bundle: context.bundle, lane: 'scenes', authorizeReviews: true,
-      title: `生成全部缺失场景（${targets.length}）`, message: `使用已保存提示词提交 ${targets.length} 个独立任务，并产生图片模型费用。`, confirmText: '确认全部生成' });
-    if (!confirmation.accepted) { setButtonBusy(batchButton, false); return; }
+    await authorizeBillingReviews({ bundle: context.bundle, lane: 'scenes' });
     setButtonBusy(batchButton, true, '正在提交…');
     const results = await Promise.allSettled(targets.map(scene => {
       const sceneId = String(scene.id || scene.scene_id || '');
@@ -70,6 +67,23 @@ export function bindSceneCards(host, context) {
     const failed = results.length - accepted;
     if (accepted) toast(`已提交 ${accepted} 个场景任务${failed ? `，${failed} 个未提交` : ''}`, failed ? 'warning' : 'success');
     else toast(results.find(item => item.status === 'rejected')?.reason?.message || '全部场景提交失败', 'error');
+    await context.refreshShell();
+  });
+  host.querySelector('[data-fix-all-scenes]')?.addEventListener('click', async event => {
+    const batchButton = event.currentTarget;
+    setButtonBusy(batchButton, true, '正在提交修复…', { elapsed: true });
+    const targets = (context.bundle.assets?.scenes || []).filter(scene => scenePendingAction(scene)?.kind === 'fix');
+    if (!targets.length) { setButtonBusy(batchButton, false); return toast('没有需要修复的场景'); }
+    const results = await Promise.allSettled(targets.map(scene => {
+      const sceneId = String(scene.id || scene.scene_id || '');
+      const button = [...host.querySelectorAll('[data-fix-scene]')]
+        .find(item => String(item.dataset.fixScene || '') === sceneId);
+      return submitSceneFix({ context, controllerFor, cardFor, scene, button, refresh: false });
+    }));
+    const accepted = results.filter(item => item.status === 'fulfilled').length;
+    const failed = results.length - accepted;
+    if (accepted) toast(`已提交 ${accepted} 个场景修复任务${failed ? `，${failed} 个未提交` : ''}`, failed ? 'warning' : 'success');
+    else toast(results.find(item => item.status === 'rejected')?.reason?.message || '全部场景修复提交失败', 'error');
     await context.refreshShell();
   });
   return editorRuntime.destroy;

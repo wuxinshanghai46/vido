@@ -1,5 +1,5 @@
-import { request } from '../api.js?v=20260827-production-v238e';
-export { ensureSubjectRecoveryReady } from './subjectRecoveryPreflightAction.js?v=20260827-production-v238e';
+import { request } from '../api.js?v=20260827-production-v239';
+export { ensureSubjectRecoveryReady } from './subjectRecoveryPreflightAction.js?v=20260827-production-v239';
 
 export async function loadBillingReviews({ bundle, lane = '', subjectId = '', sceneId = '' } = {}) {
   const taskId = bundle?.project?.id || '';

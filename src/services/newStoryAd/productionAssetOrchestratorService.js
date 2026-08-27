@@ -79,7 +79,7 @@ function create({ service, storage, generateAndCommitSubjectAssets, persistProvi
         try {
           const runOptions = { generationId: job.generationId, deferPublish: true, existingSceneAssets: sceneAssets };
           const result = target.repair_existing
-            ? await sceneAssetService.repairSceneAsset(taskId, target.scene_id, { ...target, generation_id: job.generationId }, runOptions)
+            ? await sceneAssetService.fixSceneAsset(taskId, target.scene_id, { ...target, generation_id: job.generationId }, runOptions)
             : await sceneAssetService.generateSceneAsset(taskId, { ...target, generation_id: job.generationId }, runOptions);
           sceneAssets = result.scene_assets || sceneAssets;
           latestSceneSpec = result.scene_spec || latestSceneSpec;

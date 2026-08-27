@@ -26,7 +26,22 @@ function plannedName(sceneConfig = {}, sceneId = '', spaceId = '') {
   return text(match?.name || match?.label || '', 120);
 }
 
-function checkpointPreview(row = {}, sceneConfig = {}) {
+function diagnosticIndex(modelCalls = []) {
+  const index = new Map();
+  (Array.isArray(modelCalls) ? modelCalls : []).forEach(call => {
+    [call.submission_id, call.platform_request_id, call.provider_request_id]
+      .map(value => text(value, 180)).filter(Boolean)
+      .forEach(key => {
+        const current = index.get(key);
+        if (!current || String(call.updated_at || call.created_at || '') >= String(current.updated_at || current.created_at || '')) {
+          index.set(key, call);
+        }
+      });
+  });
+  return index;
+}
+
+function checkpointPreview(row = {}, sceneConfig = {}, diagnostics = new Map()) {
   const checkpoint = row?.payload && typeof row.payload === 'object' ? row.payload : {};
   const views = VIEW_ORDER.map(key => {
     const source = checkpoint.views?.[key] || {};
@@ -49,9 +64,14 @@ function checkpointPreview(row = {}, sceneConfig = {}) {
   const failed = Object.entries(checkpoint.views || {}).filter(([, view]) => view?.status === 'failed');
   const failedKeys = failed.map(([key]) => key);
   const viewStatuses = Object.fromEntries(Object.entries(checkpoint.views || {}).map(([key, view = {}]) => {
+    const diagnosticKey = text(view.platform_request_id || view.submission_id || view.provider_request_id, 180);
+    const call = diagnosticKey ? diagnostics.get(diagnosticKey) || {} : {};
     const billingState = text(view.billing_state, 40);
     const submissionState = text(view.provider_submission_state || view.submission_state, 60);
-    const errorCode = text(view.error_code, 120);
+    const storedErrorCode = text(view.error_code, 120);
+    const errorCode = (!storedErrorCode || storedErrorCode === 'UNKNOWN')
+      ? text(call.error_code || storedErrorCode, 120)
+      : storedErrorCode;
     let state = view.status === 'succeeded' ? 'complete' : 'missing';
     if (view.status === 'failed') {
       if (sceneCheckpoints.requiresBillingReview(view)) state = 'billing_review';
@@ -64,12 +84,13 @@ function checkpointPreview(row = {}, sceneConfig = {}) {
       error_code: errorCode,
       billing_state: billingState,
       submission_state: submissionState,
-      provider_id: text(view.provider_id, 120),
-      model_id: text(view.model_id, 160),
-      http_status: text(view.provider_status, 60),
+      provider_id: text(view.provider_id || call.provider_id, 120),
+      model_id: text(view.model_id || call.model_id, 160),
+      http_status: text(view.provider_status || call.provider_status, 60),
       platform_request_id: text(view.platform_request_id || view.submission_id, 120),
       provider_request_id: text(view.provider_request_id, 180),
       provider_task_id: text(view.provider_task_id, 180),
+      duration_ms: Math.max(0, Number(view.duration_ms || call.latency_ms || call.duration_ms || 0) || 0),
       message: text(view.error || view.message, 220),
     }];
   }));
@@ -87,7 +108,10 @@ function checkpointPreview(row = {}, sceneConfig = {}) {
     generation_contract_version: Number(checkpoint.metadata?.generation_contract_version || 7) || 7,
     partial_checkpoint: true,
     checkpoint_status: text(checkpoint.status, 40),
-    checkpoint_error_code: text(checkpoint.last_error_code || failed[0]?.[1]?.error_code || '', 120),
+    checkpoint_error_code: text(
+      viewStatuses[failedKeys[0]]?.error_code || checkpoint.last_error_code || failed[0]?.[1]?.error_code || '',
+      120,
+    ),
     completed_view_keys: views.map(view => view.key),
     failed_view_keys: failedKeys,
     view_statuses: viewStatuses,
@@ -130,7 +154,7 @@ function mergeSuccessfulCheckpointViews(asset = {}, checkpoint = {}) {
   };
 }
 
-function projectSceneAssets(outputRows = []) {
+function projectSceneAssets(outputRows = [], modelCalls = []) {
   const rows = Array.isArray(outputRows) ? outputRows : [];
   const context = rows.find(row => row?.kind === 'context')?.payload || {};
   const sceneConfig = rows.find(row => row?.kind === 'scene_config')?.payload || context.scene_config || {};
@@ -150,8 +174,9 @@ function projectSceneAssets(outputRows = []) {
   const assetIndexById = new Map(assets
     .map((asset, index) => [text(asset?.space_id || asset?.scene_id || asset?.id, 120), index])
     .filter(([id]) => id));
+  const diagnostics = diagnosticIndex(modelCalls);
   rows.filter(row => String(row?.kind || '').startsWith('scene_asset_checkpoint:'))
-    .map(row => checkpointPreview(row, sceneConfig))
+    .map(row => checkpointPreview(row, sceneConfig, diagnostics))
     .filter(preview => preview && belongsToCurrentPlan(preview))
     .forEach(preview => {
       const id = text(preview.space_id || preview.scene_id || preview.id, 120);

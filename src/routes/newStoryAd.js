@@ -1628,7 +1628,7 @@ router.post('/tasks/:id/scene-assets', asyncRoute(async (req, res) => {
   req.body = authoritativeBody;
   return queueTaskStage(req, res, 'scene_asset', job => (
     authoritativeBody.repair_existing === true || authoritativeBody.repairExisting === true
-      ? sceneAssetService.repairSceneAsset(req.params.id, authoritativeBody.space_id || authoritativeBody.scene_id, {
+      ? sceneAssetService.fixSceneAsset(req.params.id, authoritativeBody.space_id || authoritativeBody.scene_id, {
           ...authoritativeBody,
           generation_id: job.generationId,
         }, { generationId: job.generationId })
@@ -1752,27 +1752,51 @@ router.put('/tasks/:id/scene-assets', asyncRoute(async () => {
 
 router.post('/tasks/:id/scene-assets/:sceneId/verify', asyncRoute(async (req, res) => {
   taskForReq(req);
-  const result = await sceneAssetService.reverifySceneAsset(req.params.id, req.params.sceneId);
-  res.json({ success: true, task_id: req.params.id, ...result });
+  const error = new Error('“再次验证”旧入口已停用；请使用“修复未通过项”，系统会自动定位、修复并复核。');
+  error.code = 'LEGACY_SCENE_VERIFY_DISABLED';
+  error.status = 410;
+  error.retryable = false;
+  throw error;
 }));
 
 router.post('/tasks/:id/scene-assets/:sceneId/repair', asyncRoute(async (req, res) => {
   taskForReq(req);
+  const error = new Error('旧场景修复入口已停用；请刷新页面后使用“修复未通过项”。');
+  error.code = 'LEGACY_SCENE_REPAIR_DISABLED';
+  error.status = 410;
+  error.retryable = false;
+  throw error;
+}));
+
+router.post('/tasks/:id/scene-assets/:sceneId/fix', asyncRoute(async (req, res) => {
+  taskForReq(req);
   const body = req.body || {};
   const currentPrompt = scenePromptConfirmation.assertCurrentPrompt(req.params.id, req.params.sceneId, body);
+  const sceneAssets = sceneAssetService.normalizeSceneAssets(storage.getOutput(req.params.id, 'scene_assets') || []);
+  const currentScene = sceneAssets.find(item => String(item.scene_id || item.id || '') === String(req.params.sceneId));
+  const plan = currentScene?.repair_plan || sceneAssetService.buildSceneRepairPlan(currentScene || {});
+  const fixRevision = [
+    currentPrompt.prompt_version_id,
+    currentScene?.scene_revision || currentScene?.revision || 1,
+    plan.version || 1,
+    plan.action || 'unknown',
+    ...(Array.isArray(plan.view_keys) ? plan.view_keys : []),
+  ].join(':');
   const authoritativeBody = {
     ...body,
     prompt_version_id: currentPrompt.prompt_version_id,
-    idempotency_key: `${req.params.id}:scene_asset_repair:${req.params.sceneId}:${currentPrompt.prompt_version_id}`,
+    scene_id: req.params.sceneId,
+    request_key: String(body.request_key || body.requestKey || `${req.params.id}:scene_asset_fix:${req.params.sceneId}:${fixRevision}`).slice(0, 180),
   };
   req.body = authoritativeBody;
-  return queueTaskStage(req, res, 'scene_asset', job => sceneAssetService.repairSceneAsset(req.params.id, req.params.sceneId, {
+  return queueTaskStage(req, res, 'scene_asset', job => sceneAssetService.fixSceneAsset(req.params.id, req.params.sceneId, {
     ...authoritativeBody,
     generation_id: job.generationId,
   }, {
     generationId: job.generationId,
   }), {
     scopeId: req.params.sceneId,
+    deadlineMs: 20 * 60 * 1000,
     failureContext: {
       scene_id: req.params.sceneId,
       scene_name: body.name || body.scene_name || body.sceneName || '',

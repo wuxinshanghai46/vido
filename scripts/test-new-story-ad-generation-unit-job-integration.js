@@ -159,6 +159,22 @@ const waitFor = async (predicate, timeoutMs = 2500) => {
     assert.strictEqual(storage.getTask('scoped-scenes').target_generation_results['scene_asset:scene-a'].status, 'succeeded');
     assert.strictEqual(storage.getTask('scoped-scenes').target_generation_results['scene_asset:scene-b'].status, 'succeeded');
 
+    storage.createTask({ id: 'scoped-scene-failure-progress', content_revision: 1, request: { brief: 'scoped failure progress' } });
+    const scopedFailure = jobs.queueStage({
+      taskId: 'scoped-scene-failure-progress', stage: 'scene_asset', scopeId: 'scene-c', expectedContentRevision: 1,
+      inputFingerprint: 'scene-c-v1', idempotencyKey: 'scoped-scene-failure-progress:scene-c:v1',
+      execute: async job => {
+        storage.updateTask('scoped-scene-failure-progress', {
+          generation_progress: { stage: 'scene_asset', generation_id: job.generationId, status: 'running', processed: 5, succeeded: 4, failed: 1 },
+        });
+        throw Object.assign(new Error('detail failed'), { code: 'PROVIDER_5XX_AMBIGUOUS' });
+      },
+    });
+    await waitFor(() => storage.getGenerationRun(scopedFailure.job.generation_unit_id)?.state === 'failed_terminal');
+    const scopedFailedTask = storage.getTask('scoped-scene-failure-progress');
+    assert.strictEqual(scopedFailedTask.generation_progress.status, 'failed', 'scoped失败必须终结共享generation_progress');
+    assert.strictEqual(scopedFailedTask.active_generation_id, '');
+
     storage.createTask({ id: 'job-interrupted', content_revision: 1, request: { brief: 'interrupted' } });
     storage.updateTask('job-interrupted', {
       status: 'running', stage: 'storyboard', active_stage: 'storyboard', active_generation_id: 'old-worker-job',

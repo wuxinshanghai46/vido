@@ -32,7 +32,7 @@ function loadPrompt(dossier) {
     sceneNeedsGeneration: dossier.sceneNeedsGeneration,
     sceneGenerationSettingsMarkup: () => '<select data-scene-quality></select>',
   };
-  vm.runInNewContext(`${executable('public/story-ad/views/scenePromptPreview.js')}\nglobalThis.__prompt={sceneProductionAction,renderSceneProductionCard};`, sandbox);
+  vm.runInNewContext(`${executable('public/story-ad/views/scenePromptPreview.js')}\nglobalThis.__prompt={sceneProductionAction,scenePendingAction,renderSceneProductionCard};`, sandbox);
   return sandbox.__prompt;
 }
 
@@ -74,70 +74,78 @@ function testPlanner() {
   assert.equal(atlas.provider_image_call_count, 2);
 }
 
-async function testReverifyBinding() {
+async function testFixBinding() {
   const requests = [];
-  let confirmationCalls = 0;
+  let authorizationCalls = 0;
   const button = {
-    dataset: { reverifyScene: 'scene-reverify' },
+    dataset: { fixScene: 'scene-reverify' },
+    closest() { return null; },
     addEventListener(type, handler) { if (type === 'click') this.clickHandler = handler; },
   };
   const host = {
     addEventListener() {},
     querySelector: () => null,
-    querySelectorAll(selector) { return selector === '[data-reverify-scene]' ? [button] : []; },
+    querySelectorAll(selector) { return selector === '[data-fix-scene]' ? [button] : []; },
   };
   const sandbox = {
     setButtonBusy() {},
     toast() {},
-    confirmBillingAwareAction: async () => { confirmationCalls += 1; return { accepted: true }; },
+    authorizeBillingReviews: async () => { authorizationCalls += 1; return []; },
   };
   vm.runInNewContext(`${executable('public/story-ad/views/sceneQaActions.js')}\nglobalThis.__bind=bindSceneQaActions;`, sandbox);
   sandbox.__bind({ host, context: {
     bundle: { project: { id: 'task-qa' }, assets: { scenes: [{ id: 'scene-reverify', name: '复验场景' }] } },
-    store: { async runStage(pathname, body) { requests.push({ pathname, body }); return { scene_asset: { scene_contract: { full_space_lock: true } } }; } },
+    store: { async runStage(pathname, body) { requests.push({ pathname, body }); return { accepted: true }; } },
     async refreshShell() {},
   }, controllerFor: async () => null, cardFor: () => null });
   await button.clickHandler();
-  assert.equal(confirmationCalls, 0, 'reverify must not open a billing confirmation');
-  assert.deepEqual(requests, [{ pathname: 'scene-assets/scene-reverify/verify', body: undefined }]);
+  assert.equal(authorizationCalls, 1, 'direct fix click must prepare any existing billing review without a confirmation dialog');
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].pathname, 'scene-assets/scene-reverify/fix');
+  assert.equal(requests[0].body.scene_id, 'scene-reverify');
+  assert.match(requests[0].body.request_key, /^scene-fix:scene-reverify:/);
 }
 
 async function main() {
   testPlanner();
-  await testReverifyBinding();
+  await testFixBinding();
   const dossier = loadDossier();
   const prompt = loadPrompt(dossier);
   const reverify = completeScene('reverify', { count: 0, reasons: ['反向视图入口位置与主视图不一致'] });
   assert.equal(dossier.sceneNeedsGeneration(reverify), false, '复验任务不得进入批量图片生成');
+  assert.equal(prompt.scenePendingAction(reverify).kind, 'fix', '无逐图证据必须进入统一修复编排');
   assert.deepEqual([...dossier.sceneQaFailureDetails(reverify).labels], ['跨视角一致性']);
   assert.match(dossier.renderSceneCoverCard(reverify), /未通过：跨视角一致性[\s\S]*反向视图入口位置与主视图不一致/);
   const reverifyHtml = prompt.renderSceneProductionCard(reverify);
-  assert.match(reverifyHtml, /data-reverify-scene="scene-reverify"/);
-  assert.match(reverifyHtml, /再次验证（不生成图片）/);
-  assert.doesNotMatch(reverifyHtml, /data-scene-quality/);
+  assert.match(reverifyHtml, /data-fix-scene="scene-reverify"/);
+  assert.match(reverifyHtml, /修复未通过项/);
+  assert.match(reverifyHtml, /data-scene-quality/);
 
   const repair = completeScene('regenerate_failed_views', { count: 1, view_labels: ['反向空间'], message: '只重做反向空间。' });
   const repairHtml = prompt.renderSceneProductionCard(repair);
-  assert.match(repairHtml, /data-repair-scene="scene-regenerate_failed_views"/);
-  assert.match(repairHtml, /只修复：反向空间（1 张）/);
+  assert.match(repairHtml, /data-fix-scene="scene-regenerate_failed_views"/);
+  assert.match(repairHtml, /修复：反向空间（1 张）/);
   assert.match(repairHtml, /data-scene-quality/);
   assert.equal(dossier.sceneNeedsGeneration(repair), false, '定向修复不得误入普通批量生成路由');
+  assert.equal(prompt.scenePendingAction(repair).kind, 'fix', '定向补图必须进入统一修复聚合');
 
   const atlasHtml = prompt.renderSceneProductionCard(completeScene('rebuild_atlas', { count: 2 }));
-  assert.match(atlasHtml, /重建空间母图与布局（2 次图片调用）/);
+  assert.match(atlasHtml, /修复空间母图与布局（2 次图片调用）/);
   const fullHtml = prompt.renderSceneProductionCard(completeScene('regenerate_full_scene', { count: 2 }));
-  assert.match(fullHtml, /data-generate-scene="scene-regenerate_full_scene"/);
-  assert.match(fullHtml, /完整重新生成当前场景/);
+  assert.match(fullHtml, /data-fix-scene="scene-regenerate_full_scene"/);
+  assert.match(fullHtml, /修复并升级当前场景/);
 
   const interactions = read('public/story-ad/views/sceneQaActions.js');
-  const verifyBlock = interactions.slice(interactions.indexOf("host.querySelectorAll('[data-reverify-scene]')"), interactions.indexOf("host.querySelectorAll('[data-repair-scene]')"));
-  const repairBlock = interactions.slice(interactions.indexOf("host.querySelectorAll('[data-repair-scene]')"));
-  assert.match(verifyBlock, /scene-assets\/\$\{encodeURIComponent\(sceneId\)\}\/verify/);
-  assert.doesNotMatch(verifyBlock, /confirmBillingAwareAction|\/repair/);
-  assert.match(verifyBlock, /图片调用 0 次/);
-  assert.match(repairBlock, /scene-assets\/\$\{encodeURIComponent\(sceneId\)\}\/repair/);
-  assert.match(repairBlock, /confirmBillingAwareAction/);
-  console.log(JSON.stringify({ passed: true, reverify_image_calls: 0, targeted_repair_views: 1, atlas_image_calls: 2, supplier_calls: 0 }));
+  assert.match(interactions, /scene-assets\/\$\{encodeURIComponent\(sceneId\)\}\/fix/);
+  assert.match(interactions, /authorizeBillingReviews/);
+  assert.doesNotMatch(interactions, /confirmBillingAwareAction|data-reverify-scene|data-repair-scene/);
+  assert.match(read('public/story-ad/views/sceneWorldPage.js'), /data-generate-all-scenes>生成全部缺失场景/);
+  assert.match(read('public/story-ad/views/sceneWorldPage.js'), /data-fix-all-scenes>修复全部未通过场景/);
+  const routes = read('src/routes/newStoryAd.js');
+  assert.match(routes, /scene-assets\/:sceneId\/fix/);
+  assert.match(routes, /LEGACY_SCENE_VERIFY_DISABLED/);
+  assert.match(routes, /LEGACY_SCENE_REPAIR_DISABLED/);
+  console.log(JSON.stringify({ passed: true, unified_fix_action: true, targeted_repair_views: 1, atlas_image_calls: 2, supplier_calls: 0 }));
 }
 
 main().catch(error => { console.error(error); process.exitCode = 1; });

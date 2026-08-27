@@ -658,9 +658,19 @@ function buildUnverifiedContract(options = {}, error = null) {
   contract.qa_unavailable = true;
   contract.qa_error_code = cleanText(error?.code || 'VISION_QA_UNAVAILABLE', 80);
   contract.qa_error = cleanText(error?.message || '视觉验收暂不可用', 500);
+  contract.qa_missing_fields = stringList(error?.missing_fields || [], 12, 160);
+  contract.qa_schema_issues = (Array.isArray(error?.details) ? error.details : [])
+    .slice(0, 12)
+    .map(item => ({
+      code: cleanText(item?.code || 'SCENE_QA_SCHEMA_INVALID', 80),
+      field: cleanText(item?.title || '', 160),
+      message: cleanText(item?.message || '', 300),
+    }));
   contract.verification = verification.unavailable(error || { code: contract.qa_error_code, message: contract.qa_error });
   contract.vision_model = '';
-  contract.view_issues = [];
+  contract.view_issues = partialSceneQa
+    ? normalizeViewIssues(partialSceneQa.view_issues || partialSceneQa.viewIssues || [], options.requested || {})
+    : [];
   if (!partialSceneQa) {
     contract.cross_view_qa = {
       pass: null,
@@ -906,6 +916,7 @@ async function analyzeSceneViews(options = {}) {
       message: `场景五图 QA 缺少 ${field}`,
       status: 'missing',
     }));
+    error.partial_scene_qa = parsed;
     throw error;
   }
   const cameraRequest = {

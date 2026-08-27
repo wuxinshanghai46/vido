@@ -6,6 +6,7 @@ function project(asset = {}, { clean, list } = {}) {
     http_status: clean(value.http_status || value.provider_status, 60),
     platform_request_id: clean(value.platform_request_id || value.submission_id, 120),
     provider_request_id: clean(value.provider_request_id, 180), provider_task_id: clean(value.provider_task_id, 180),
+    duration_ms: Math.max(0, Number(value.duration_ms || 0) || 0),
     message: clean(value.message, 220),
   }]));
   const repair = asset.repair_plan && typeof asset.repair_plan === 'object' ? asset.repair_plan : null;

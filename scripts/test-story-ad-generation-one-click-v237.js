@@ -54,6 +54,12 @@ async function main() {
     stage: 'scene_asset', status: 'failed', target_total: 5, processed: 5, succeeded: 4, failed: 1, percent: 100,
   } } }, 'scene');
   assert(failedPanel.includes('处理 5/5：成功 4，失败 1'), '任务转为终态失败后仍必须保留处理、成功和失败计数');
+  const staleRunning = uiSandbox.__progressView({ project: {
+    status: 'failed', stage: 'scene_asset_failed', active_generation_id: '', active_target_generations: {}, error: '部分生成失败',
+    generation_progress: { stage: 'scene_asset', status: 'running', target_total: 5, processed: 5, succeeded: 4, failed: 1, percent: 100 },
+  } });
+  assert.equal(staleRunning.active, false, '无活动ID时旧running进度不得覆盖权威failed终态');
+  assert.equal(staleRunning.failed, true);
   assert(scenePreview.includes('scene-card-controls') && scenePreview.includes('sceneGenerationSettingsMarkup()'));
   assert(!sceneActions.includes('insertAdjacentHTML'));
   const singleSceneHandler = sceneActions.slice(sceneActions.indexOf("host.querySelectorAll('[data-generate-scene]')"), sceneActions.indexOf("host.querySelector('[data-generate-all-scenes]')"));

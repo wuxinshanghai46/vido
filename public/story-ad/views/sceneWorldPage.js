@@ -1,9 +1,8 @@
-import { bindSceneWorldWorkspace } from './sceneWorldView.js?v=20260827-production-v238e';
-import { setButtonBusy, toast } from '../components/ui.js?v=20260827-production-v238e';
-import { bindScenePlanUpdate, scenePlanBlockedView } from './scenePlanStatus.js?v=20260827-production-v238e';
-import { renderSceneProductionCard, scenePromptPreviewMarkup, scenePromptPreviewState, startInitialScenePlan } from './scenePromptPreview.js?v=20260827-production-v238e';
-import { sceneNeedsGeneration } from './sceneDossierCard.js?v=20260827-production-v238e';
-import { bindMediaLightbox } from './mediaLightbox.js?v=20260827-production-v238e';
+import { bindSceneWorldWorkspace } from './sceneWorldView.js?v=20260827-production-v239';
+import { setButtonBusy, toast } from '../components/ui.js?v=20260827-production-v239';
+import { bindScenePlanUpdate, scenePlanBlockedView } from './scenePlanStatus.js?v=20260827-production-v239';
+import { renderSceneProductionCard, scenePendingAction, scenePromptPreviewMarkup, scenePromptPreviewState, startInitialScenePlan } from './scenePromptPreview.js?v=20260827-production-v239';
+import { bindMediaLightbox } from './mediaLightbox.js?v=20260827-production-v239';
 
 export async function mount(host, context) {
   const { bundle, store } = context;
@@ -19,19 +18,22 @@ export async function mount(host, context) {
   const sceneIsActive = sceneId => activeTargets.some(item => item?.stage === 'scene_asset'
     && String(item?.target_id || '') === String(sceneId)
     && ['queued', 'running'].includes(String(item?.status || '')));
-  const missingScenes = scenes.filter(scene => sceneNeedsGeneration(scene));
-  const batchReadyCount = missingScenes.filter(scene => !sceneIsActive(scene.id || scene.scene_id)).length;
+  const pendingScenes = scenes.filter(scene => scenePendingAction(scene));
+  const generationReadyCount = pendingScenes.filter(scene => scenePendingAction(scene)?.kind === 'generate'
+    && !sceneIsActive(scene.id || scene.scene_id)).length;
+  const fixReadyCount = pendingScenes.filter(scene => scenePendingAction(scene)?.kind === 'fix'
+    && !sceneIsActive(scene.id || scene.scene_id)).length;
   const canConfirm = workflow.visuals_complete === true && scenes.length > 0
   const preview = scenePromptPreviewState(bundle, scenePlanReady || persistedScenePlanReady, generationActive);
 
   host.innerHTML = `<section class="view-head scene-view-head"><div><h1>场景</h1><p>默认查看场景画面，需要时可切换到提示词核对。</p></div><div class="scene-view-actions"><span>${scenes.length ? '' : '预计 '}${preview.displayedCount} 个场景</span>${canConfirm ? '<button class="btn primary compact" data-confirm-scenes>确认场景，进入线稿</button>' : ''}</div></section>
     ${scenePlanReady || persistedScenePlanReady ? '' : scenePlanBlockedView(sceneEligibility, generationActive, { automatic: preview.autoInitialize || generationActive })}
     ${!scenePlanReady && !persistedScenePlanReady ? scenePromptPreviewMarkup(preview, (scene, index) => renderSceneProductionCard(scene, index, { provisional: true })) : ''}
-    ${persistedScenePlanReady ? `<section class="scene-production"><header><div><h2>场景提示词与画面</h2><p>提示词修改后自动保存；已有或生成中的画面默认展示，需要时可切回提示词。</p></div><div class="scene-view-actions"><span>${workflow.generated_count || 0}/${scenes.length} 已生成</span>${batchReadyCount ? `<button class="btn primary compact" data-generate-all-scenes>生成全部缺失场景（${batchReadyCount}）</button>` : ''}</div></header><div class="scene-production-grid">${scenes.map((scene, index) => renderSceneProductionCard(scene, index, { generationActive: sceneIsActive(scene.id || scene.scene_id) })).join('')}</div></section>` : ''}`;
+    ${persistedScenePlanReady ? `<section class="scene-production"><header><div><h2>场景提示词与画面</h2><p>提示词修改后自动保存；已有或生成中的画面默认展示，需要时可切回提示词。</p></div><div class="scene-view-actions"><span>${workflow.generated_count || 0}/${scenes.length} 已生成</span>${generationReadyCount ? `<button class="btn primary compact" data-generate-all-scenes>生成全部缺失场景（${generationReadyCount}）</button>` : ''}${fixReadyCount ? `<button class="btn primary compact" data-fix-all-scenes>修复全部未通过场景（${fixReadyCount}）</button>` : ''}</div></header><div class="scene-production-grid">${scenes.map((scene, index) => renderSceneProductionCard(scene, index, { generationActive: sceneIsActive(scene.id || scene.scene_id) })).join('')}</div></section>` : ''}`;
 
   bindScenePlanUpdate(host, context);
   bindMediaLightbox(host);
-  const cleanupSceneCards = (await import('./sceneCardInteractions.js?v=20260827-production-v238e')).bindSceneCards(host, context);
+  const cleanupSceneCards = (await import('./sceneCardInteractions.js?v=20260827-production-v239')).bindSceneCards(host, context);
   if (preview.autoInitialize) startInitialScenePlan(bundle, store);
   if (scenes.length && (workflow.generated_count || 0) > 0) bindSceneWorldWorkspace(host, bundle, store);
   host.querySelector('[data-confirm-scenes]')?.addEventListener('click', async event => {

@@ -537,10 +537,10 @@ function buildSceneRepairPlan(asset = {}) {
     return { version: SCENE_REPAIR_PLAN_VERSION, action: 'none', view_keys: [], view_labels: [], count: 0, reasons: [], message: '完整空间已经锁定，无需修复。' };
   }
   if (contract.qa_unavailable === true || verificationState === 'unavailable') {
-    return { version: SCENE_REPAIR_PLAN_VERSION, action: 'reverify', view_keys: [], view_labels: [], count: 0, reasons, message: '图片无需重新生成，请稍后再次验证。' };
+    return { version: SCENE_REPAIR_PLAN_VERSION, action: 'reverify', view_keys: [], view_labels: [], count: 0, reasons, message: '统一修复将先重新定位问题；未取得逐图证据前不会调用图片模型。' };
   }
   if (!issues.length) {
-    return { version: SCENE_REPAIR_PLAN_VERSION, action: 'reverify', view_keys: [], view_labels: [], count: 0, reasons: [], message: '审核未提供逐图证据，禁止付费重生，请先再次验证。' };
+    return { version: SCENE_REPAIR_PLAN_VERSION, action: 'reverify', view_keys: [], view_labels: [], count: 0, reasons: [], message: '审核尚未提供逐图证据；统一修复会先定位，再决定是否需要图片调用。' };
   }
   const rootCodes = new Set(['ROOT_SCENE_IDENTITY_INVALID', 'ROOT_GEOMETRY_INVALID', 'ROOT_MATERIAL_IDENTITY_INVALID']);
   // A normal issue may target the master only. Expanding it to every dependent
@@ -551,7 +551,7 @@ function buildSceneRepairPlan(asset = {}) {
     : issues.flatMap(issue => Array.isArray(issue.view_keys) ? issue.view_keys : []));
   const viewKeys = SCENE_GENERATION_ORDER.filter(key => keys.has(key));
   if (!viewKeys.length) {
-    return { version: SCENE_REPAIR_PLAN_VERSION, action: 'reverify', view_keys: [], view_labels: [], count: 0, reasons, message: '审核证据未定位到具体视图，禁止付费重生，请先再次验证。' };
+    return { version: SCENE_REPAIR_PLAN_VERSION, action: 'reverify', view_keys: [], view_labels: [], count: 0, reasons, message: '审核证据尚未定位到具体视图；统一修复会先定位，再决定是否需要图片调用。' };
   }
   const atlasStrategy = cleanText(
     asset.view_strategy
@@ -1676,8 +1676,8 @@ async function repairSceneAsset(taskId, sceneId, body = {}, runOptions = {}) {
     throw error;
   }
   if (plan.action === 'reverify') {
-    const error = new Error('当前图片没有内容缺陷，只需点击“再次验证”，无需付费重新生成');
-    error.code = 'SCENE_REVERIFY_ONLY';
+    const error = new Error('当前修复计划缺少可定位的逐图证据，必须通过统一修复编排先完成诊断');
+    error.code = 'SCENE_FIX_DIAGNOSIS_REQUIRED';
     error.status = 409;
     throw error;
   }
@@ -1801,4 +1801,62 @@ async function reverifySceneAsset(taskId, sceneId) {
   saveSceneAssetsToTask(taskId, assets);
   return { scene_asset: assets[index], scene_assets: assets };
 }
-module.exports = { SCENE_VIEW_KEYS, REQUIRED_SCENE_VIEW_KEYS, SCENE_GENERATION_ORDER, SCENE_IMAGE_STAGE_BY_VIEW, SCENE_IMAGE_MAX_ATTEMPTS, SCENE_IMAGE_EXTRA_ATTEMPTS, SCENE_GENERATION_CONTRACT_VERSION, sceneViewLabel, sceneImageStage, sceneViewContentHash, exactSceneViewDuplicate, assertCompleteUpgradeSceneSpec, assertSceneRightsPreflight, sceneMaterialReferenceImages, authoritativeSceneGenerationBody, buildSceneSheetPrompt, sceneStructuredContract: sceneStructuredContract.compile, sceneDescriptionForSpec: sceneSpecProjection.sceneDescriptionForSpec, buildLayoutAcquisitionPrompt, legacyScenePromptFingerprintText, buildDerivedViewPrompt, buildSceneAuditSafePrompt, sceneFailureDiagnostics: sceneFailureDiagnostics.project, sceneVisionThumbnailUrl, needsLayoutView, sceneRequest, buildSceneRepairPlan, sceneGenerationUpgradeRequired, normalizeSceneAssets, localizeSceneViews, localizeSceneAssets, saveSceneAssetsToTask, generateSceneAsset, repairSceneAsset, reverifySceneAsset, _resetSceneImageCircuit: resetSceneImageCircuit };
+
+async function fixSceneAsset(taskId, sceneId, body = {}, runOptions = {}) {
+  const task = storage.getTask(taskId);
+  if (!task) throw new Error('没有找到对应项目。');
+  scenePromptConfirmation.assertCurrentPrompt(taskId, sceneId, body);
+  const context = assertContextConsistent(storage.getOutput(taskId, 'context') || task.request || {});
+  const currentAssets = normalizeSceneAssets(storage.getOutput(taskId, 'scene_assets') || context.scene_assets || []);
+  let current = currentAssets.find(item => String(item.scene_id || item.id) === String(sceneId || ''));
+  if (!current) {
+    const error = new Error('要修复的场景不存在');
+    error.code = 'SCENE_ASSET_NOT_FOUND';
+    error.status = 404;
+    throw error;
+  }
+  let plan = buildSceneRepairPlan(current);
+  let diagnosis = null;
+  if (plan.action === 'reverify') {
+    diagnosis = await reverifySceneAsset(taskId, sceneId);
+    current = diagnosis.scene_asset;
+    plan = current.repair_plan || buildSceneRepairPlan(current);
+    if (plan.action === 'none') {
+      return {
+        ...diagnosis,
+        fix_status: 'verified_without_image_repair',
+        provider_image_call_count: 0,
+      };
+    }
+    if (plan.action === 'reverify') {
+      const error = new Error(current.scene_contract?.qa_error
+        || '视觉检查服务仍未返回可定位的逐图证据，已停止图片调用；请查看供应商错误后再处理。');
+      error.code = 'SCENE_QA_EVIDENCE_UNAVAILABLE';
+      error.status = 422;
+      error.retryable = true;
+      error.scene_asset = current;
+      error.repair_plan = plan;
+      error.provider_image_call_count = 0;
+      throw error;
+    }
+  }
+  if (plan.action === 'regenerate_full_scene') {
+    return generateSceneAsset(taskId, {
+      ...body,
+      scene_id: current.scene_id || current.id,
+      space_id: current.space_id || current.scene_id || current.id,
+      name: current.name,
+      scene_spec: body.scene_spec || body.sceneSpec || current.scene_spec || {
+        layoutText: current.layout_summary || '',
+        materialLightText: current.material_summary || '',
+        interactionText: current.interaction_summary || '',
+        negativeText: current.negative || '',
+        surfaceTopology: current.surface_topology || {},
+      },
+    }, { ...runOptions, fullRebuild: true });
+  }
+  const result = await repairSceneAsset(taskId, sceneId, body, runOptions);
+  return { ...result, fix_status: diagnosis ? 'diagnosed_repaired_and_verified' : 'repaired_and_verified' };
+}
+
+module.exports = { SCENE_VIEW_KEYS, REQUIRED_SCENE_VIEW_KEYS, SCENE_GENERATION_ORDER, SCENE_IMAGE_STAGE_BY_VIEW, SCENE_IMAGE_MAX_ATTEMPTS, SCENE_IMAGE_EXTRA_ATTEMPTS, SCENE_GENERATION_CONTRACT_VERSION, sceneViewLabel, sceneImageStage, sceneViewContentHash, exactSceneViewDuplicate, assertCompleteUpgradeSceneSpec, assertSceneRightsPreflight, sceneMaterialReferenceImages, authoritativeSceneGenerationBody, buildSceneSheetPrompt, sceneStructuredContract: sceneStructuredContract.compile, sceneDescriptionForSpec: sceneSpecProjection.sceneDescriptionForSpec, buildLayoutAcquisitionPrompt, legacyScenePromptFingerprintText, buildDerivedViewPrompt, buildSceneAuditSafePrompt, sceneFailureDiagnostics: sceneFailureDiagnostics.project, sceneVisionThumbnailUrl, needsLayoutView, sceneRequest, buildSceneRepairPlan, sceneGenerationUpgradeRequired, normalizeSceneAssets, localizeSceneViews, localizeSceneAssets, saveSceneAssetsToTask, generateSceneAsset, repairSceneAsset, reverifySceneAsset, fixSceneAsset, _resetSceneImageCircuit: resetSceneImageCircuit };

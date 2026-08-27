@@ -708,12 +708,19 @@ function queueStage({
       if (normalizedScopeId) {
         const patch = scopedTaskPatch(current || {}, job, 'succeeded');
         const remaining = Object.keys(patch.active_target_generations || {}).length > 0;
+        const terminalProgress = !remaining
+          ? terminalGenerationProgress(current, stage, id, {
+            status: 'done', phase: 'complete', percent: 100,
+            finished_at: job.finishedAt, updated_at: job.finishedAt,
+          })
+          : null;
         storage.updateTask(taskId, {
           ...patch,
           ...(!remaining ? {
             status: 'done', stage: `${stage}_done`, generation_finished_at: job.finishedAt,
             error: '', error_code: '', support_id: '',
           } : {}),
+          ...(terminalProgress ? { generation_progress: terminalProgress } : {}),
         });
       } else if (String(current?.active_generation_id || '') === id) {
         const stageUnchanged = String(current?.stage || '') === String(stage);
@@ -777,6 +784,11 @@ function queueStage({
           code: failure.code, message: job.error, retryable: failure.retryable,
         });
         const remaining = Object.keys(patch.active_target_generations || {}).length > 0;
+        const terminalProgress = !remaining ? terminalGenerationProgress(current, stage, id, {
+          status: 'failed', error_code: failure.code, support_id: id, message: job.error,
+          finished_at: job.finishedAt, updated_at: job.finishedAt,
+          ...(failureBillingState ? { billing_state: failureBillingState } : {}),
+        }) : null;
         storage.saveStage(taskId, stage, {
           status: 'failed', started_at: job.startedAt, finished_at: job.finishedAt,
           output_summary: error?.partial_results_saved === true ? '部分生成失败；成功资产与检查点已保存' : '执行失败，未保存可用结果',
@@ -789,6 +801,7 @@ function queueStage({
           ...(!remaining ? {
             status: 'failed', stage: `${stage}_failed`, generation_finished_at: job.finishedAt,
             error: job.error, error_code: failure.code, support_id: id, retryable: failure.retryable,
+            ...(terminalProgress ? { generation_progress: terminalProgress } : {}),
           } : {}),
         });
       } else if (String(current?.active_generation_id || '') === id) {

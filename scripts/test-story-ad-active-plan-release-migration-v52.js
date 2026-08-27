@@ -141,6 +141,14 @@ for (const fixture of fixtures) {
   assert.equal(compatibility.compatible, true, `${fixture.taskId} old envelope with complete contract fields should be compatible`);
   assert.equal(compatibility.fingerprint_basis, 'legacy_revision_and_persisted_lineage');
   assert.equal(compatibility.migration_required, true);
+  const publicEligibility = publication.publicEligibility(fixture.taskId, { fingerprint: fixture.fingerprint });
+  if (compatibility.fingerprint_basis === 'same_contract_strict_hash') {
+    assert.equal(publicEligibility.eligible, true, `仅发布封套变化时页面不得误报内容方案过期: ${JSON.stringify(publicEligibility)}`);
+    assert.equal(publicEligibility.release_sync_pending, true);
+    assert.deepEqual(publicEligibility.issues, []);
+  } else {
+    assert.equal(publicEligibility.eligible, false, '旧指纹合同仍必须先完成受控迁移，不得在页面静默放行');
+  }
   const callsBefore = modelCalls(fixture.taskId);
   const migrated = publication.migrateCompatibleRelease(fixture.taskId, { fingerprint: fixture.fingerprint, reason: 'v52-test' });
   assert.equal(migrated.migrated, true);
