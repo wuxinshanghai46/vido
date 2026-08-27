@@ -1,5 +1,5 @@
-import { request } from '../api.js?v=20260827-production-v235';
-import { normalizeSceneDossier, SCENE_VIEW_LABELS, SCENE_VIEW_ORDER } from './sceneDossierCard.js?v=20260827-production-v235';
+import { request } from '../api.js?v=20260827-production-v235a';
+import { normalizeSceneDossier, SCENE_VIEW_LABELS, SCENE_VIEW_ORDER } from './sceneDossierCard.js?v=20260827-production-v235a';
 
 const WIDTH = 1800;
 const HEIGHT = 2400;
