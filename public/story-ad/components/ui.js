@@ -170,9 +170,8 @@ export function generationProgressView(bundle = {}) {
   const project = bundle.project || {};
   const progress = bundle.generation?.progress || project.generation_progress || {};
   const status = String(progress.status || project.status || '').toLowerCase();
-  const activeTargets = project.active_target_generations && typeof project.active_target_generations === 'object'
-    ? Object.keys(project.active_target_generations).length : 0;
-  const active = Boolean(project.active_generation_id) || activeTargets > 0 || ['queued', 'running', 'processing'].includes(status);
+  const active = Boolean(project.active_generation_id || Object.keys(project.active_target_generations || {}).length)
+    || ['queued', 'running', 'processing'].includes(status);
   const failed = !active && (['failed', 'blocked'].includes(status) || Boolean(project.error));
   if (!active && !failed) return null;
   const stage = normalizeGenerationStage(progress.stage || project.active_stage || project.stage || 'full') || 'full';
