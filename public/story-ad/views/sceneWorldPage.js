@@ -1,8 +1,8 @@
-import { bindSceneWorldWorkspace } from './sceneWorldView.js?v=20260827-production-v236b';
-import { setButtonBusy, toast } from '../components/ui.js?v=20260827-production-v236b';
-import { bindScenePlanUpdate, scenePlanBlockedView } from './scenePlanStatus.js?v=20260827-production-v236b';
-import { renderSceneProductionCard, scenePromptPreviewMarkup, scenePromptPreviewState, startInitialScenePlan } from './scenePromptPreview.js?v=20260827-production-v236b';
-import { sceneNeedsGeneration } from './sceneDossierCard.js?v=20260827-production-v236b';
+import { bindSceneWorldWorkspace } from './sceneWorldView.js?v=20260827-production-v236c';
+import { setButtonBusy, toast } from '../components/ui.js?v=20260827-production-v236c';
+import { bindScenePlanUpdate, scenePlanBlockedView } from './scenePlanStatus.js?v=20260827-production-v236c';
+import { renderSceneProductionCard, scenePromptPreviewMarkup, scenePromptPreviewState, startInitialScenePlan } from './scenePromptPreview.js?v=20260827-production-v236c';
+import { sceneNeedsGeneration } from './sceneDossierCard.js?v=20260827-production-v236c';
 
 export async function mount(host, context) {
   const { bundle, store } = context;
@@ -29,7 +29,7 @@ export async function mount(host, context) {
     ${persistedScenePlanReady ? `<section class="scene-production"><header><div><h2>场景提示词与画面</h2><p>提示词修改后自动保存；已有或生成中的画面默认展示，需要时可切回提示词。</p></div><div class="scene-view-actions"><span>${workflow.generated_count || 0}/${scenes.length} 已生成</span>${batchReadyCount ? `<button class="btn primary compact" data-generate-all-scenes>生成全部缺失场景（${batchReadyCount}）</button>` : ''}</div></header><div class="scene-production-grid">${scenes.map((scene, index) => renderSceneProductionCard(scene, index, { generationActive: sceneIsActive(scene.id || scene.scene_id) })).join('')}</div></section>` : ''}`;
 
   bindScenePlanUpdate(host, context);
-  const cleanupSceneCards = (await import('./sceneCardInteractions.js?v=20260827-production-v236b')).bindSceneCards(host, context);
+  const cleanupSceneCards = (await import('./sceneCardInteractions.js?v=20260827-production-v236c')).bindSceneCards(host, context);
   if (preview.autoInitialize) startInitialScenePlan(bundle, store);
   if (scenes.length && (workflow.generated_count || 0) > 0) bindSceneWorldWorkspace(host, bundle, store);
   host.querySelector('[data-confirm-scenes]')?.addEventListener('click', async event => {
