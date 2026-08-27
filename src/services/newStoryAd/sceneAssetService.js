@@ -264,7 +264,10 @@ function updateSceneGenerationProgress(taskId, update = {}) {
     generation_id: task.active_generation_id || previous.generation_id || '',
     mode: update.mode || previous.mode || 'generate',
     phase,
-    status: terminal ? 'completed' : (phase === 'verification' ? 'verifying' : (failed ? 'failed' : 'running')),
+    // A failed view is an intermediate, resumable unit state while later views
+    // and provider fallbacks may still be running. Only the orchestration owner
+    // may publish a terminal generation failure.
+    status: terminal ? 'completed' : (phase === 'verification' ? 'verifying' : 'running'),
     view_keys: keys,
     target_total: keys.length,
     processed,

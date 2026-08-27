@@ -597,6 +597,18 @@ const planningFailure = uiModule.generationProgressView({
 assert.equal(planningFailure.failureTitle, '人物与场景方案更新失败');
 assert.match(planningFailure.liveText, /更新方案/);
 assert.doesNotMatch(planningFailure.liveText + planningFailure.message, /从缺失项继续|场景规划/, '统一方案失败不得错误引导用户继续缺失图片');
+const scopedSceneStillRunning = uiModule.generationProgressView({
+  project: {
+    status: 'running', stage: 'scene_asset', active_generation_id: '',
+    active_target_generations: { 'scene:two': { generation_id: 'gen-two', stage: 'scene_asset' } },
+  },
+  generation: { progress: { stage: 'scene_asset', status: 'failed', failed: 1, processed: 4, target_total: 5 } },
+});
+assert.equal(scopedSceneStillRunning.active, true, '并行场景仍有活动目标时必须保持运行态');
+assert.equal(scopedSceneStillRunning.failed, false, '单个视图中间失败不得在并行生成未结束时显示终止横幅');
+assert.match(read('src/services/newStoryAd/sceneAssetService.js'),
+  /status: terminal \? 'completed' : \(phase === 'verification' \? 'verifying' : 'running'\)/,
+  '场景服务不得把可续跑的单视图失败提前发布为整个生成失败');
 const blueprintQualityFailure = uiModule.generationProgressView({
   project: {
     status: 'failed', stage: 'blueprint_failed', error_code: 'BLUEPRINT_POLISH_QUALITY_FAILED',

@@ -22,6 +22,11 @@ function poolName(scope = '') {
 }
 
 function isAmbiguousProviderFailure(error = null) {
+  const submissionState = clean(error?.providerSubmissionState || error?.provider_submission_state, 60).toLowerCase();
+  const billingState = clean(error?.billingState || error?.billing_state, 60).toLowerCase();
+  const explicitlyNotSubmitted = ['not_submitted', 'submission_rejected', 'rejected', 'request_not_sent'].includes(submissionState)
+    && ['not_billed', 'none', 'confirmed_not_billed'].includes(billingState);
+  if (explicitlyNotSubmitted || error?.code === 'PROVIDER_5XX_NOT_SUBMITTED') return false;
   const status = Number(error?.response?.status
     || error?.providerPayload?.status
     || error?.providerPayload?.code

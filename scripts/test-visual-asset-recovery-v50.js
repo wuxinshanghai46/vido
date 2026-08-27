@@ -60,6 +60,27 @@ async function testGenerationIsolation() {
   assert.equal(otherResult.value, 'other-user-ok', 'another task/user must remain isolated');
 }
 
+async function testConfirmedNotSubmitted5xxDoesNotTripBillingGuard() {
+  guard.resetForTests();
+  concurrency.resetForTests();
+  const safeFailure = new Error('provider gateway timeout');
+  safeFailure.code = 'PROVIDER_5XX_NOT_SUBMITTED';
+  safeFailure.providerSubmissionState = 'submission_rejected';
+  safeFailure.billingState = 'not_billed';
+  safeFailure.response = { status: 504 };
+  const first = await guard.run({ taskId: 'task-safe', generationId: 'gen-safe', unitKey: 'scene:detail' }, async () => {
+    throw safeFailure;
+  }).then(() => null, error => error);
+  assert.strictEqual(first, safeFailure);
+  let fallbackInvocations = 0;
+  const fallback = await guard.run({ taskId: 'task-safe', generationId: 'gen-safe', unitKey: 'scene:detail' }, async () => {
+    fallbackInvocations += 1;
+    return 'fallback-ok';
+  });
+  assert.equal(fallback, 'fallback-ok');
+  assert.equal(fallbackInvocations, 1, 'confirmed not-submitted 5xx must allow the next safe provider candidate');
+}
+
 function subjectUnit(key, status = 'submitted_unknown') {
   return {
     key, task_id: 'task-a', asset_type: 'person_dossier', asset_id: 'actor-1', unit: 'wardrobe_detail', revision: 1,
@@ -266,6 +287,7 @@ function testPartialResumeSelection() {
 
 async function main() {
   await testGenerationIsolation();
+  await testConfirmedNotSubmitted5xxDoesNotTripBillingGuard();
   testExactAuthorization();
   testAuthorizationAfterSupportIdCleared();
   testPartialProjection();
@@ -273,8 +295,8 @@ async function main() {
   testPartialResumeSelection();
   console.log(JSON.stringify({
     success: true,
-    checks: 7,
-    guarantees: ['same-task-stop-before-submit', 'cross-task-isolation', 'exact-unit-authorization', 'bounded-partial-projection'],
+    checks: 8,
+    guarantees: ['same-task-stop-before-submit', 'confirmed-not-submitted-fallback', 'cross-task-isolation', 'exact-unit-authorization', 'bounded-partial-projection'],
   }));
 }
 
