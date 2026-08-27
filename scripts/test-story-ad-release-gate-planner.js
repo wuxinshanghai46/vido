@@ -44,6 +44,7 @@ const sceneRecoveryPlan = planner.createPlan({
   root: process.cwd(), baseRevision: 'a'.repeat(40), targetRevision: 'b'.repeat(40), sourceTree: 'c'.repeat(40),
   files: [
     'src/services/newStoryAd/sceneCheckpointProjectionService.js',
+    'src/services/newStoryAd/sceneAssetFixService.js',
     'src/services/newStoryAd/sceneSpaceContractService.js',
     'src/services/newStoryAd/taskViewService.js',
     'src/services/storyAdWorkspace/sceneAssetRuntimeProjectionService.js',

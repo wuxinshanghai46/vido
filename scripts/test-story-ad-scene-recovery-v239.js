@@ -70,7 +70,7 @@ assert.equal(unverified.view_issues[0].view_keys[0], 'detail');
 assert.equal(unverified.full_space_lock, false);
 
 const routeSource = fs.readFileSync(path.join(__dirname, '..', 'src/routes/newStoryAd.js'), 'utf8');
-const serviceSource = fs.readFileSync(path.join(__dirname, '..', 'src/services/newStoryAd/sceneAssetService.js'), 'utf8');
+const serviceSource = fs.readFileSync(path.join(__dirname, '..', 'src/services/newStoryAd/sceneAssetFixService.js'), 'utf8');
 assert.match(routeSource, /scene-assets\/:sceneId\/fix/);
 assert.match(routeSource, /deadlineMs: 20 \* 60 \* 1000/);
 assert.match(routeSource, /LEGACY_SCENE_VERIFY_DISABLED/);
