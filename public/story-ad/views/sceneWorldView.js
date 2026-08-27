@@ -76,7 +76,7 @@ function worldCards(bundle = {}) {
     const lineage = world.place_lineage || {};
     return `<article class="scene-world-card" data-scene-world-card="${escapeHtml(world.id)}">
     <div class="scene-world-card-visual">
-      ${world.source_asset?.image_url ? mediaPreview(world.source_asset, { label: `${world.name}场景原图`, width: 720, zoomable: true, zoomGroup: 'scene-world-cards' }) : '<div class="scene-world-card-placeholder"></div>'}
+      ${world.source_asset?.image_url ? mediaPreview(world.source_asset, { label: `${world.name}场景原图`, width: 720, zoomWidth: 1600, zoomable: true, zoomGroup: 'scene-world-cards' }) : '<div class="scene-world-card-placeholder"></div>'}
       <div class="scene-world-card-title"><span>${escapeHtml(world.capabilities?.world_mode || 'scene_world')}</span><b>${escapeHtml(world.name)}</b></div>
     </div>
     <div class="scene-world-card-body">
@@ -298,7 +298,8 @@ function initSceneWorldViewer({ overlay, bundle, world }) {
     delete host.dataset.viewerEngine;
   };
   const activateModeButton = mode => overlay.querySelectorAll('[data-world-mode]').forEach(button => button.classList.toggle('active', button.dataset.worldMode === mode));
-  const thumbUrl = url => window.VidoMediaDelivery?.previewUrl?.(url, 320, 'webp') || url;
+  const previewUrl = (url, width) => window.VidoMediaDelivery?.previewUrl?.(url, width, 'webp') || url;
+  const thumbUrl = url => previewUrl(url, 320);
   const showPhoto = (node, mode = 'model') => {
     if (!node?.image_url) return showNative('structure');
     if (node.is_panorama) return showPanorama(node);
@@ -306,7 +307,7 @@ function initSceneWorldViewer({ overlay, bundle, world }) {
     activateModeButton(mode);
     currentNode = node;
     host.innerHTML = `<div class="scene-world-photo-viewer"><div class="scene-world-photo-stage">
-      <img alt="${escapeHtml(world.name)}真实场景视图" data-media-original="${escapeHtml(node.image_url)}" data-media-zoom-url="${escapeHtml(node.image_url)}" data-media-preview-url="${escapeHtml(node.image_url)}" data-media-zoom-label="${escapeHtml(`${world.name} · ${node.name || '真实场景视图'}`)}" data-media-zoom-group="scene-world-${escapeHtml(world.id || 'current')}">
+      <img alt="${escapeHtml(world.name)}真实场景视图" data-media-original="${escapeHtml(node.image_url)}" data-media-zoom-url="${escapeHtml(previewUrl(node.image_url, 1600))}" data-media-preview-url="${escapeHtml(previewUrl(node.image_url, 960))}" data-media-zoom-label="${escapeHtml(`${world.name} · ${node.name || '真实场景视图'}`)}" data-media-zoom-group="scene-world-${escapeHtml(world.id || 'current')}">
       <div class="scene-world-photo-status"><b>${escapeHtml(node.name || '真实场景视图')}</b><small>${Math.max(1, nodes.indexOf(node) + 1)} / ${nodes.length} · 平面参考图</small></div>
       <div class="scene-world-photo-error" data-photo-error hidden>当前图片无法加载，请重试或检查场景资产。</div>
     </div><div class="scene-world-photo-strip">${nodes.map((item, index) => `<button type="button" data-photo-node="${escapeHtml(item.id)}" class="${item.id === node.id ? 'active' : ''}" title="${escapeHtml(item.name || `视角 ${index + 1}`)}"><img src="${escapeHtml(thumbUrl(item.image_url))}" loading="lazy" decoding="async" alt=""><span>${escapeHtml(item.name || `视角 ${index + 1}`)}${item.is_panorama ? '<small>3DoF</small>' : ''}</span></button>`).join('')}</div></div>`;
@@ -314,7 +315,7 @@ function initSceneWorldViewer({ overlay, bundle, world }) {
     const error = host.querySelector('[data-photo-error]');
     image.addEventListener('load', () => { image.hidden = false; error.hidden = true; }, { once: true });
     image.addEventListener('error', () => { image.hidden = true; error.hidden = false; }, { once: true });
-    image.src = node.image_url;
+    image.src = previewUrl(node.image_url, 960);
     window.VidoMediaDelivery?.processImage?.(image);
     host.querySelectorAll('[data-photo-node]').forEach(button => button.addEventListener('click', () => showPhoto(nodes.find(item => String(item.id) === String(button.dataset.photoNode)))));
     host.dataset.viewerEngine = 'real-photo';

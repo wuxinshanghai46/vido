@@ -9,10 +9,23 @@ export function nextLightboxIndex(index = 0, direction = 1, total = 0) {
   const count = Math.max(0, Number(total) || 0);
   return count ? (Number(index || 0) + Number(direction || 0) + count) % count : 0;
 }
-export function preloadLightboxUrl(url = '', createImage = () => new Image()) {
+export function preloadLightboxUrl(url = '', createImage = () => new Image(), timeoutMs = 12000) {
   return new Promise((resolve, reject) => {
     if (!url) return reject(new Error('图片地址为空'));
-    const candidate = createImage(); candidate.onload = () => resolve(url); candidate.onerror = () => reject(new Error('图片加载失败')); candidate.src = url;
+    const candidate = createImage();
+    let settled = false;
+    const finish = (callback, value) => {
+      if (settled) return;
+      settled = true;
+      if (timer !== null && typeof clearTimeout === 'function') clearTimeout(timer);
+      callback(value);
+    };
+    const timer = typeof setTimeout === 'function' && Number(timeoutMs) > 0
+      ? setTimeout(() => finish(reject, new Error('图片加载超时')), Number(timeoutMs))
+      : null;
+    candidate.onload = () => finish(resolve, url);
+    candidate.onerror = () => finish(reject, new Error('图片加载失败'));
+    candidate.src = url;
   });
 }
 export function lightboxPanDelta(delta = 0, scale = 1) { return (Number(delta) || 0) * Math.min(3, 1 + (Math.max(1, Number(scale) || 1) - 1) * .35); }
@@ -42,27 +55,30 @@ export function bindMediaLightbox(scope = document) {
       if (scale === 1) { translateX = 0; translateY = 0; } apply();
     };
     strip.innerHTML = entries.map((entry, i) => `<button type="button" role="listitem" data-lightbox-index="${i}" aria-label="查看${escapeHtml(entry.label)}"><img src="${escapeHtml(entry.previewUrl)}" alt=""></button>`).join('');
-    const prefetch = entry => { if (entry?.url && entry.url !== entry.previewUrl) { const preload = new Image(); preload.src = entry.url; } };
     const render = () => {
       const current = entries[index], requestedIndex = index, token = ++renderToken, previewUrl = current.previewUrl || current.url; reset(); pixelSize.textContent = '';
       strip.querySelectorAll('[data-lightbox-index]').forEach(button => button.classList.toggle('active', Number(button.dataset.lightboxIndex) === requestedIndex));
       overlay.querySelectorAll('.media-lightbox-nav').forEach(button => { button.hidden = entries.length < 2; });
-      overlay.classList.add('is-loading', 'is-switching'); overlay.setAttribute('aria-busy', 'true'); overlay.dataset.pendingMediaUrl = previewUrl;
+      image.onload = () => { pixelSize.textContent = image.naturalWidth && image.naturalHeight ? `${image.naturalWidth} × ${image.naturalHeight}px` : ''; };
+      image.alt = current.label; image.src = previewUrl;
+      caption.textContent = current.label; counter.textContent = `${requestedIndex + 1} / ${entries.length}`;
+      overlay.dataset.currentMediaUrl = previewUrl;
+      overlay.classList.add('is-loading'); overlay.setAttribute('aria-busy', 'true'); overlay.dataset.pendingMediaUrl = current.url || previewUrl;
       void (async () => {
-        let displayedUrl = '';
-        try { displayedUrl = await preloadLightboxUrl(previewUrl); } catch { if (!current.url || current.url === previewUrl) throw new Error('图片加载失败'); displayedUrl = await preloadLightboxUrl(current.url); }
-        if (token !== renderToken) return;
-        image.onload = () => { pixelSize.textContent = image.naturalWidth && image.naturalHeight ? `${image.naturalWidth} × ${image.naturalHeight}px` : ''; };
-        image.removeAttribute('src'); image.alt = current.label; image.src = displayedUrl; if (image.complete) image.onload();
-        caption.textContent = current.label; counter.textContent = `${requestedIndex + 1} / ${entries.length}`; overlay.dataset.currentMediaUrl = displayedUrl; delete overlay.dataset.pendingMediaUrl; overlay.classList.remove('is-switching');
-        if (current.url && current.url !== displayedUrl) {
-          overlay.dataset.pendingMediaUrl = current.url;
-          try { const originalUrl = await preloadLightboxUrl(current.url); if (token !== renderToken) return; image.removeAttribute('src'); image.src = originalUrl; if (image.complete) image.onload(); overlay.dataset.currentMediaUrl = originalUrl; }
-          catch { if (token === renderToken) caption.textContent = `${current.label}（正在显示清晰预览，原图暂未加载）`; }
+        if (current.url && current.url !== previewUrl) {
+          try {
+            const originalUrl = await preloadLightboxUrl(current.url);
+            if (token !== renderToken) return;
+            image.src = originalUrl; if (image.complete) image.onload(); overlay.dataset.currentMediaUrl = originalUrl;
+          } catch {
+            if (token === renderToken) caption.textContent = `${current.label}（正在显示清晰预览，原图暂未加载）`;
+          }
+        } else {
+          try { await preloadLightboxUrl(previewUrl); }
+          catch { if (token === renderToken) caption.textContent = `${current.label}（图片加载失败）`; }
         }
-        if (token !== renderToken) return; delete overlay.dataset.pendingMediaUrl; overlay.classList.remove('is-loading', 'is-switching'); overlay.removeAttribute('aria-busy');
-        if (entries.length > 1) { prefetch(entries[nextLightboxIndex(requestedIndex, -1, entries.length)]); prefetch(entries[nextLightboxIndex(requestedIndex, 1, entries.length)]); }
-      })().catch(() => { if (token !== renderToken) { return; } caption.textContent = `${current.label}（图片加载失败）`; delete overlay.dataset.pendingMediaUrl; overlay.classList.remove('is-loading', 'is-switching'); overlay.removeAttribute('aria-busy'); });
+        if (token !== renderToken) return; delete overlay.dataset.pendingMediaUrl; overlay.classList.remove('is-loading'); overlay.removeAttribute('aria-busy');
+      })().catch(() => { if (token !== renderToken) { return; } caption.textContent = `${current.label}（图片加载失败）`; delete overlay.dataset.pendingMediaUrl; overlay.classList.remove('is-loading'); overlay.removeAttribute('aria-busy'); });
     };
     const close = () => { document.removeEventListener('keydown', onKey); overlay.remove(); };
     const move = direction => { index = nextLightboxIndex(index, direction, entries.length); render(); };

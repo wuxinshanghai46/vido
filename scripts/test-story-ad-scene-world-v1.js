@@ -145,7 +145,7 @@ assert(workspaceSource.includes('scene-world-photo-viewer'));
 assert(workspaceSource.includes('data-focus-observation'));
 assert(workspaceSource.includes("'real-photo'"));
 assert(workspaceSource.includes('data-media-original="${escapeHtml(node.image_url)}"'), 'dynamic scene view must bind the selected source as media-delivery authority');
-assert(workspaceSource.includes('image.src = node.image_url'), 'dynamic scene view must load the selected source without stale candidates');
+assert(workspaceSource.includes('image.src = previewUrl(node.image_url, 960)'), 'dynamic scene view must load the selected source through the cached preview route without stale candidates or a full PNG race');
 assert(workspaceCss.includes('.scene-world-photo-error[hidden]{display:none}'), 'loaded scene image must suppress the stale error overlay');
 assert(workspaceSource.includes("host.dataset.viewerEngine = 'native-canvas'"));
 assert(!workspaceSource.includes("import('/vendor/three.module.min.js')"));

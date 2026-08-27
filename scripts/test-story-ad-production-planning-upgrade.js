@@ -145,8 +145,10 @@ async function main() {
     { dataset: { mediaZoomGroup: 'person', mediaZoomUrl: '/next.png', mediaZoomLabel: '下一张' } },
   ], 'person');
   assert.deepEqual(Array.from(unique, item => item.url), ['/same.png', '/next.png']);
-  assert.match(lightboxSource, /displayedUrl = await preloadLightboxUrl\(previewUrl\)[\s\S]+image\.src = displayedUrl/, '灯箱必须等待预览图可用后再同步替换主图与字幕');
-  assert.match(lightboxSource, /image\.removeAttribute\('src'\)[\s\S]+overlay\.classList\.remove\('is-switching'\)/, '切换时必须清除旧主图并在新图提交后结束切换状态');
+  assert(lightboxSource.indexOf('image.src = previewUrl') < lightboxSource.indexOf('await preloadLightboxUrl(current.url)'), '灯箱必须立即显示已有预览，再在后台加载并升级原图');
+  assert.match(lightboxSource, /function preloadLightboxUrl[^{]+timeoutMs\s*=\s*12000/, '灯箱资源预载必须设置有限等待时间');
+  assert.match(lightboxSource, /图片加载超时/, '原图或预览长时间无 load/error 时必须退出加载态并保留当前预览');
+  assert.doesNotMatch(lightboxSource, /image\.removeAttribute\('src'\)/, '后台原图加载期间不得清空已显示的预览图');
   assert.match(lightboxSource, /<img data-media-lock="true" draggable="false" alt="">/, '动态大图必须阻止全局媒体优化器和原生拖拽复用图片');
   assert.match(uiSource, /data-media-preview-url="\$\{escapeHtml\(previewUrl\)\}"/, '灯箱预览地址必须复用已经请求的缩略图');
 

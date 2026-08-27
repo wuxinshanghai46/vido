@@ -94,6 +94,7 @@ function testUiAndExportBoundaries() {
   const scenePromptEditor = read('public/story-ad/views/scenePromptEditor.js');
   const details = read('public/story-ad/views/assetCenterPlanningDetails.js');
   const world = read('public/story-ad/views/sceneWorldView.js');
+  const mediaAdapter = require('../src/services/newStoryAd/mediaAdapter');
   const api = read('public/story-ad/api.js');
   const css = read('public/story-ad/scene-dossier.css');
   const html = read('public/story-ad/index.html');
@@ -122,6 +123,11 @@ function testUiAndExportBoundaries() {
   assert(world.includes('data-plan-scene-experience') && world.includes('data-world-mode="panorama"'), '可选的3D/360规划与查看入口不得被场景档案替换');
   assert(sceneWorldPage.includes('bindMediaLightbox(host)') && world.includes('bindMediaLightbox(overlay)'), '场景卡与机位大图必须绑定原图放大查看');
   assert(world.includes('data-media-zoom-url=') && css.includes('object-fit:contain!important'), '场景列表和机位查看都必须保留完整画幅并提供原图入口');
+  assert(world.includes('previewUrl(node.image_url, 1600)') && world.includes('image.src = previewUrl(node.image_url, 960)'), '场景世界首屏与灯箱必须使用缓存衍生图，不能先请求多兆 PNG');
+  assert(mediaAdapter.assetThumbPathFromName('scene.png', 1200).endsWith('.1280.webp'));
+  assert(mediaAdapter.assetThumbPathFromName('scene.png', 1800).endsWith('.1600.webp'), '高清衍生图必须按有限桶归一，避免同一文件产生重复缓存变体');
+  assert(css.includes('aspect-ratio:16/9') && css.includes('min-height:220px'), '场景摘要必须给完整画幅足够的纵向空间，不能把竖图或方图压在旧的超宽矮容器中');
+  assert(!css.includes('.scene-cover-board{display:grid;height:210px'), '场景摘要不得恢复固定 210px 总高度');
   assert(!world.includes('data-generate-panorama'), '场景世界不得绕过统一制作图谱恢复旧的单项全景付费入口');
   assert(css.includes('@media(max-width:820px)') && css.includes('.drawer.is-scene-drawer{width:100vw'), '移动端场景抽屉必须使用完整视口宽度');
   assert(html.includes('/story-ad/scene-dossier.css'));

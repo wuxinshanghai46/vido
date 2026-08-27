@@ -581,7 +581,8 @@ function assetPathFromName(filename = '') {
 function assetThumbPathFromName(filename = '', width = 520) {
   const safe = path.basename(String(filename || '').split('?')[0]).replace(/[^a-z0-9_.-]/ig, '_');
   if (!safe) return '';
-  const size = Math.max(160, Math.min(960, Number(width) || 520));
+  const requested = Math.max(160, Math.min(1600, Number(width) || 520));
+  const size = [240, 320, 480, 640, 960, 1280, 1600].find(candidate => candidate >= requested) || 1600;
   return path.join(THUMB_DIR, `${safe}.${size}.webp`);
 }
 
@@ -602,10 +603,10 @@ async function ensureAssetThumbnail(filename = '', width = 520) {
   await sharp(source)
     .rotate()
     .resize({
-      width: Math.max(160, Math.min(960, Number(width) || 520)),
+      width: Number(path.basename(out).match(/\.(\d+)\.webp$/)?.[1]) || 960,
       withoutEnlargement: true,
     })
-    .webp({ quality: 72, effort: 4 })
+    .webp({ quality: 82, effort: 4 })
     .toFile(out);
   return out;
 }

@@ -88,7 +88,7 @@ function viewSlot(item, dossier, key, options = {}) {
   const label = SCENE_VIEW_LABELS[key];
   return `<figure class="scene-dossier-view is-${key} is-${state}" data-scene-view="${key}">
     <div>${view?.image_url
-      ? mediaPreview(view, { label: `${item.name || '场景'} · ${label}`, width: options.width || 1200, symbol: label, zoomable: true, zoomGroup: `scene-dossier-${item.id || 'current'}` })
+      ? mediaPreview(view, { label: `${item.name || '场景'} · ${label}`, width: options.width || 1200, zoomWidth: 1600, symbol: label, zoomable: true, zoomGroup: `scene-dossier-${item.id || 'current'}` })
       : `<div class="scene-dossier-missing" role="status"><span>${copy[0]}</span><small>${escapeHtml(label)}</small></div>`}</div>
     <figcaption><b>${escapeHtml(label)}</b><span>${view?.image_url ? '真实资产已就绪' : copy[1]}</span></figcaption>
   </figure>`;
@@ -127,7 +127,7 @@ export function renderSceneCoverCard(item = {}) {
   const master = dossier.views.master;
   return `<div class="scene-cover-board is-${dossier.state}" aria-label="${escapeHtml(item.name || '场景')}场景资产摘要">
     <div class="scene-cover-visual">${master?.image_url
-      ? mediaPreview(master, { label: `${item.name || '场景'} · 主视总览`, width: 960, symbol: '场景主视', zoomable: true, zoomGroup: `scene-cover-${item.id || 'current'}` })
+      ? mediaPreview(master, { label: `${item.name || '场景'} · 主视总览`, width: 960, zoomWidth: 1600, symbol: '场景主视', zoomable: true, zoomGroup: `scene-cover-${item.id || 'current'}` })
       : '<div class="scene-dossier-missing" role="status"><span>待生成主视图</span></div>'}
       <span class="scene-cover-state">${escapeHtml(statusText(dossier.state, dossier.completed))} · 视图 ${dossier.completed}/${dossier.total}</span>
     </div>

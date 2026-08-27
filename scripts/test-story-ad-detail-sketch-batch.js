@@ -102,6 +102,8 @@ async function main() {
   const preview = ui.mediaPreview({ thumbnail_url: '/thumb/a.jpg', image_url: '/full/a.png' }, { zoomable: true, zoomGroup: 'g' });
   assert.match(preview, /data-media-zoom-url="\/full\/a\.png"/);
   assert.match(preview, /src="\/thumb\/a\.jpg\?thumb=/);
+  const scenePreview = ui.mediaPreview({ image_url: '/api/new-story-ad/assets/scene.png' }, { zoomable: true, width: 960, zoomWidth: 1600 });
+  assert.match(scenePreview, /data-media-zoom-url="\/api\/new-story-ad\/assets\/scene\.png\?thumb=1600&amp;format=webp"/, '场景灯箱必须读取完整像素级 WebP 衍生图，不得默认下载多兆 PNG');
   assert.equal(lightbox.nextLightboxIndex(1, 1, 4), 2);
   assert.equal(lightbox.nextLightboxIndex(3, 1, 4), 0);
   assert.equal(lightbox.nextLightboxIndex(0, -1, 4), 3);
@@ -110,7 +112,15 @@ async function main() {
     Object.defineProperty(candidate, 'src', { set(value) { this.loaded = value; this.onload(); } });
     return candidate;
   });
-  assert.equal(loadedLightboxUrl, '/thumb/next.png', '灯箱必须先确认下一张预览已加载，再同步替换主图与字幕');
+  assert.equal(loadedLightboxUrl, '/thumb/next.png', '灯箱后台预载工具必须在资源就绪后返回原地址');
+  await assert.rejects(
+    lightbox.preloadLightboxUrl('/thumb/stalled.png', () => ({ set src(value) { this.value = value; } }), 5),
+    /图片加载超时/,
+    '预览资源不触发 load/error 时必须超时，不能让灯箱永久停在加载态',
+  );
+  const lightboxSource = read('public/story-ad/views/mediaLightbox.js');
+  assert(lightboxSource.indexOf('image.src = previewUrl') < lightboxSource.indexOf('await preloadLightboxUrl(current.url)'), '灯箱必须先显示已有预览，再后台升级原图，不能等待原图时黑屏');
+  assert.doesNotMatch(lightboxSource, /prefetch\(entries\[/, '打开一张图片不得自动抢占带宽预取相邻高清图');
   const failedProgress = ui.generationProgressPanel({
     project: { status: 'failed', stage: 'storyboard_failed', active_generation_id: '', error: '审核失败' },
     generation: { progress: { stage: 'storyboard', status: 'failed', phase: 'review_failed', completed: 4, total: 4, percent: 100, current_index: 4, message: '审核失败' } },
@@ -122,7 +132,8 @@ async function main() {
   const css = read('public/story-ad/workspace.css');
   assert.match(css, /\.media-lightbox-nav\.is-prev\{left:22px\}/);
   assert.match(css, /\.media-lightbox-strip/);
-  assert.match(css, /\.media-lightbox\.is-switching figure>img\{opacity:0\}/, '切图期间不得继续显示上一张图片造成字幕与图片错位');
+  assert.doesNotMatch(lightboxSource, /classList\.add\([^\n]*['"]is-switching['"]/, '灯箱不得先隐藏图片再等待资源预载，否则慢网会出现纯黑等待');
+  assert.match(css, /\.media-lightbox figure>img\{[^}]*object-fit:contain/, '灯箱主图必须完整显示原始画幅');
 
   const view = read('public/story-ad/views/storyboardView.js');
   assert.match(view, /批量重生成文字分镜/);

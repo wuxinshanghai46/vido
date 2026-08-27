@@ -331,12 +331,15 @@ export function mediaPreview(item = {}, options = {}) {
     return `<video class="media" src="${escapeHtml(url)}" ${imageUrl ? `poster="${escapeHtml(imageUrl)}"` : ''} preload="metadata" ${options.controls ? 'controls' : 'muted data-hover-video-preview tabindex="0"'} playsinline aria-label="${escapeHtml(label)}"></video>`;
   }
   if (url) {
-    const previewUrl = `${url}${url.includes('?') ? '&' : '?'}thumb=${options.width || 480}`;
+    const bucketWidth = value => [240, 320, 480, 640, 960, 1280, 1600].find(size => size >= Math.max(120, Number(value) || 480)) || 1600;
+    const variantUrl = (value, width) => `${value}${value.includes('?') ? '&' : '?'}thumb=${bucketWidth(width)}&format=webp`;
+    const previewUrl = variantUrl(url, options.width || 480);
+    const zoomUrl = options.zoomWidth ? variantUrl(sourceImageUrl || url, options.zoomWidth) : (sourceImageUrl || url);
     const loading = options.loading === 'eager' ? 'eager' : 'lazy';
     const priority = options.fetchPriority === 'high' ? ' fetchpriority="high"' : '';
     const image = `<img class="media" src="${escapeHtml(previewUrl)}" loading="${loading}" decoding="async"${priority} alt="${escapeHtml(label)}">`;
     if (options.zoomable === true) {
-      return `<button class="media-zoom-trigger" type="button" data-media-zoom-url="${escapeHtml(sourceImageUrl || url)}" data-media-preview-url="${escapeHtml(previewUrl)}" data-media-zoom-label="${escapeHtml(label)}" data-media-zoom-group="${escapeHtml(options.zoomGroup || 'media')}">${image}<span aria-hidden="true">⌕</span></button>`;
+      return `<button class="media-zoom-trigger" type="button" data-media-zoom-url="${escapeHtml(zoomUrl)}" data-media-preview-url="${escapeHtml(previewUrl)}" data-media-zoom-label="${escapeHtml(label)}" data-media-zoom-group="${escapeHtml(options.zoomGroup || 'media')}">${image}<span aria-hidden="true">⌕</span></button>`;
     }
     return image;
   }
