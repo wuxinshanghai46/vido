@@ -81,12 +81,13 @@ const casualPrompt = promptService.fallbackPrompt({
 assert(casualPrompt.includes('米白亚麻衬衫') && !casualPrompt.includes('黑色晚礼服'), '多造型人物必须按当前造型独立编译提示词');
 
 const form = read('public/story-ad/views/assetCenterPersonForm.js');
+const formSettings = read('public/story-ad/views/assetCenterPlanningDetailsGenerationSettings.js');
 const planning = read('public/story-ad/views/assetCenterPlanningDetails.js');
 const view = read('public/story-ad/views/assetCenterView.js');
 const projectBundle = read('src/services/storyAdWorkspace/projectBundleService.js');
 assert(form.includes('name="generation_prompt"') && form.includes('runtime.model_label') && form.includes('runtime.aspect_ratios')
   && form.includes('estimated_provider_calls') && form.includes('expected_output_assets') && form.includes('available_route_count'));
-assert(form.includes('name="generation_type"') && form.includes('name="quality"') && form.includes('name="resolution"'),
+assert(form.includes('personGenerationSettingsControls') && formSettings.includes('name="generation_type"') && formSettings.includes('name="quality"') && formSettings.includes('name="resolution"'),
   '人物工具栏必须提供生成类型、画质和模型真实支持的清晰度');
 assert(!form.includes('renderPersonLookEditors') && !form.includes('renderPersonEvolutionEditor'), '人物界面必须是单一提示词编辑面');
 assert(!planning.includes('data-owned-prop-form') && !planning.includes('由模型生成道具'), '不得再渲染独立随身道具表单');

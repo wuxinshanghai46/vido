@@ -286,12 +286,6 @@ export async function mount(host, context) {
       element.style.left = `${Number(node.position?.x || 0)}px`;
       element.style.top = `${Number(node.position?.y || 0)}px`;
     });
-    const openPanel = host.querySelector('[data-node-panel]');
-    const selectedNode = openPanel?.dataset.nodePanelFor ? nodeById.get(openPanel.dataset.nodePanelFor) : null;
-    if (openPanel && selectedNode && !openPanel.hidden) {
-      openPanel.style.left = `${Number(selectedNode.position?.x || 0)}px`;
-      openPanel.style.top = `${Number(selectedNode.position?.y || 0) + NODE_HEIGHT + 14}px`;
-    }
     updateBoundsAndClusters();
     lines.innerHTML = graphEdges(graph);
     renderMinimapNodes();
@@ -436,21 +430,18 @@ export async function mount(host, context) {
     });
     const panel = host.querySelector('[data-node-panel]');
     panel.hidden = false;
-    panel.dataset.nodePanelFor = node.id;
     panel.style.left = `${Number(node.position?.x || 0)}px`;
     panel.style.top = `${Number(node.position?.y || 0) + NODE_HEIGHT + 14}px`;
     const isTextNode = TEXT_NODE_TYPES.has(node.type);
-    const canEditInline = ['story', 'shot'].includes(node.type);
-    const editor = canEditInline ? inlineNodeEditor(node, context.bundle) : '';
+    const editor = ['story', 'shot'].includes(node.type) ? inlineNodeEditor(node, context.bundle) : '';
     panel.innerHTML = `<header><div><h2>${escapeHtml(node.title || node.label)}</h2>${isTextNode ? '' : `<p>${escapeHtml(node.subtitle || '')}</p>`}</div><button class="icon-btn" type="button" data-panel-close aria-label="关闭节点详情">×</button></header>
       ${node.media_url ? mediaPreview(node, { label: node.title || '节点', width: 720, symbol: node.type || '节点' }) : (isTextNode ? '' : mediaPreview(node, { label: node.title || '节点', width: 720, symbol: node.type || '节点' }))}
-      ${canEditInline ? `<section class="node-direct-editor"><div><b>直接编辑并同步</b><small>保存后写入对应环节的同一份权威数据。</small></div>${editor}</section>` : structuredNodeDetail(node)}
+      ${editor ? `<section class="node-direct-editor"><b>直接编辑并同步</b>${editor}</section>` : structuredNodeDetail(node)}
       ${workflowNodePanelMarkup(node)}
       <div class="meta-list">${detailRows(remainingDetail(node.detail, node.type))}</div>
-      ${node.target_route ? `<button class="btn ${canEditInline ? '' : 'primary'} panel-route" type="button" data-node-route>打开完整${node.type === 'story' ? '剧情与对白' : node.type === 'shot' ? '分镜' : '操作'}环节</button>` : ''}`;
+      ${node.target_route ? `<button class="btn ${editor ? '' : 'primary'} panel-route" type="button" data-node-route>打开对应环节</button>` : ''}`;
     const closePanel = () => {
       panel.hidden = true;
-      panel.dataset.nodePanelFor = '';
       host.querySelectorAll('[data-node-id]').forEach(item => {
         item.classList.remove('active');
         item.setAttribute('aria-pressed', 'false');
@@ -544,7 +535,6 @@ export async function mount(host, context) {
   host.querySelector('[data-close-panel]').addEventListener('click', () => {
     const panel = host.querySelector('[data-node-panel]');
     panel.hidden = true;
-    panel.dataset.nodePanelFor = '';
     host.querySelectorAll('[data-node-id]').forEach(item => {
       item.classList.remove('active');
       item.setAttribute('aria-pressed', 'false');

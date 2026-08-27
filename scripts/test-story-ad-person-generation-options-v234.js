@@ -28,11 +28,12 @@ const body = media.buildWebangGptImage2GenerationBody({ modelId: 'gpt-image-2' }
 assert.equal(body.quality, 'medium');
 assert.equal(body.n, 1);
 const read = file => fs.readFileSync(path.join(__dirname, '..', file), 'utf8');
-const sceneUi = read('public/story-ad/views/scenePromptPreview.js');
 const sceneActions = read('public/story-ad/views/sceneCardInteractions.js');
+const sceneSettings = read('public/story-ad/views/sceneDossierCardSettings.js');
 const sceneService = read('src/services/newStoryAd/sceneAssetService.js');
-assert(sceneUi.includes('data-scene-quality') && sceneUi.includes('data-scene-resolution'));
-assert(sceneUi.includes('4K（当前模型不支持）') && sceneUi.includes('value="4K" disabled'));
+assert(sceneActions.includes('sceneGenerationSettingsMarkup'));
+assert(sceneSettings.includes('data-scene-quality') && sceneSettings.includes('data-scene-resolution'));
+assert(sceneSettings.includes('4K（当前模型不支持）') && sceneSettings.includes('value="4K" disabled'));
 assert(sceneActions.includes('aspect_ratio: aspectRatio, count: 1'));
 assert(sceneService.includes("quality: body.quality || 'standard'"));
 console.log(JSON.stringify({ passed: true, ad_default: ad.generation_type, story_default: story.generation_type, provider_calls: { three_view: 3, four_view: 3, global_dossier: 6 }, quantity_per_group: 1, paid_model_calls: 0 }));
