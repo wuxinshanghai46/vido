@@ -5,6 +5,10 @@ import { sceneGenerationSettingsMarkup } from './sceneDossierCardSettings.js?v=2
 
 export function bindSceneCards(host, context) {
   const editorControllers = new Map(); const editorPromises = new Map();
+  host.addEventListener('change', ({ target }) => {
+    if (!target.matches('[data-scene-quality]')) return;
+    target.closest('[data-scene-card]').querySelector('[data-scene-resolution]').value = target.value === 'low' ? '720P' : '2K';
+  });
   const taskId = String(context.bundle?.project?.id || '');
   const tabKey = sceneId => `vido:scene-detail-tab:${taskId}:${sceneId}`;
   const rememberTab = (key, value) => { try { globalThis.sessionStorage?.setItem(key, value); } catch {} };
@@ -16,12 +20,6 @@ export function bindSceneCards(host, context) {
   };
   host.querySelectorAll('[data-scene-card]').forEach(card => {
     card.querySelector('[data-generate-scene]')?.insertAdjacentHTML('beforebegin', sceneGenerationSettingsMarkup());
-    const qualitySelect = card.querySelector('[data-scene-quality]');
-    const resolutionSelect = card.querySelector('[data-scene-resolution]');
-    qualitySelect?.addEventListener('change', () => {
-      const linked = { low: '720P', standard: '2K', high: '2K' }[qualitySelect.value] || '2K';
-      if (resolutionSelect?.querySelector(`option[value="${linked}"]:not([disabled])`)) resolutionSelect.value = linked;
-    });
     switchTab(card, recalledTab(tabKey(card.dataset.sceneId || '')) || card.dataset.defaultSceneTab || 'prompt', false);
     const promise = import('./scenePromptEditor.js?v=20260827-production-v235').then(module => {
       const controller = module.bindScenePromptEditor(card, context);
