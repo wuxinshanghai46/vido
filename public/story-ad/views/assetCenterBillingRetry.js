@@ -1,5 +1,5 @@
-import { request } from '../api.js?v=20260827-production-v238';
-import { setButtonBusy, toast } from '../components/ui.js?v=20260827-production-v238';
+import { request } from '../api.js?v=20260827-production-v238a';
+import { setButtonBusy, toast } from '../components/ui.js?v=20260827-production-v238a';
 
 export function visualGenerationState(bundle, missingSubjectCount, missingSceneCount) {
   const progress = bundle.generation?.progress || {};
@@ -12,7 +12,7 @@ export function visualGenerationState(bundle, missingSubjectCount, missingSceneC
     billingReviewRequired,
     billingReviewSupportId: bundle.generation?.progress?.support_id || '',
     visualActionLabel: billingReviewRequired
-      ? '核对并继续'
+      ? '继续生成缺失项'
       : (missingSubjectCount && missingSceneCount
         ? `同时生成人物与场景（${missingSubjectCount} + ${missingSceneCount}）`
         : (missingSubjectCount ? `生成人物 / 动物（${missingSubjectCount}）` : (missingSceneCount ? `生成场景（${missingSceneCount}）` : '人物与场景视觉已齐全'))),
@@ -21,7 +21,7 @@ export function visualGenerationState(bundle, missingSubjectCount, missingSceneC
 
 let billingReviewDialogPromise;
 function billingReviewDialog() {
-  billingReviewDialogPromise ||= import('./assetCenterBillingReviewDialog.js?v=20260827-production-v238');
+  billingReviewDialogPromise ||= import('./assetCenterBillingReviewDialog.js?v=20260827-production-v238a');
   return billingReviewDialogPromise;
 }
 export async function loadBillingReviews(options = {}) {

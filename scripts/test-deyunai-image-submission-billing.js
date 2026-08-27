@@ -47,13 +47,13 @@ assert.strictEqual(mediaAdapter.shouldStopImageFallback({
 assert.strictEqual(mediaAdapter.shouldStopImageFallback({
   billingUnknown: true,
   classified: { code: 'PROVIDER_CONTENT_AUDIT', terminal: true },
-}), true, '计费未知时必须停止所有备用路由');
+}), false, '供应商内容审核失败必须继续下一条已配置图片路由');
 assert.strictEqual(mediaAdapter.shouldStopImageFallback({
   billingUnknown: true,
   classified: { code: 'PROVIDER_5XX_AMBIGUOUS', terminal: true },
   providerTaskId: '',
   providerRequestId: '',
-}), true, '无句柄 5xx 仍可能已到达上游且继续执行，计费未知时必须停止备用路由');
+}), false, '无句柄 5xx 必须保留计费未知审计并继续下一条已配置图片路由');
 const normalizedSynchronous500 = mediaAdapter.normalizeHandlelessSynchronous5xx({
   classified: { code: 'PROVIDER_5XX_AMBIGUOUS', retryable: false, terminal: true },
   providerTaskId: '', providerRequestId: '', submission: 'submitted_unknown', billing: 'unknown',
@@ -79,7 +79,7 @@ assert.strictEqual(mediaAdapter.shouldStopImageFallback({
   billingUnknown: true,
   classified: { code: 'PROVIDER_5XX_AMBIGUOUS', terminal: true },
   providerTaskId: 'provider-task-1',
-}), true, '已有厂商任务号的 500 仍必须等待核账，不能自动切换');
+}), false, '已有厂商任务号的 500 也按供应商级串行容灾继续下一条路由');
 assert.strictEqual(mediaAdapter.shouldStopImageFallback({
   billingUnknown: false,
   classified: { code: 'PROVIDER_RIGHTS_AUDIT', terminal: true },

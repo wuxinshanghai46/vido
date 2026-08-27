@@ -540,10 +540,10 @@ function promptForImageCandidate(prompt = '', config = {}, auditSafePrompt = '',
 }
 
 function shouldStopImageFallback({ billingUnknown = false, classified = {}, providerTaskId = '', providerRequestId = '' } = {}) {
-  if (billingUnknown) return true;
-  // 明确未计费的内容审核拒绝允许切换到下一条已配置图片路由；
-  // 版权审核及其它终止错误仍然立即停止。
-  return classified?.terminal === true && classified?.code !== 'PROVIDER_CONTENT_AUDIT';
+  // 用户的最新图片路由合同是供应商级串行容灾：一次候选失败就继续
+  // 下一条已配置路由。每次尝试仍分别记录提交与计费状态；只有版权
+  // 审核属于跨供应商不可绕过的业务终止条件。
+  return classified?.code === 'PROVIDER_RIGHTS_AUDIT';
 }
 
 function normalizeHandlelessSynchronous5xx({ classified = {}, providerTaskId = '', providerRequestId = '', submission = '', billing = '' } = {}) {

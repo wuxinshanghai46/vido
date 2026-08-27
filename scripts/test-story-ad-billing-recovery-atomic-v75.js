@@ -39,13 +39,15 @@ async function main() {
   try {
     const pending = authorization.listBillingReviews(task.id);
     assert.equal(pending.review_count, 4); assert.ok(pending.reviews.every(item => item.billing_review_state === 'pending'));
-    const pendingBefore = JSON.stringify(rows);
-    assert.throws(() => authorization.authorizeTaskRetryBatch({
+    const pendingAuthorized = authorization.authorizeTaskRetryBatch({
       taskId: task.id, supportId: pending.support_id, checkpointKeys: pending.reviews.map(item => item.review_key),
       expectedReviewRevisions: Object.fromEntries(pending.reviews.map(item => [item.review_key, item.review_revision])),
       acceptedBy: 'owner', acceptDuplicateChargeRisk: true,
-    }), error => error.code === 'VISUAL_ASSET_BILLING_REVIEW_PENDING');
-    assert.equal(JSON.stringify(rows), pendingBefore, 'pending authorization must write nothing');
+    });
+    assert.equal(pendingAuthorized.count, 4, '直接生成动作必须原子授权所有选中的 pending 单元');
+    assert.ok(Object.values(rows[0].payload.person_dossier_checkpoints)
+      .every(unit => unit.retry_authorization?.reason === 'user_direct_generation_action'));
+    Object.values(rows[0].payload.person_dossier_checkpoints).forEach(unit => { unit.retry_authorization = null; });
 
     Object.values(rows[0].payload.person_dossier_checkpoints).forEach(unit => { unit.billing_review.state = 'unverifiable'; unit.billing_review.reviewer = 'billing-operator'; unit.billing_review.evidence = 'provider lookup exhausted'; });
     const risk = authorization.listBillingReviews(task.id); const keys = risk.reviews.map(item => item.review_key);

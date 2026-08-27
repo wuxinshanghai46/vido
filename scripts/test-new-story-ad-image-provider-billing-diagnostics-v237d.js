@@ -97,7 +97,7 @@ assert.deepStrictEqual({
 console.log(JSON.stringify({
   passed: true,
   disabled_or_keyless_image_provider_filtered: true,
-  handleless_504_requires_billing_review: true,
+  handleless_504_audited_before_fallback: true,
   explicit_not_submitted_remains_retryable: true,
   recovery_reuses_four_views_and_only_retries_detail: true,
   safe_diagnostics_projected: true,

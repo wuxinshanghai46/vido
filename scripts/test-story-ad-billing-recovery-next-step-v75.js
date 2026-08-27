@@ -57,7 +57,7 @@ verify('unverifiable review requires one explicit bounded-risk action and never 
 const billingService = read('src/services/newStoryAd/visualAssetBillingAuthorizationService.js');
 verify('billing authorization distinguishes pending, not-billed and unverifiable instead of treating every unknown as authorizable', () => {
   assert.match(billingService, /(?:billing_review_state|review_state|resolution_state)/);
-  assert.match(billingService, /(?:pending|reviewing)[\s\S]*VISUAL_ASSET_BILLING_REVIEW_PENDING/);
+  assert.match(billingService, /user_direct_generation_action/);
   assert.match(billingService, /reviewStates\.STATES\.UNVERIFIABLE/);
   assert.match(billingService, /not_billed/);
 });

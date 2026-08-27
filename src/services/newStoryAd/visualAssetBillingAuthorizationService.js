@@ -141,11 +141,7 @@ function authorizeTaskRetry({
     error.details = { ambiguous_unit_count: selected.length, reviews: selected.map(publicReview) }; throw error;
   }
   const unit = selected[0];
-  if (unit.review_state === 'pending') {
-    const error = new Error('平台核账尚未完成，当前不能接受风险或重新生成。');
-    error.code = 'VISUAL_ASSET_BILLING_REVIEW_PENDING'; error.status = 409; throw error;
-  }
-  if (unit.review_state !== 'unverifiable') {
+  if (![reviewStates.STATES.PENDING, reviewStates.STATES.UNVERIFIABLE].includes(unit.review_state)) {
     const error = new Error('只有平台确认无法核实的单元才需要重复计费风险授权。');
     error.code = 'VISUAL_ASSET_BILLING_RISK_AUTHORIZATION_NOT_APPLICABLE'; error.status = 409; throw error;
   }
@@ -154,7 +150,7 @@ function authorizeTaskRetry({
   }
   if (unit.kind === 'subject') {
     const authorized = checkpoints.authorizeAmbiguousRetry(unit.checkpoint, {
-      acceptDuplicateChargeRisk, acceptedBy, supportId, reason: 'user_explicit_acceptance_from_visual_asset_ui',
+      acceptDuplicateChargeRisk, acceptedBy, supportId, reason: 'user_direct_generation_action',
     });
     storage.saveOutput(taskId, unit.row.kind, {
       ...unit.row.payload,
@@ -164,7 +160,7 @@ function authorizeTaskRetry({
     return { authorized: true, duplicate: false, checkpoint_key: unit.review_key, authorization_id: authorized.retry_authorization.id, remaining_uses: 1 };
   }
   const updated = sceneCheckpoints.authorizeRetry(unit.row.payload, unit.key, {
-    acceptDuplicateChargeRisk, acceptedBy, supportId, reason: 'user_explicit_acceptance_from_visual_asset_ui',
+    acceptDuplicateChargeRisk, acceptedBy, supportId, reason: 'user_direct_generation_action',
   });
   return {
     authorized: true, duplicate: false, checkpoint_key: unit.review_key,
@@ -213,13 +209,12 @@ function authorizeTaskRetryBatch({
   }
   selected.forEach(unit => {
     const expected = Number(expectedReviewRevisions[unit.review_key] || 0);
-    if ((expected && expected !== unit.review_revision) || unit.review_state === reviewStates.STATES.PENDING) {
-      const error = new Error(unit.review_state === reviewStates.STATES.PENDING ? '平台核账尚未完成，不能授权或生成。' : '核账版本已变化，请刷新后重新确认。');
-      error.code = unit.review_state === reviewStates.STATES.PENDING
-        ? 'VISUAL_ASSET_BILLING_REVIEW_PENDING' : 'VISUAL_ASSET_BILLING_REVIEW_REVISION_CONFLICT';
+    if (expected && expected !== unit.review_revision) {
+      const error = new Error('核账版本已变化，请刷新后重新确认。');
+      error.code = 'VISUAL_ASSET_BILLING_REVIEW_REVISION_CONFLICT';
       error.status = 409; throw error;
     }
-    if (unit.review_state !== reviewStates.STATES.UNVERIFIABLE) {
+    if (![reviewStates.STATES.PENDING, reviewStates.STATES.UNVERIFIABLE].includes(unit.review_state)) {
       const error = new Error('所选单元不需要重复计费风险授权。');
       error.code = 'VISUAL_ASSET_BILLING_RISK_AUTHORIZATION_NOT_APPLICABLE'; error.status = 409; throw error;
     }

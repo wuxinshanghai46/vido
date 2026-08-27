@@ -86,7 +86,7 @@ assert(productionAssetOrchestrator.includes('failures.push({'), 'scene failures 
 assert(productionAssetOrchestrator.includes('error.partial_scene_assets = sceneAssets'), 'completed scenes must survive while later independent scenes continue');
 assert(billingRoutes.includes("'/tasks/:id/visual-assets/retry-authorization'"), 'billing-unknown visual recovery must retain the owned one-time compatibility endpoint');
 assert(billingRoutes.includes("'/tasks/:id/visual-assets/retry-authorizations'"), 'multi-unit billing recovery must expose one atomic batch authorization endpoint');
-assert(billingRetryView.includes("? '核对并继续'"), '计费未知状态的主按钮必须先表达核对，再继续缺失项');
+assert(billingRetryView.includes("? '继续生成缺失项'"), '计费未知状态的主按钮必须直接继续缺失项');
 assert(!billingRetryView.includes("? '重新生成'"), '计费未知状态不得误导用户整批重新生成');
 assert(!assetView.includes('当前人物配饰存在计费未知记录'), '单个人物按钮不能再被其它计费未知单元全局拦截');
 assert(assetView.includes("store.runStage('person-plan', payload)"), '人物按钮必须先提交独立人物规划，再由服务端启动图片分支');
@@ -94,9 +94,9 @@ assert(sceneProduction.includes("lane: 'scenes'"), '场景按钮必须只核对�
 assert(billingRetryView.includes('accept_duplicate_charge_risk: true'));
 assert(billingRetryView.includes('/visual-assets/retry-authorizations'));
 assert(billingRetryView.includes('checkpoint_keys: reviews.map'), '批量计费风险授权必须携带精确 checkpoint 集合');
-assert.strictEqual((billingReviewDialog.match(/confirmDialog\(/g) || []).length, 1, '一次用户操作只能出现一个计费确认弹窗');
-assert(billingReviewDialog.includes('本次一次确认同时覆盖'), '多个未知计费单元必须合并成一次明确确认');
-assert(billingReviewDialog.includes('最多可能产生'), '批量确认必须展示最大重复费用次数');
+assert.strictEqual((billingReviewDialog.match(/confirmDialog\(/g) || []).length, 0, '生成动作不得出现计费确认弹窗');
+assert(!billingReviewDialog.includes('本次一次确认同时覆盖'), '未知计费单元不得再要求二次确认');
+assert(!billingReviewDialog.includes('最多可能产生'), '直接生成动作不得显示重复费用确认文案');
 assert(!billingRetryView.includes('for (const review of reviews)'), '一次确认后不得由前端逐 checkpoint 产生部分写入');
 assert(!billingReviewDialog.includes('逐项核对：'), '不得再次为每个单元弹出确认框');
 assert(billingRetryView.includes("import('./assetCenterBillingReviewDialog.js"), '计费确认界面必须只在用户点击时按需加载');

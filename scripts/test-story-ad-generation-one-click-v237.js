@@ -24,7 +24,7 @@ async function billingContract() {
   reviews = [{ review_key: 'review-1', kind: 'scene', lane: 'scenes', scene_id: 'scene-1', unit: 'master' }];
   const risky = await sandbox.__confirm({ bundle, lane: 'scenes', sceneId: 'scene-1' });
   assert.equal(risky.accepted, true);
-  assert.equal(confirmCalls, 1, '计费未知风险必须保留一次确认');
+  assert.equal(confirmCalls, 0, '计费未知恢复也必须由生成按钮直接执行，不得弹二次确认');
 }
 
 async function main() {
@@ -72,7 +72,7 @@ async function main() {
   assert(panorama.indexOf("item.textContent = '正在准备…'") < panorama.indexOf('plan = await request'), '单场景360必须先显示准备状态，再读取幂等计划');
   const batchPanorama = panorama.slice(panorama.indexOf('export async function runPanoramaBatchGeneration'));
   assert(batchPanorama.indexOf("button.textContent = '正在准备…'") < batchPanorama.indexOf('plan = await request'), '批量360必须先显示准备状态，再读取幂等计划');
-  console.log(JSON.stringify({ passed: true, ordinary_generation_confirmations: 0, billing_unknown_confirmations: 1, progress: { processed: 5, succeeded: 4, failed: 1, percent: 100 }, responsive_breakpoints: [900, 700], paid_model_calls: 0 }));
+  console.log(JSON.stringify({ passed: true, ordinary_generation_confirmations: 0, billing_unknown_confirmations: 0, progress: { processed: 5, succeeded: 4, failed: 1, percent: 100 }, responsive_breakpoints: [900, 700], paid_model_calls: 0 }));
 }
 
 main().catch(error => { console.error(error); process.exitCode = 1; });
