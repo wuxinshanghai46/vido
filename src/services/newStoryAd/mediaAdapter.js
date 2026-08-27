@@ -18,6 +18,7 @@ const publicReferences = require('./publicReferenceService');
 const OUTPUT_DIR = path.resolve(process.env.OUTPUT_DIR || path.join(__dirname, '../../../outputs'));
 const ASSET_DIR = path.join(OUTPUT_DIR, 'new-story-ad-assets');
 const THUMB_DIR = path.join(ASSET_DIR, 'thumbs');
+const assetThumbnailInflight = new Map();
 const IMAGE_MAX_CANDIDATES = Math.max(1, Math.min(5, Number(process.env.NEW_STORY_AD_IMAGE_MAX_CANDIDATES) || 2));
 const NANO_BANANA_PROMPT_LIMIT = 2400;
 const STORY_AD_REQUIRED_IMAGE_MODEL = 'gpt-image-2';
@@ -596,19 +597,37 @@ async function ensureAssetThumbnail(filename = '', width = 520) {
   const out = assetThumbPathFromName(filename, width);
   if (out && fs.existsSync(out)) {
     const stat = fs.statSync(out);
-    if (stat.isFile()) return out;
+    if (stat.isFile() && stat.size > 0) return out;
     fs.rmSync(out, { recursive: true, force: true });
   }
-  fs.mkdirSync(path.dirname(out), { recursive: true });
-  await sharp(source)
-    .rotate()
-    .resize({
-      width: Number(path.basename(out).match(/\.(\d+)\.webp$/)?.[1]) || 960,
-      withoutEnlargement: true,
-    })
-    .webp({ quality: 82, effort: 4 })
-    .toFile(out);
-  return out;
+  if (assetThumbnailInflight.has(out)) return assetThumbnailInflight.get(out);
+  const work = (async () => {
+    if (fs.existsSync(out)) {
+      const existing = fs.statSync(out);
+      if (existing.isFile() && existing.size > 0) return out;
+      fs.rmSync(out, { recursive: true, force: true });
+    }
+    fs.mkdirSync(path.dirname(out), { recursive: true });
+    const temp = `${out}.tmp-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    try {
+      await sharp(source)
+        .rotate()
+        .resize({
+          width: Number(path.basename(out).match(/\.(\d+)\.webp$/)?.[1]) || 960,
+          withoutEnlargement: true,
+        })
+        .webp({ quality: 82, effort: 4 })
+        .toFile(temp);
+      const generated = fs.statSync(temp);
+      if (!generated.isFile() || generated.size <= 0) throw new Error('Thumbnail generation produced an empty file');
+      fs.renameSync(temp, out);
+      return out;
+    } finally {
+      if (fs.existsSync(temp)) fs.rmSync(temp, { force: true });
+    }
+  })().finally(() => assetThumbnailInflight.delete(out));
+  assetThumbnailInflight.set(out, work);
+  return work;
 }
 
 function safeFilename(name = 'new_story_ad_asset', ext = '.png') {
