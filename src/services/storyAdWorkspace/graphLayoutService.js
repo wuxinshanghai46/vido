@@ -197,16 +197,52 @@ function recomputeGeometry(graph) {
   return graph;
 }
 
+/**
+ * 旧任务可能保存过“身份资产在剧情之前”的横向坐标。业务阶段顺序升级后，
+ * 继续原样叠加这些坐标会把新版投影重新覆盖成旧顺序。这里只迁移发生倒置的
+ * 两个阶段，并整体平移各阶段内的节点，保留用户原有的纵向排列和组内间距。
+ */
+function enforceStoryBeforeAssets(nodes = []) {
+  const storyNodes = nodes.filter(item => item.group === 'story');
+  const assetNodes = nodes.filter(item => item.group === 'assets');
+  if (!storyNodes.length || !assetNodes.length) return { nodes, rebased: false };
+
+  const storyX = Math.min(...storyNodes.map(item => Number(item.position?.x || 0)));
+  const assetX = Math.min(...assetNodes.map(item => Number(item.position?.x || 0)));
+  if (storyX < assetX) return { nodes, rebased: false };
+
+  const storyShift = assetX - storyX;
+  const assetShift = storyX - assetX;
+  return {
+    nodes: nodes.map(item => {
+      if (item.group === 'story') {
+        return { ...item, position: { ...item.position, x: Number(item.position?.x || 0) + storyShift } };
+      }
+      if (item.group === 'assets') {
+        return { ...item, position: { ...item.position, x: Number(item.position?.x || 0) + assetShift } };
+      }
+      return item;
+    }),
+    rebased: true,
+  };
+}
+
 function mergeGraph(graph = {}, layout = {}) {
   const normalized = normalizeLayout(graph.project_id || layout.task_id, layout, new Set((graph.nodes || []).map(item => item.id)));
   const positions = new Map(normalized.nodes.map(item => [item.id, item]));
-  graph.nodes = (graph.nodes || []).map(item => {
+  const mergedNodes = (graph.nodes || []).map(item => {
     const saved = positions.get(item.id);
     return saved ? { ...item, position: { x: saved.x, y: saved.y }, read_only: false } : { ...item, read_only: false };
   });
+  const ordered = enforceStoryBeforeAssets(mergedNodes);
+  graph.nodes = ordered.nodes;
   graph.read_only = false;
   graph.layout_revision = normalized.layout_revision;
-  graph.layout = normalized;
+  graph.layout = {
+    ...normalized,
+    nodes: graph.nodes.map(item => ({ id: item.id, x: item.position.x, y: item.position.y })),
+    stage_order_rebased: ordered.rebased,
+  };
   return recomputeGeometry(graph);
 }
 
@@ -214,6 +250,7 @@ module.exports = {
   OUTPUT_KIND,
   SCHEMA_VERSION,
   emptyLayout,
+  enforceStoryBeforeAssets,
   fingerprint,
   getLayout,
   mergeGraph,

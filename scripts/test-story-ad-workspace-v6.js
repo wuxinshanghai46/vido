@@ -313,6 +313,25 @@ async function main() {
   assert.equal(mergedGraph.layout_revision, 1);
   assert.deepEqual(mergedGraph.nodes.find(node => node.id === movedNode.id).position, { x: 880, y: 420 });
   assert(mergedGraph.clusters.every(cluster => cluster.width > 0 && cluster.height > 0));
+  const legacyInvertedNodes = graph.nodes.map(item => {
+    if (item.group === 'story') return { id: item.id, x: 1020, y: item.position.y };
+    if (item.group === 'assets') return { id: item.id, x: 520, y: item.position.y };
+    return { id: item.id, x: item.position.x, y: item.position.y };
+  });
+  const migratedLegacyGraph = graphLayouts.mergeGraph(graphProjection.projectGraph(bundle), {
+    layout_revision: 7,
+    source_graph_revision: graph.revision,
+    nodes: legacyInvertedNodes,
+  });
+  const migratedStoryX = Math.min(...migratedLegacyGraph.nodes.filter(node => node.group === 'story').map(node => node.position.x));
+  const migratedAssetX = Math.min(...migratedLegacyGraph.nodes.filter(node => node.group === 'assets').map(node => node.position.x));
+  assert(migratedStoryX < migratedAssetX, '旧任务保存的倒置坐标必须迁移为剧情在身份资产之前');
+  assert.equal(migratedLegacyGraph.layout.stage_order_rebased, true);
+  assert.equal(
+    migratedLegacyGraph.nodes.find(node => node.group === 'story').position.y,
+    graph.nodes.find(node => node.group === 'story').position.y,
+    '旧布局迁移不得改变阶段内的纵向排列',
+  );
   const unchangedLayout = graphLayouts.saveLayout(taskId, {
     layout_revision: 1,
     source_graph_revision: graph.revision,
