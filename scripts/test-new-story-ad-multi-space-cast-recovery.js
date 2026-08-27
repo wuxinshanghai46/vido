@@ -326,7 +326,7 @@ async function assertSubjectSupplierPreflightAndConcurrency() {
   );
   releaseFirst();
   await first;
-  assert.strictEqual(supplierCalls, 6, 'same subject batch may run only one four-atlas plus native face/body dossier');
+  assert.strictEqual(supplierCalls, 3, 'commercial default may run only one three-view atlas plus native face/body masters');
 
   let cancellationChecks = 0;
   let cancellationSupplierCalls = 0;
@@ -362,7 +362,7 @@ async function assertSubjectSupplierPreflightAndConcurrency() {
     ),
     error => error?.code === 'USER_CANCELLED',
   );
-  assert.strictEqual(cancellationSupplierCalls, 6, 'cancellation after the first complete six-image member must block later member calls');
+  assert.strictEqual(cancellationSupplierCalls, 3, 'cancellation after the first complete three-view member must block later member calls');
 }
 
 async function assertMultiSpacePromptsAndRecovery() {
