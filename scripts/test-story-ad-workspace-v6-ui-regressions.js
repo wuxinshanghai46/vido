@@ -629,6 +629,13 @@ const sceneCardInteractions = read('public/story-ad/views/sceneCardInteractions.
 assert.match(`${scenePromptPreview}\n${sceneCardInteractions}`, /data-generate-scene/, '场景页面必须成为场景画面的唯一生成入口');
 assert.match(scenePromptPreview, /data-scene-detail-tab="prompt"/, '场景详情必须提供提示词标签页');
 assert.match(scenePromptPreview, /data-scene-detail-tab="images"/, '场景详情必须提供场景画面标签页');
+assert(scenePromptPreview.indexOf('status-tag') < scenePromptPreview.indexOf('data-enter-scene-world='), '场景状态必须位于进入场景按钮之前');
+assert.match(scenePromptPreview, /scene-card-entry/, '进入场景按钮必须使用紧凑场景操作样式');
+assert.match(scenePromptPreview, /scene-card-generate/, '单场景生成按钮必须使用紧凑场景操作样式');
+const dialogueTheme = read('public/story-ad/dialogue-theme.css');
+assert.match(dialogueTheme, /\.btn\.primary\{[^}]*box-shadow:none/u, '主操作默认态不得常驻高亮阴影');
+assert.match(dialogueTheme, /\.btn\.primary:not\(:disabled\):hover\{[^}]*linear-gradient/u, '主操作只能在悬停时进入紫色高亮反馈');
+assert.match(dialogueTheme, /\.btn\.primary\[aria-pressed="true"\]/u, '真正选中态必须与普通未选中态分离');
 assert.match(sceneWorldPage, /scene_setup_confirmed:\s*true/, '场景生成完成后必须显式确认才能进入线稿');
 assert.match(scenePromptPreview, /workflow\.initialization_required === true/, '首次进入场景页必须识别缺失的正式场景规划');
 assert.match(scenePromptPreview, /runStage\('scene-plan'/, '首次进入场景页必须自动提交正式场景提示词规划');
@@ -900,8 +907,9 @@ assert.match(storyAdPage, /\/story-ad\/reference-progress\.css/, '合同级参�
 assert.ok(storyAdPage.indexOf('/story-ad/dialogue-theme.css') > storyAdPage.indexOf('/story-ad/workspace.css'), '剧情广告主题交互层必须在所有工作区样式之后加载');
 assert.match(platformCss, /\.btn:not\(:disabled\):hover, \.icon-btn:not\(:disabled\):hover/, '全模块普通按钮悬停不得命中禁用按钮');
 assert.match(platformCss, /\.btn:disabled:not\(\[aria-busy="true"\]\):hover[^}]*background: var\(--surface-2\)/, '禁用按钮悬停时必须保持禁用外观，不能反向变成可点击态');
-assert.match(dialogueThemeCss, /\.btn\.primary\{[^}]*linear-gradient[^}]*color:#fff/, '全模块主按钮默认态必须保持紫色主操作外观');
-assert.match(dialogueThemeCss, /\.btn\.primary:not\(:disabled\):hover\{[^}]*linear-gradient[^}]*color:#fff/, '全模块主按钮悬停态必须是同色系增强，不能反向变暗');
+assert.match(dialogueThemeCss, /\.btn\.primary\{[^}]*background:rgb\(121 109 242 \/ 7%\)[^}]*box-shadow:none/, '主按钮默认态必须保持低强调，不能伪装成已选中状态');
+assert.match(dialogueThemeCss, /\.btn\.primary:not\(:disabled\):hover\{[^}]*linear-gradient[^}]*color:#fff/, '主按钮仅在悬停态进入紫色高亮反馈');
+assert.match(dialogueThemeCss, /\.btn\.primary\[aria-pressed="true"\]/, '真实选中态必须与普通默认态分离');
 assert.match(referenceProgressCss, /\.reference-contract-state\.is-missing/);
 assert.match(referenceProgressCss, /var\(--amber\)/, '缺失合同必须使用平台已定义的警告主题色');
 assert.doesNotMatch(referenceProgressCss, /var\(--warning\)/, '不得引用未定义的主题变量');
