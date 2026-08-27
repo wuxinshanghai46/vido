@@ -53,16 +53,22 @@ assert.strictEqual(mediaAdapter.shouldStopImageFallback({
   classified: { code: 'PROVIDER_5XX_AMBIGUOUS', terminal: true },
   providerTaskId: '',
   providerRequestId: '',
-}), false, '同步 500 且没有任何厂商任务/请求句柄时应结束该候选并切换独立备用路由');
+}), true, '无句柄 5xx 仍可能已到达上游且继续执行，计费未知时必须停止备用路由');
 const normalizedSynchronous500 = mediaAdapter.normalizeHandlelessSynchronous5xx({
   classified: { code: 'PROVIDER_5XX_AMBIGUOUS', retryable: false, terminal: true },
   providerTaskId: '', providerRequestId: '', submission: 'submitted_unknown', billing: 'unknown',
 });
-assert.strictEqual(normalizedSynchronous500.normalized, true);
-assert.strictEqual(normalizedSynchronous500.classified.code, 'PROVIDER_5XX_NOT_SUBMITTED');
-assert.strictEqual(normalizedSynchronous500.classified.retryable, true);
-assert.strictEqual(normalizedSynchronous500.submission, 'submission_rejected');
-assert.strictEqual(normalizedSynchronous500.billing, 'not_billed');
+assert.strictEqual(normalizedSynchronous500.normalized, false);
+assert.strictEqual(normalizedSynchronous500.classified.code, 'PROVIDER_5XX_AMBIGUOUS');
+assert.strictEqual(normalizedSynchronous500.submission, 'submitted_unknown');
+assert.strictEqual(normalizedSynchronous500.billing, 'unknown');
+const explicitlyRejected500 = mediaAdapter.normalizeHandlelessSynchronous5xx({
+  classified: { code: 'PROVIDER_5XX_AMBIGUOUS', retryable: false, terminal: true },
+  providerTaskId: '', providerRequestId: '', submission: 'not_submitted', billing: 'not_billed',
+});
+assert.strictEqual(explicitlyRejected500.normalized, true);
+assert.strictEqual(explicitlyRejected500.classified.code, 'PROVIDER_5XX_NOT_SUBMITTED');
+assert.strictEqual(explicitlyRejected500.billing, 'not_billed');
 const retainedAsUnknown = mediaAdapter.normalizeHandlelessSynchronous5xx({
   classified: { code: 'PROVIDER_5XX_AMBIGUOUS', retryable: false, terminal: true },
   providerTaskId: 'provider-task-1', providerRequestId: '', submission: 'submitted_unknown', billing: 'unknown',
@@ -78,5 +84,10 @@ assert.strictEqual(mediaAdapter.shouldStopImageFallback({
   billingUnknown: false,
   classified: { code: 'PROVIDER_RIGHTS_AUDIT', terminal: true },
 }), true, '版权审核拒绝不得切换供应商绕过');
+
+assert.strictEqual(mediaAdapter.imageRequestTimeoutMs({ providerId: 'webang-maas' }, 60_000), 660_000,
+  '微众同步图片链路客户端超时必须晚于供应商声明的 600 秒');
+assert.strictEqual(mediaAdapter.imageRequestTimeoutMs({ providerId: 'smscrw' }, 300_000), 300_000,
+  '其他供应商不得被微众专用超时影响');
 
 console.log('deyunai image submission billing: ok');

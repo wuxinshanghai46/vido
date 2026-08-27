@@ -107,6 +107,23 @@ function checkpointPreview(row = {}, sceneConfig = {}) {
   };
 }
 
+function mergeSuccessfulCheckpointViews(asset = {}, checkpoint = {}) {
+  const byKey = new Map((Array.isArray(asset.view_images) ? asset.view_images : [])
+    .map(view => [text(view?.key, 40), view]).filter(([key]) => key));
+  VIEW_ORDER.forEach(key => {
+    const view = sceneCheckpoints.checkpointView(checkpoint, key);
+    const url = viewUrl(view || {});
+    if (url) byKey.set(key, { ...view, key, label: VIEW_LABELS[key], url, image_url: url });
+  });
+  const viewImages = VIEW_ORDER.map(key => byKey.get(key)).filter(Boolean);
+  return {
+    ...asset,
+    image_url: byKey.get('master')?.image_url || asset.image_url || viewImages[0]?.image_url || '',
+    view_images: viewImages,
+    view_count: viewImages.length,
+  };
+}
+
 function projectSceneAssets(outputRows = []) {
   const rows = Array.isArray(outputRows) ? outputRows : [];
   const context = rows.find(row => row?.kind === 'context')?.payload || {};
@@ -144,4 +161,4 @@ function projectSceneAssets(outputRows = []) {
   return assets;
 }
 
-module.exports = { VIEW_ORDER, VIEW_LABELS, checkpointPreview, projectSceneAssets };
+module.exports = { VIEW_ORDER, VIEW_LABELS, checkpointPreview, mergeSuccessfulCheckpointViews, projectSceneAssets };

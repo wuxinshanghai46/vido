@@ -130,11 +130,13 @@ const waitFor = async (predicate, timeoutMs = 2500) => {
     let sceneExecutions = 0;
     const sceneA = jobs.queueStage({
       taskId: 'scoped-scenes', stage: 'scene_asset', scopeId: 'scene-a', expectedContentRevision: 1,
+      snapshotId: 'snapshot-scene-a',
       inputFingerprint: 'scene-a-v1', idempotencyKey: 'scoped-scenes:scene_asset:scene-a:v1',
       execute: async () => { sceneExecutions += 1; await gateA; },
     });
     const sceneB = jobs.queueStage({
       taskId: 'scoped-scenes', stage: 'scene_asset', scopeId: 'scene-b', expectedContentRevision: 1,
+      snapshotId: 'snapshot-scene-b',
       inputFingerprint: 'scene-b-v1', idempotencyKey: 'scoped-scenes:scene_asset:scene-b:v1',
       execute: async () => { sceneExecutions += 1; await gateB; },
     });
@@ -146,6 +148,9 @@ const waitFor = async (predicate, timeoutMs = 2500) => {
     });
     assert.strictEqual(duplicateSceneA.accepted, false, '同一场景双击必须幂等拒绝');
     await waitFor(() => Object.keys(storage.getTask('scoped-scenes').active_target_generations || {}).length === 2);
+    const scopedActive = storage.getTask('scoped-scenes').active_target_generations;
+    assert.strictEqual(scopedActive['scene_asset:scene-a'].snapshot_id, 'snapshot-scene-a');
+    assert.strictEqual(scopedActive['scene_asset:scene-b'].snapshot_id, 'snapshot-scene-b');
     releaseA(); releaseB();
     await waitFor(() => storage.getGenerationRun(sceneA.job.generation_unit_id)?.state === 'succeeded'
       && storage.getGenerationRun(sceneB.job.generation_unit_id)?.state === 'succeeded');

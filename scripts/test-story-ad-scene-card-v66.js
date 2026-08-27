@@ -99,6 +99,7 @@ function testUiAndExportBoundaries() {
   const html = read('public/story-ad/index.html');
 
   assert(card.includes("['master', 'reverse', 'interaction', 'detail', 'layout']"), '场景档案必须固定五类证据槽位');
+  assert(card.includes('视图齐全，QA 未通过') && card.includes('QA 已通过并锁定'), '五张图片齐全与 QA 放行状态必须明确区分');
   assert(card.includes('usedUrls.has(url)') && card.includes('没有使用其他视图冒充'), '同一图片不得跨槽复用');
   assert(card.includes("import('./sceneDossierExport.js"), '高清导出必须按需加载');
   assert(assetCenter.includes("group === 'scenes' ? sceneDetail") && scenePromptPreview.includes('data-enter-scene-world='), '场景摘要与顶部进入场景入口必须同时存在，并由独立场景流程承载');
@@ -108,6 +109,7 @@ function testUiAndExportBoundaries() {
   assert(sceneWorldModules.includes('data-generate-scene=') && sceneWorldModules.includes('data-scene-detail-tab="prompt"'), '场景生成与提示词核对必须归属场景页模块');
   assert.match(scenePromptPreview, /generationStarted \? 'images' : 'prompt'/u, '未生图场景默认提示词，已有或生成中的场景默认画面');
   assert.match(scenePromptPreview, /data-default-scene-tab/u, '场景卡必须显式投影默认标签页');
+  assert(scenePromptPreview.includes('normalizeSceneDossier(scene).completed'), '场景卡计数必须按五类语义槽去重，不能重复计算相机投影');
   assert.match(scenePromptPreview, /data-scene-prompt-editor=/u, '正式场景提示词必须提供可编辑文本区');
   assert.doesNotMatch(scenePromptPreview, /data-save-scene-prompt=|data-confirm-scene-prompt=/u, '场景提示词不得再要求显式保存或确认');
   assert.match(scenePromptEditor, /bindTextAutosave/u, '场景提示词必须自动保存到服务端权威版本');
@@ -118,6 +120,8 @@ function testUiAndExportBoundaries() {
   assert(exporter.includes("request(url, { responseType: 'blob'") && exporter.includes('model_call_count: 0'));
   assert(!/generate(?:Image|Vision|Text)|runStage\(|fetch\([^)]*\/generate/i.test(exporter), '本地导出不得触发生成或任务阶段');
   assert(world.includes('data-plan-scene-experience') && world.includes('data-world-mode="panorama"'), '可选的3D/360规划与查看入口不得被场景档案替换');
+  assert(sceneWorldPage.includes('bindMediaLightbox(host)') && world.includes('bindMediaLightbox(overlay)'), '场景卡与机位大图必须绑定原图放大查看');
+  assert(world.includes('data-media-zoom-url=') && css.includes('object-fit:contain!important'), '场景列表和机位查看都必须保留完整画幅并提供原图入口');
   assert(!world.includes('data-generate-panorama'), '场景世界不得绕过统一制作图谱恢复旧的单项全景付费入口');
   assert(css.includes('@media(max-width:820px)') && css.includes('.drawer.is-scene-drawer{width:100vw'), '移动端场景抽屉必须使用完整视口宽度');
   assert(html.includes('/story-ad/scene-dossier.css'));

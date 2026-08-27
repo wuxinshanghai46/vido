@@ -73,7 +73,7 @@ export function normalizeSceneDossier(item = {}) {
 }
 
 function statusText(state = '', completed = 0) {
-  return ({ locked: '已通过并锁定', partial: completed > 0 ? '基础场景已保存，增强待续' : '部分完成', conflict: '一致性异常', missing: '尚未生成' })[state] || '状态待确认';
+  return ({ locked: 'QA 已通过并锁定', partial: completed > 0 ? '基础场景已保存，增强待续' : '部分完成', conflict: completed === SCENE_VIEW_ORDER.length ? '视图齐全，QA 未通过' : 'QA 未通过', missing: '尚未生成' })[state] || '状态待确认';
 }
 
 function viewSlot(item, dossier, key, options = {}) {
@@ -129,7 +129,7 @@ export function renderSceneCoverCard(item = {}) {
     <div class="scene-cover-visual">${master?.image_url
       ? mediaPreview(master, { label: `${item.name || '场景'} · 主视总览`, width: 960, symbol: '场景主视', zoomable: true, zoomGroup: `scene-cover-${item.id || 'current'}` })
       : '<div class="scene-dossier-missing" role="status"><span>待生成主视图</span></div>'}
-      <span class="scene-cover-state">${escapeHtml(statusText(dossier.state, dossier.completed))} · ${dossier.completed}/${dossier.total}</span>
+      <span class="scene-cover-state">${escapeHtml(statusText(dossier.state, dossier.completed))} · 视图 ${dossier.completed}/${dossier.total}</span>
     </div>
     <div class="scene-cover-slots" aria-label="五类场景证据完整度">${SCENE_VIEW_ORDER.map(key => `<span class="is-${dossier.views[key]?.image_url ? 'complete' : dossier.viewStatuses[key]?.state || 'missing'}"><i aria-hidden="true"></i>${escapeHtml(SCENE_VIEW_LABELS[key])}</span>`).join('')}</div>
   </div>`;

@@ -237,6 +237,17 @@ function isWebangMaasConfig(config = {}) {
     .filter(Boolean).join(' '));
 }
 
+function imageRequestTimeoutMs(config = {}, requested = 0) {
+  const requestedMs = Number(requested) || (5 * 60 * 1000);
+  if (isWebangMaasConfig(config)) {
+    const configuredMs = Number(process.env.WEBANG_MAAS_IMAGE_TIMEOUT_MS) || requestedMs;
+    // 微众最新人工答复称图片同步链路最长运行 600 秒。客户端必须
+    // 晚于供应商终止，才能读取其最终响应，而不是在同一秒主动断开。
+    return Math.max(11 * 60 * 1000, Math.min(12 * 60 * 1000, configuredMs));
+  }
+  return Math.max(30000, Math.min(10 * 60 * 1000, requestedMs));
+}
+
 async function buildWebangGptImage2EditForm(config = {}, { prompt = '', size = '1024x1024', referenceImages = [], quality = 'standard' } = {}) {
   const refs = (Array.isArray(referenceImages) ? referenceImages : []).filter(Boolean).slice(0, 6);
   if (!refs.length) throw new Error('微众 GPT Image 2 edits 至少需要一个参考图文件');
@@ -337,13 +348,16 @@ async function invokeOpenAiCompatibleGptImage2(config = {}, options = {}) {
   const providerRequestId = String(response.headers?.['x-request-id'] || response.headers?.['request-id'] || response.data?.request_id || '');
   await notifyGenerationObserver(options.onSubmitted, {
     clientRequestId: options.clientRequestId || '', providerRequestId,
-    status: response.status >= 400 ? 'rejected' : 'submitted', submittedAt: new Date().toISOString(),
+    status: response.status >= 500 ? 'submitted' : (response.status >= 400 ? 'rejected' : 'submitted'), submittedAt: new Date().toISOString(),
   });
   if (response.status >= 400) {
     const error = new Error(`${config.providerId} GPT Image 2 HTTP ${response.status}: ${JSON.stringify(response.data).slice(0, 300)}`);
     error.response = response;
     error.providerRequestId = providerRequestId;
-    if (response.status >= 500) error.billingState = 'unknown';
+    if (response.status >= 500) {
+      error.billingState = 'unknown';
+      error.providerSubmissionState = 'submitted_unknown';
+    }
     throw error;
   }
   const data = normalizeCompatibleImageResponse(response.data);
@@ -521,9 +535,6 @@ function promptForImageCandidate(prompt = '', config = {}, auditSafePrompt = '',
 }
 
 function shouldStopImageFallback({ billingUnknown = false, classified = {}, providerTaskId = '', providerRequestId = '' } = {}) {
-  if (classified?.code === 'PROVIDER_5XX_AMBIGUOUS'
-    && !String(providerTaskId || '').trim()
-    && !String(providerRequestId || '').trim()) return false;
   if (billingUnknown) return true;
   // 明确未计费的内容审核拒绝允许切换到下一条已配置图片路由；
   // 版权审核及其它终止错误仍然立即停止。
@@ -532,7 +543,9 @@ function shouldStopImageFallback({ billingUnknown = false, classified = {}, prov
 
 function normalizeHandlelessSynchronous5xx({ classified = {}, providerTaskId = '', providerRequestId = '', submission = '', billing = '' } = {}) {
   const handleless = !String(providerTaskId || '').trim() && !String(providerRequestId || '').trim();
-  if (classified?.code !== 'PROVIDER_5XX_AMBIGUOUS' || !handleless) {
+  const explicitlyRejected = ['not_submitted', 'submission_rejected', 'request_not_sent'].includes(String(submission || '').toLowerCase())
+    && ['not_billed', 'none', 'confirmed_not_billed'].includes(String(billing || '').toLowerCase());
+  if (classified?.code !== 'PROVIDER_5XX_AMBIGUOUS' || !handleless || !explicitlyRejected) {
     return { classified, submission, billing, normalized: false };
   }
   return {
@@ -541,7 +554,7 @@ function normalizeHandlelessSynchronous5xx({ classified = {}, providerTaskId = '
       code: 'PROVIDER_5XX_NOT_SUBMITTED',
       retryable: true,
       terminal: false,
-      message: '供应商同步返回 HTTP 500，且未返回任务号、请求号或结果；该候选已确认失败且按未计费结束，可以切换备用通道。',
+      message: '供应商明确拒绝提交且确认未计费；该候选可以安全切换备用通道。',
     },
     submission: 'submission_rejected',
     billing: 'not_billed',
@@ -931,7 +944,7 @@ async function generateImage({
               clientRequestId,
               onSubmitting: observeSubmitting,
               onSubmitted: observeSubmitted,
-              timeoutMs: Math.max(30000, Math.min(10 * 60 * 1000, Number(timeoutMs) || (5 * 60 * 1000))),
+              timeoutMs: imageRequestTimeoutMs(config, timeoutMs),
             })
             : (async () => {
               await observeSubmitting({
@@ -1159,6 +1172,7 @@ module.exports = {
   buildWebangGptImage2EditForm,
   buildWebangGptImage2GenerationBody,
   isWebangMaasConfig,
+  imageRequestTimeoutMs,
   normalizeCompatibleImageResponse,
   createImageSubmissionTracker,
   sizeFor,

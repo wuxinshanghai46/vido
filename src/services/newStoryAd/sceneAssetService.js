@@ -19,6 +19,7 @@ const productAssetResolver = require('./productAssetResolverService');
 const sceneGenerationPolicy = require('./sceneGenerationPolicyService'), knowledgeRuntime = require('./knowledgePolicyRuntimeService');
 const sceneSpecProjection = require('./sceneSpecProjectionService');
 const sceneLayerContract = require('./sceneLayerContractService');
+const sceneCheckpointProjection = require('./sceneCheckpointProjectionService');
 const worldSetting = require('./worldSettingContractService');
 const sceneVisualPrompts = require('./sceneVisualPromptService');
 const { buildSceneSheetPrompt, buildLayoutAcquisitionPrompt, legacyScenePromptFingerprintText, localizeSceneViews, relinkContractViews, localizeSceneAssets, buildDerivedViewPrompt, buildSceneAuditSafePrompt } = sceneVisualPrompts;
@@ -793,7 +794,6 @@ function publishBaseSceneAsset({
 
 function finishWithBaseScene({ taskId, target, basePublication, checkpoint, error, progressMode, progressViewKeys } = {}) {
   const billingUnknown = ['unknown', 'submitted_unknown'].includes(String(error?.billingState || error?.billing_state || '').toLowerCase());
-  if (billingUnknown || error?.code === 'USER_CANCELLED' || error?.cancelled === true) throw error;
   const stored = normalizeSceneAssets(storage.getOutput(taskId, 'scene_assets') || []);
   const index = stored.findIndex(item => String(item.scene_id || item.id) === String(target.scene_id));
   const completed = SCENE_GENERATION_ORDER.filter(key => !!sceneCheckpoint.checkpointView(checkpoint, key));
@@ -803,7 +803,7 @@ function finishWithBaseScene({ taskId, target, basePublication, checkpoint, erro
   ])];
   if (index >= 0 && stored[index].partial_checkpoint === true) {
     stored[index] = normalizeSceneAsset({
-      ...stored[index],
+      ...sceneCheckpointProjection.mergeSuccessfulCheckpointViews(stored[index], checkpoint),
       partial_checkpoint: true,
       checkpoint_status: 'enhancement_pending',
       checkpoint_error_code: error?.code || 'SCENE_ENHANCEMENT_FAILED',
@@ -826,6 +826,10 @@ function finishWithBaseScene({ taskId, target, basePublication, checkpoint, erro
     storage.saveOutput(taskId, 'context', nextCtx);
     storage.updateTask(taskId, { request: nextCtx, retryable: true });
   }
+  // Persist every completed paid view before propagating cancellation or
+  // billing-unknown failures. Those failures must block retries, not discard
+  // already returned assets from the canonical scene record.
+  if (billingUnknown || error?.code === 'USER_CANCELLED' || error?.cancelled === true) throw error;
   storage.saveStage(taskId, 'scene_asset', {
     status: 'warning',
     output_summary: basePublication?.preserved_previous
@@ -1570,7 +1574,6 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
       : sceneSpecProjection.resolvedSceneSpec(body.scene_spec || body.sceneSpec || ctx.scene_spec || {}, requested),
   };
   if (runOptions.deferPublish !== true) saveSceneAssetsToTask(taskId, sceneAssets, publishOptions);
-  if (runOptions.deferPublish !== true) sceneCheckpoint.markPublished(checkpoint, asset);
   const autoRepairPass = Math.max(0, Number(runOptions.autoRepairPass || 0) || 0);
   const autoRepairEligible = !repairMode
     && autoRepairPass < 1
@@ -1596,13 +1599,32 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
     });
   }
   if (sceneContract.full_space_lock !== true) {
+    const verificationError = new Error(sceneContract.qa_unavailable === true
+      ? '五张场景图片已保存，但视觉验证服务暂不可用；本次不会标记成功或进入下游。'
+      : '五张场景图片已保存，但需求符合度、跨视图一致性或空间覆盖度未通过；本次不会标记成功或进入下游。');
+    verificationError.code = sceneContract.qa_unavailable === true
+      ? 'SCENE_VISUAL_QA_UNAVAILABLE'
+      : 'SCENE_VISUAL_QA_REJECTED';
+    verificationError.retryable = true;
+    verificationError.scene_asset = asset;
+    verificationError.scene_assets = sceneAssets;
+    verificationError.repair_plan = repairPlan;
+    if (runOptions.deferPublish !== true) sceneCheckpoint.markReviewRequired(checkpoint, asset, verificationError);
     storage.saveStage(taskId, 'scene_asset', {
       status: sceneContract.qa_unavailable === true ? 'warning' : 'review',
       output_summary: sceneContract.qa_unavailable === true
         ? '场景参考已保存，视觉验证服务暂不可用'
         : '场景参考已保存，但需求符合度、跨视图一致性或空间覆盖度尚未全部通过',
     });
+    updateSceneGenerationProgress(taskId, {
+      mode: progressMode,
+      phase: 'verification',
+      viewKeys: progressViewKeys,
+      verificationState: sceneContract.verification?.state || sceneContract.status || '',
+    });
+    throw verificationError;
   }
+  if (runOptions.deferPublish !== true) sceneCheckpoint.markPublished(checkpoint, asset);
   updateSceneGenerationProgress(taskId, {
     mode: progressMode,
     phase: 'complete',

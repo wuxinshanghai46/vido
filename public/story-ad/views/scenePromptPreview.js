@@ -1,11 +1,11 @@
 import { escapeHtml, toast } from '../components/ui.js?v=20260827-production-v236g';
-import { renderSceneCoverCard, sceneNeedsGeneration } from './sceneDossierCard.js?v=20260827-production-v236g';
+import { normalizeSceneDossier, renderSceneCoverCard, sceneNeedsGeneration } from './sceneDossierCard.js?v=20260827-production-v236g';
 
 const submitted = new Set();
 
 export function renderSceneProductionCard(scene = {}, index = 0, options = {}) {
   const prompt = String(scene.generation_prompt || scene.prompt || scene.description || '').trim();
-  const imageCount = [scene.layout?.image_url, ...(scene.view_images || []), ...(scene.cameras || []).map(camera => camera?.image_url)].filter(Boolean).length;
+  const imageCount = normalizeSceneDossier(scene).completed;
   const provisional = options.provisional === true || scene.provisional === true;
   const needsGeneration = !provisional && sceneNeedsGeneration(scene);
   const sceneId = escapeHtml(scene.id || scene.scene_id || `scene-${index + 1}`);

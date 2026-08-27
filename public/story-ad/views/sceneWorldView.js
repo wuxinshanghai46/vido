@@ -2,6 +2,7 @@ import { request } from '../api.js?v=20260827-production-v236g';
 import { escapeHtml, mediaPreview, toast } from '../components/ui.js?v=20260827-production-v236g';
 import { promptDialog } from '../components/dialog.js?v=20260827-production-v236g';
 import { list, worldById } from './sceneWorldData.js?v=20260827-production-v236g';
+import { bindMediaLightbox } from './mediaLightbox.js?v=20260827-production-v236g';
 const CAPABILITY_LABELS = {
   supports_photo_views: '真实图片视角',
   supports_panorama: '360原地环视（3DoF）',
@@ -305,7 +306,7 @@ function initSceneWorldViewer({ overlay, bundle, world }) {
     activateModeButton(mode);
     currentNode = node;
     host.innerHTML = `<div class="scene-world-photo-viewer"><div class="scene-world-photo-stage">
-      <img alt="${escapeHtml(world.name)}真实场景视图" data-media-original="${escapeHtml(node.image_url)}">
+      <img alt="${escapeHtml(world.name)}真实场景视图" data-media-original="${escapeHtml(node.image_url)}" data-media-zoom-url="${escapeHtml(node.image_url)}" data-media-preview-url="${escapeHtml(node.image_url)}" data-media-zoom-label="${escapeHtml(`${world.name} · ${node.name || '真实场景视图'}`)}" data-media-zoom-group="scene-world-${escapeHtml(world.id || 'current')}">
       <div class="scene-world-photo-status"><b>${escapeHtml(node.name || '真实场景视图')}</b><small>${Math.max(1, nodes.indexOf(node) + 1)} / ${nodes.length} · 平面参考图</small></div>
       <div class="scene-world-photo-error" data-photo-error hidden>当前图片无法加载，请重试或检查场景资产。</div>
     </div><div class="scene-world-photo-strip">${nodes.map((item, index) => `<button type="button" data-photo-node="${escapeHtml(item.id)}" class="${item.id === node.id ? 'active' : ''}" title="${escapeHtml(item.name || `视角 ${index + 1}`)}"><img src="${escapeHtml(thumbUrl(item.image_url))}" loading="lazy" decoding="async" alt=""><span>${escapeHtml(item.name || `视角 ${index + 1}`)}${item.is_panorama ? '<small>3DoF</small>' : ''}</span></button>`).join('')}</div></div>`;
@@ -416,6 +417,7 @@ async function openSceneWorldStudio(bundle, world) {
   </section>`;
   document.body.appendChild(overlay);
   document.body.classList.add('modal-open');
+  bindMediaLightbox(overlay);
 
   let disposeViewer = () => {};
   const close = () => {

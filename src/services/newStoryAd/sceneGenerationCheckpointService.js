@@ -529,6 +529,15 @@ function markPublished(checkpoint = {}, asset = {}) {
   return save(checkpoint);
 }
 
+function markReviewRequired(checkpoint = {}, asset = {}, error = null) {
+  checkpoint.status = 'review_required';
+  checkpoint.review_revision = Number(asset.scene_revision || checkpoint.candidate_revision || 1) || 1;
+  checkpoint.review_required_at = nowIso();
+  checkpoint.last_error = String(error?.message || '场景视觉验证未通过').slice(0, 500);
+  checkpoint.last_error_code = String(error?.code || 'SCENE_VISUAL_QA_REJECTED').slice(0, 100);
+  return save(checkpoint);
+}
+
 module.exports = {
   CHECKPOINT_SCHEMA_VERSION,
   CHECKPOINT_OUTPUT_PREFIX,
@@ -553,6 +562,7 @@ module.exports = {
   markPartial,
   markCancelled,
   markPublished,
+  markReviewRequired,
   cleanupUnpublishedFiles,
   hasUnknownBillingRisk,
   terminalSynchronousProviderFailure,

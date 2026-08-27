@@ -537,6 +537,9 @@ async function main() {
       ['interaction', 'layout', 'master', 'reverse'],
       'four completed paid views must remain recoverable',
     );
+    const partialCanonical = storage.getOutput(checkpointTaskId, 'scene_assets')[0];
+    assert.equal(partialCanonical.view_count, 4, '已付费成功的检查点视图必须同步合并到权威场景资产，不能只存在于读取投影');
+    assert.deepEqual(partialCanonical.completed_view_keys.slice().sort(), ['interaction', 'layout', 'master', 'reverse']);
     transientFailuresRemaining = 0;
     transientFilenamePattern = null;
     transientFailureMessage = 'socket hang up ECONNRESET';
@@ -676,28 +679,40 @@ async function main() {
     seedSingleSceneTask(boundedTaskId, 'bounded repeated rejection', 'bounded-repair-location');
     const callsBeforeBounded = calls.length;
     finalQaLayoutFailuresRemaining = 2;
-    const bounded = await sceneAssets.generateSceneAsset(boundedTaskId, {
+    let boundedError;
+    await assert.rejects(() => sceneAssets.generateSceneAsset(boundedTaskId, {
       scene_id: 'bounded-repair-location',
       scene_spec: context.scene_spec,
       aspect_ratio: '16:9',
+    }), error => {
+      boundedError = error;
+      return error.code === 'SCENE_VISUAL_QA_REJECTED';
     });
     assert.equal(calls.length - callsBeforeBounded, 6, 'automatic paid repair must stop after one targeted cycle');
-    assert.equal(bounded.scene_asset.scene_revision, 2);
-    assert.equal(bounded.scene_asset.scene_contract.full_space_lock, false);
-    assert.deepEqual(bounded.scene_asset.repair_plan.view_keys, ['layout']);
+    assert.equal(boundedError.scene_asset.scene_revision, 2);
+    assert.equal(boundedError.scene_asset.scene_contract.full_space_lock, false);
+    assert.deepEqual(boundedError.scene_asset.repair_plan.view_keys, ['layout']);
+    assert.equal(storage.getOutput(boundedTaskId, 'scene_asset_checkpoint:bounded-repair-location').status, 'review_required');
+    assert.equal(storage.getTask(boundedTaskId).generation_progress.phase, 'verification', 'QA 失败不得先显示 100% 完成');
+    assert.notEqual(storage.getTask(boundedTaskId).generation_progress.status, 'completed');
 
     const unavailableTaskId = 'spatial-final-qa-unavailable-test';
     seedSingleSceneTask(unavailableTaskId, 'qa unavailable preservation', 'qa-unavailable-location');
     const callsBeforeUnavailable = calls.length;
     finalQaUnavailableRemaining = 1;
-    const qaUnavailable = await sceneAssets.generateSceneAsset(unavailableTaskId, {
+    let qaUnavailableError;
+    await assert.rejects(() => sceneAssets.generateSceneAsset(unavailableTaskId, {
       scene_id: 'qa-unavailable-location',
       scene_spec: context.scene_spec,
       aspect_ratio: '16:9',
+    }), error => {
+      qaUnavailableError = error;
+      return error.code === 'SCENE_VISUAL_QA_UNAVAILABLE';
     });
     assert.equal(calls.length - callsBeforeUnavailable, 5, 'QA infrastructure failure must never trigger paid image regeneration');
-    assert.equal(qaUnavailable.scene_asset.scene_contract.qa_unavailable, true);
-    assert.equal(qaUnavailable.scene_asset.repair_plan.action, 'reverify');
+    assert.equal(qaUnavailableError.scene_asset.scene_contract.qa_unavailable, true);
+    assert.equal(qaUnavailableError.scene_asset.repair_plan.action, 'reverify');
+    assert.equal(storage.getOutput(unavailableTaskId, 'scene_asset_checkpoint:qa-unavailable-location').status, 'review_required');
 
     const genericCases = [
       { material: 'open-grain oak veneer with directional grain and soft wax sheen', forbidden: /stainless steel/i },

@@ -11,6 +11,7 @@ async function readStdin() {
 
 async function main() {
   const fromStdin = process.argv.includes('--stdin');
+  const providerOnly = process.argv.includes('--provider-only');
   const raw = fromStdin ? await readStdin() : String(process.env.SMSCRW_API_KEY || '').trim();
   let apiKey = raw;
   if (fromStdin && raw.startsWith('{')) apiKey = String(JSON.parse(raw).api_key || '').trim();
@@ -38,14 +39,17 @@ async function main() {
   saveSettings(settings);
 
   const configuredStages = [];
-  for (const stageId of pipeline.NEW_STORY_AD_IMAGE_STAGE_IDS) {
-    if (!pipeline.getStageDefaults(stageId).length) continue;
-    const result = pipeline.setStageConfig(stageId, [
-      { provider_id: 'smscrw', model_id: 'gpt-image-2', priority: 1, enabled: true },
-      { provider_id: 'deyunai', model_id: 'gpt-image-2', priority: 2, enabled: true },
-    ]);
-    if (result.rejected.length) throw new Error(`${stageId} configuration rejected: ${JSON.stringify(result.rejected)}`);
-    configuredStages.push(stageId);
+  if (!providerOnly) {
+    for (const stageId of pipeline.NEW_STORY_AD_IMAGE_STAGE_IDS) {
+      if (!pipeline.getStageDefaults(stageId).length) continue;
+      const result = pipeline.setStageConfig(stageId, [
+        { provider_id: 'smscrw', model_id: 'gpt-image-2', priority: 1, enabled: true },
+        { provider_id: 'webang-maas', model_id: 'gpt-image-2', priority: 2, enabled: true },
+        { provider_id: 'deyunai', model_id: 'gpt-image-2', priority: 3, enabled: true },
+      ]);
+      if (result.rejected.length) throw new Error(`${stageId} configuration rejected: ${JSON.stringify(result.rejected)}`);
+      configuredStages.push(stageId);
+    }
   }
 
   console.log(JSON.stringify({
@@ -54,7 +58,8 @@ async function main() {
     model_id: 'gpt-image-2',
     api_key_stored: true,
     primary_priority: 1,
-    fallback_provider_id: 'deyunai',
+    fallback_provider_ids: ['webang-maas', 'deyunai'],
+    route_update_skipped: providerOnly,
     configured_stage_count: configuredStages.length,
   }));
 }

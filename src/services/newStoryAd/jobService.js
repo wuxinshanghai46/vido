@@ -57,12 +57,22 @@ function targetMaps(task = {}) {
   };
 }
 
+function jobSnapshotIsCurrent(task = {}, job = {}) {
+  if (!job.snapshotId) return true;
+  if (!job.scopeId) return String(task.current_snapshot_id || '') === String(job.snapshotId);
+  const current = targetMaps(task).active[targetKey(job.stage, job.scopeId)] || null;
+  return !!current
+    && String(current.generation_id || '') === String(job.id || '')
+    && String(current.snapshot_id || '') === String(job.snapshotId);
+}
+
 function scopedTaskPatch(task = {}, job = {}, status = 'queued', failure = {}) {
   const key = targetKey(job.stage, job.scopeId);
   const maps = targetMaps(task);
   if (['queued', 'running'].includes(status)) {
     maps.active[key] = {
       generation_id: job.id, stage: job.stage, target_id: job.scopeId, status,
+      snapshot_id: job.snapshotId || '', content_revision: Number(job.expectedContentRevision || 0) || 0,
       queued_at: job.queuedAt || '', started_at: job.startedAt || '', updated_at: new Date().toISOString(),
     };
     delete maps.results[key];
@@ -628,7 +638,7 @@ function queueStage({
       throw error;
     }
     if (Number(beforeRun?.content_revision || 1) !== expectedRevision
-      || (job.snapshotId && String(beforeRun?.current_snapshot_id || '') !== job.snapshotId)) {
+      || !jobSnapshotIsCurrent(beforeRun, job)) {
       const error = new Error('任务在排队期间已经更新，旧生成任务已作废');
       error.code = 'STALE_GENERATION_REVISION';
       error.status = 409;
@@ -681,7 +691,7 @@ function queueStage({
         throw error;
       }
       if (Number(afterExecute?.content_revision || 1) !== expectedRevision
-        || (job.snapshotId && String(afterExecute?.current_snapshot_id || '') !== job.snapshotId)) {
+        || !jobSnapshotIsCurrent(afterExecute, job)) {
         const error = new Error('生成完成时任务内容已经更新，旧结果不会发布');
         error.code = 'STALE_GENERATION_REVISION';
         error.status = 409;
