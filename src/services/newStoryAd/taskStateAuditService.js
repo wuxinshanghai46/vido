@@ -39,6 +39,9 @@ function checkpointBillingRows(outputs = [], taskId = '') {
       provider_error_code: text(value.provider_error_code),
       platform_request_id: text(value.platform_request_id || value.submission_id || value.key || checkpointKey),
       submission_id: text(value.submission_id || value.key || checkpointKey),
+      retry_authorized: value.retry_authorization?.accept_duplicate_charge_risk === true
+        && Number(value.retry_authorization?.remaining_uses || 0) > 0,
+      retry_authorization_key: text(value.retry_authorization?.checkpoint_key),
       source: 'generation_checkpoint',
       source_kind: outputKind,
       checkpoint_key: checkpointKey,
@@ -81,7 +84,8 @@ function billingRiskForTask(db = {}, taskId = '') {
     || text(run.billing_state).toLowerCase() === 'unknown');
   const modelUnknownBilling = rows(db.model_calls)
     .filter(call => text(call.task_id) === normalizedTaskId && text(call.billing_state).toLowerCase() === 'unknown');
-  const checkpointUnknownBilling = checkpointBillingRows(db.outputs, normalizedTaskId)
+  const allCheckpointUnknownBilling = checkpointBillingRows(db.outputs, normalizedTaskId);
+  const checkpointUnknownBilling = allCheckpointUnknownBilling
     .filter(checkpoint => !modelUnknownBilling.some(call => sameBillingAttempt(call, checkpoint)));
   const allUnknownBilling = [
     ...modelUnknownBilling,
@@ -92,7 +96,11 @@ function billingRiskForTask(db = {}, taskId = '') {
   const quarantinedCheckpointKeys = new Set(unknownBillingUnits.map(run => text(run.legacy_checkpoint_key)).filter(Boolean));
   const unquarantinedUnknownBilling = allUnknownBilling.filter(call => call.source === 'generation_checkpoint'
     ? !quarantinedCheckpointKeys.has(text(call.checkpoint_key))
-    : !quarantinedCallIds.has(text(call.id)));
+      && !(call.retry_authorized === true && call.retry_authorization_key === text(call.checkpoint_key))
+    : !quarantinedCallIds.has(text(call.id))
+      && !allCheckpointUnknownBilling.some(checkpoint => checkpoint.retry_authorized === true
+        && checkpoint.retry_authorization_key === text(checkpoint.checkpoint_key)
+        && sameBillingAttempt(call, checkpoint)));
   return {
     all_unknown_billing: allUnknownBilling,
     active_unknown_billing: activeUnknownBilling,

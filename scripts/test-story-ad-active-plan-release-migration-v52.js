@@ -257,6 +257,39 @@ const unknownResult = publication.migrateCompatibleRelease(legacyUnknown.taskId,
 assert.equal(unknownResult.blocked, true);
 assert(unknownResult.compatibility.issues.includes('unknown_billing_unquarantined'));
 
+const authorizedUnknown = createFixture({
+  id: 'authorized-unknown-scene-retry', oldBundle: 'legacy-authorized-retry',
+  castCount: 2, propCount: 0, sceneCount: 4,
+});
+const authorizedCheckpointKind = 'scene_asset_checkpoint:space-authorized';
+const authorizedCheckpointKey = `${authorizedCheckpointKind}#detail`;
+storage.saveOutput(authorizedUnknown.taskId, authorizedCheckpointKind, {
+  task_id: authorizedUnknown.taskId,
+  scene_id: 'space-authorized',
+  views: {
+    detail: {
+      status: 'failed', billing_state: 'unknown', provider_submission_state: 'submitted_unknown',
+      submission_id: 'authorized-unknown-submission',
+      retry_authorization: {
+        checkpoint_key: authorizedCheckpointKey,
+        accept_duplicate_charge_risk: true,
+        remaining_uses: 1,
+      },
+    },
+  },
+});
+storage.saveModelCall({
+  id: 'authorized-unknown-call', task_id: authorizedUnknown.taskId, stage: 'scene_asset',
+  status: 'failed', billing_state: 'unknown', provider_submission_state: 'submitted_unknown',
+  submission_id: 'authorized-unknown-submission',
+});
+const authorizedMigration = publication.migrateCompatibleRelease(authorizedUnknown.taskId, {
+  fingerprint: authorizedUnknown.fingerprint,
+});
+assert.equal(authorizedMigration.migrated, true,
+  '同一次未知计费调用已有未消费的一次性授权时，版本同步不得让修复按钮在模型调用前失效');
+assert.equal(modelCalls(authorizedUnknown.taskId), 1, '版本同步不得消费一次性授权或新增模型调用');
+
 const legacyActive = createLegacyV14Fixture('legacy-v14-active-generation');
 storage.updateTask(legacyActive.taskId, { active_generation_id: 'same-generation' });
 const activeResult = publication.migrateCompatibleRelease(legacyActive.taskId, {
