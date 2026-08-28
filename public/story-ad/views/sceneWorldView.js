@@ -380,13 +380,13 @@ function initSceneWorldViewer({ overlay, bundle, world }) {
 
   overlay.querySelectorAll('[data-focus-observation]').forEach(button => button.addEventListener('click', () => {
     const node = nodes.find(item => String(item.id) === String(button.dataset.focusObservation));
-    if (node) showPhoto(node, 'camera');
+    if (node) showPhoto(node);
   }));
   overlay.querySelectorAll('[data-focus-camera]').forEach(button => button.addEventListener('click', () => {
     const cameraNode = list(world.cameras).find(item => String(item.id) === String(button.dataset.focusCamera));
     const node = nodes.find(item => String(item.camera_id) === String(button.dataset.focusCamera))
       || nodes.find(item => item.image_url && item.image_url === cameraNode?.image_url);
-    if (node) showPhoto(node);
+    if (node) showPhoto(node, 'camera');
   }));
   overlay.querySelectorAll('[data-world-mode]').forEach(button => button.addEventListener('click', () => showMode(button.dataset.worldMode)));
   overlay.querySelector('[data-reset-world-view]')?.addEventListener('click', () => viewer?.reset?.());
