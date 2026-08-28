@@ -1,4 +1,5 @@
 const shotDesign = require('./shotDesignService');
+const transitionPerformance = require('./transitionPerformanceContractService');
 
 function clean(value = '', max = 320) {
   const text = String(value || '').replace(/\s+/g, ' ').trim();
@@ -102,6 +103,10 @@ function continuityContract(shot = {}, previousShot = null, index = 0) {
     ? recommendation.duration_sec || 0.45
     : 0;
   const audioBridge = clean(shot.audio_bridge || shot.audioBridge || '', 180);
+  const transitionDesign = transitionPerformance.normalizeTransitionDesign(
+    shot.transition_design || shot.transitionDesign || shot.transition_motif || {},
+    normalizedTransition,
+  );
   // Ordinary adjacent shots are editorial hard cuts. A cut-on-action must be
   // explicitly authored; inferring it from the mere presence of an action
   // serializes nearly every storyboard and invents continuity requirements.
@@ -128,6 +133,7 @@ function continuityContract(shot = {}, previousShot = null, index = 0) {
         || shot.match_anchor || shot.matchAnchor || '',
       180,
     ),
+    transition_design: transitionDesign,
     transition_source: transitionSource || 'recommended',
     transition_recommendation: recommendation,
     boundary_mode: recommendation.boundary_mode,
@@ -177,6 +183,7 @@ function continuityPrompt(shot = {}, previousShot = null) {
     `Transition: ${contract.transition_type || 'hard_cut'}; ${contract.transition_reason || ''}`,
     `Transition duration: ${Number(contract.transition_duration_sec || 0).toFixed(2)} seconds`,
     `Transition match anchor: ${contract.transition_match_anchor || 'none specified'}`,
+    `Transition boundary design: ${transitionPerformance.transitionDesignPrompt(contract.transition_design || {}, contract.transition_type)}`,
     `Boundary mode: ${contract.boundary_mode || 'same_scene_continuity'}`,
     `Requires previous frame: ${contract.requires_previous_frame === true ? 'yes' : 'no'}`,
     `Audio bridge: ${contract.audio_bridge || 'none specified'}; lead ${Number(contract.audio_bridge_duration_sec || 0).toFixed(2)} seconds`,

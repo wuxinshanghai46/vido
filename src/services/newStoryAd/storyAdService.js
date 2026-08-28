@@ -1216,7 +1216,7 @@ function buildKeyframePrompt(ctx = {}, shot = {}, contract = {}, index = 0, opti
     (continuityLock.transition_type || continuityLock.transition_reason)
       ? `Transition: ${cleanText(continuityLock.transition_type || 'hard_cut', 40)}; ${cleanText(continuityLock.transition_reason, 180)}`
       : '',
-    continuityLock.transition_match_anchor ? `Transition match anchor that must be visibly prepared in this keyframe: ${cleanText(continuityLock.transition_match_anchor, 180)}` : '',
+    continuityLock.transition_match_anchor || continuityLock.transition_design ? `Transition boundary: anchor=${cleanText(continuityLock.transition_match_anchor, 180)}; motif=${cleanText(continuityLock.transition_design?.motif, 100)}; source=${cleanText(continuityLock.transition_design?.source_object, 160)}; previous-tail=${cleanText(continuityLock.transition_design?.outgoing_end_state, 320)}; current-start=${cleanText(continuityLock.transition_design?.incoming_start_state, 320)}; evidence=${cleanText(continuityLock.transition_design?.verification_evidence, 320)}` : '',
     continuityLock.boundary_mode ? `Boundary mode: ${cleanText(continuityLock.boundary_mode, 60)}` : '',
     continuityLock.requires_previous_frame === true ? 'Requires previous frame: yes' : '',
   ].filter(Boolean).join('\n');
@@ -1303,7 +1303,7 @@ function buildKeyframePrompt(ctx = {}, shot = {}, contract = {}, index = 0, opti
     surfaceDesignText,
     surfaceConflictText,
     keyframeEffectText,
-    `Dialogue or copy: ${dialogueText}`,
+    `Dialogue or copy: ${dialogueText}${contract.performance_lock?.micro_expression_prompt ? `\nMicro-expression performance lock: ${cleanText(contract.performance_lock.micro_expression_prompt, 900)}` : ''}`,
     !userVisualOverride && compositionText ? `Composition: ${compositionText}` : '',
     !userVisualOverride && subjectText ? `Subject lock: ${subjectText}` : '',
     !userVisualOverride && evidenceText ? `Commercial evidence: ${evidenceText}` : '',

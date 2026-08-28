@@ -1,4 +1,5 @@
 const continuityGate = require('./storyboardContinuityGateService');
+const transitionPerformance = require('./transitionPerformanceContractService');
 
 const ALLOWED_SECTIONS = new Set(['overview', 'people', 'scenes', 'story', 'shots', 'candidates', 'continuity']);
 const DEFAULT_SHOT_LIMIT = 12;
@@ -315,7 +316,9 @@ function shotProjection({ shot = {}, position = 0, ctx = {}, sceneAssets = [], k
       reasons: [complexAction ? '动作/机位编排复杂' : '', spatialComplexity ? '存在空间路径、遮挡或多锚点验证需求' : ''].filter(Boolean),
       capability_boundary: '结构化3D导演预演用于机位、路径与遮挡验证，不等于真实6DoF或最终画面生成。',
     },
-    expression: clean(shot.expression_change || shot.emotional_turn || shot.emotion, 180),
+    expression: clean(transitionPerformance.microExpressionPrompt(
+      shot.micro_expression || shot.expression_change || { label: shot.emotional_turn || shot.emotion || '' },
+    ), 700),
     scene: {
       id: clean(shot.scene_id || shot.scene_asset_id, 100),
       name: clean(shot.scene_name || shot.scene_zone_label_zh || shot.scene_zone, 140),

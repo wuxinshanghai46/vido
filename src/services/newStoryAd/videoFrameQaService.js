@@ -13,6 +13,7 @@ const motionAwareEdit = require('./motionAwareEditService');
 const { cleanText } = require('./contextBuilder');
 const contractFreshness = require('./keyframeContractFreshnessService');
 const knowledgePolicyRuntime = require('./knowledgePolicyRuntimeService');
+const transitionPerformance = require('./transitionPerformanceContractService');
 
 const FRAME_POINTS = [0, 0.25, 0.5, 0.75, 1];
 const VIDEO_FRAME_QA_POLICY_VERSION = 'story-ad-video-frame-qa-v6';
@@ -509,14 +510,19 @@ function crossShotBoundaryMode(previousShot = {}, currentShot = {}) {
   const previousSceneId = cleanText(previousShot.scene_id || previousShot.sceneId || '', 120);
   const currentSceneId = cleanText(currentShot.scene_id || currentShot.sceneId || '', 120);
   const sameScene = !previousSceneId || !currentSceneId || previousSceneId === currentSceneId;
+  const transitionType = cleanText(currentShot.transition_type || currentShot.transition || 'hard_cut', 40).toLowerCase();
   return {
     same_scene: sameScene,
     mode: sameScene ? 'same_scene_continuity' : 'intentional_scene_change',
-    transition_type: cleanText(currentShot.transition_type || currentShot.transition || 'hard_cut', 40).toLowerCase(),
+    transition_type: transitionType,
     transition_reason: cleanText(currentShot.transition_reason || '', 240),
     match_anchor: cleanText(
       currentShot.transition_match_anchor || currentShot.match_anchor || '',
       180,
+    ),
+    transition_design: transitionPerformance.normalizeTransitionDesign(
+      currentShot.transition_design || currentShot.transitionDesign || {},
+      transitionType,
     ),
   };
 }
@@ -566,6 +572,11 @@ async function reviewCrossShot({ taskId = '', previous = null, current = null, p
   if (boundary.transition_type === 'match_cut' && !boundary.match_anchor) {
     problems.push('匹配切换缺少可验证的匹配锚点');
   }
+  if (boundary.transition_design.execution_class === 'generated_boundary') {
+    const requiredBoundaryFields = ['outgoing_end_state', 'incoming_start_state', 'verification_evidence'];
+    const missing = requiredBoundaryFields.filter(key => !boundary.transition_design[key]);
+    if (missing.length) problems.push(`生成式转场缺少边界合同字段：${missing.join('、')}`);
+  }
   if (!boundary.same_scene && !boundary.transition_reason) {
     problems.push('跨场景切换缺少明确的叙事原因');
   }
@@ -607,6 +618,7 @@ async function reviewCrossShot({ taskId = '', previous = null, current = null, p
     transition_type: boundary.transition_type,
     transition_reason: boundary.transition_reason,
     transition_match_anchor: boundary.match_anchor,
+    transition_design: boundary.transition_design,
     pass, status: pass ? 'verified' : 'rejected', ...normalized,
     problems: [
       ...problems,

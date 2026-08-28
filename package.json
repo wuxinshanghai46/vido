@@ -5,6 +5,7 @@
   "main": "src/server.js",
   "scripts": {
     "story-ad:v241:test": "node scripts/test-new-story-ad-previz-comic-style-knowledge-v241.js",
+    "story-ad:v242:test": "node scripts/test-story-ad-transition-micro-expression-v242.js",
     "story-ad:release:build": "node scripts/build-story-ad-release.js",
     "story-ad:release:predeploy": "node scripts/check-new-story-ad-active-tasks.js && npm run story-ad:release:test && npm run story-ad:v111:test",
     "prestory-ad:release:test": "node scripts/test-story-ad-storage-and-person-visual-safety-v230h.js",

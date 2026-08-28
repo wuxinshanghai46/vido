@@ -33,6 +33,7 @@ const generationRuntimePolicy = require('./seeds/generation_runtime_policy');
 const wardrobeSceneStyleKnowledge = require('./seeds/wardrobe_scene_style_knowledge');
 const storySemanticContracts = require('./seeds/story_semantic_contracts');
 const previzComicStyleKnowledge = require('./seeds/previz_comic_style_knowledge');
+const transitionMicroExpressionKnowledge = require('./seeds/transition_micro_expression_knowledge');
 
 const seedDocs = [
   ...digitalHuman,
@@ -55,6 +56,7 @@ const seedDocs = [
   ...wardrobeSceneStyleKnowledge,
   ...storySemanticContracts,
   ...previzComicStyleKnowledge,
+  ...transitionMicroExpressionKnowledge,
 ];
 
 module.exports = seedDocs;

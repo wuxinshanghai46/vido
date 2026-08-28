@@ -7,6 +7,7 @@ const petIdentity = require('./petIdentityContractService');
 const brandEnding = require('./brandEndingService');
 const knowledgePolicyRuntime = require('./knowledgePolicyRuntimeService');
 const personLooks = require('./personLookProfileService');
+const transitionPerformance = require('./transitionPerformanceContractService');
 
 function canonicalContractValue(value, key = '') {
   if (Array.isArray(value)) return value.map(item => canonicalContractValue(item));
@@ -48,7 +49,7 @@ function contractFingerprint(contract = {}) {
     subject_lock: contract.subject_lock,
     scene_lock: contract.scene_lock,
     continuity_lock: contract.continuity_lock,
-    temporal_evidence_lock: contract.temporal_evidence_lock,
+    temporal_evidence_lock: contract.temporal_evidence_lock, performance_lock: contract.performance_lock,
     brand_ending_lock: contract.brand_ending_lock,
     production_graph_lock: contract.production_graph_lock,
     cast_lock: {
@@ -141,6 +142,7 @@ function buildKeyframeContracts(ctx, shots) {
         transition_type: shot.transition_type || '',
         transition_duration_sec: Number(shot.transition_duration_sec || 0),
         transition_match_anchor: shot.transition_match_anchor || '',
+        transition_design: transitionPerformance.normalizeTransitionDesign(shot.transition_design || {}, shot.transition_type || ''),
         transition_source: shot.transition_source || '',
         boundary_mode: shot.boundary_mode || '',
         transition_reason: shot.transition_reason || '',
@@ -151,6 +153,16 @@ function buildKeyframeContracts(ctx, shots) {
         music_cue: shot.music_cue || '',
         voiceover_timing: shot.voiceover_timing || '',
         requires_previous_frame: shot.requires_previous_frame === true,
+      },
+      performance_lock: {
+        emotional_turn: shot.emotional_turn || '',
+        micro_expression: transitionPerformance.normalizeMicroExpression(
+          shot.micro_expression || shot.expression_change || {},
+          shot.emotional_turn || '',
+        ),
+        micro_expression_prompt: transitionPerformance.microExpressionPrompt(
+          shot.micro_expression || shot.expression_change || { label: shot.emotional_turn || '' },
+        ),
       },
       // V2.0 合同只携带当前镜头所需的图切片，避免把整张任务图复制到每个合同，
       // 同时让关键帧、视频和质检共享完全相同的状态与证据边界。

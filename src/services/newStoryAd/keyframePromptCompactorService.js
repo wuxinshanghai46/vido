@@ -20,7 +20,9 @@ function compactKeyframePrompt(parts = [], maxChars = 2400) {
     { name: 'pet', cap: 340, items: 2, match: /Pet consistency lock/i },
     { name: 'scene', cap: 430, items: 6, match: /Scene photorealism lock|scene consistency lock|scene binding lock|Locked scene asset|Scene lock strength|Scene material lock|Scene layout lock|Scene style lock|Scene reference images|Required scene view|Required visible scene anchors|Required scene zone|Shot scene binding|keyframe must be generated inside/i },
     { name: 'repair', cap: 220, items: 4, match: /Previous visual QA rejected|structured consistency conflicts|^(?:场景空间|人物身份|产品主体)：/i },
-    { name: 'continuity', cap: 220, items: 6, match: /shot continuity lock|^Continuity from:|^Entry frame state:|^Exit frame state:|^Action start\/end:|^Screen direction:|^Eyeline:|^Camera axis:|^Camera movement:|^Object state lock:|^Transition:|^Requires previous frame:|Continuity reference from previous accepted keyframe|Previous keyframe prompt summary/i },
+    { name: 'performance', cap: 300, items: 1, match: /^Micro-expression performance lock:/i },
+    { name: 'transition_boundary', cap: 500, items: 1, match: /^Transition boundary:/i },
+    { name: 'continuity', cap: 300, items: 7, match: /shot continuity lock|^Continuity from:|^Entry frame state:|^Exit frame state:|^Action start\/end:|^Screen direction:|^Eyeline:|^Camera axis:|^Camera movement:|^Object state lock:|^Transition:|^Requires previous frame:|Continuity reference from previous accepted keyframe|Previous keyframe prompt summary/i },
     { name: 'product', cap: 200, items: 5, match: /Product visibility|Product presentation|Commercial evidence|Product identity lock|Product shape lock|Product material lock|Product color lock|Product reference images/i },
     { name: 'style', cap: 140, items: 2, match: /^Style:|Visual style direction|Scene direction|Custom scene requirement/i },
     { name: 'knowledge', cap: 650, items: 10, whole_lines: true, match: /^Knowledge policy|^HARD:|^GUIDANCE:/i },
@@ -28,7 +30,7 @@ function compactKeyframePrompt(parts = [], maxChars = 2400) {
     { name: 'other', cap: 40, items: 1, match: /.*/ },
   ];
   const buckets = new Map(categories.map(category => [category.name, []]));
-  const classificationOrder = ['repair', 'knowledge', 'safety', 'context', 'subject', 'visual', 'action', 'design', 'actor', 'pet', 'scene', 'continuity', 'product', 'style', 'other']
+  const classificationOrder = ['repair', 'knowledge', 'safety', 'context', 'subject', 'visual', 'action', 'design', 'actor', 'pet', 'scene', 'performance', 'transition_boundary', 'continuity', 'product', 'style', 'other']
     .map(name => categories.find(category => category.name === name))
     .filter(Boolean);
   lines.forEach(line => {
@@ -124,6 +126,8 @@ function compactKeyframePrompt(parts = [], maxChars = 2400) {
     if (excerpt.name === 'product') return /Product identity lock:/i.test(excerpt.text);
     if (excerpt.name === 'visual') return /User-edited visual override, highest priority:/i.test(excerpt.text);
     if (excerpt.name === 'action') return /Action staging contract:/i.test(excerpt.text);
+    if (excerpt.name === 'performance') return /Micro-expression performance lock:/i.test(excerpt.text);
+    if (excerpt.name === 'transition_boundary') return /Transition boundary:/i.test(excerpt.text);
     // Knowledge is an enhancement layer. It may use remaining prompt budget,
     // but it must never evict identity, scene, product, surface or semantic
     // fidelity contracts and make an otherwise valid base generation fail.
@@ -141,7 +145,7 @@ function compactKeyframePrompt(parts = [], maxChars = 2400) {
   };
   // Reserve every generation-critical category before filling optional context.
   // The final output is restored to its natural category order afterwards.
-  const requiredPriority = ['safety', 'visual', 'action', 'scene', 'actor', 'product', 'pet', 'design'];
+  const requiredPriority = ['safety', 'visual', 'action', 'performance', 'transition_boundary', 'scene', 'actor', 'product', 'pet', 'design'];
   for (const name of requiredPriority) {
     for (const excerpt of excerpts.filter(item => item.name === name && requiredExcerpt(item))) reserve(excerpt);
   }

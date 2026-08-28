@@ -9,6 +9,7 @@ const brandEnding = require('./brandEndingService');
 const productionLimits = require('./productionLimitsService');
 const storyBeatShotCoverage = require('./storyBeatShotCoverageService');
 const actionSemantics = require('./actionSemanticsService');
+const transitionPerformance = require('./transitionPerformanceContractService');
 
 const { ensureChineseOutput } = require('./outputLanguageService');
 
@@ -144,6 +145,10 @@ function normalizeShot(shot, ctx, idx, defaultDuration = 3) {
   const visualRaw = shot.visual || shot.content_prompt || shot.scene_content || '';
   const actionRaw = shot.action || shot.visual_action || '';
   const emotionalTurn = clampText(shot.emotional_turn || shot.emotion || shot.character_reaction || '', 80);
+  const microExpression = transitionPerformance.normalizeMicroExpression(
+    shot.micro_expression || shot.microExpression || shot.expression_contract || shot.expression_change || {},
+    emotionalTurn,
+  );
   const sellingPoint = clampText(shot.selling_point || shot.benefit || shot.value_point || '', 80);
   const keyframeNotes = normalizeKeyframeNotes(shot, ctx);
   const design = shotDesign.normalizeShotDesign(shot);
@@ -186,6 +191,7 @@ function normalizeShot(shot, ctx, idx, defaultDuration = 3) {
     story_visual: storyVisual,
     promo_visual: promoVisual,
     emotional_turn: emotionalTurn,
+    micro_expression: microExpression,
     selling_point: sellingPoint,
     visual: joinVisualLayers({ shotType, visualLayers, visual: visualRaw }),
     action: clampText(actionRaw, 120),
@@ -238,6 +244,10 @@ function normalizeShot(shot, ctx, idx, defaultDuration = 3) {
       180,
     ),
     transition_source: clampText(shot.transition_source || shot.transitionSource || '', 40),
+    transition_design: transitionPerformance.normalizeTransitionDesign(
+      shot.transition_design || shot.transitionDesign || shot.transition_motif || {},
+      shot.transition_type || shot.transitionType || shot.transition || '',
+    ),
     requires_previous_frame: shot.requires_previous_frame === true || shot.requiresPreviousFrame === true
       || String(shot.requires_previous_frame || shot.requiresPreviousFrame || '').toLowerCase() === 'true',
     audio_bridge: clampText(shot.audio_bridge || shot.audioBridge || '', 160),
@@ -596,6 +606,7 @@ Return JSON array for current beats only. Fields:
   "story_visual": "optional, only if this shot needs story/character/emotion",
   "promo_visual": "optional, only if this shot needs product/service/brand proof",
   "emotional_turn": "emotion or story change",
+  "micro_expression": {"label":"specific restrained reaction","gaze":"visible gaze target/direction","eyelids":"visible eyelid state","brows":"visible brow state","mouth":"visible lips/corners state","jaw":"visible jaw tension","head_pose":"small head pose","gesture":"optional hand-to-face gesture","intensity":"restrained/low/medium/high","onset":"when it begins in this shot","hold_sec":0.0,"trigger":"story event causing it","prohibited":"visible expression failures to avoid"},
   "selling_point": "commercial point proved here",
   "visual": "combined visible frame if needed",
   "action": "who does what",
@@ -636,6 +647,7 @@ Return JSON array for current beats only. Fields:
   "transition_type": "none/hard_cut/cut_on_action/match_cut/dissolve/fade",
   "transition_duration_sec": 0.0,
   "transition_match_anchor": "visible action, shape, position or composition anchor used by match_cut; empty otherwise",
+  "transition_design": {"motif":"task-relevant boundary motif or empty","execution_class":"editorial_only/semantic_cut/generated_boundary","source_object":"visible occluder/object/action used at the boundary","outgoing_end_state":"observable final state of previous shot","incoming_start_state":"observable first state of current shot","motion_direction":"shared screen direction or empty","generation_prompt":"only the boundary behavior; no new plot","verification_evidence":"what must be visible on both sides","deterministic_fallback":"hard_cut/dissolve/fade"},
   "requires_previous_frame": false,
   "audio_bridge": "ambient or sound bridge into this shot, empty when none",
   "audio_bridge_duration_sec": 0.0,
@@ -751,7 +763,7 @@ async function rewriteStoryboard(ctx, blueprint, shots, issues, { taskId = '', o
     'Keep the requested commercial, story, product, proof, brand, UI, space, emotion or comparison dimensions visible as applicable.',
     'Preserve and enforce Advanced production controls from context: scene direction, product presentation, style direction and negative requirements.',
     'Preserve scene_id, look_id, scene_revision, scene_view, camera_id, scene_zone_id, zone_ids, anchor_ids and transition_reason whenever they are valid for the current task scene assets and character looks. scene_zone_label_zh may be repaired into Simplified Chinese without changing those IDs.',
-    'Preserve and repair adjacent-shot entry/exit state, action start/end, screen direction, eyeline, camera axis, camera movement, object state, transition type and audio bridge.',
+    'Preserve and repair adjacent-shot entry/exit state, action start/end, screen direction, eyeline, camera axis, camera movement, object state, transition type, transition_design and audio bridge. Preserve micro_expression as observable gaze/eyelid/brow/mouth/jaw/head/gesture evidence rather than an abstract emotion word.',
     'Preserve and repair temporal_state. It is an open-vocabulary contract: only intended_changes may change; invariants and evidence_requirements must remain task-specific and must never be replaced by an industry template.',
   ].join('\n');
 
