@@ -110,61 +110,6 @@ function characterWorldMatrix(bundle = {}) {
   </table></div>`;
 }
 
-function sourceScene(bundle = {}, world = {}) {
-  return list(bundle.assets?.scenes).find(scene => String(scene.id || scene.scene_id || '') === String(world.id || '')) || {};
-}
-
-function normalizedLayoutPoint(value) {
-  if (Array.isArray(value) && value.length >= 2) {
-    const x = Number(value[0]); const y = Number(value[1]);
-    return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : null;
-  }
-  if (value && typeof value === 'object') {
-    const x = Number(value.x); const y = Number(value.y ?? value.z);
-    return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : null;
-  }
-  return null;
-}
-
-function sceneCameraRows(bundle = {}, world = {}) {
-  const scene = sourceScene(bundle, world);
-  const generated = list(scene.cameras);
-  const planned = list(scene.camera_plan).length ? list(scene.camera_plan) : generated;
-  return planned.map((camera, index) => {
-    const generatedMatch = generated.find(row => String(row.id || row.camera_id || row.view_id || '') === String(camera.id || camera.camera_id || camera.view_id || '')) || generated[index] || {};
-    const worldMatch = list(world.cameras).find(row => String(row.id || '') === String(camera.id || camera.camera_id || camera.view_id || '')) || list(world.cameras)[index] || {};
-    return {
-      ...worldMatch, ...generatedMatch, ...camera,
-      id: camera.id || camera.camera_id || camera.view_id || generatedMatch.id || worldMatch.id || `camera-${index + 1}`,
-      name: camera.label || camera.name || generatedMatch.label || worldMatch.name || `机位 ${index + 1}`,
-      position: normalizedLayoutPoint(camera.position || camera.normalized_position || camera.position_on_layout || generatedMatch.position || generatedMatch.normalized_position),
-      lookAt: normalizedLayoutPoint(camera.look_at || camera.lookAt || camera.target_on_layout || generatedMatch.look_at),
-      image_url: camera.image_url || camera.reference_image_url || generatedMatch.image_url || worldMatch.image_url || '',
-    };
-  });
-}
-
-function pointLabel(point) {
-  return point ? `(${point.x.toFixed(2)}, ${point.y.toFixed(2)}) · 布局归一化坐标` : '未规划（不显示伪造点）';
-}
-
-export function sceneAuthorityPlan(bundle = {}, world = {}) {
-  const people = list(bundle.production_manifest?.character_world_matrix).map(row => ({
-    row,
-    cell: list(row.cells).find(item => String(item.world_id || '') === String(world.id || '')),
-  })).filter(entry => entry.cell && entry.cell.presence !== 'excluded');
-  const cameras = sceneCameraRows(bundle, world);
-  const presenceLabel = value => ({ confirmed: '确认在场', suggested: '建议在场', unassigned: '尚未确认' }[value] || '尚未确认');
-  return `<section class="scene-world-authority-plan" data-scene-authority-plan="${escapeHtml(world.id)}">
-    <header><b>当前场景执行说明</b><span>人物与机位只读取已保存数据；缺失项明确标为未规划。</span></header>
-    <div class="scene-world-authority-group"><h3>谁在场、站在哪里</h3>${people.length ? people.map(({ row, cell }) => {
-      const position = normalizedLayoutPoint(cell.blocking_position || cell.position_on_layout || cell.position);
-      return `<article class="scene-world-person-plan is-${escapeHtml(cell.presence || 'unassigned')}"><div><b>${escapeHtml(row.name || '未命名人物')}</b><span>${escapeHtml(presenceLabel(cell.presence))}</span></div><dl><div><dt>站位</dt><dd>${escapeHtml(cell.blocking || '站位说明未规划')}</dd></div><div><dt>站位坐标</dt><dd>${escapeHtml(pointLabel(position))}</dd></div><div><dt>动作 / 任务</dt><dd>${escapeHtml(cell.role || '动作尚未规划')}</dd></div><div><dt>入场 → 离场</dt><dd>${escapeHtml(`${cell.entry_direction || '未规划'} → ${cell.exit_direction || '未规划'}`)}</dd></div><div><dt>对应机位</dt><dd>${escapeHtml(cell.camera_id || '尚未绑定机位')}</dd></div></dl></article>`;
-    }).join('') : '<p class="scene-world-authority-empty">当前场景没有已保存的人物出场关系。</p>'}</div>
-    <div class="scene-world-authority-group"><h3>机位在哪里、朝哪里拍</h3>${cameras.length ? cameras.map((camera, index) => `<button type="button" class="scene-world-camera-plan" data-focus-camera="${escapeHtml(camera.id)}"><div><b>${index + 1}. ${escapeHtml(camera.name)}</b><span>${camera.image_url ? '已关联对应图片' : '对应图片未生成'}</span></div><dl><div><dt>位置</dt><dd>${escapeHtml(pointLabel(camera.position))}</dd></div><div><dt>朝向目标</dt><dd>${escapeHtml(pointLabel(camera.lookAt))}</dd></div><div><dt>取景 / 镜头</dt><dd>${escapeHtml([camera.framing, camera.lens, camera.height].filter(Boolean).join(' · ') || '未规划')}</dd></div><div><dt>方向 / 运镜</dt><dd>${escapeHtml([camera.orientation, camera.movement].filter(Boolean).join('；') || '未规划')}</dd></div><div><dt>对应图片</dt><dd>${escapeHtml(camera.view_id || camera.id || (camera.image_url ? '已关联' : '未关联'))}</dd></div></dl></button>`).join('') : '<p class="scene-world-authority-empty">当前场景还没有权威机位方案。</p>'}</div>
-  </section>`;
-}
-
 function transitionCards(bundle = {}) {
   const transitions = list(bundle.production_manifest?.transitions);
   if (!transitions.length) return '<div class="scene-world-empty">当前为单场景任务，或尚未建立跨场景衔接。</div>';
@@ -179,7 +124,7 @@ function transitionCards(bundle = {}) {
   }).join('')}</div>`;
 }
 
-function initNativeSceneWorldViewer({ overlay, bundle, world }) {
+function initNativeSceneWorldViewer({ overlay, bundle, world, authority }) {
   const host = overlay.querySelector('[data-scene-world-canvas]');
   host.innerHTML = '<canvas class="scene-world-native-canvas" aria-label="可旋转场景模型"></canvas>';
   host.dataset.viewerEngine = 'native-canvas';
@@ -188,7 +133,7 @@ function initNativeSceneWorldViewer({ overlay, bundle, world }) {
   const colors = ['#1cc8a0', '#50a9ff', '#a883ff', '#e8b55d', '#ff7f73'];
   const state = { yaw: -0.62, pitch: 0.62, zoom: 34, centerX: 0, centerZ: 0, mode: 'model', dragging: false, x: 0, y: 0 };
   const matrixRows = list(bundle.production_manifest?.character_world_matrix);
-  const cameraRows = sceneCameraRows(bundle, world);
+  const cameraRows = authority.sceneCameraRows(bundle, world);
   const zones = list(world.zones).length ? list(world.zones) : [{ id: `${world.id}_main`, name: world.name, bounds: { x: 0, z: 0, width: 4, depth: 3 } }];
 
   const project = (point, width, height) => {
@@ -264,7 +209,7 @@ function initNativeSceneWorldViewer({ overlay, bundle, world }) {
     if (state.mode === 'blocking') {
       matrixRows.forEach((row, index) => {
         const cell = list(row.cells).find(item => item.world_id === world.id);
-        const savedPosition = normalizedLayoutPoint(cell?.blocking_position || cell?.position_on_layout || cell?.position);
+        const savedPosition = authority.normalizedLayoutPoint(cell?.blocking_position || cell?.position_on_layout || cell?.position);
         if (!['confirmed', 'suggested'].includes(cell?.presence) || !savedPosition) return;
         const position = project({ x: (savedPosition.x - 0.5) * 12, y: 0.75, z: (savedPosition.y - 0.5) * 8 }, width, height);
         context.fillStyle = '#ffd49b'; context.beginPath(); context.arc(position.x, position.y - 14, 7, 0, Math.PI * 2); context.fill();
@@ -333,7 +278,7 @@ function initNativeSceneWorldViewer({ overlay, bundle, world }) {
   } };
 }
 
-function initSceneWorldViewer({ overlay, bundle, world }) {
+function initSceneWorldViewer({ overlay, bundle, world, authority }) {
   const host = overlay.querySelector('[data-scene-world-canvas]');
   const help = overlay.querySelector('[data-scene-world-help]');
   const nodes = photoNodes(world);
@@ -404,7 +349,7 @@ function initSceneWorldViewer({ overlay, bundle, world }) {
   const showNative = mode => {
     clearViewer();
     activateModeButton(mode);
-    viewer = initNativeSceneWorldViewer({ overlay, bundle, world });
+    viewer = initNativeSceneWorldViewer({ overlay, bundle, world, authority });
     viewer.setMode(mode);
     if (help) help.textContent = mode === 'blocking'
       ? '结构代理站位 · 仅用于编排方向，不代表6DoF深度、碰撞与真实遮挡'
@@ -455,6 +400,7 @@ function initSceneWorldViewer({ overlay, bundle, world }) {
 }
 
 async function openSceneWorldStudio(bundle, world) {
+  const authority = await import('./sceneWorldAuthorityPlan.js?v=20260828-production-v248');
   const realPhotoNodes = photoNodes(world);
   const hasRealPhotos = realPhotoNodes.length > 0;
   const overlay = document.createElement('div');
@@ -472,7 +418,7 @@ async function openSceneWorldStudio(bundle, world) {
     <div class="scene-world-studio-layout">
       <aside><h3>真实图片视角</h3><div class="scene-world-observation-list">${realPhotoNodes.length ? realPhotoNodes.map((node, index) => `<button type="button" data-focus-observation="${escapeHtml(node.id)}"><b>${escapeHtml(node.name || `视角 ${index + 1}`)}</b><small>${escapeHtml(node.view_key === 'layout' ? '俯视布局与路线参考' : node.is_panorama ? '可360度环视的全景观察点' : '现有真实场景图片')}</small></button>`).join('') : '<small>当前场景还没有真实图片。</small>'}</div><h3>空间区域</h3><div class="scene-world-zone-list">${list(world.zones).map(zone => `<button type="button" data-focus-zone="${escapeHtml(zone.id)}"><b>${escapeHtml(zone.name)}</b><small>${escapeHtml(zone.purpose || '场景区域')}</small></button>`).join('')}</div><h3>场景入口</h3><div class="scene-world-portal-list">${list(world.portals).length ? list(world.portals).map(portal => `<button type="button" data-open-world="${escapeHtml(portal.to_world_id)}">${escapeHtml(portal.label)}</button>`).join('') : '<small>当前没有跨场景入口</small>'}</div></aside>
       <main><div class="scene-world-canvas" data-scene-world-canvas><div class="scene-world-canvas-loading">${hasRealPhotos ? '正在载入现有场景图片…' : '结构代理将在选择后按需建立…'}</div></div><div class="scene-world-canvas-help" data-scene-world-help>${hasRealPhotos ? '点击左侧观察点或右侧机位切换参考图' : '选择结构 / 路线后才初始化可旋转代理'}</div></main>
-      <aside class="scene-world-inspector">${sceneAuthorityPlan(bundle, world)}<details><summary>当前空间能力</summary><div class="scene-world-capabilities">${capabilityChips(world)}</div></details><button class="btn" type="button" data-reset-world-view>重置视角</button></aside>
+      <aside class="scene-world-inspector">${authority.sceneAuthorityPlan(bundle, world)}<details><summary>当前空间能力</summary><div class="scene-world-capabilities">${capabilityChips(world)}</div></details><button class="btn" type="button" data-reset-world-view>重置视角</button></aside>
     </div>
   </section>`;
   document.body.appendChild(overlay);
@@ -487,7 +433,7 @@ async function openSceneWorldStudio(bundle, world) {
   overlay.querySelector('[data-close-scene-world]').addEventListener('click', close);
   overlay.addEventListener('click', event => { if (event.target === overlay) close(); });
 
-  disposeViewer = initSceneWorldViewer({ overlay, bundle, world });
+  disposeViewer = initSceneWorldViewer({ overlay, bundle, world, authority });
   overlay.querySelectorAll('[data-open-world]').forEach(button => button.addEventListener('click', () => {
     const next = worldById(bundle, button.dataset.openWorld);
     if (!next) return toast('目标场景尚未建立', 'warning');

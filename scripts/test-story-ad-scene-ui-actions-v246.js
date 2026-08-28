@@ -34,10 +34,10 @@ async function main() {
 
   let calls = 0;
   const store = { async runStage() { calls += 1; } };
-  const cancelled = await actions.submitProductGeneration({ item: material, store, confirm: async () => false });
+  const cancelled = await actions.submitProductGeneration({ item: material, store, confirmAction: async () => false });
   assert.equal(cancelled.cancelled, true);
   assert.equal(calls, 0, 'cancelling the one-image confirmation must make zero model submissions');
-  const accepted = await actions.submitProductGeneration({ item: material, store, confirm: async (message, options) => {
+  const accepted = await actions.submitProductGeneration({ item: material, store, confirmAction: async (message, options) => {
     assert.match(message, /1 次图片模型/);
     assert.match(message, /不能替代真实材料样片/);
     assert.equal(options.confirmText, '确认生成 1 张');

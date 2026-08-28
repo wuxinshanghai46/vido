@@ -179,6 +179,7 @@ const releaseSource = fs.readFileSync(path.join(root, 'public/story-ad/release.j
 const serverSource = fs.readFileSync(path.join(root, 'src/server.js'), 'utf8');
 const bootstrapSource = fs.readFileSync(path.join(root, 'public/js/new-story-ad/bootstrap.js'), 'utf8');
 const workspaceSource = fs.readFileSync(path.join(root, 'public/story-ad/views/sceneWorldView.js'), 'utf8');
+const authoritySource = fs.readFileSync(path.join(root, 'public/story-ad/views/sceneWorldAuthorityPlan.js'), 'utf8');
 const workspaceCss = fs.readFileSync(path.join(root, 'public/story-ad/workspace.css'), 'utf8');
 const appSource = fs.readFileSync(path.join(root, 'public/story-ad/app.js'), 'utf8');
 const indexSource = fs.readFileSync(path.join(root, 'public/story-ad/index.html'), 'utf8');
@@ -215,17 +216,18 @@ assert(workspaceSource.includes("host.dataset.viewerEngine = 'native-canvas'"));
 assert(!workspaceSource.includes("import('/vendor/three.module.min.js')"));
 assert(workspaceSource.includes('data-focus-camera'));
 assert(workspaceSource.includes('character-world-matrix'));
-assert(workspaceSource.includes('data-scene-authority-plan'), 'enter-scene studio must render one authoritative person/camera explanation panel');
-assert(workspaceSource.includes('谁在场、站在哪里'));
-assert(workspaceSource.includes('机位在哪里、朝哪里拍'));
-assert(workspaceSource.includes('未规划（不显示伪造点）'), 'missing person/camera coordinates must stay explicit instead of fabricating markers');
+assert(workspaceSource.includes("import('./sceneWorldAuthorityPlan.js"), 'person/camera explanation must stay a second-level lazy module');
+assert(authoritySource.includes('data-scene-authority-plan'), 'enter-scene studio must render one authoritative person/camera explanation panel');
+assert(authoritySource.includes('谁在场、站在哪里'));
+assert(authoritySource.includes('机位在哪里、朝哪里拍'));
+assert(authoritySource.includes('未规划（不显示伪造点）'), 'missing person/camera coordinates must stay explicit instead of fabricating markers');
 assert(!workspaceSource.includes('(index - (matrixRows.length - 1) / 2) * 0.85'), 'person markers must not use evenly spaced fake coordinates');
 assert(!workspaceSource.includes('Math.cos(index) * 3.5'), 'camera markers must not use circular fake coordinates');
 const sceneWorldSandbox = {
   list: value => Array.isArray(value) ? value : [],
-  escapeHtml: value => String(value ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#039;'),
+  esc: value => String(value ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#039;'),
 };
-vm.runInNewContext(`${workspaceSource.replace(/^import\s+.*?;\s*$/gm, '').replace(/\bexport\s+/g, '')}\nglobalThis.__sceneAuthorityPlan=sceneAuthorityPlan;`, sceneWorldSandbox);
+vm.runInNewContext(`${authoritySource.replace(/^import\s+.*?;\s*$/gm, '').replace(/\bexport\s+/g, '')}\nglobalThis.__sceneAuthorityPlan=sceneAuthorityPlan;`, sceneWorldSandbox);
 const authorityHtml = sceneWorldSandbox.__sceneAuthorityPlan({ ...bundle, production_manifest: manifest }, worlds[0]);
 assert.match(authorityHtml, /林岚[\s\S]*确认在场/);
 assert.match(authorityHtml, /站位坐标[\s\S]*未规划（不显示伪造点）/, 'missing character coordinates must be explicit in the actual rendered panel');

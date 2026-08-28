@@ -1,21 +1,9 @@
 import { escapeHtml, mediaPreview } from '../components/ui.js?v=20260828-production-v247';
 import { bindMediaLightbox } from './mediaLightbox.js?v=20260828-production-v247';
 import { personDossierShowcase } from './personDossierShowcase.js?v=20260828-production-v247';
-import { bindSceneDossierCard, publicSceneQaReason, renderSceneDossierCard } from './sceneDossierCard.js?v=20260828-production-v247';
-
-export function productDetails(item = {}) {
-  const presentation = item.presentation || {};
-  const materialSurface = presentation.mode === 'material_surface' || presentation.standalone_generation_supported === false;
-  const source = String(item.source || item.source_type || item.provenance?.source || '').toLowerCase();
-  const generatedNeutral = materialSurface && (item.reference_only === true || source === 'new_story_ad_subject_reference_generator');
-  const realSample = materialSurface && Boolean(item.image_url) && !generatedNeutral
-    && (item.user_owned === true || item.ownership?.user_owned === true || /(?:^|_)(?:upload|uploaded|user_owned|user_reference)(?:_|$)/.test(source));
-  const sourcePending = materialSurface && Boolean(item.image_url) && !generatedNeutral && !realSample;
-  return `<section class="product-presentation-card ${presentation.scene_linked ? 'is-scene-linked' : ''}"><div><small>展示方式</small><h3>${escapeHtml(presentation.label || '展示主体')}</h3></div><p>${escapeHtml(presentation.description || item.description || '尚未填写展示说明。')}</p>
-    ${presentation.scene_linked ? '<ol><li>开场：先交代空间、问题或旧方案</li><li>主体介绍：人物从展示墙 / 成品空间带入</li><li>证据：材料细节、纹理、对比、组合或拆解效果</li><li>收尾：完整成果、价值结论与品牌落版</li></ol>' : '<p>使用独立商品多视图、细节、操作和结果证明卖点。</p>'}
-    ${materialSurface ? `<div class="material-reference-notice is-${realSample ? 'ready' : 'limited'}"><b>${realSample ? '真实材料样片已就绪' : (sourcePending ? '材料图片来源待确认，可以继续' : '缺少真实材料样片，但可以继续')}</b><p>${realSample ? '场景和审核可依据真实样片核对材质外观。' : (generatedNeutral ? '中性参考图只用于构图和展示理解，不能替代真实样片，也不能证明专有纹理、型号或真实触感。' : (sourcePending ? '确认图片来源前，它不能作为真实材料证据，也不能证明专有纹理。' : '系统仍可生成场景，但只能判断画面中可见的颜色、纹理和反光，不能证明专有纹理、型号或真实触感。'))}</p></div>` : ''}
-    ${item.linked_scene_ids?.length ? `<small>已关联场景：${item.linked_scene_ids.map(escapeHtml).join('、')}</small>` : ''}</section>`;
-}
+import { bindSceneDossierCard, renderSceneDossierCard } from './sceneDossierCard.js?v=20260828-production-v247';
+import { publicSceneQaReason } from './sceneQaPublicState.js?v=20260828-production-v248';
+import { productDetails } from './assetCenterMaterialReference.js?v=20260828-production-v248';
 
 export function productEditForm(item = {}) {
   const presentation = item.presentation || {};

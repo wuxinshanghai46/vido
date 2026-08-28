@@ -12,12 +12,15 @@ const executable = file => read(file).replace(/^import\s+.*?;\s*$/gm, '').replac
 const escapeHtml = value => String(value ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#039;');
 
 function loadDossier() {
+  const qaSandbox = {};
+  vm.runInNewContext(`${executable('public/story-ad/views/sceneQaPublicState.js')}\nglobalThis.__qa={sceneQaPublicState,publicSceneQaReason,sceneQaRows,sceneQaFailureDetails};`, qaSandbox);
   const sandbox = {
     escapeHtml,
     mediaPreview: item => `<img src="${escapeHtml(item.image_url || item.url || '')}">`,
     sceneRuntimeFailureMarkup: () => '',
     setButtonBusy() {},
     toast() {},
+    ...qaSandbox.__qa,
   };
   vm.runInNewContext(`${executable('public/story-ad/views/sceneDossierCard.js')}\nglobalThis.__dossier={sceneNeedsGeneration,sceneQaFailureDetails,sceneQaPublicState,publicSceneQaReason,renderSceneCoverCard};`, sandbox);
   return sandbox.__dossier;

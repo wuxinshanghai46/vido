@@ -50,12 +50,12 @@ export function materialReferenceState(item = {}) {
   };
 }
 
-export async function submitProductGeneration({ item = {}, bundle = {}, store = {}, confirm = confirmDialog } = {}) {
+export async function submitProductGeneration({ item = {}, bundle = {}, store = {}, confirmAction = confirmDialog } = {}) {
   const name = item?.name || bundle.brief?.product_subject || '';
   if (!name) return { submitted: false, reason: 'missing_name' };
   const standalone = item?.presentation?.standalone_generation_supported !== false;
   if (!standalone) {
-    const accepted = await confirm('生成中性参考图会调用 1 次图片模型，可能产生费用。它只用于构图和展示理解，不能替代真实材料样片，也不能证明专有纹理。是否继续？', {
+    const accepted = await confirmAction('生成中性参考图会调用 1 次图片模型，可能产生费用。它只用于构图和展示理解，不能替代真实材料样片，也不能证明专有纹理。是否继续？', {
       title: `生成中性参考图：${name}`,
       confirmText: '确认生成 1 张',
     });

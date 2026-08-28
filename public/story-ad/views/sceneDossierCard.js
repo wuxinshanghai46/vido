@@ -1,5 +1,6 @@
 import { escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260828-production-v247';
 import { sceneRuntimeFailureMarkup } from './sceneRuntimeFailureView.js?v=20260828-production-v247';
+import { publicSceneQaReason, sceneQaFailureDetails, sceneQaPublicState, sceneQaRows } from './sceneQaPublicState.js?v=20260828-production-v248';
 
 export function assetCardMedia(item = {}, group = '') {
   if (group === 'scenes') return renderSceneCoverCard(item);
@@ -117,67 +118,6 @@ function chips(rows = [], empty = '当前任务没有这类结构化证据') {
   }).join('') : `<li class="is-empty">${escapeHtml(empty)}</li>`;
 }
 
-function qaRows(item = {}) {
-  const named = list(item.scene_card?.qa_checks);
-  if (named.length) return named;
-  const qa = item.qa || {};
-  return [
-    ['空间锁', qa.full_space_lock], ['需求匹配', qa.requirement_pass], ['跨视角一致性', qa.cross_view_pass],
-    ['空间覆盖', qa.spatial_pass], ['机位设计', qa.camera_pass], ['摄影真实感', qa.realism_pass],
-  ].filter(([, pass]) => pass !== undefined && pass !== null).map(([label, pass]) => ({ label, pass, reasons: [] }));
-}
-
-const QA_SERVICE_FAILURE = /视觉模型全部失败|VISION_QA|PROVIDER_RESPONSE_INVALID|RATE_LIMIT|(?:smscrw|webang-maas|zhipu|deyunai)[/]/i;
-
-export function publicSceneQaReason(value = '') {
-  const reason = text(value);
-  if (!reason) return '';
-  if (QA_SERVICE_FAILURE.test(reason)) return '审核服务暂时没有返回有效结论；场景图片已保留，可以稍后重新审核。';
-  if (/Active Plan|active_plan|person_plan_stale|scene_plan_stale|bundle_mismatch/i.test(reason)) {
-    return '当前项目的生成版本正在同步，或已有任务正在处理；请等待后刷新重试。';
-  }
-  return reason;
-}
-
-export function sceneQaPublicState(item = {}) {
-  const rawReasons = [
-    item.qa?.error,
-    ...list(item.qa?.reasons),
-    ...list(item.repair_plan?.reasons),
-  ].map(text).filter(Boolean);
-  const serviceUnavailable = rawReasons.some(reason => QA_SERVICE_FAILURE.test(reason));
-  const action = text(item.repair_plan?.action);
-  if (serviceUnavailable) return {
-    kind: 'service_unavailable',
-    title: 'QA 服务暂时不可用，图片已保留',
-    message: '这不是图片内容被判失败。稍后可重新审核，图片调用 0。',
-  };
-  if (action === 'reverify') return {
-    kind: 'evidence_pending',
-    title: 'QA 尚未定位到具体图片',
-    message: '先重新审核取得逐图证据；不会重新生成图片。',
-  };
-  if (['regenerate_failed_views', 'rebuild_atlas', 'regenerate_full_scene'].includes(action)) return {
-    kind: 'content_failed',
-    title: '场景内容质量未通过',
-    message: '已定位到需要补图或重建的内容；其余成功图片继续保留。',
-  };
-  return { kind: 'unknown', title: '', message: '' };
-}
-
-export function sceneQaFailureDetails(item = {}) {
-  const failedChecks = qaRows(item).filter(row => row.pass === false);
-  const reasons = [
-    ...failedChecks.flatMap(row => list(row.reasons)),
-    ...list(item.repair_plan?.reasons),
-    ...list(item.qa?.reasons),
-  ].map(publicSceneQaReason).filter(Boolean);
-  return {
-    labels: [...new Set(failedChecks.map(row => text(row.label)).filter(Boolean))],
-    reasons: [...new Set(reasons)].slice(0, 6),
-  };
-}
-
 export function renderSceneCoverCard(item = {}) {
   const dossier = normalizeSceneDossier(item);
   const master = dossier.views.master;
@@ -203,7 +143,7 @@ export function renderSceneDossierCard(item = {}) {
   const props = evidenceGroup(rows, ['prop']);
   const materials = evidenceGroup(rows, ['material', 'surface']);
   const lighting = evidenceGroup(rows, ['lighting']);
-  const qa = qaRows(item);
+  const qa = sceneQaRows(item);
   const qaFailure = sceneQaFailureDetails(item);
   const qaPublic = sceneQaPublicState(item);
   const titleId = `scene-dossier-title-${text(item.id || 'current').replace(/[^a-z0-9_-]/ig, '-')}`;
