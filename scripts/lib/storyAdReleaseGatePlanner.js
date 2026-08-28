@@ -162,6 +162,11 @@ function sha256(value) { return crypto.createHash('sha256').update(String(value)
 
 function scopedDomainFromPatch(file = '', patch = '') {
   const normalized = normalizeFile(file);
+  if ([
+    'scripts/test-story-ad-generation-one-click-v237.js',
+    'scripts/test-story-ad-page-load-lifecycle-v253.js',
+    'scripts/test-story-ad-prompt-autosave-navigation-v232.js',
+  ].includes(normalized)) return 'workspace_ui';
   if (['src/services/newStoryAd/personGenerationPromptService.js', 'src/services/newStoryAd/personGenerationRuntimeContractService.js'].includes(normalized)) return 'asset_plan';
   const hunks = String(patch || '').split(/^@@/m).slice(1).filter(Boolean);
   if (!hunks.length) return '';
