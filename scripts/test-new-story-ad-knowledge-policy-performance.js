@@ -35,7 +35,6 @@ function initialFrontendBudget() {
     'public/story-ad/styles.css',
     'public/story-ad/workspace.css',
     'public/story-ad/reference-progress.css',
-    'public/story-ad/workflow.css',
     'public/js/vido-theme.js',
     'public/js/media-delivery.js',
   ];
@@ -125,8 +124,12 @@ function testNoModelOrFrontendCost() {
   const source = fs.readFileSync(path.join(root, 'src/services/newStoryAd/knowledgePolicyCompilerService.js'), 'utf8');
   assert(!/mediaAdapter|modelGateway|generateImage|generateVideo|axios|\bfetch\s*\(/.test(source), '知识编译器不得触发模型或网络调用');
   const budget = initialFrontendBudget();
-  assert(budget.requests === 11, `剧情广告首屏请求集合发生变化：${budget.requests}`);
+  assert(budget.requests === 10, `剧情广告首屏请求集合发生变化：${budget.requests}`);
   assert(budget.gzip <= 50 * 1024, `剧情广告首屏 gzip ${budget.gzip} 超过 50KiB`);
+  const indexSource = fs.readFileSync(path.join(root, 'public/story-ad/index.html'), 'utf8');
+  const workflowSource = fs.readFileSync(path.join(root, 'public/story-ad/views/workflowView.js'), 'utf8');
+  assert(!indexSource.includes('/story-ad/workflow.css'), '工作流样式不得回到剧情广告首屏');
+  assert(workflowSource.includes("href: '/story-ad/workflow.css"), '进入工作流时必须按需加载工作流样式');
   const summary = compiler.compactSummary(compiler.compile({ stage: 'video', assetType: 'shot' }));
   assert(Buffer.byteLength(JSON.stringify(summary)) <= 2048, '策略摘要不得拖大轮询或项目载荷');
   return budget;
