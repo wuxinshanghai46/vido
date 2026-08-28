@@ -77,7 +77,9 @@ assert.match(stoppedHtml, /4\/5 · 80% · 已停止/);
 const page = fs.readFileSync(path.join(root, 'public/story-ad/views/sceneWorldPage.js'), 'utf8');
 const card = fs.readFileSync(path.join(root, 'public/story-ad/views/scenePromptPreview.js'), 'utf8');
 assert.match(page, /batchActive \? sceneBatchProgressMarkup\(generationProgress\)/, '批次必须只在场景区顶部显示统一 Image 进度');
-assert.match(page, /batchManaged: batchActive/, '批次中的卡片必须进入统一进度托管状态');
+assert.match(page, /<span>Image \$\{imageSummary\[0\]\}\/\$\{imageSummary\[1\]\}<\/span>/, '顶部完成度必须按 Image 汇总，不能继续显示误导性的场景数');
+assert.match(page, /unifiedActionManaged = batchActive \|\| sceneActionPlan\.count > 0/, '有统一操作时必须隐藏每张卡片的独立操作区');
+assert.match(page, /batchManaged: unifiedActionManaged/, '批次与待处理空闲态都必须由统一按钮托管');
 assert.match(card, /options\.batchManaged \? '' : `<footer>/, '统一批次运行时不得为每个场景重复显示进度和按钮');
 
 console.log(JSON.stringify({ passed: true, image_progress: '4/5', percent: 80, duplicated_card_progress: 0, model_calls: 0 }));
