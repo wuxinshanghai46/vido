@@ -586,7 +586,11 @@ function isStageModelAllowed(stageId = '', model = {}) {
     const capabilityService = require('./modelCapabilityService');
     return capabilityService.modelCapabilityReport(model, NEW_STORY_AD_PANORAMA_REQUIRED_CAPABILITIES).supported;
   }
-  return String(model.model_id || model.model || '').trim().toLowerCase() === NEW_STORY_AD_REQUIRED_IMAGE_MODEL;
+  // Paid story-ad media is selected explicitly by the task owner. Keep the
+  // panorama capability contract, but do not silently force every other image
+  // stage back to one model after the user selected a different configured
+  // image route.
+  return true;
 }
 
 function filterStageModels(stageId = '', models = []) {

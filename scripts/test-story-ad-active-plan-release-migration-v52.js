@@ -20,6 +20,7 @@ const publication = require('../src/services/newStoryAd/assetPlanPublicationServ
 const generationPermit = require('../src/services/newStoryAd/generationPermitService');
 const sceneCheckpoints = require('../src/services/newStoryAd/sceneGenerationCheckpointService');
 const taskStateAudit = require('../src/services/newStoryAd/taskStateAuditService');
+const systemicMigration = require('../src/services/newStoryAd/systemicMigrationService');
 const coverage = require('../src/services/newStoryAd/storySceneCoverageService');
 const release = require('../src/services/storyAdReleaseBundleService');
 
@@ -256,8 +257,28 @@ storage.saveModelCall({
 const unknownResult = publication.migrateCompatibleRelease(legacyUnknown.taskId, {
   fingerprint: legacyUnknown.currentFingerprint,
 });
-assert.equal(unknownResult.blocked, true);
-assert(unknownResult.compatibility.issues.includes('unknown_billing_unquarantined'));
+assert.equal(unknownResult.migrated, true,
+  '无 checkpoint 的历史终态未知调用必须后台隔离，不能把用户挡在不存在的失败项前');
+const quarantinedLegacy = storage.getGenerationRun(systemicMigration.legacyBillingId(
+  storage.listModelCalls(legacyUnknown.taskId).find(call => call.id === 'legacy-v14-unknown-call'),
+));
+assert.equal(quarantinedLegacy.state, 'billing_unknown');
+assert.equal(quarantinedLegacy.retry_blocked, true);
+assert.equal(quarantinedLegacy.automatic_retry_allowed, false);
+assert.equal(modelCalls(legacyUnknown.taskId), 1, '后台隔离不得新增模型调用');
+
+const activeUnknown = createLegacyV14Fixture('legacy-v14-active-unknown-billing');
+storage.saveModelCall({
+  id: 'legacy-v14-active-unknown-call', task_id: activeUnknown.taskId, stage: 'scene_asset',
+  status: 'running', billing_state: 'unknown', provider_submission_state: 'submitted',
+});
+const activeUnknownResult = publication.migrateCompatibleRelease(activeUnknown.taskId, {
+  fingerprint: activeUnknown.currentFingerprint,
+});
+assert.equal(activeUnknownResult.blocked, true, '供应商仍可能执行中的未知调用必须继续硬阻断');
+assert(activeUnknownResult.compatibility.issues.includes('active_unknown_billing_exists'));
+assert.equal(storage.listGenerationRuns({ task_id: activeUnknown.taskId }).length, 0,
+  '活动未知调用不得被当成历史终态自动隔离');
 
 const publicBlocked = createFixture({
   id: 'public-release-sync-blocked', oldBundle: 'legacy-public-blocked',
@@ -469,26 +490,16 @@ assert(billingBlocked.compatibility.issues.includes('unknown_billing_unquarantin
 storage.saveModelCall({ id: 'unknown-active', task_id: guarded.taskId, stage: 'person_plan', status: 'failed', billing_state: 'confirmed', provider_submission_state: 'failed' });
 storage.saveModelCall({ id: 'unknown-historical', task_id: guarded.taskId, stage: 'person_plan', status: 'failed', billing_state: 'unknown', provider_submission_state: 'submitted_unknown' });
 billingBlocked = publication.migrateCompatibleRelease(guarded.taskId, { fingerprint: guarded.fingerprint });
-assert.equal(billingBlocked.blocked, true);
-assert.deepEqual(billingBlocked.compatibility.issues, ['unknown_billing_unquarantined']);
-storage.createGenerationRun({
-  id: 'quarantine-unknown-historical', task_id: guarded.taskId, work_id: guarded.taskId,
-  state: 'billing_unknown', billing_state: 'unknown', legacy_model_call_id: 'unknown-historical',
-});
-assert.throws(
-  () => publication.migrateCompatibleRelease(guarded.taskId, { fingerprint: guarded.fingerprint }),
-  error => error?.code === 'AUTHORITY_PROMOTION_BLOCKED',
-  '计费未核清的隔离 run 也必须阻止切换新 Active',
-);
-assert.throws(
-  () => generationPermit.issue(guarded.taskId, 'scene_asset', { idempotencyKey: 'billing-review-copy' }),
-  error => error?.code === 'GENERATION_BILLING_REVIEW_REQUIRED'
-    && /历史图片调用的计费状态尚未核清/.test(error.message),
-  '生成入口必须显示历史计费待核对，不能继续误报为没有本版本 Active Plan',
-);
-storage.updateGenerationRun('quarantine-unknown-historical', { state: 'failed', billing_state: 'confirmed' });
-storage.saveModelCall({ id: 'unknown-historical', task_id: guarded.taskId, stage: 'person_plan', status: 'failed', billing_state: 'confirmed', provider_submission_state: 'failed' });
-assert.equal(publication.migrateCompatibleRelease(guarded.taskId, { fingerprint: guarded.fingerprint }).migrated, true);
+assert.equal(billingBlocked.migrated, true,
+  '已经失败终止的孤立未知调用必须后台隔离后继续零模型版本同步');
+const guardedQuarantine = storage.getGenerationRun(systemicMigration.legacyBillingId(
+  storage.listModelCalls(guarded.taskId).find(call => call.id === 'unknown-historical'),
+));
+assert.equal(guardedQuarantine.state, 'billing_unknown');
+assert.equal(guardedQuarantine.retry_blocked, true);
+assert.equal(guardedQuarantine.automatic_retry_allowed, false);
+const guardedPermit = generationPermit.issue(guarded.taskId, 'scene_asset', { idempotencyKey: 'terminal-history-does-not-block' });
+assert.equal(guardedPermit.status, 'issued', '后台隔离完成后，同一个用户按钮必须能继续进入受控串行任务');
 
 const failureGuarded = createFixture({ id: 'anon-write-failure', oldBundle: 'legacy-write-failure', castCount: 2, propCount: 0, sceneCount: 4 });
 

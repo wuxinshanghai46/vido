@@ -73,6 +73,7 @@ async function generateAtlasUnit({
   mediaAdapter,
   checkpoints,
   repository,
+  imageModel,
 }) {
   const identity = {
     taskId,
@@ -96,6 +97,8 @@ async function generateAtlasUnit({
         referenceImages,
         requireReferences: referenceImages.length > 0,
         inputFidelity: 'high',
+        imageModel: imageModel || 'auto',
+        singleAttempt: true,
         clientRequestId: checkpoints.checkpointKey(identity),
         onSubmitting: controls.onSubmitting,
         onSubmitted: controls.onSubmitted,
@@ -191,6 +194,7 @@ async function generatePropAsset(taskId, input = {}, deps = {}) {
     mediaAdapter,
     checkpoints,
     repository,
+    imageModel: input.image_model || input.imageModel,
   });
   updateProgress(storage, taskId, generationId, { percent: 58, completed: 1, phase: '道具身份视图已完成，正在处理动作状态' });
   const stateKeys = prop.states.length > 1 ? prop.states.slice(0, 4) : [];
@@ -206,6 +210,7 @@ async function generatePropAsset(taskId, input = {}, deps = {}) {
     mediaAdapter,
     checkpoints,
     repository,
+    imageModel: input.image_model || input.imageModel,
   }) : null;
   const storyboard = storage.getOutput(taskId, 'storyboard_table') || [];
   const asset = {
@@ -279,6 +284,7 @@ async function regeneratePropStates(taskId, input = {}, deps = {}) {
     mediaAdapter,
     checkpoints,
     repository,
+    imageModel: input.image_model || input.imageModel,
   });
   const identityAtlas = (existing.category_atlases || []).find(atlas => (
     Number(atlas?.grid?.columns) === 2 && Number(atlas?.grid?.rows) === 2

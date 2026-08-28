@@ -21,7 +21,6 @@ const THUMB_DIR = path.join(ASSET_DIR, 'thumbs');
 const assetThumbnailInflight = new Map();
 const IMAGE_MAX_CANDIDATES = Math.max(1, Math.min(5, Number(process.env.NEW_STORY_AD_IMAGE_MAX_CANDIDATES) || 2));
 const NANO_BANANA_PROMPT_LIMIT = 2400;
-const STORY_AD_REQUIRED_IMAGE_MODEL = 'gpt-image-2';
 
 function ensureDir(dir) {
   fs.mkdirSync(dir, { recursive: true });
@@ -46,7 +45,7 @@ function imageConfigStage(stage = '') {
   return String(stage || '').trim();
 }
 
-function stageCandidates(stage) {
+function stageCandidates(stage, requested = '') {
   const configStage = imageConfigStage(stage);
   if (configStage.startsWith('new_story_ad.') && !pipeline.getStageMeta(configStage)) {
     const error = new Error(`${configStage} 尚未登记到模型调用管理，已在图片供应商调用前停止`);
@@ -55,9 +54,18 @@ function stageCandidates(stage) {
     error.retryable = false;
     throw error;
   }
+  const requestedRoute = String(requested || '').trim().toLowerCase();
+  const exactRequested = requestedRoute.includes('/');
+  const explicitlySelected = exactRequested
+    ? pipeline.listAvailableModelsForStage(configStage)
+      .filter(model => modelKey(model).toLowerCase() === requestedRoute)
+      .map((model, index) => ({ ...model, enabled: true, priority: index + 1 }))
+    : [];
   const configured = pipeline.pickAllEnabled(configStage);
   const defaults = (pipeline.getStageDefaults(configStage) || []).filter(x => x.enabled !== false);
-  const routed = pipeline.hasStageConfig(configStage) ? configured : defaults;
+  const routed = explicitlySelected.length
+    ? explicitlySelected
+    : (pipeline.hasStageConfig(configStage) ? configured : defaults);
   // Pipeline routing and provider credentials are stored independently. Build the
   // executable image route once, here, so logs, preferred selection and the
   // adapter invocation cannot disagree about a disabled or credential-less route.
@@ -69,7 +77,7 @@ function modelKey(model = {}) {
 }
 
 function requiredImageModelForStage(stage = '') {
-  return String(stage || '').startsWith('new_story_ad.') ? STORY_AD_REQUIRED_IMAGE_MODEL : '';
+  return '';
 }
 
 function applyImageModelPolicy(stage = '', candidates = []) {
@@ -107,6 +115,20 @@ function availableImageCandidates(stage) {
     .filter(model => {
       try { resolveImageAdapter(model); return true; } catch { return false; }
     });
+}
+
+function selectableImageModels(stage, { includeCircuitOpen = true } = {}) {
+  return pipeline.listAvailableModelsForStage(imageConfigStage(stage))
+    .filter(model => modelGateway.isConfiguredAndUsable(model, 'image').ok)
+    .filter(model => {
+      try {
+        const config = resolveImageAdapter(model);
+        return /(openai|compatible|apismile|webang|deyunai|bridgellm|smscrw|szznai)/i
+          .test(`${config.family} ${config.adapter} ${config.providerId}`);
+      } catch { return false; }
+    })
+    .filter(model => includeCircuitOpen || !modelGateway.healthState(model).circuit_open)
+    .map(model => ({ ...model, health: modelGateway.healthState(model) }));
 }
 
 function imageCandidateAvailability(candidatePool = [], limit = IMAGE_MAX_CANDIDATES) {
@@ -798,7 +820,7 @@ async function generateImage({
 } = {}) {
   if (process.env.NEW_STORY_AD_MOCK_IMAGE === '1') return writeMockSvg(filename || `${stage}_${Date.now()}`, prompt);
   const requestedPreferred = String(imageModel || '').trim();
-  const selection = selectImageCandidates(stage, requestedPreferred, stageCandidates(stage));
+  const selection = selectImageCandidates(stage, requestedPreferred, stageCandidates(stage, requestedPreferred));
   const { candidates, requiredModel, preferred, preferredCandidates, candidatePool, exactRouteRequested } = selection;
   const availability = imageCandidateAvailability(candidatePool, singleAttempt ? 1 : IMAGE_MAX_CANDIDATES);
   const filtered = availability.available;
@@ -1158,6 +1180,7 @@ async function generateImage({
   onSubmitting = null,
   onSubmitted = null,
   onProgress = null,
+  singleAttempt = false,
 } = {}) {
   return generateImage({
     taskId,
@@ -1175,6 +1198,7 @@ async function generateImage({
     onSubmitting,
     onSubmitted,
     onProgress,
+    singleAttempt,
   });
 }
 
@@ -1217,6 +1241,7 @@ module.exports = {
   shouldStopImageFallback,
   normalizeHandlelessSynchronous5xx,
   availableImageCandidates,
+  selectableImageModels,
   imageCandidateAvailability,
   generateImage,
   generateActorReference,

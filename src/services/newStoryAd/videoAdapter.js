@@ -321,24 +321,19 @@ function clipRoute(clip = {}) {
 
 function resolvePinnedVideoModel(options = {}, existingClips = []) {
   const configured = videoCandidates(options, { includeCircuitOpen: true });
+  const explicitSelection = Boolean(String(options.video_provider || options.videoProvider || '').trim()
+    && String(options.video_model || options.videoModel || '').trim());
   const existingRoutes = [...new Set((Array.isArray(existingClips) ? existingClips : [])
     .filter(clip => clip?.video_url || clip?.videoUrl || clip?.file_path)
     .map(clipRoute)
     .filter(route => route && !route.startsWith('local-ffmpeg/')))];
-  if (existingRoutes.length > 1) {
-    const error = new Error(`当前任务已混用多个视频模型（${existingRoutes.join('、')}），为避免人物和画风继续漂移，请先清空旧视频后统一重做`);
-    error.code = 'MIXED_VIDEO_PROVIDER_REQUIRES_RESET';
-    error.status = 422;
-    error.retryable = false;
-    throw error;
-  }
   if (!configured.length) {
     const error = new Error('new_story_ad.video 模型调用管理中没有可用且已配置的视频模型');
     error.code = 'VIDEO_MODEL_CONFIG_REQUIRED';
     error.retryable = false;
     throw error;
   }
-  if (existingRoutes.length === 1) {
+  if (!explicitSelection && existingRoutes.length === 1) {
     const pinned = configured.find(candidate => modelRoute(candidate) === existingRoutes[0]);
     if (!pinned || modelGateway.healthState(pinned).circuit_open) {
       const error = new Error(`任务原视频模型 ${existingRoutes[0]} 当前不可用；为避免静默换模导致画风和人物变化，已停止生成`);

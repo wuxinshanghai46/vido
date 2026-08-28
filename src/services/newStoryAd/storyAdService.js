@@ -1599,7 +1599,7 @@ async function generateKeyframesStage(taskId, options = {}) {
               referenceImages,
               requireReferences: referenceImages.length > 0,
               inputFidelity: 'high',
-              singleAttempt: keyframeTarget.missingImagesOnly(options),
+              singleAttempt: true,
               clientRequestId: submission.id,
               shotIndex: i,
               generationId: generationProgress.generation_id,
@@ -2284,7 +2284,7 @@ function buildVideoPreflightPlan(taskId, options = {}) {
     pinnedModel = videoAdapter.videoCandidates(options, { includeCircuitOpen: true })[0] || null;
   }
   const providerRoute = pinnedModel ? `${String(pinnedModel.provider_id || '').toLowerCase()}/${String(pinnedModel.model_id || '').toLowerCase()}` : '';
-  const modelRouteFor = (shot, contract) => {
+  const modelRouteFor = (shot, contract, index) => { const existingRoute = String(clips[index]?.provider_used || clips[index]?.providerUsed || '').trim().toLowerCase(); if (videoLineage.clipHasUsableFile(clips[index]) && existingRoute) return existingRoute;
     const selected = videoAdapter.expectedModelForShot(shot, contract, pinnedModel || {});
     return selected?.provider_id && selected?.model_id
       ? `${String(selected.provider_id).toLowerCase()}/${String(selected.model_id).toLowerCase()}`
@@ -2481,7 +2481,7 @@ async function generateVideoStage(taskId, options = {}) { options = paidExecutio
   storage.saveOutput(taskId, 'video_scene_blocks', sceneBlocks);
   const audioTracks = Array.isArray(ttsAudio?.tracks) ? ttsAudio.tracks : (Array.isArray(ttsAudio) ? ttsAudio : []);
   const expectedLineages = generationShots.map((shot, index) => {
-    const expectedModel = videoAdapter.expectedModelForShot(shot, contracts[index] || {}, pinnedModel);
+    if (preflightPlan.expected_lineages?.[index]) return preflightPlan.expected_lineages[index]; const expectedModel = videoAdapter.expectedModelForShot(shot, contracts[index] || {}, pinnedModel);
     const expectedRoute = expectedModel?.provider_id && expectedModel?.model_id
       ? `${String(expectedModel.provider_id).toLowerCase()}/${String(expectedModel.model_id).toLowerCase()}`
       : pinnedRoute;

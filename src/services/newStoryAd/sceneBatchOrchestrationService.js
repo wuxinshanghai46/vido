@@ -49,6 +49,8 @@ function create(deps = {}) {
         quality: text(row?.quality || 'standard', 40),
         resolution: text(row?.resolution || '2K', 40),
         aspect_ratio: text(row?.aspect_ratio || row?.aspectRatio || '16:9', 20),
+        image_model: text(body.image_model || body.imageModel, 220),
+        single_attempt: true,
         action: !current ? 'generate' : String(repairPlan.action || 'generate'),
         scene_revision: Math.max(1, Number(current?.scene_revision || current?.revision || 1) || 1),
         repair_plan_version: Math.max(1, Number(repairPlan.version || 1) || 1),
@@ -70,6 +72,7 @@ function create(deps = {}) {
         scene_revision: item.scene_revision,
         repair_plan_version: item.repair_plan_version,
         action: item.action,
+        image_model: item.image_model,
       })))).digest('hex').slice(0, 32),
     };
   }
@@ -156,6 +159,8 @@ function create(deps = {}) {
             quality: action.quality,
             resolution: action.resolution,
             aspect_ratio: action.aspect_ratio,
+            image_model: action.image_model,
+            single_attempt: true,
             generation_id: generationId,
           };
           result = current
@@ -176,6 +181,14 @@ function create(deps = {}) {
           retryable: error?.retryable === true,
           provider_image_call_count: Number(error?.provider_image_call_count || 0) || 0,
         });
+        writeProgress(taskId, generationId, {
+          total: batchPlan.actions.length, scene_ids: sceneIds, started_at: startedAt,
+          processed: index + 1, succeeded, failed,
+          current_scene_id: action.scene_id, current_scene_name: action.name,
+          current_action: action.action, status: 'failed', phase: 'stopped',
+          message: `“${action.name || action.scene_id}”未完成，已停止本批次，后续场景没有提交模型`,
+        });
+        break;
       }
       writeProgress(taskId, generationId, {
         total: batchPlan.actions.length, scene_ids: sceneIds, started_at: startedAt,
@@ -193,7 +206,7 @@ function create(deps = {}) {
     const summary = {
       schema_version: 1,
       generation_id: generationId,
-      status: failed ? (succeeded ? 'partial' : 'failed') : 'succeeded',
+      status: failed ? (succeeded ? 'partial_stopped' : 'failed') : 'succeeded',
       total: batchPlan.actions.length,
       succeeded,
       failed,

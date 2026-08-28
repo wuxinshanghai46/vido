@@ -65,10 +65,17 @@ function create({ service, storage, generateAndCommitSubjectAssets, persistProvi
     visualAssetProgress.initialize(taskId, job.generationId, {
       subjectsRequired, subjectTotal, scenesRequired: sceneTargets.length > 0, sceneTotal: sceneTargets.length,
     });
-    const subjectLane = subjectsRequired
-      ? generateAndCommitSubjectAssets({ body, taskId, generationId: job.generationId, userId, deferCommit: true })
-      : Promise.resolve(null);
+    let subjectValue = null;
+    let subjectFailure = null;
+    if (subjectsRequired) {
+      try {
+        subjectValue = await generateAndCommitSubjectAssets({ body, taskId, generationId: job.generationId, userId, deferCommit: true });
+      } catch (error) {
+        subjectFailure = error;
+      }
+    }
     const sceneLane = (async () => {
+      if (subjectFailure) throw subjectFailure;
       let sceneAssets = storage.getOutput(taskId, 'scene_assets') || baseContext.scene_assets || [];
       let latestSceneSpec = null;
       const failures = [];
@@ -78,9 +85,10 @@ function create({ service, storage, generateAndCommitSubjectAssets, persistProvi
           current_scene_id: target.scene_id, message: `正在生成场景 ${index + 1}/${sceneTargets.length}：${target.name}` });
         try {
           const runOptions = { generationId: job.generationId, deferPublish: true, existingSceneAssets: sceneAssets };
+          const targetWithModel = { ...target, image_model: body.image_model || body.imageModel, single_attempt: true };
           const result = target.repair_existing
-            ? await sceneAssetService.fixSceneAsset(taskId, target.scene_id, { ...target, generation_id: job.generationId }, runOptions)
-            : await sceneAssetService.generateSceneAsset(taskId, { ...target, generation_id: job.generationId }, runOptions);
+            ? await sceneAssetService.fixSceneAsset(taskId, target.scene_id, { ...targetWithModel, generation_id: job.generationId }, runOptions)
+            : await sceneAssetService.generateSceneAsset(taskId, { ...targetWithModel, generation_id: job.generationId }, runOptions);
           sceneAssets = result.scene_assets || sceneAssets;
           latestSceneSpec = result.scene_spec || latestSceneSpec;
           visualAssetProgress.updateLane(taskId, 'scenes', { status: index + 1 === sceneTargets.length ? 'completed' : 'running',
@@ -90,7 +98,8 @@ function create({ service, storage, generateAndCommitSubjectAssets, persistProvi
           sceneAssets = storage.getOutput(taskId, 'scene_assets') || sceneAssets;
           failures.push({ scene_id: target.scene_id, scene_name: target.name, error });
           visualAssetProgress.updateLane(taskId, 'scenes', { status: 'running', completed_scenes: index + 1, completed: index + 1,
-            percent: Math.round(((index + 1) / sceneTargets.length) * 100), message: `场景 ${index + 1}/${sceneTargets.length} 已保存可用资产；失败单元已隔离，继续后续场景` });
+            percent: Math.round(((index + 1) / sceneTargets.length) * 100), message: `场景 ${index + 1}/${sceneTargets.length} 未完成，已停止后续模型调用` });
+          break;
         }
       }
       if (failures.length) {
@@ -104,7 +113,10 @@ function create({ service, storage, generateAndCommitSubjectAssets, persistProvi
       }
       return { scene_assets: sceneAssets, scene_spec: latestSceneSpec };
     })();
-    const [subjects, scenes] = await Promise.allSettled([subjectLane, sceneLane]);
+    const subjects = subjectFailure
+      ? { status: 'rejected', reason: subjectFailure }
+      : { status: 'fulfilled', value: subjectValue };
+    const scenes = await sceneLane.then(value => ({ status: 'fulfilled', value }), reason => ({ status: 'rejected', reason }));
     visualAssetOrchestration.markRejectedLanes(taskId, subjects, scenes);
     const sceneCommit = scenes.status === 'fulfilled' ? scenes.value
       : { scene_assets: scenes.reason?.partial_scene_assets || [], scene_spec: scenes.reason?.partial_scene_spec || null };
@@ -215,14 +227,16 @@ function create({ service, storage, generateAndCommitSubjectAssets, persistProvi
       for (const prop of graph.props.filter(item => item.attachment_mode === 'carried' && !item.image_url)) {
         if (!prop.description) { const error = new Error(`随身物“${prop.name}”缺少可生成的完整外观、材质和用途描述。`);
           error.code = 'PRODUCTION_GRAPH_PROP_PROFILE_INCOMPLETE'; error.retryable = true; throw error; }
-        generatedProps.push(await propAssetService.generatePropAsset(taskId, { ...prop, owner_id: prop.owner_character_id, generation_id: job.generationId }));
+        generatedProps.push(await propAssetService.generatePropAsset(taskId, { ...prop, owner_id: prop.owner_character_id,
+          image_model: body.image_model || body.imageModel, generation_id: job.generationId }));
       }
       if (generatedProps.length) graph = productionGraph.publish(taskId, { compiled_by: 'unified_orchestrator:props' });
       let panoramas = null;
       if (spatialMode === productionGraph.PANORAMA_MODE) {
         const panoramaPlan = scenePanoramaService.planForTask(taskId);
         panoramas = await scenePanoramaService.generateTaskPanoramas(taskId, { plan_fingerprint: panoramaPlan.plan_fingerprint,
-          cost_confirmation: true, generation_id: job.generationId }, { generationId: job.generationId });
+          cost_confirmation: true, image_model: body.image_model || body.imageModel,
+          generation_id: job.generationId }, { generationId: job.generationId });
         if (panoramas.failed_count) { const error = new Error(`有 ${panoramas.failed_count} 个360场景未通过生成或质检；成功场景已保留。`);
           error.code = 'PRODUCTION_GRAPH_PANORAMA_PARTIAL_FAILED'; error.retryable = true; error.partial = panoramas; throw error; }
       }

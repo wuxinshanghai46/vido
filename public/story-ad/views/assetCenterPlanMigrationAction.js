@@ -1,6 +1,6 @@
 import { authorizeBillingReviews, confirmBillingAwareAction } from './assetCenterBillingRetry.js?v=20260828-production-v256';
 export async function submitPersonPlanUpdate({
-  button, migrationOnly, requestKey, confirmDialog, confirmGeneration, bundle, store, setButtonBusy, toast, refresh,
+  button, migrationOnly, requestKey, confirmDialog, confirmGeneration, bundle, store, setButtonBusy, toast, refresh, imageModel = '',
 }) {
   const message=migrationOnly?'系统将复用兼容的人物方案，并生成当前缺失的人物图片；不会重新生成已经成功且仍匹配方案的资产。':'系统将按已确认剧情和现有人物资产补全详细人物方案，随后生成缺失的人物图片。已有用户确认字段优先，不会被模型覆盖。';
   setButtonBusy(button,true,'正在准备…');
@@ -14,7 +14,7 @@ export async function submitPersonPlanUpdate({
     })():true);
     if(!confirmed)return false;
     setButtonBusy(button,true,'正在生成人物方案…',{elapsed:true});
-    await store.runStage('person-plan', { request_key: requestKey });
+    await store.runStage('person-plan', { request_key: requestKey, image_model: imageModel });
     await refresh();
     return true;
   } catch(error) {

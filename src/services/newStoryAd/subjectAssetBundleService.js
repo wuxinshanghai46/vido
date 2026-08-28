@@ -334,7 +334,9 @@ function checkpointKind(taskId, brief, spec, counts, body = {}) {
           index: Math.max(0, Number(item?.index || 0) || 0),
           id: cleanText(item?.id || '', 80),
         })) : []),
-    image_model: cleanText(body.image_model || body.imageModel || 'auto', 120),
+    // Keep model choice outside the checkpoint identity: switching the selected
+    // route after a failed unit must preserve every already-succeeded unit.
+    image_model: 'auto',
     regenerate_selected: body.regenerate_selected === true,
     regenerate_request_key: body.regenerate_selected === true
       && body.resume_partial_checkpoint !== true && body.resumePartialCheckpoint !== true
@@ -462,10 +464,14 @@ function humanMemberSpecs(spec = {}, body = {}, count = 1) {
       wardrobe_contract: primary?.wardrobe_contract || null,
       style_richness: primary?.style_richness || 'auto',
       generation_prompt: personGenerationPrompt.compile(source),
-      generation_settings: personGenerationPrompt.normalizeSettings(
+      generation_settings: {
+        ...personGenerationPrompt.normalizeSettings(
         source.generation_settings || source.generationSettings,
         { content_mode: body.content_mode || body.contentMode || body.project_content_mode },
-      ),
+        ),
+        model: body.image_model || body.imageModel
+          || personGenerationPrompt.normalizeSettings(source.generation_settings || source.generationSettings).model,
+      },
       owned_props: personGenerationPrompt.normalizeOwnedProps(source),
     };
   });
@@ -1435,6 +1441,7 @@ async function generateSubjectBundle(options = {}, deps = {}) {
           prompt: petPrompt(profile, pets.length),
           aspectRatio: '3:4',
           imageModel: body.image_model || body.imageModel || 'auto',
+          singleAttempt: true,
           clientRequestId: petCheckpointKey,
           onSubmitting: controls.onSubmitting,
           onSubmitted: controls.onSubmitted,

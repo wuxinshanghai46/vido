@@ -56,7 +56,8 @@ function isTransientImageError(error) {
     .test(String(error?.message || error || ''));
 }
 
-function sceneGenerationBudget(existing = null) {
+function sceneGenerationBudget(existing = null, forceSingleAttempt = false) {
+  if (forceSingleAttempt) return { maxExtra: 0, usedExtra: 0, reasons: [] };
   return existing || { maxExtra: SCENE_IMAGE_EXTRA_ATTEMPTS, usedExtra: 0, reasons: [] };
 }
 
@@ -968,6 +969,8 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
     aspect_ratio: body.aspect_ratio || body.aspectRatio || '16:9',
     resolution: body.resolution || '2K',
     quality: body.quality || 'standard',
+    // Execution model is intentionally excluded from the semantic checkpoint
+    // identity so changing model after a failure resumes only missing views.
     image_model: 'gpt-image-2',
     generation_order: requiredViewKeys,
     view_strategy: viewAcquisition.selected,
@@ -995,7 +998,9 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
       layout_prompt: legacyPromptFingerprintText.layoutPrompt,
     }),
   ])))].filter(value => value !== fingerprint);
-  const initialBudget = sceneGenerationBudget(runOptions.generationBudget);
+  const singleAttempt = body.single_attempt === true || body.singleAttempt === true;
+  const selectedImageModel = body.image_model || body.imageModel || 'auto';
+  const initialBudget = sceneGenerationBudget(runOptions.generationBudget, singleAttempt);
   const openedCheckpoint = sceneCheckpoint.open({
     taskId,
     sceneId,
@@ -1040,7 +1045,7 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
     maxExtra: checkpoint.retry_budget?.max_extra,
     usedExtra: checkpoint.retry_budget?.used_extra,
     reasons: checkpoint.retry_budget?.reasons,
-  });
+  }, singleAttempt);
   const selectedView = key => sceneCheckpoint.checkpointView(checkpoint, key)
     || (repairMode && !repairViewKeys.includes(key) ? previousViews.get(key) : null);
   const shouldGenerate = key => !selectedView(key);
@@ -1070,7 +1075,8 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
         aspectRatio: body.aspect_ratio || body.aspectRatio || '16:9',
         resolution: body.resolution || '2K',
         quality: body.quality || 'standard',
-        imageModel: 'gpt-image-2',
+        imageModel: selectedImageModel,
+        singleAttempt,
         referenceImages: materialReferences,
         requireReferences: materialReferences.length > 0,
         inputFidelity: materialReferences.length > 0 ? 'low' : undefined,
@@ -1132,7 +1138,8 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
       aspectRatio: body.aspect_ratio || body.aspectRatio || '16:9',
       resolution: body.resolution || '2K',
       quality: body.quality || 'standard',
-      imageModel: 'gpt-image-2',
+      imageModel: selectedImageModel,
+      singleAttempt,
       referenceImages: materialReferences,
       requireReferences: materialReferences.length > 0,
       inputFidelity: materialReferences.length > 0 ? 'low' : undefined,
@@ -1187,7 +1194,8 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
           aspectRatio: body.aspect_ratio || body.aspectRatio || '16:9',
           resolution: body.resolution || '2K',
           quality: body.quality || 'standard',
-          imageModel: 'gpt-image-2',
+          imageModel: selectedImageModel,
+          singleAttempt,
           referenceImages: atlasMode
             ? [atlasResult.url || atlasResult.image_url]
             : [master.url || master.image_url],
@@ -1301,7 +1309,8 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
       aspectRatio: body.aspect_ratio || body.aspectRatio || '16:9',
       resolution: body.resolution || '2K',
       quality: body.quality || 'standard',
-      imageModel: 'gpt-image-2',
+      imageModel: selectedImageModel,
+      singleAttempt,
       referenceImages,
       requireReferences: true,
       // Reverse and interaction views require a real camera relocation. Detail
@@ -1334,6 +1343,12 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
       derivedResults.push({ status: 'fulfilled', value: await generateDerivedView(key, index) });
     } catch (reason) {
       derivedResults.push({ status: 'rejected', reason });
+      if (singleAttempt) {
+        while (derivedResults.length < SCENE_VIEW_KEYS.slice(1).length) {
+          derivedResults.push({ status: 'rejected', reason });
+        }
+        break;
+      }
     }
   }
   const derivedFailures = derivedResults

@@ -57,6 +57,8 @@ async function generateProductAsset(taskId, body = {}, options = {}, deps = {}) 
     taskId, stage: 'new_story_ad.product_asset',
     filename: `${referenceOnly ? 'subject_reference' : 'product'}_${String(taskId).replace(/[^a-z0-9_-]/ig, '_').slice(0, 40)}_r${revision}`,
     aspectRatio: '1:1', clientRequestId: generationId,
+    imageModel: body.image_model || body.imageModel || 'auto',
+    singleAttempt: body.single_attempt === true || body.singleAttempt === true,
     prompt: (referenceOnly ? [
       'Create one clean commercial visual reference image for an advertised display subject, material, surface finish, installed result, service carrier or spatial product.',
       `Advertised subject: ${productName}.`,

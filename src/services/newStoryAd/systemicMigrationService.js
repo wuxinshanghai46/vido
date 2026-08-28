@@ -122,6 +122,28 @@ function quarantineUnknownBilling(call = {}, storage = defaultStorage) {
   return { created: true, unit };
 }
 
+function quarantineInactiveUnknownModelBillingForTask(taskId = '', storage = defaultStorage) {
+  const normalizedTaskId = text(taskId);
+  if (!normalizedTaskId) return { task_id: '', quarantined: 0, existing: 0, skipped_active: 0, results: [] };
+  const modelCalls = storage.listModelCalls(normalizedTaskId);
+  const generationRuns = storage.listGenerationRuns({ task_id: normalizedTaskId });
+  const risk = taskStateAudit.billingRiskForTask({
+    outputs: [], model_calls: modelCalls, generation_runs: generationRuns,
+  }, normalizedTaskId);
+  const candidates = risk.unquarantined_unknown_billing
+    .filter(call => call.source !== 'generation_checkpoint');
+  const inactive = candidates.filter(call => !taskStateAudit.isUnknownBilling(call));
+  const apply = () => inactive.map(call => quarantineUnknownBilling(call, storage));
+  const results = typeof storage.withWriteBatch === 'function' ? storage.withWriteBatch(apply) : apply();
+  return {
+    task_id: normalizedTaskId,
+    quarantined: results.filter(result => result.created).length,
+    existing: results.filter(result => !result.created).length,
+    skipped_active: candidates.length - inactive.length,
+    results,
+  };
+}
+
 function apply({ storage = defaultStorage, enableLineage = true, promoteAuthority = true, batched = false } = {}) {
   if (!batched && typeof storage.withWriteBatch === 'function') {
     return storage.withWriteBatch(() => apply({ storage, enableLineage, promoteAuthority, batched: true }));
@@ -188,5 +210,5 @@ function apply({ storage = defaultStorage, enableLineage = true, promoteAuthorit
 
 module.exports = {
   apply, checkpointUnknownBilling, legacyBillingId, legacyCheckpointBillingId, plan,
-  quarantineCheckpointBilling, quarantineUnknownBilling, unknownBilling,
+  quarantineCheckpointBilling, quarantineUnknownBilling, quarantineInactiveUnknownModelBillingForTask, unknownBilling,
 };

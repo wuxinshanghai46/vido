@@ -19,6 +19,8 @@ export async function submitSceneFix({ context, controllerFor, cardFor, scene, b
   const card = button?.closest('[data-scene-card]') || cardFor(sceneId);
   const promptState = scene.prompt_state || {};
   const qaOnly = String(scene.repair_plan?.action || '') === 'reverify';
+  const imageModel = qaOnly ? '' : context.selectedSceneImageModel?.();
+  if (!qaOnly && !imageModel) throw new Error('请先选择本次场景生成模型');
   setButtonBusy(button, true, qaOnly ? '正在重新审核…' : '正在定位并修复…', { elapsed: true });
   if (!billingAuthorized && !qaOnly) {
     const confirmation = await confirmBillingAwareAction({ bundle: context.bundle, lane: 'scenes', sceneId });
@@ -35,6 +37,7 @@ export async function submitSceneFix({ context, controllerFor, cardFor, scene, b
     quality: card?.querySelector('[data-scene-quality]')?.value || 'standard',
     resolution: card?.querySelector('[data-scene-resolution]')?.value || '2K',
     aspect_ratio: context.bundle?.brief?.output_ratio || context.bundle?.project?.request?.output_ratio || '16:9',
+    ...(imageModel ? { image_model: imageModel } : {}),
     request_key: `scene-fix:${sceneId}:${scene.scene_revision || scene.revision || 1}:${scene.repair_plan?.version || 1}:${scene.repair_plan?.action || 'unknown'}`,
   });
   if (result.accepted === false) throw new Error(result.message || '修复任务未被接受');

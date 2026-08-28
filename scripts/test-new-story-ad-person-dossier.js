@@ -140,32 +140,31 @@ async function main() {
     .png().toFile(mediaAdapter.assetPathFromName(auditReferenceFilename));
   const auditCheckpoints = new Map();
   let auditCalls = 0;
-  const recoveredWardrobe = await dossierComposites.generateWardrobeDetails({
-    taskId: 'provider-audit-wardrobe-recovery',
-    assetId: 'actor-audit',
-    atomicAssets: [{ id: 'body-front-audit', kind: 'body', key: 'front', image_url: mediaAdapter.publicAssetUrl(auditReferenceFilename) }],
-    definitions: [{ key: 'neckline_cut', label: '领口与肩部剪裁', aspectRatio: '4:3', referenceKinds: [['body', 'front']] }],
-    loadCheckpoint: async key => auditCheckpoints.get(key) || null,
-    saveCheckpoint: async (key, value) => auditCheckpoints.set(key, value),
-  }, {
-    checkpointService,
-    mediaAdapter: {
-      ...mediaAdapter,
-      generateImage: async () => {
-        auditCalls += 1;
-        const error = new Error('provider rejected wardrobe detail');
-        error.code = 'PROVIDER_CONTENT_AUDIT';
-        throw error;
+  await assert.rejects(
+    () => dossierComposites.generateWardrobeDetails({
+      taskId: 'provider-audit-wardrobe-recovery',
+      assetId: 'actor-audit',
+      atomicAssets: [{ id: 'body-front-audit', kind: 'body', key: 'front', image_url: mediaAdapter.publicAssetUrl(auditReferenceFilename) }],
+      definitions: [{ key: 'neckline_cut', label: '领口与肩部剪裁', aspectRatio: '4:3', referenceKinds: [['body', 'front']] }],
+      loadCheckpoint: async key => auditCheckpoints.get(key) || null,
+      saveCheckpoint: async (key, value) => auditCheckpoints.set(key, value),
+    }, {
+      checkpointService,
+      mediaAdapter: {
+        ...mediaAdapter,
+        generateImage: async () => {
+          auditCalls += 1;
+          const error = new Error('provider rejected wardrobe detail');
+          error.code = 'PROVIDER_CONTENT_AUDIT';
+          throw error;
+        },
       },
-    },
-  });
+    }),
+    error => error?.code === 'PROVIDER_CONTENT_AUDIT',
+    '用户指定的人物模型失败后必须结束该单元，不得静默改成本地裁切成功',
+  );
   assert.strictEqual(auditCalls, 1, 'the provider audit path must stop after the first rejected request');
-  assert.strictEqual(recoveredWardrobe.length, 1);
-  assert.strictEqual(recoveredWardrobe[0].derived_locally, true);
-  assert.strictEqual(recoveredWardrobe[0].detail_mode, 'local_reference_crop_after_provider_audit');
-  assert.strictEqual(recoveredWardrobe[0].recovery_reason, 'PROVIDER_CONTENT_AUDIT');
-  assert.ok(fs.existsSync(mediaAdapter.assetPathFromName(recoveredWardrobe[0].filename)));
-  assert.strictEqual([...auditCheckpoints.values()][0].status, 'completed');
+  assert.strictEqual([...auditCheckpoints.values()][0].status, 'failed');
   assert.strictEqual(dossierDone.dossier.atomic_assets.length, 20);
   assert.strictEqual(dossierDone.dossier.category_atlases.length, 4);
   assert.strictEqual(dossierDone.dossier.quality_status, 'native_masters_ready');

@@ -14,6 +14,7 @@ const referenceUnderstandingEdits = require('../services/newStoryAd/referenceUnd
 const videoCore = require('../services/videoGenerationCore');
 const storage = require('../services/newStoryAd/storageService');
 const mediaCatalog = require('../services/newStoryAd/mediaCatalogService');
+const mediaModelSelection = require('../services/newStoryAd/mediaGenerationModelSelectionService');
 
 const router = express.Router();
 
@@ -391,19 +392,21 @@ router.put('/projects/:taskId/sketches', asyncRoute(async (req, res) => {
 
 router.post('/projects/:taskId/sketches/:shotIndex/generate', asyncRoute(async (req, res) => {
   projectForRequest(req);
+  const body = mediaModelSelection.applySelection('new_story_ad.storyboard_sketch', req.body || {});
   const result = await storyboardSketches.generateSketch(
     req.params.taskId,
     req.params.shotIndex,
-    req.body || {},
+    body,
   );
   res.json({ success: true, task_id: req.params.taskId, ...result });
 }));
 
 router.post('/projects/:taskId/sketches/generate-batch', asyncRoute(async (req, res) => {
   projectForRequest(req);
+  const body = mediaModelSelection.applySelection('new_story_ad.storyboard_sketch', req.body || {});
   const result = await storyboardSketches.generateSketchBatch(
     req.params.taskId,
-    req.body || {},
+    body,
   );
   res.json({ success: true, task_id: req.params.taskId, ...result });
 }));

@@ -588,7 +588,7 @@ async function main() {
   };
   sceneSpace.analyzeSceneViews = async options => passingContract(options.views);
   try {
-    const incompleteResult = await sceneAssets.fixSceneAsset(incompleteTaskId, incompleteSceneId, { scene_spec: sceneSpec, aspect_ratio: '16:9' });
+    const incompleteResult = await sceneAssets.fixSceneAsset(incompleteTaskId, incompleteSceneId, { scene_spec: sceneSpec, aspect_ratio: '16:9', image_model: 'mock/selected', single_attempt: true });
     assert.equal(incompleteResult.fix_status, 'repaired_and_verified');
     assert.equal(calls.length, 1, 'old incomplete scene must make exactly one image call for the missing detail view');
     assert.match(calls[0].filename, /_detail_/);
@@ -596,13 +596,14 @@ async function main() {
     assert.deepEqual(incompleteResult.scene_asset.repair_history[0].regenerated_view_keys, ['detail']);
     calls.length = 0;
 
-    const result = await sceneAssets.fixSceneAsset(taskId, sceneId, { scene_spec: sceneSpec, aspect_ratio: '16:9' });
+    const result = await sceneAssets.fixSceneAsset(taskId, sceneId, { scene_spec: sceneSpec, aspect_ratio: '16:9', image_model: 'mock/selected', single_attempt: true });
     assert.equal(result.fix_status, 'repaired_and_verified');
     assert.equal(calls.length, 1, 'only the rejected reverse view should be regenerated');
     assert.match(calls[0].filename, /_reverse_/);
     assert.deepEqual(calls[0].referenceImages, ['/old-master.png', '/old-layout.png']);
     assert.equal(calls[0].inputFidelity, 'low');
-    assert.equal(calls[0].imageModel, 'gpt-image-2');
+    assert.equal(calls[0].imageModel, 'mock/selected');
+    assert.equal(calls[0].singleAttempt, true);
     assert.match(calls[0].prompt, /Mandatory correction from the previous rejected attempt/i);
     assert.match(calls[0].prompt, /Correction priority: if any reference image conflicts/i);
     assert.equal(result.scene_asset.scene_revision, 2);
@@ -698,7 +699,7 @@ async function main() {
       legacy_material_repairs: legacyMaterialFailurePlan.view_keys,
       geometry_only_material_repairs: geometryOnlyMaterialFailurePlan.view_keys,
       explicit_interaction_repairs: explicitInteractionFailurePlan.view_keys,
-      image2_only_policy: true,
+      selected_model_single_attempt_policy: true,
       audit_retry_attempts: auditAttempts,
       targeted_generation_calls: calls.length,
       regenerated_views: result.scene_asset.repair_history[0].regenerated_view_keys,

@@ -25,6 +25,7 @@ const personDossiers = require('../services/newStoryAd/personDossierService'), p
 const subjectAssetPersistence = require('./newStoryAd/subjectAssetPersistence');
 const personProviderAssets = require('../services/newStoryAd/personProviderAssetLifecycleService');
 const registerPersonDossierApprovalRoute = require('./newStoryAd/personDossierApprovalRoute');
+const registerPersonMediaRoutes = require('./newStoryAd/personMediaRoutes');
 const registerTaskUpdateRoute = require('./newStoryAd/taskUpdateRoute');
 const registerVisualAssetBillingRoutes = require('./newStoryAd/visualAssetBillingRoutes');
 const subjectRecoveryPreflight = require('../services/newStoryAd/subjectRecoveryPreflightService').createService();
@@ -35,6 +36,7 @@ const visualRealismPolicy = require('../services/newStoryAd/visualRealismPolicyS
 const videoCore = require('../services/videoGenerationCore');
 const publicFailure = require('../services/newStoryAd/publicFailureProjectionService');
 const scenePromptConfirmation = require('../services/newStoryAd/scenePromptConfirmationService');
+const mediaModelSelection = require('../services/newStoryAd/mediaGenerationModelSelectionService');
 const db = require('../models/database');
 function userFromReq(req) {
   return req.user || req.auth || {};
@@ -700,6 +702,13 @@ router.get('/model-health', (req, res) => {
   });
 });
 
+router.get('/tasks/:id/generation-models', asyncRoute(async (req, res) => {
+  taskForReq(req);
+  res.setHeader('Cache-Control', 'private, no-store, no-cache, must-revalidate');
+  res.setHeader('Vary', 'Authorization');
+  res.json({ success: true, ...mediaModelSelection.catalog(req.query.stage || '') });
+}));
+
 router.post('/reference-video-upload-sessions', asyncRoute(async (req, res) => {
   const session = referenceVideoAnalyses.createUploadSession({
     body: req.body || {},
@@ -973,73 +982,12 @@ router.delete('/real-person-sources/:sourceId', asyncRoute(async (req, res) => {
   return res.json({ success: true, ...deleted });
 }));
 
-router.get('/tasks/:id/person-production', asyncRoute(async (req, res) => {
-  taskForReq(req);
-  const production = personDossiers.getProduction(req.params.id, userFromReq(req));
-  return res.json({ success: true, production });
-}));
-
-router.post('/tasks/:id/person-outfit-candidates', asyncRoute(async (req, res) => {
-  taskForReq(req);
-  const started = personDossiers.startCandidates({
-    taskId: req.params.id,
-    user: userFromReq(req),
-    sourceId: req.body?.source_id || req.body?.sourceId,
-    outfitSourceId: req.body?.outfit_source_id || req.body?.outfitSourceId || '',
-    mode: req.body?.mode || 'ai_outfit',
-    wardrobe: req.body?.wardrobe || '',
-    personProfile: req.body?.person_profile || req.body?.personProfile || {},
-  });
-  return res.status(202).json({ success: true, ...started });
-}));
-
-router.post('/tasks/:id/person-outfit-candidates/:candidateId/approve', asyncRoute(async (req, res) => {
-  taskForReq(req);
-  const production = personDossiers.approveCandidate({
-    taskId: req.params.id,
-    candidateId: req.params.candidateId,
-    user: userFromReq(req),
-  });
-  return res.json({ success: true, production });
-}));
-
-router.post('/tasks/:id/person-dossiers', asyncRoute(async (req, res) => {
-  taskForReq(req);
-  const started = personDossiers.startDossier({
-    taskId: req.params.id,
-    user: userFromReq(req),
-  });
-  return res.status(202).json({ success: true, ...started });
-}));
+registerPersonMediaRoutes(router, { asyncRoute, taskForReq, userFromReq, personDossiers, storage, mediaModelSelection });
 
 registerPersonDossierApprovalRoute(router, {
   asyncRoute, taskForReq, userFromReq, personDossiers, personProviderAssets, service,
   upsertActorAssetForUser, storage, videoAdapter, persistProviderPersonIds, queueTaskStage,
 });
-
-router.post('/tasks/:id/person-action-assets', asyncRoute(async (req, res) => {
-  taskForReq(req);
-  const storyboard = req.body?.storyboard
-    || req.body?.storyboard_table
-    || storage.getOutput(req.params.id, 'storyboard_table')
-    || [];
-  const started = personDossiers.startActionAssets({
-    taskId: req.params.id,
-    user: userFromReq(req),
-    storyboard,
-  });
-  return res.status(202).json({ success: true, ...started });
-}));
-
-router.post('/tasks/:id/person-production/:kind/cancel', asyncRoute(async (req, res) => {
-  taskForReq(req);
-  const production = personDossiers.cancelJob({
-    taskId: req.params.id,
-    kind: req.params.kind,
-    user: userFromReq(req),
-  });
-  return res.json({ success: true, production });
-}));
 
 router.post('/upload', uploadSingle, (req, res) => {
   if (!req.file) return res.status(400).json({ success: false, error: '请选择文件' });
@@ -1512,7 +1460,8 @@ router.post('/tasks/:id/production-assets/plan', asyncRoute(async (req, res) => 
 
 router.post('/tasks/:id/production-assets', asyncRoute(async (req, res) => {
   taskForReq(req);
-  const body = req.body || {}, expected = productionAssets.plan(req.params.id, body);
+  const body = mediaModelSelection.applySelection('new_story_ad.scene_asset', req.body || {});
+  const expected = productionAssets.plan(req.params.id, body);
   productionAssets.assertConfirmation(body, expected);
   const user = userFromReq(req), userId = String(user.id || user.userId || user.username || 'anonymous');
   req.body = { ...body, idempotency_key: `${req.params.id}:production_graph:${expected.plan_fingerprint}` };
@@ -1522,7 +1471,7 @@ router.post('/tasks/:id/production-assets', asyncRoute(async (req, res) => {
 }));
 
 router.post('/subject-assets', asyncRoute(async (req, res) => {
-  const body = req.body || {};
+  const body = mediaModelSelection.applySelection('new_story_ad.person_sheet', req.body || {});
   const user = userFromReq(req);
   const taskId = String(body.task_id || body.taskId || '').trim();
   if (taskId) service.assertTaskOwner(taskId, user);
@@ -1547,7 +1496,7 @@ router.post('/tasks/:id/subject-assets', asyncRoute(async (req, res) => {
   taskForReq(req);
   const user = userFromReq(req);
   const userId = String(user.id || user.userId || user.username || 'anonymous');
-  const body = { ...(req.body || {}), task_id: req.params.id };
+  const body = { ...mediaModelSelection.applySelection('new_story_ad.person_sheet', req.body || {}), task_id: req.params.id };
   return queueTaskStage(req, res, 'subject_assets', job => generateAndCommitSubjectAssets({ body, taskId: req.params.id, generationId: job.generationId, userId }), {
     deadlineMs: 45 * 60 * 1000,
   });
@@ -1617,7 +1566,7 @@ router.put('/tasks/:id/scene-prompts/:sceneId', asyncRoute(async (req, res) => {
 
 router.post('/tasks/:id/scene-assets', asyncRoute(async (req, res) => {
   taskForReq(req);
-  const body = req.body || {};
+  const body = mediaModelSelection.applySelection('new_story_ad.scene_asset', req.body || {});
   const sceneId = body.space_id || body.spaceId || body.scene_id || body.sceneId || '';
   const currentPrompt = scenePromptConfirmation.assertCurrentPrompt(req.params.id, sceneId, body);
   const authoritativeBody = {
@@ -1643,7 +1592,7 @@ router.post('/tasks/:id/scene-assets', asyncRoute(async (req, res) => {
       scene_name: body.name || body.scene_name || body.sceneName || '',
     },
   });
-})); registerPropRoutes(router, { asyncRoute, taskForReq, queueTaskStage, propAssetService }); registerSceneBatchRoutes(router, { asyncRoute, taskForReq, queueTaskStage, storage, sceneAssetService, scenePromptConfirmation, targetProgress: require('../services/newStoryAd/targetGenerationProgressService'), cancellation });
+})); registerPropRoutes(router, { asyncRoute, taskForReq, queueTaskStage, propAssetService, mediaModelSelection }); registerSceneBatchRoutes(router, { asyncRoute, taskForReq, queueTaskStage, storage, sceneAssetService, scenePromptConfirmation, targetProgress: require('../services/newStoryAd/targetGenerationProgressService'), cancellation, mediaModelSelection });
 
 router.get('/tasks/:id/scene-assets/:sceneId/panorama/plan', asyncRoute(async (req, res) => {
   taskForReq(req);
@@ -1673,7 +1622,7 @@ router.post('/tasks/:id/scene-assets/:sceneId/panorama', asyncRoute(async (req, 
   taskForReq(req);
   res.setHeader('Cache-Control', 'private, no-store, no-cache, must-revalidate');
   res.setHeader('Vary', 'Authorization');
-  const body = req.body || {};
+  const body = mediaModelSelection.applySelection('new_story_ad.scene_panorama', req.body || {});
   const currentPrompt = scenePromptConfirmation.assertCurrentPrompt(req.params.id, req.params.sceneId, body);
   const expected = scenePanoramaService.planForScene(req.params.id, req.params.sceneId);
   scenePanoramaService.assertConfirmedPlan(body, expected);
@@ -1701,7 +1650,7 @@ router.post('/tasks/:id/scene-assets/panoramas', asyncRoute(async (req, res) => 
   taskForReq(req);
   res.setHeader('Cache-Control', 'private, no-store, no-cache, must-revalidate');
   res.setHeader('Vary', 'Authorization');
-  const body = req.body || {};
+  const body = mediaModelSelection.applySelection('new_story_ad.scene_panorama', req.body || {});
   const expected = scenePanoramaService.planForTask(req.params.id);
   const currentPrompts = scenePromptConfirmation.assertAllCurrentPrompts(
     req.params.id,
@@ -1724,7 +1673,7 @@ router.post('/tasks/:id/scene-assets/panoramas', asyncRoute(async (req, res) => 
 
 router.post('/tasks/:id/product-assets', asyncRoute(async (req, res) => {
   taskForReq(req);
-  const body = req.body || {};
+  const body = mediaModelSelection.applySelection('new_story_ad.product_asset', req.body || {});
   return queueTaskStage(req, res, 'product_asset', job => productAssetGeneration.generateProductAsset(req.params.id, body, { generationId: job.generationId }), {
     deadlineMs: 20 * 60 * 1000,
   });
@@ -1770,11 +1719,14 @@ router.post('/tasks/:id/scene-assets/:sceneId/repair', asyncRoute(async (req, re
 
 router.post('/tasks/:id/scene-assets/:sceneId/fix', asyncRoute(async (req, res) => {
   taskForReq(req);
-  const body = req.body || {};
-  const currentPrompt = scenePromptConfirmation.assertCurrentPrompt(req.params.id, req.params.sceneId, body);
+  const suppliedBody = req.body || {};
+  const currentPrompt = scenePromptConfirmation.assertCurrentPrompt(req.params.id, req.params.sceneId, suppliedBody);
   const sceneAssets = sceneAssetService.normalizeSceneAssets(storage.getOutput(req.params.id, 'scene_assets') || []);
   const currentScene = sceneAssets.find(item => String(item.scene_id || item.id || '') === String(req.params.sceneId));
   const plan = currentScene?.repair_plan || sceneAssetService.buildSceneRepairPlan(currentScene || {});
+  const body = plan.action === 'reverify'
+    ? suppliedBody
+    : mediaModelSelection.applySelection('new_story_ad.scene_asset', suppliedBody);
   const fixRevision = [
     currentPrompt.prompt_version_id,
     currentScene?.scene_revision || currentScene?.revision || 1,
@@ -1911,7 +1863,7 @@ router.post('/tasks/:id/scene-config', asyncRoute(async () => {
   throw error;
 }));
 
-registerPersonPlanGenerationRoute(router, { asyncRoute, queueTaskStage, userFromReq, service, storage, generationPermit, generateAndCommitSubjectAssets });
+registerPersonPlanGenerationRoute(router, { asyncRoute, queueTaskStage, userFromReq, service, storage, generationPermit, generateAndCommitSubjectAssets, mediaModelSelection });
 
 router.post('/tasks/:id/scene-plan', asyncRoute(async (req, res) => {
   return queueTaskStage(req, res, 'scene_plan', job => service.updateScenePlan(req.params.id, {
@@ -1965,7 +1917,7 @@ router.post('/tasks/:id/keyframe-contract', asyncRoute(async (req, res) => {
 }));
 
 router.post('/tasks/:id/keyframes', asyncRoute(async (req, res) => {
-  const body = req.body || {};
+  const body = mediaModelSelection.applySelection('new_story_ad.keyframe', req.body || {});
   taskForReq(req);
   service.keyframeSubmissionPreflight(req.params.id, body, userFromReq(req));
   return queueTaskStage(
@@ -2045,8 +1997,11 @@ router.get('/tasks/:id/video/preflight', asyncRoute(async (req, res) => {
     error.status = 422;
     throw error;
   }
+  const selected = mediaModelSelection.applySelection('new_story_ad.video', req.query || {});
   const plan = service.buildVideoPreflightPlan(req.params.id, {
     video_generation_mode: req.query.mode || 'economy',
+    video_provider: selected.video_provider,
+    video_model: selected.video_model,
     ...(requestedIndexes ? { only_indexes: requestedIndexes } : {}),
   });
   res.json({ success: true, task_id: req.params.id, preflight: service.publicVideoPreflight(plan) });
@@ -2055,7 +2010,8 @@ router.get('/tasks/:id/video/preflight', asyncRoute(async (req, res) => {
 router.post('/tasks/:id/video', asyncRoute(async (req, res) => {
   taskForReq(req);
   paidExecutionPolicy.assertExternalRequest(req.body || {});
-  const body = paidExecutionPolicy.canonicalize({ ...(req.body || {}), require_video_preflight: true });
+  const selected = mediaModelSelection.applySelection('new_story_ad.video', req.body || {});
+  const body = paidExecutionPolicy.canonicalize({ ...selected, require_video_preflight: true });
   service.assertVideoPreflightConfirmation(req.params.id, body);
   return queueTaskStage(
     req,
@@ -2099,7 +2055,8 @@ registerVideoMonitorRoute(router, {
 
 router.post('/tasks/:id/media', asyncRoute(async (req, res) => {
   paidExecutionPolicy.assertExternalRequest(req.body || {});
-  const body = paidExecutionPolicy.canonicalize({ ...(req.body || {}), require_video_preflight: true });
+  const selected = mediaModelSelection.applySelection('new_story_ad.video', req.body || {});
+  const body = paidExecutionPolicy.canonicalize({ ...selected, require_video_preflight: true });
   service.assertVideoPreflightConfirmation(req.params.id, body);
   return queueTaskStage(req, res, 'media', async job => {
     // 同一后台任务先验证可选配音，再生成纯视觉连续段，最后只在本地混音合成。

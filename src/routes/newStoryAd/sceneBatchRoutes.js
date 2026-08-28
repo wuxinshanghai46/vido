@@ -5,7 +5,7 @@ const sceneBatchFactory = require('../../services/newStoryAd/sceneBatchOrchestra
 function registerSceneBatchRoutes(router, deps = {}) {
   const {
     asyncRoute, taskForReq, queueTaskStage, storage,
-    sceneAssetService, scenePromptConfirmation, targetProgress, cancellation,
+    sceneAssetService, scenePromptConfirmation, targetProgress, cancellation, mediaModelSelection,
   } = deps;
   const orchestration = sceneBatchFactory.create({
     storage,
@@ -17,10 +17,11 @@ function registerSceneBatchRoutes(router, deps = {}) {
 
   router.post('/tasks/:id/scene-actions', asyncRoute(async (req, res) => {
     taskForReq(req);
-    const batchPlan = orchestration.plan(req.params.id, req.body || {});
+    const selectedBody = mediaModelSelection.applySelection('new_story_ad.scene_asset', req.body || {});
+    const batchPlan = orchestration.plan(req.params.id, selectedBody);
     req.body = {
-      ...(req.body || {}),
-      request_key: String(req.body?.request_key || req.body?.requestKey
+      ...selectedBody,
+      request_key: String(selectedBody.request_key || selectedBody.requestKey
         || `${req.params.id}:scene_batch:${batchPlan.signature}`).slice(0, 180),
     };
     return queueTaskStage(req, res, 'scene_asset', job => (

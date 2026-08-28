@@ -11,6 +11,7 @@ import { assertSavedPerson, personAgeDisplay, personAssetState, personLookSummar
 import { renderPersonEvolutionSummary } from './assetCenterPersonEvolution.js?v=20260828-production-v256';
 import { createKeyedRequestGuard } from './assetCenterRequestGuard.js?v=20260828-production-v256';
 import { checkpointRecoverySummary } from './assetCheckpointRecovery.js?v=20260828-production-v256';
+import { bindGenerationModelPicker, loadGenerationModelPicker } from './generationModelPicker.js?v=20260828-production-v256';
 if (typeof document !== 'undefined' && !document.getElementById('person-dossier-style')) {
   const style = document.createElement('link');
   style.id = 'person-dossier-style';
@@ -50,7 +51,7 @@ export function materialReferenceState(item = {}) {
   };
 }
 
-export async function submitProductGeneration({ item = {}, bundle = {}, store = {}, confirmAction = confirmDialog } = {}) {
+export async function submitProductGeneration({ item = {}, bundle = {}, store = {}, confirmAction = confirmDialog, imageModel = '' } = {}) {
   const name = item?.name || bundle.brief?.product_subject || '';
   if (!name) return { submitted: false, reason: 'missing_name' };
   const standalone = item?.presentation?.standalone_generation_supported !== false;
@@ -61,7 +62,7 @@ export async function submitProductGeneration({ item = {}, bundle = {}, store = 
     });
     if (!accepted) return { submitted: false, cancelled: true, standalone };
   }
-  await store.runStage('product-assets', { product_name: name, description: item?.description || '', reference_only: !standalone });
+  await store.runStage('product-assets', { product_name: name, description: item?.description || '', reference_only: !standalone, image_model: imageModel });
   return { submitted: true, standalone };
 }
 export function drawerCheckpointDetails(item = {}) {
@@ -283,10 +284,12 @@ export async function mount(host, context) {
     + (assets.animals || []).filter(item => subjectNeedsGeneration(item, 'animal')).length;
   const recoverySummary = checkpointRecoverySummary([...(assets.people || []), ...(assets.animals || [])]);
   const checkpointRecovery = { ...recoverySummary, missing_units: recoverySummary.missing };
+  const personModelPicker = await loadGenerationModelPicker(bundle.project.id, 'new_story_ad.person_sheet', { label: '人物模型' });
+  const productModelPicker = await loadGenerationModelPicker(bundle.project.id, 'new_story_ad.product_asset', { label: '商品模型' });
   host.innerHTML = `
     <section class="view-head">
       <div><h1>资产中心</h1><p>${narrative ? '人物、动物、场景与机位独立建档。' : '人物、动物、商品/展示主体、LOGO、场景与机位独立建档。'}</p></div>
-      <div class="view-actions asset-primary-actions"><button class="btn" type="button" data-select-person ${generationDisabled}>选择已有人物素材</button><button class="btn" type="button" data-upload-real-person ${generationDisabled}>上传真人素材</button></div>
+      <div class="view-actions asset-primary-actions">${personModelPicker.html}${productModelPicker.html}<button class="btn" type="button" data-select-person ${generationDisabled}>选择已有人物素材</button><button class="btn" type="button" data-upload-real-person ${generationDisabled}>上传真人素材</button></div>
     </section>
     ${assetPlanStageView({ assetPlanReady, recoveryActive: false, eligibility: personPlanEligibility, generationActive, missingSubjectCount, productionGraph, counts: { people: assets.people?.length, animals: assets.animals?.length, scenes: assets.scenes?.length }, project: bundle.project || {}, isAdmin: bundle.permissions?.is_admin === true })}
     <div class="tabs"><button class="tab active" type="button" data-history-safe data-asset-filter="all">全部 ${total}</button>${assetGroups.map(([key, label]) => `<button class="tab" type="button" data-history-safe data-asset-filter="${key}">${label} ${assets[key]?.length || 0}</button>`).join('')}</div>
@@ -294,6 +297,8 @@ export async function mount(host, context) {
     <div data-asset-sections>${renderSections(assets, total, contentMode, assetGroups, generationActive ? generationDisabled : contractDisabled)}</div>`;
 
   bindMediaLightbox(host);
+  const selectedPersonModel = bindGenerationModelPicker(host, personModelPicker);
+  const selectedProductModel = bindGenerationModelPicker(host, productModelPicker);
 
   const subjectRequests = createKeyedRequestGuard();
   const generate = async (target = null, group = '', button = null) => {
@@ -307,6 +312,7 @@ export async function mount(host, context) {
     const recoveryKey = recoveryRequestKey(bundle, selectedRecovery, intent);
     return subjectRequests.run(intent, recoveryKey, async requestKey => {
       const payload = subjectGenerationPayload(bundle, target, requestKey);
+      payload.image_model = selectedPersonModel();
       const validation = generationValidation(payload);
       if (validation) { toast(validation, 'warning'); return false; }
       setButtonBusy(button, true, '正在准备…');
@@ -334,7 +340,7 @@ export async function mount(host, context) {
     try {
       const standalone = item?.presentation?.standalone_generation_supported !== false;
       if (!standalone) setButtonBusy(button, true, '等待确认…');
-      const result = await submitProductGeneration({ item, bundle, store });
+      const result = await submitProductGeneration({ item, bundle, store, imageModel: selectedProductModel() });
       if (!result.submitted) return false;
       setButtonBusy(button, true, '正在提交商品生成…', { elapsed: true });
       toast(`${result.standalone ? '商品资产' : '中性参考图'}生成已提交，进度和耗时将在页面顶部显示。`, 'success');
@@ -491,7 +497,7 @@ export async function mount(host, context) {
   let uploadGroup = '';
   const uploadInput = host.querySelector('[data-asset-upload-file]');
   const openUpload = group => {
-    if (group === 'people') { openRealPersonFlow({ context, taskId: bundle.project.id }); return; }
+    if (group === 'people') { openRealPersonFlow({ context, taskId: bundle.project.id, imageModel: selectedPersonModel }); return; }
     uploadGroup = group;
     uploadInput.click();
   };
@@ -512,7 +518,7 @@ export async function mount(host, context) {
   });
 
   host.querySelector('[data-select-person]').addEventListener('click', () => openActorLibrary({ store, context, taskId: bundle.project.id }));
-  host.querySelector('[data-upload-real-person]').addEventListener('click', () => openRealPersonFlow({ context, taskId: bundle.project.id }));
+  host.querySelector('[data-upload-real-person]').addEventListener('click', () => openRealPersonFlow({ context, taskId: bundle.project.id, imageModel: selectedPersonModel }));
   host.querySelector('[data-generate-subject-assets]')?.addEventListener('click', event => generate(null, '', event.currentTarget));
   host.querySelectorAll('[data-confirm-assets]').forEach(confirmButton => confirmButton.addEventListener('click', async event => {
     const button = event.currentTarget;

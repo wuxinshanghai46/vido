@@ -39,7 +39,7 @@ async function main() {
   };
   const common = {
     taskId: 'detail-task', assetId: 'person-1', atomicAssets, revision: 2,
-    profile: { wardrobeText: '珍珠耳环，银色高跟鞋；不佩戴项链和腕表' },
+    profile: { wardrobeText: '珍珠耳环，银色高跟鞋；不佩戴项链和腕表', generation_settings: { model: 'mock/selected' } },
     loadCheckpoint: async key => checkpoints[key],
     saveCheckpoint: async (key, value) => { checkpoints[key] = value; },
   };
@@ -54,7 +54,7 @@ async function main() {
   assert.equal(wearableCalls.length, 2);
   assert.equal(wardrobeCalls.length, 4);
   assert(wearableCalls.every(call => /独立物件/.test(call.prompt) && /不出现人物头像、身体、手、衣服/.test(call.prompt)));
-  assert(wearableCalls.every(call => call.singleAttempt === false && /纯净暖白背景/.test(call.auditSafePrompt)), '配饰审核拒绝必须允许备用图片路由使用安全提示继续生成');
+  assert(wearableCalls.every(call => call.singleAttempt === true && call.imageModel === 'mock/selected'), '用户选定模型失败后必须停止，不得切换备用图片路由');
   assert(wardrobeCalls.every(call => /独立白底陈列|白底平铺|材质细节板|分别独立陈列/.test(call.prompt) && /不出现人物/.test(call.prompt)));
   await composites.generateWearableDetails(common, { mediaAdapter: fakeMedia });
   await composites.generateWardrobeDetails(common, { mediaAdapter: fakeMedia });
@@ -66,7 +66,7 @@ async function main() {
   await sharp({ create: { width: 900, height: 1200, channels: 3, background: '#334455' } }).png().toFile(auditedReferencePath);
   const auditedCheckpoints = {};
   try {
-    const recoveredWearable = await composites.generateWearableDetails({
+    await assert.rejects(() => composites.generateWearableDetails({
       taskId: 'audited-wearable-recovery', assetId: 'person-audit', revision: 1,
       atomicAssets: [{ id: 'front-audit', kind: 'body', key: 'front', image_url: mediaAdapter.publicAssetUrl(auditedReferenceName) }],
       profile: { wardrobeText: '银色高跟鞋' },
@@ -85,11 +85,7 @@ async function main() {
           });
         },
       },
-    });
-    assert.equal(recoveredWearable.length, 1);
-    assert.equal(recoveredWearable[0].derived_locally, true);
-    assert.equal(recoveredWearable[0].evidence_mode, 'authoritative_person_crop');
-    assert.equal(recoveredWearable[0].recovery_reason, 'PROVIDER_CONTENT_AUDIT');
+    }), error => error.code === 'IMAGE_ATTEMPTS_EXHAUSTED');
   } finally {
     fs.rmSync(auditedReferencePath, { force: true });
   }

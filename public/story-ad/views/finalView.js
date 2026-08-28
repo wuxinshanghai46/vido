@@ -1,5 +1,6 @@
 import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260828-production-v256';
 import { bindMoreMedia, moreMediaButton } from './finalMediaPagination.js?v=20260828-production-v256';
+import { bindGenerationModelPicker, loadGenerationModelPicker } from './generationModelPicker.js?v=20260828-production-v256';
 
 function itemIndex(item = {}, index = 0) {
   const value = Number(item.shot_index ?? item.shotIndex ?? item.index);
@@ -65,11 +66,13 @@ export async function mount(host, context) {
   const mediaCatalog = generation.media_catalog || {};
   const keyframeTotal = Number(mediaCatalog.keyframes?.total || keyframes.length);
   const clipTotal = Number(mediaCatalog.clips?.total || clips.length);
+  const keyframeModelPicker = await loadGenerationModelPicker(bundle.project.id, 'new_story_ad.keyframe', { label: '关键帧模型' });
+  const videoModelPicker = await loadGenerationModelPicker(bundle.project.id, 'new_story_ad.video', { label: '视频模型' });
   host.innerHTML = `
     <section class="view-head">
       <div><h1>镜头、声音与成片</h1><p>第 6 步统一查看正式镜头、场景声、动作音、配音、音乐、视频片段和最终成片。</p></div>
       <div class="view-actions">
-        ${keyframes.length ? '<button class="btn" type="button" data-generate-video>生成视频</button>' : '<button class="btn" type="button" data-generate-keyframes>生成关键帧</button>'}
+        ${keyframes.length ? `${videoModelPicker.html}<button class="btn" type="button" data-generate-video>生成视频</button>` : `${keyframeModelPicker.html}<button class="btn" type="button" data-generate-keyframes>生成关键帧</button>`}
         ${clips.length ? '<button class="btn" type="button" data-generate-tts>生成配音</button><button class="btn primary" type="button" data-compose>合成成片</button>' : ''}
       </div>
     </section>
@@ -100,10 +103,13 @@ export async function mount(host, context) {
     </section>
     <div data-modal-host></div>`;
 
+  const selectedKeyframeModel = bindGenerationModelPicker(host, keyframeModelPicker);
+  const selectedVideoModel = bindGenerationModelPicker(host, videoModelPicker);
+
   const run = async (button, path, pending, success) => {
     try {
       setButtonBusy(button, true, pending, { elapsed: true });
-      await store.runStage(path);
+      await store.runStage(path, path === 'keyframes' ? { image_model: selectedKeyframeModel() } : undefined);
       toast(success, 'success');
       await context.refreshShell();
     } catch (error) {
@@ -122,7 +128,9 @@ export async function mount(host, context) {
     const button = event.currentTarget;
     try {
       setButtonBusy(button, true, '正在预检…');
-      const preflight = await store.videoPreflight('economy');
+      const videoModelRoute = selectedVideoModel();
+      if (!videoModelRoute) throw new Error('请先选择本次视频生成模型');
+      const preflight = await store.videoPreflight('economy', videoModelRoute);
       const complexityRequired = Number(preflight.execution_summary?.high_risk_unit_count || 0) > 0;
       const modalHost = host.querySelector('[data-modal-host]');
       modalHost.innerHTML = preflightDialog(preflight);
@@ -142,6 +150,7 @@ export async function mount(host, context) {
           setButtonBusy(submit, true, '正在提交…', { elapsed: true });
           await store.startVideo(preflight, {
             complexity_review_confirmed: !complexityRequired || modalHost.querySelector('[data-complexity-confirm]')?.checked,
+            video_model_route: videoModelRoute,
           });
           close();
           toast('视频生成任务已提交。', 'success');

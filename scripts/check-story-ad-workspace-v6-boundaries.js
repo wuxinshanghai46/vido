@@ -119,6 +119,7 @@ function main() {
   const checkpointRecoveryLazyJsFiles = allJsFiles.filter(file => /assetCheckpointRecovery/.test(file));
   const assetStageLazyJsFiles = allJsFiles.filter(file => /assetCenterStageView/.test(file));
   const recoveryPreflightLazyJsFiles = allJsFiles.filter(file => /subjectRecoveryPreflightAction/.test(file));
+  const generationModelPickerLazyJsFiles = allJsFiles.filter(file => /generationModelPicker/.test(file));
   const dialogueFlowJsFiles = allJsFiles.filter(file => /(?:dialogue-demo|briefDialoguePanel)/.test(file));
   const dialogueDataJsFiles = allJsFiles.filter(file => /(?:briefDialogueRuntime|briefFormPayload|projectBundleStore)/.test(file));
   const dialogueGuidanceLazyJsFiles = allJsFiles.filter(file => /briefGuidedResume/.test(file));
@@ -130,7 +131,7 @@ function main() {
   const plotCharacterLazyJsFiles = allJsFiles.filter(file => /plotCharacterAutosave/.test(file));
   const plotEditorJsFiles = allJsFiles.filter(file => /plotBeatEditor/.test(file));
   const plotCellLazyJsFiles = allJsFiles.filter(file => /plotBeatCellPopover/.test(file));
-  const coreJsFiles = allJsFiles.filter(file => !lazyJsFiles.includes(file) && !assetEditorLazyJsFiles.includes(file) && !materialReferenceLazyJsFiles.includes(file) && !sceneQaProjectionLazyJsFiles.includes(file) && !promptAutosaveLazyJsFiles.includes(file) && !planMigrationLazyJsFiles.includes(file) && !personFormLazyJsFiles.includes(file) && !personEvolutionLazyJsFiles.includes(file) && !featureLazyJsFiles.includes(file) && !workflowLazyJsFiles.includes(file) && !recognitionLazyJsFiles.includes(file) && !briefLazyJsFiles.includes(file) && !briefMaterialsLazyJsFiles.includes(file) && !briefAdvancedLazyJsFiles.includes(file) && !briefPageLazyJsFiles.includes(file) && !panoramaLazyJsFiles.includes(file) && !sceneWorldLazyJsFiles.includes(file) && !sceneWorldAuthorityLazyJsFiles.includes(file) && !dossierLazyJsFiles.includes(file) && !mediaLazyJsFiles.includes(file) && !lightboxLazyJsFiles.includes(file) && !checkpointRecoveryLazyJsFiles.includes(file) && !assetStageLazyJsFiles.includes(file) && !recoveryPreflightLazyJsFiles.includes(file) && !dialogueFlowJsFiles.includes(file) && !dialogueDataJsFiles.includes(file) && !dialogueGuidanceLazyJsFiles.includes(file) && !dialogueSupportLazyJsFiles.includes(file) && !dialogueSpecificationLazyJsFiles.includes(file) && !referenceDialogueStateJsFiles.includes(file) && !dialoguePolicyJsFiles.includes(file) && !plotRoomLazyJsFiles.includes(file) && !plotCharacterLazyJsFiles.includes(file) && !plotEditorJsFiles.includes(file) && !plotCellLazyJsFiles.includes(file));
+  const coreJsFiles = allJsFiles.filter(file => !lazyJsFiles.includes(file) && !assetEditorLazyJsFiles.includes(file) && !materialReferenceLazyJsFiles.includes(file) && !sceneQaProjectionLazyJsFiles.includes(file) && !promptAutosaveLazyJsFiles.includes(file) && !planMigrationLazyJsFiles.includes(file) && !personFormLazyJsFiles.includes(file) && !personEvolutionLazyJsFiles.includes(file) && !featureLazyJsFiles.includes(file) && !workflowLazyJsFiles.includes(file) && !recognitionLazyJsFiles.includes(file) && !briefLazyJsFiles.includes(file) && !briefMaterialsLazyJsFiles.includes(file) && !briefAdvancedLazyJsFiles.includes(file) && !briefPageLazyJsFiles.includes(file) && !panoramaLazyJsFiles.includes(file) && !sceneWorldLazyJsFiles.includes(file) && !sceneWorldAuthorityLazyJsFiles.includes(file) && !dossierLazyJsFiles.includes(file) && !mediaLazyJsFiles.includes(file) && !lightboxLazyJsFiles.includes(file) && !checkpointRecoveryLazyJsFiles.includes(file) && !assetStageLazyJsFiles.includes(file) && !recoveryPreflightLazyJsFiles.includes(file) && !generationModelPickerLazyJsFiles.includes(file) && !dialogueFlowJsFiles.includes(file) && !dialogueDataJsFiles.includes(file) && !dialogueGuidanceLazyJsFiles.includes(file) && !dialogueSupportLazyJsFiles.includes(file) && !dialogueSpecificationLazyJsFiles.includes(file) && !referenceDialogueStateJsFiles.includes(file) && !dialoguePolicyJsFiles.includes(file) && !plotRoomLazyJsFiles.includes(file) && !plotCharacterLazyJsFiles.includes(file) && !plotEditorJsFiles.includes(file) && !plotCellLazyJsFiles.includes(file));
   const coreJsBytes = coreJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
   const lazyJsBytes = lazyJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
   const assetEditorLazyJsBytes = assetEditorLazyJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
@@ -156,6 +157,7 @@ function main() {
   const checkpointRecoveryLazyJsBytes = checkpointRecoveryLazyJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
   const assetStageLazyJsBytes = assetStageLazyJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
   const recoveryPreflightLazyJsBytes = recoveryPreflightLazyJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
+  const generationModelPickerLazyJsBytes = generationModelPickerLazyJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
   const dialogueFlowJsBytes = dialogueFlowJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
   const dialogueDataJsBytes = dialogueDataJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
   const dialogueGuidanceLazyJsBytes = dialogueGuidanceLazyJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
@@ -193,6 +195,7 @@ function main() {
   const checkpointRecoveryLazyJsGzip = gzipBytes(checkpointRecoveryLazyJsFiles);
   const assetStageLazyJsGzip = gzipBytes(assetStageLazyJsFiles);
   const recoveryPreflightLazyJsGzip = gzipBytes(recoveryPreflightLazyJsFiles);
+  const generationModelPickerLazyJsGzip = gzipBytes(generationModelPickerLazyJsFiles);
   const dialogueFlowJsGzip = gzipBytes(dialogueFlowJsFiles);
   const dialogueDataJsGzip = gzipBytes(dialogueDataJsFiles);
   const dialogueGuidanceLazyJsGzip = gzipBytes(dialogueGuidanceLazyJsFiles);
@@ -215,6 +218,8 @@ function main() {
   // and hover video previews; the initial 100 KiB gate remains unchanged.
   assert(coreJsBytes <= 330 * 1024, `核心按需模块 JS ${coreJsBytes} bytes 超过 330 KiB`);
   assert(coreJsGzip <= 105 * 1024, `核心按需模块 gzip ${coreJsGzip} bytes 超过 105 KiB`);
+  assert(generationModelPickerLazyJsBytes <= 3 * 1024, `生成模型选择按需模块 ${generationModelPickerLazyJsBytes} bytes 超过 3 KiB`);
+  assert(generationModelPickerLazyJsGzip <= 2 * 1024, `生成模型选择按需模块 gzip ${generationModelPickerLazyJsGzip} bytes 超过 2 KiB`);
   assert(dialogueFlowJsBytes <= 32 * 1024, `对话立项与分区加载模块 ${dialogueFlowJsBytes} bytes 超过 32 KiB`);
   // Guided slot state stays in the initial dialogue module; explicit parsing
   // and reference actions are separately lazy-loaded and capped below.

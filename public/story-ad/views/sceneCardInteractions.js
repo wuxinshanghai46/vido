@@ -15,10 +15,12 @@ export function bindSceneCards(host, context) {
     const quality = card?.querySelector('[data-scene-quality]')?.value || 'standard';
     const resolution = card?.querySelector('[data-scene-resolution]')?.value || '2K';
     const aspectRatio = context.bundle?.brief?.output_ratio || context.bundle?.project?.request?.output_ratio || '16:9';
+    const imageModel = context.selectedSceneImageModel?.();
+    if (!imageModel) throw new Error('请先选择本次场景生成模型');
     const result = await context.store.runStage('scene-assets', {
       space_id: sceneId, scene_id: sceneId, name: scene.name,
       prompt_version_id: card?.dataset.promptVersionId || promptState.prompt_version_id || '',
-      quality, resolution, aspect_ratio: aspectRatio, count: 1,
+      quality, resolution, aspect_ratio: aspectRatio, count: 1, image_model: imageModel,
     });
     if (!result.accepted) throw new Error(result.message || '生成未被接受');
     if (card) switchTab(card, 'images');
@@ -73,8 +75,11 @@ export function bindSceneCards(host, context) {
           aspect_ratio: context.bundle?.brief?.output_ratio || context.bundle?.project?.request?.output_ratio || '16:9',
         };
       });
+      const imageModel = context.selectedSceneImageModel?.();
+      if (!imageModel) throw new Error('请先选择本次场景生成模型');
       const result = await context.store.runStage('scene-actions', {
         actions,
+        image_model: imageModel,
         request_key: `scene-batch:${context.bundle?.revisions?.content || 1}:${actions.map(item => `${item.scene_id}:${item.prompt_version_id}`).join('|')}`,
       });
       if (result.accepted === false) throw new Error(result.message || '场景连续处理任务未被接受');

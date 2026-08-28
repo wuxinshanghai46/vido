@@ -379,7 +379,7 @@ async function generateTaskPanoramas(taskId, body = {}, runOptions = {}, deps = 
     const plan = expected.scenes[index];
     if (plan.blocked) {
       failures.push({ scene_id: plan.scene_id, error_code: 'PANORAMA_BILLING_REVIEW_REQUIRED', billing_review_required: true });
-      continue;
+      break;
     }
     try {
       results.push(await generateScenePanorama(taskId, plan.scene_id, {
@@ -398,6 +398,7 @@ async function generateTaskPanoramas(taskId, body = {}, runOptions = {}, deps = 
         billing_state: error?.billingState || error?.billing_state || '',
         billing_review_required: error?.billing_review_required === true,
       });
+      break;
     }
   }
   return {
@@ -496,6 +497,7 @@ async function generateScenePanorama(taskId, sceneId, body = {}, runOptions = {}
       filename: `scene_panorama_candidate_${taskId}_${sceneId}_${Date.now()}`,
       aspectRatio: '2:1',
       resolution: '2K',
+      imageModel: body.image_model || body.imageModel || 'auto',
       referenceImages: [source.image_url || source.url],
       requireReferences: true,
       inputFidelity: 'high',

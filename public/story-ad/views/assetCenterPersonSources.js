@@ -173,7 +173,7 @@ export async function openActorLibrary({ store, context }) {
   }
 }
 
-export function openRealPersonFlow({ context, taskId }) {
+export function openRealPersonFlow({ context, taskId, imageModel = () => '' }) {
   const modal = assetModal('上传真人并由 AI 补全人物档案');
   modal.body.innerHTML = `<div class="source-explainer"><b>不是只上传一张人物图</b><p>系统会先锁定授权真人身份，再补全正/侧/背面、表情、服装细节和动作类别；人工确认后保存人物 ID，并同步到 Seedance 人物资产库。</p></div>
     <form class="real-person-source-form" data-real-person-form>
@@ -199,14 +199,14 @@ export function openRealPersonFlow({ context, taskId }) {
       upload.append('file', file); upload.append('kind', 'identity'); upload.append('rights_confirmed', 'true'); upload.append('adult_confirmed', 'true');
       const source = await request('/api/new-story-ad/real-person-sources', { method: 'POST', body: upload, timeoutMs: 120000 });
       const profile = Object.fromEntries(['displayName', 'roleName', 'appearanceText', 'wardrobeText', 'hairMakeupText'].map(key => [key, String(fd.get(key) || '')]));
-      await request(`/api/new-story-ad/tasks/${encodeURIComponent(taskId)}/person-outfit-candidates`, { method: 'POST', body: { source_id: source.source.id, mode: profile.wardrobeText ? 'ai_outfit' : 'retain_original', wardrobe: profile.wardrobeText, person_profile: profile } });
+      await request(`/api/new-story-ad/tasks/${encodeURIComponent(taskId)}/person-outfit-candidates`, { method: 'POST', body: { source_id: source.source.id, mode: profile.wardrobeText ? 'ai_outfit' : 'retain_original', wardrobe: profile.wardrobeText, person_profile: profile, image_model: imageModel() } });
       const renderCandidates = production => {
         const candidates = production.candidates || [];
         modal.body.innerHTML = `${inlineJobProgress(production)}${candidates.length ? `<div class="candidate-grid">${candidates.map(candidate => `<button type="button" data-candidate="${escapeHtml(candidate.id)}" ${candidate.selectable === false ? 'disabled' : ''}>${mediaPreview(candidate, { label: '身份候选', width: 520, symbol: '候选' })}<b>${candidate.selectable === false ? '一致性未通过' : '选择此人物身份'}</b></button>`).join('')}</div>` : '<p>AI 正在保持真人身份的前提下生成候选，请勿关闭页面。</p>'}`;
         modal.body.querySelectorAll('[data-candidate]').forEach(candidateButton => candidateButton.addEventListener('click', async () => {
           try {
             await request(`/api/new-story-ad/tasks/${encodeURIComponent(taskId)}/person-outfit-candidates/${encodeURIComponent(candidateButton.dataset.candidate)}/approve`, { method: 'POST' });
-            await request(`/api/new-story-ad/tasks/${encodeURIComponent(taskId)}/person-dossiers`, { method: 'POST' });
+            await request(`/api/new-story-ad/tasks/${encodeURIComponent(taskId)}/person-dossiers`, { method: 'POST', body: { image_model: imageModel() } });
             const completed = await waitForPersonJob(taskId, 'dossier_job', current => { modal.body.innerHTML = `${inlineJobProgress(current)}<p>正在补全人物视角、表情、细节与动作类别…</p>`; });
             if (completed.dossier_job?.status !== 'completed' || !completed.dossier) throw new Error(completed.dossier_job?.error?.message || '完整人物档案生成失败');
             modal.body.innerHTML = `${inlineJobProgress(completed)}${mediaPreview(completed.dossier.sheet || {}, { label: '完整人物档案', width: 1400, symbol: '人物档案' })}<div class="modal-actions"><button class="btn primary" type="button" data-approve-dossier>确认档案并同步 Seedance</button></div>`;

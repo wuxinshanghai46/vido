@@ -16,6 +16,7 @@ const storage = require('../src/services/newStoryAd/storageService');
 const jobService = require('../src/services/newStoryAd/jobService');
 const mediaPipeline = require('../src/services/newStoryAd/mediaPipelineService');
 const generationPermit = require('../src/services/newStoryAd/generationPermitService');
+const mediaModelSelection = require('../src/services/newStoryAd/mediaGenerationModelSelectionService');
 
 const DANGEROUS_KEYS = paidExecutionPolicy.EXTERNAL_BOOLEAN_CONTROLS;
 const FORBIDDEN_HTTP_CASES = [
@@ -141,6 +142,7 @@ async function testHttpIngress() {
   let videoOptions = null;
   let mediaOptions = null;
   let server = null;
+  const originalApplySelection = mediaModelSelection.applySelection;
   try {
     service.assertTaskOwner = id => ({ id });
     service.assertVideoPreflightConfirmation = () => ({ fingerprint: 'preflight-current' });
@@ -160,6 +162,7 @@ async function testHttpIngress() {
     generationPermit.issue = (taskId, stage) => ({ permit_id: `permit-${taskId}-${stage}`, task_id: taskId, stage });
     generationPermit.consume = (_taskId, issued) => ({ ...issued, status: 'consumed' });
 
+    mediaModelSelection.applySelection = (_stage, body = {}) => ({ ...body, video_provider: 'mock', video_model: 'selected-video', video_model_route: 'mock/selected-video' });
     delete require.cache[require.resolve('../src/routes/newStoryAd')];
     const router = require('../src/routes/newStoryAd');
     const app = express();
@@ -186,6 +189,7 @@ async function testHttpIngress() {
     }
 
     const safeBody = Object.fromEntries(DANGEROUS_KEYS.map(key => [key, false]));
+    safeBody.video_model_route = 'mock/selected-video';
     safeBody.video_preflight_fingerprint = 'preflight-current';
     safeBody.only_indexes = [1];
 
@@ -212,6 +216,7 @@ async function testHttpIngress() {
     mediaPipeline.runMediaPipeline = originals.runMediaPipeline;
     generationPermit.issue = originals.issuePermit;
     generationPermit.consume = originals.consumePermit;
+    mediaModelSelection.applySelection = originalApplySelection;
   }
 }
 

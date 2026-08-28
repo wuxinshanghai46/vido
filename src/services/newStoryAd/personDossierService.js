@@ -367,6 +367,8 @@ async function runCandidates(initial, source, outfitSource) {
         requireReferences: true,
         inputFidelity: 'high',
         clientRequestId: `${production.task_id}:outfit:${production.versions.wardrobe + 1}:${index + 1}`,
+        imageModel: production.image_model || 'auto',
+        singleAttempt: true,
       });
       const qa = await identityQa({
         taskId: production.task_id,
@@ -417,7 +419,7 @@ async function runCandidates(initial, source, outfitSource) {
   }
 }
 
-function startCandidates({ taskId, user = {}, sourceId, outfitSourceId = '', mode = 'ai_outfit', wardrobe = '', personProfile = {} } = {}) {
+function startCandidates({ taskId, user = {}, sourceId, outfitSourceId = '', mode = 'ai_outfit', wardrobe = '', personProfile = {}, imageModel = '' } = {}) {
   const userId = ownerId(user);
   const source = assertSource(sourceId, user);
   if (source.kind !== 'identity') {
@@ -451,6 +453,7 @@ function startCandidates({ taskId, user = {}, sourceId, outfitSourceId = '', mod
     outfit_reference_id: outfitSource?.id || '',
     mode,
     wardrobe: String(wardrobe || '').slice(0, 1000),
+    image_model: String(imageModel || '').slice(0, 220),
     person_profile: personProfile && typeof personProfile === 'object' ? {
       displayName: String(personProfile.displayName || personProfile.name || '').slice(0, 120),
       roleName: String(personProfile.roleName || personProfile.role || '').slice(0, 120),
@@ -614,6 +617,7 @@ async function runDossier(initial) {
         'Authorized real-person identity. Preserve the approved outfit anchor exactly.',
       ].filter(Boolean).join('\n'),
       requireReferences: true,
+      generationSettings: { model: production.image_model || 'auto', resolution: '2K', quality: 'standard' },
       knowledgePolicy: {
         ...knowledgePolicy,
         prompt_block: knowledgeRuntime.promptBlock(knowledgePolicy),
@@ -681,7 +685,7 @@ async function runDossier(initial) {
       anchor: production.approved_anchor,
       atomicAssets,
       revision,
-      profile: production.person_profile || {},
+      profile: { ...(production.person_profile || {}), generation_settings: { model: production.image_model || 'auto' } },
       loadCheckpoint: loadDetailCheckpoint,
       saveCheckpoint: saveDetailCheckpoint,
     });
@@ -777,7 +781,7 @@ async function runDossier(initial) {
   }
 }
 
-function startDossier({ taskId, user = {} } = {}) {
+function startDossier({ taskId, user = {}, imageModel = '' } = {}) {
   const userId = ownerId(user);
   let production = readProduction(userId, taskId);
   if (!production.approved_anchor?.image_url) {
@@ -790,6 +794,7 @@ function startDossier({ taskId, user = {} } = {}) {
   if (activeJobs.has(key) || ['queued', 'running'].includes(production.dossier_job?.status)) {
     return { production, accepted: false, duplicate: true };
   }
+  production = saveProduction({ ...production, image_model: String(imageModel || '').slice(0, 220) });
   production = updateJob(production, 'dossier', {
     id: `person_dossier_job_${uuidv4()}`,
     status: 'queued',
@@ -913,6 +918,8 @@ async function runActionAssets(initial, contracts) {
         requireReferences: true,
         inputFidelity: 'high',
         clientRequestId: `${production.task_id}:action:${contract.shot_index}:r${revision}`,
+        imageModel: production.image_model || 'auto',
+        singleAttempt: true,
       });
       assets.push({
         id: `action_asset_${uuidv4()}`,
@@ -956,7 +963,7 @@ async function runActionAssets(initial, contracts) {
   }
 }
 
-function startActionAssets({ taskId, user = {}, storyboard = {} } = {}) {
+function startActionAssets({ taskId, user = {}, storyboard = {}, imageModel = '' } = {}) {
   const userId = ownerId(user);
   let production = readProduction(userId, taskId);
   if (production.dossier?.status !== 'approved' || !production.approved_anchor?.image_url) {
@@ -978,6 +985,7 @@ function startActionAssets({ taskId, user = {}, storyboard = {} } = {}) {
   if (activeJobs.has(key) || ['queued', 'running'].includes(production.action_job?.status)) {
     return { production, accepted: false, duplicate: true };
   }
+  production = saveProduction({ ...production, image_model: String(imageModel || '').slice(0, 220) });
   production = updateJob(production, 'action', {
     id: `person_action_job_${uuidv4()}`,
     status: 'queued',

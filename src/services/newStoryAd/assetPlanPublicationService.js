@@ -5,6 +5,7 @@ const storage = require('./storageService');
 const contentSkill = require('./contentSkillService');
 const storySceneCoverage = require('./storySceneCoverageService');
 const taskStateAudit = require('./taskStateAuditService');
+const systemicMigration = require('./systemicMigrationService');
 const authorityLifecycle = require('./authorityLifecycleService');
 const releaseBundle = require('../storyAdReleaseBundleService');
 
@@ -380,6 +381,11 @@ function migrateCompatibleRelease(taskId, {
     scene_plan_authority: ownedDomain === 'scene_plan',
     allow_quarantined_billing_unknown: true,
   };
+  // Old releases could leave a terminal model_call with unknown billing but
+  // without a checkpoint/generation unit. It has no user-visible failed item
+  // and cannot be retried safely. Quarantine that orphaned attempt internally
+  // before release promotion; active provider attempts remain hard blockers.
+  const legacyBillingQuarantine = systemicMigration.quarantineInactiveUnknownModelBillingForTask(taskId);
   // This migration is scoped to one task. Reading the whole SQLite database
   // makes the Python bridge serialize every historical payload and can exceed
   // spawnSync's buffer before the write transaction even begins.
@@ -459,6 +465,7 @@ function migrateCompatibleRelease(taskId, {
     from_bundle_id: compatibility.from_bundle_id,
     to_bundle_id: compatibility.to_bundle_id,
     reason: clean(reason),
+    legacy_billing_quarantined: Number(legacyBillingQuarantine.quarantined || 0),
     migrated_at: migratedAt,
   };
   // The storage batch is a real SQLite transaction (or one atomic JSON batch),

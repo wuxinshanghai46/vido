@@ -257,22 +257,16 @@ async function generateDetailRows({
               filename: `${detailKind}_${taskId}_${assetId}_${spec.key}_r${revision}`,
               aspectRatio: spec.aspectRatio || '4:3',
               resolution: '2K',
-              imageModel: 'gpt-image-2',
+              imageModel: profile.generation_settings?.model || profile.generationSettings?.model || 'auto',
               referenceImages: reference?.image_url ? [reference.image_url] : [],
               requireReferences: Boolean(reference?.image_url),
               inputFidelity: 'high',
-              // 配饰是人物完整档案的必需证据；首个供应商审核拒绝时允许媒体适配器
-              // 切换到已配置的备用图片路由并使用 auditSafePrompt，而不是让整个人物分支失败。
-              singleAttempt: false,
+              singleAttempt: true,
               clientRequestId: checkpointKey,
               onSubmitting: controls.onSubmitting,
               onSubmitted: controls.onSubmitted,
             });
           } catch (error) {
-            if (isSafeProviderAuditRecovery(error)) {
-              const recovered = await localDetailFallback(1);
-              if (recovered) return recovered;
-            }
             throw error;
           }
         }

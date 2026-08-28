@@ -480,9 +480,9 @@ export function createProjectStore() {
     set({ bundle: null, bundleSections: [], saving: false, error: '', progressRevision: '' });
   }
 
-  async function videoPreflight(mode = 'economy') {
+  async function videoPreflight(mode = 'economy', modelRoute = '') {
     const taskId = state.bundle?.project?.id;
-    const data = await request(`/api/new-story-ad/tasks/${encodeURIComponent(taskId)}/video/preflight?mode=${encodeURIComponent(mode)}`);
+    const data = await request(`/api/new-story-ad/tasks/${encodeURIComponent(taskId)}/video/preflight?mode=${encodeURIComponent(mode)}&video_model_route=${encodeURIComponent(modelRoute)}`);
     return data.preflight;
   }
 
@@ -494,7 +494,7 @@ export function createProjectStore() {
       cost_plan_fingerprint: cost.fingerprint || '',
       confirmed_cost_limit_rmb: Number(cost.maximum_cost_rmb || 0),
       complexity_review_confirmed: options.complexity_review_confirmed === true,
-      visual_only: options.visual_only === true,
+      visual_only: options.visual_only === true, video_model_route: options.video_model_route || '',
     });
   }
 

@@ -3,6 +3,7 @@ function registerPropRoutes(router, {
   taskForReq,
   queueTaskStage,
   propAssetService,
+  mediaModelSelection,
 }) {
   router.get('/tasks/:id/prop-assets', asyncRoute(async (req, res) => {
     taskForReq(req);
@@ -15,7 +16,7 @@ function registerPropRoutes(router, {
 
   router.post('/tasks/:id/prop-assets', asyncRoute(async (req, res) => {
     taskForReq(req);
-    const body = req.body || {};
+    const body = mediaModelSelection.applySelection('new_story_ad.prop_dossier_atlas', req.body || {});
     const propId = String(body.id || body.prop_id || body.propId || body.name || 'prop')
       .replace(/[^a-z0-9._-]/ig, '_')
       .slice(0, 100);

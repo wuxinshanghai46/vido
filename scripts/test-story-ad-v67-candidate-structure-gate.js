@@ -12,6 +12,7 @@ const routeFile = path.join(root, 'src/routes/newStoryAd.js');
 const source = fs.readFileSync(routeFile, 'utf8');
 const taskUpdateSource = fs.readFileSync(path.join(root, 'src/routes/newStoryAd/taskUpdateRoute.js'), 'utf8');
 const billingRoutesSource = fs.readFileSync(path.join(root, 'src/routes/newStoryAd/visualAssetBillingRoutes.js'), 'utf8');
+const personMediaRoutesSource = fs.readFileSync(path.join(root, 'src/routes/newStoryAd/personMediaRoutes.js'), 'utf8');
 const personPlanRoutesSource = fs.readFileSync(path.join(root, 'src/routes/newStoryAd/personPlanGenerationRoute.js'), 'utf8');
 const lines = source.replace(/\r?\n$/, '').split(/\r?\n/).length;
 
@@ -32,6 +33,7 @@ function routeMatches(value) {
 const rootRoutes = routeMatches(source);
 const taskUpdateRoutes = routeMatches(taskUpdateSource);
 const billingRoutes = routeMatches(billingRoutesSource);
+const personMediaRoutes = routeMatches(personMediaRoutesSource);
 const personPlanRoutes = routeMatches(personPlanRoutesSource);
 assert.deepEqual(taskUpdateRoutes.map(item => item.signature), ['PUT /tasks/:id'],
   '独立任务更新模块必须且只能注册一次 PUT /tasks/:id');
@@ -46,6 +48,7 @@ assert.deepEqual(billingRoutes.map(item => item.signature), [
 const registrations = [
   { index: source.indexOf('registerTaskUpdateRoute(router'), routes: taskUpdateRoutes },
   { index: source.indexOf('registerVisualAssetBillingRoutes(router'), routes: billingRoutes },
+  { index: source.indexOf('registerPersonMediaRoutes(router'), routes: personMediaRoutes },
   { index: source.indexOf('registerPersonPlanGenerationRoute(router'), routes: personPlanRoutes },
 ].sort((a, b) => a.index - b.index);
 assert(registrations.every(item => item.index >= 0), '根路由必须在原顺序位置注册独立路由模块');
@@ -57,8 +60,8 @@ for (const registration of registrations) {
   cursor = registration.index;
 }
 routeSignatures.push(...rootRoutes.filter(item => item.index > cursor).map(item => item.signature));
-assert.equal(routeSignatures.length, 90,
-  '当前 90 个权威路由必须包含统一场景修复入口、参考链接重新导入、逐场景提示词编辑与确认，不能丢失或重复其它路由');
+assert.equal(routeSignatures.length, 91,
+  '当前 91 个权威路由必须包含媒体模型目录、统一场景修复、参考链接重新导入与逐场景提示词编辑，不能丢失或重复其它路由');
 assert.equal(routeSignatures.filter(value => value === 'PUT /tasks/:id/scene-prompts/:sceneId').length, 1,
   '逐场景提示词编辑路由必须且只能注册一次');
 assert.equal(routeSignatures.filter(value => value === 'POST /tasks/:id/scene-prompts/:sceneId/confirm').length, 1,
@@ -85,7 +88,7 @@ assert.equal(routeSignatures.filter(value => value === 'POST /tasks/:id/producti
   '统一制作图谱执行路由必须且只能注册一次');
 assert.equal(
   crypto.createHash('sha256').update(JSON.stringify(routeSignatures)).digest('hex'),
-  'dce8e50daa253cd80767ac10277373cf2c4a827d33781628e37c6bc7d946dfc1',
+  '8e1c64edc015fca2d79b467fd68364bba384ebb3d279e7c13b3540a619bd8498',
   '当前合并路由方法、路径及注册顺序必须与审计签名一致',
 );
 
@@ -128,5 +131,5 @@ console.log(JSON.stringify({
   full_platform_gates: fullPlatformGates,
   route_lines: lines,
   root_route_count: routeSignatures.length,
-  route_signature_sha256: 'dce8e50daa253cd80767ac10277373cf2c4a827d33781628e37c6bc7d946dfc1',
+  route_signature_sha256: '8e1c64edc015fca2d79b467fd68364bba384ebb3d279e7c13b3540a619bd8498',
 }));

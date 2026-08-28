@@ -81,14 +81,15 @@ function updatePersonPlanProgress(storage, taskId, generationId, update = {}) {
 }
 
 function registerPersonPlanGenerationRoute(router, deps = {}) {
-  const { asyncRoute, queueTaskStage, userFromReq, service, storage, generationPermit, generateAndCommitSubjectAssets } = deps;
+  const { asyncRoute, queueTaskStage, userFromReq, service, storage, generationPermit, generateAndCommitSubjectAssets, mediaModelSelection } = deps;
   router.post('/tasks/:id/person-plan', asyncRoute(async (req, res) => {
     const user = userFromReq(req), userId = String(user.id || user.userId || user.username || 'anonymous');
+    req.body = mediaModelSelection.applySelection('new_story_ad.person_sheet', req.body || {});
     return queueTaskStage(req, res, 'person_plan', async job => {
       const initial = currentPersonGenerationBody({ taskId: req.params.id, input: req.body || {}, service, storage });
       const personTotal = Math.max(1, initial.cast_profiles.length);
       const completedPeople = new Set();
-      updatePersonPlanProgress(storage, req.params.id, job.generationId, { percent: 3, total: personTotal, completed: 0, phase: 'planning', message: '正在并行启动独立人物方案' });
+      updatePersonPlanProgress(storage, req.params.id, job.generationId, { percent: 3, total: personTotal, completed: 0, phase: 'planning', message: '正在依次建立人物方案' });
       const personPlan = await service.updatePersonPlan(req.params.id, {
         generation_id: job.generationId,
         person_plan_authority: true,

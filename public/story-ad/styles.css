@@ -412,3 +412,8 @@ body.story-dialog-open { overflow: hidden; }
 @media (max-width: 900px) {
   .project-query { grid-template-columns: 1fr; }
 }
+.generation-model-picker{display:inline-flex;align-items:center;gap:8px;min-width:0;padding:4px 6px;border:1px solid var(--border,#2a3040);border-radius:10px;background:rgba(18,21,29,.92);font-size:12px;color:var(--muted,#98a0b3)}
+.generation-model-picker span{white-space:nowrap}
+.generation-model-picker select{max-width:240px;min-width:150px;border:0;background:transparent;color:var(--text,#f4f6fb);font:inherit;outline:none;cursor:pointer}
+.generation-model-picker select option{background:#171a22;color:#f4f6fb}
+@media(max-width:760px){.generation-model-picker{width:100%;justify-content:space-between}.generation-model-picker select{max-width:68%;min-width:0}}

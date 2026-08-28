@@ -1,6 +1,7 @@
 import { request } from '../api.js?v=20260828-production-v256';
 import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260828-production-v256';
 import { bindMediaLightbox } from './mediaLightbox.js?v=20260828-production-v256';
+import { bindGenerationModelPicker, loadGenerationModelPicker } from './generationModelPicker.js?v=20260828-production-v256';
 
 export function friendlyBindings(bundle = {}, shot = {}) {
   const assets = bundle.assets || {};
@@ -198,6 +199,7 @@ export async function mount(host, context) {
     ? '这是已完成项目的历史结果。旧版本缺少的新结构字段不会在只读查看时继续报错；只有明确重做本步骤时才会重新校验。'
     : '';
   let sketchBatch = bundle?.storyboard?.sketch_batch || null;
+  const sketchModelPicker = await loadGenerationModelPicker(bundle.project.id, 'new_story_ad.storyboard_sketch', { label: '线稿模型' });
   const sketchBatchActive = ['queued', 'running'].includes(String(sketchBatch?.status || ''));
   host.innerHTML = `
     <section class="view-head">
@@ -226,12 +228,13 @@ export async function mount(host, context) {
       })}</div>`}
     </section>
     <section data-board-panel="sketches" hidden>
-      ${shots.length ? `<div class="storyboard-stage-bar"><div><b>第二步 · 线稿分镜</b><span>${sketchGate.ready ? `文字分镜已审核通过 ${shots.length} 镜；当前线稿 ${generatedSketchCount}/${shots.length}，确认或跳过 ${resolvedSketchCount}/${shots.length}。` : escapeHtml(gateReason)}</span></div>${missingSketchCount ? `<button class="btn primary" type="button" data-generate-sketch-batch ${sketchBatchActive || !sketchGate.ready ? 'disabled' : ''}>${sketchBatchActive ? '线稿批次生成中' : `批量生成全部缺失线稿（${missingSketchCount}）`}</button>` : `<div class="storyboard-stage-actions"><span class="status-tag is-success">线稿已全部生成</span><button class="btn" type="button" data-generate-sketch-batch data-regenerate-all="true" ${sketchBatchActive || !sketchGate.ready ? 'disabled' : ''}>${sketchBatchActive ? '线稿批次生成中' : `批量重生成全部线稿（${shots.length}）`}</button></div>`}</div>` : ''}
+      ${shots.length ? `<div class="storyboard-stage-bar"><div><b>第二步 · 线稿分镜</b><span>${sketchGate.ready ? `文字分镜已审核通过 ${shots.length} 镜；当前线稿 ${generatedSketchCount}/${shots.length}，确认或跳过 ${resolvedSketchCount}/${shots.length}。` : escapeHtml(gateReason)}</span></div><div class="storyboard-stage-actions">${sketchModelPicker.html}${missingSketchCount ? `<button class="btn primary" type="button" data-generate-sketch-batch ${sketchBatchActive || !sketchGate.ready ? 'disabled' : ''}>${sketchBatchActive ? '线稿批次生成中' : `批量生成全部缺失线稿（${missingSketchCount}）`}</button>` : `<span class="status-tag is-success">线稿已全部生成</span><button class="btn" type="button" data-generate-sketch-batch data-regenerate-all="true" ${sketchBatchActive || !sketchGate.ready ? 'disabled' : ''}>${sketchBatchActive ? '线稿批次生成中' : `批量重生成全部线稿（${shots.length}）`}</button>`}</div></div>` : ''}
       <div data-sketch-batch-host>${sketchBatchMarkup(sketchBatch, missingSketchCount || generatedSketchCount)}</div>
       ${shots.length ? `<div class="storyboard-sketch-grid">${visibleShots.map((shot, index) => sketchCard(shot, sketchByShot.get(Number(shot.shot_index || shot.index || pageStart + index + 1)) || {}, pageStart + index, sketchGate, bundle)).join('')}</div>${pageNav}` : `<div class="card">${emptyState({ title: '没有可确认的镜头', body: '生成文字分镜后再处理线稿。' })}</div>`}
     </section>`;
 
   bindMediaLightbox(host);
+  const selectedSketchModel = bindGenerationModelPicker(host, sketchModelPicker);
 
   host.querySelectorAll('[data-board-tab]').forEach(button => {
     button.addEventListener('click', () => {
@@ -331,7 +334,7 @@ export async function mount(host, context) {
       sketchBatchPollTimer = setTimeout(pollSketchBatch, 500);
       const data = await request(`/api/story-ad/projects/${encodeURIComponent(bundle.project.id)}/sketches/generate-batch`, {
         method: 'POST',
-        body: { confirmed: true, regenerate_all: regenerateAll, client_request_id: globalThis.crypto?.randomUUID?.() || `${Date.now()}` },
+        body: { confirmed: true, regenerate_all: regenerateAll, image_model: selectedSketchModel(), client_request_id: globalThis.crypto?.randomUUID?.() || `${Date.now()}` },
         timeoutMs: 45 * 60 * 1000,
       });
       await finishSketchBatch(data.progress || {
@@ -478,7 +481,7 @@ export async function mount(host, context) {
         setButtonBusy(button, true, '生成中…', { elapsed: true });
         const data = await request(`/api/story-ad/projects/${encodeURIComponent(bundle.project.id)}/sketches/${shotIndex}/generate`, {
           method: 'POST',
-          body: { confirmed: true },
+          body: { confirmed: true, image_model: selectedSketchModel() },
           timeoutMs: 360000,
         });
         sketchByShot.set(shotIndex, data.sketch);

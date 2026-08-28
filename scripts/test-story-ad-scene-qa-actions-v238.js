@@ -142,7 +142,7 @@ async function testBatchBinding() {
     vm.runInNewContext(`${executable('public/story-ad/views/sceneBatchActionPlan.js')}\nglobalThis.__plan=buildSceneBatchActionPlan;`, sandbox);
     sandbox.buildSceneBatchActionPlan = sandbox.__plan;
     vm.runInNewContext(`${executable('public/story-ad/views/sceneCardInteractions.js')}\nglobalThis.__bind=bindSceneCards;`, sandbox);
-    sandbox.__bind(host, { bundle: { project: { id: 'task-batch' }, revisions: { content: 1 }, assets: { scenes } }, store: {
+    sandbox.__bind(host, { selectedSceneImageModel: () => 'mock/selected', bundle: { project: { id: 'task-batch' }, revisions: { content: 1 }, assets: { scenes } }, store: {
       beginStageSubmission() {},
       async runStage(pathname, body) { requests.push({ pathname, body }); return { accepted: true }; },
     }, async refreshShell() {} });
@@ -260,6 +260,8 @@ async function main() {
     routes.indexOf("router.post('/tasks/:id/scene-assets/:sceneId/fix'"),
     routes.indexOf("router.get('/tasks/:id/progress'"),
   );
+  assert.match(fixRoute, /const suppliedBody = req\.body \|\| \{\};[\s\S]*assertCurrentPrompt\([^)]*suppliedBody\)/,
+    'QA-only scene fix must validate the supplied request before any paid-model selection is required');
   assert.match(fixRoute, /const qaOnly = plan\.action === 'reverify'/);
   assert.match(fixRoute, /const stage = qaOnly \? 'scene_qa' : 'scene_asset'/,
     'QA-only reverify must have an independent job stage from paid scene image repair');

@@ -285,6 +285,7 @@ async function generateSketch(taskId, shotIndex, options = {}, dependencies = {}
     filename: `storyboard_sketch_${taskId}_${numericIndex}_${Date.now()}`,
     aspectRatio: clean(context.output_ratio || '9:16', 20),
     resolution: '1K',
+    imageModel: options.image_model || options.imageModel || 'auto',
     singleAttempt: true,
     clientRequestId: clean(options.client_request_id || uuidv4(), 120),
     shotIndex: numericIndex - 1,
@@ -388,6 +389,7 @@ async function generateSketchBatch(taskId, options = {}, dependencies = {}) {
         confirmed: true,
         batch_owner: taskId,
         client_request_id: `${batchId}:${shotIndex}`,
+        image_model: options.image_model || options.imageModel,
       }, dependencies);
       completed += 1;
       saveBatchProgress(taskId, {
