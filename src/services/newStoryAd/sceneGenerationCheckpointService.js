@@ -154,6 +154,90 @@ function checkpointExpired(checkpoint = {}) {
   return updated > 0 && Date.now() - updated > CHECKPOINT_TTL_MS;
 }
 
+function cloneJson(value, fallback) {
+  try { return JSON.parse(JSON.stringify(value)); } catch (_) { return fallback; }
+}
+
+function checkpointAttemptId(checkpoint = {}) {
+  if (!checkpoint || typeof checkpoint !== 'object') return 'current';
+  if (checkpoint.attempt_id) return String(checkpoint.attempt_id);
+  return `legacy_${shortHash([
+    checkpoint.task_id,
+    checkpoint.scene_id,
+    checkpoint.input_fingerprint,
+    checkpoint.candidate_revision,
+    checkpoint.created_at,
+  ].join('|'), 20)}`;
+}
+
+function immutableAttemptSnapshot(checkpoint = {}) {
+  const snapshot = {
+    attempt_id: checkpointAttemptId(checkpoint),
+    input_fingerprint: String(checkpoint.input_fingerprint || ''),
+    candidate_revision: Math.max(1, Number(checkpoint.candidate_revision || 1) || 1),
+    status: String(checkpoint.status || ''),
+    view_keys: Array.isArray(checkpoint.view_keys) ? [...checkpoint.view_keys] : [],
+    views: cloneJson(checkpoint.views || {}, {}),
+    retry_budget: cloneJson(checkpoint.retry_budget || {}, {}),
+    created_at: checkpoint.created_at || '',
+    updated_at: checkpoint.updated_at || '',
+    invalidated_at: checkpoint.invalidated_at || '',
+    invalidated_reason: checkpoint.invalidated_reason || '',
+  };
+  snapshot.attempt_digest = inputFingerprint(snapshot);
+  return snapshot;
+}
+
+function nextAttemptHistory(checkpoint = {}) {
+  if (!checkpoint || typeof checkpoint !== 'object') return [];
+  const previous = Array.isArray(checkpoint.attempt_history)
+    ? cloneJson(checkpoint.attempt_history, [])
+    : [];
+  const snapshot = immutableAttemptSnapshot(checkpoint);
+  if (previous.some(attempt => attempt?.attempt_id === snapshot.attempt_id
+    && attempt?.attempt_digest === snapshot.attempt_digest)) return previous;
+  return [...previous, snapshot];
+}
+
+function billingReviewCandidates(checkpoint = {}, taskId = '', sceneId = '') {
+  const rows = [];
+  const seen = new Set();
+  const append = (views = {}, attemptId = 'current') => {
+    Object.entries(views || {}).forEach(([key, view]) => {
+      if (!requiresBillingReview(view)) return;
+      const identity = String(view.submission_id || '')
+        ? `submission:${String(view.submission_id)}`
+        : (String(view.generation_id || '')
+          ? `generation:${String(view.generation_id)}`
+          : (String(view.provider_task_id || '')
+            ? `provider_task:${String(view.provider_task_id)}`
+            : (String(view.provider_request_id || '')
+              ? `provider_request:${String(view.provider_request_id)}`
+              : `${attemptId}:${key}`)));
+      if (seen.has(identity)) return;
+      seen.add(identity);
+      const reviewKey = retryReviewKey(taskId, sceneId, key);
+      rows.push({
+        key,
+        generation_id: String(view.generation_id || ''),
+        submission_id: String(view.submission_id || ''),
+        error_code: String(view.error_code || ''),
+        provider_request_id: String(view.provider_request_id || ''),
+        provider_task_id: String(view.provider_task_id || ''),
+        failed_at: view.failed_at || '',
+        review_key: reviewKey,
+        authorized: hasRetryAuthorization(view, reviewKey),
+        view,
+      });
+    });
+  };
+  append(checkpoint?.views, checkpointAttemptId(checkpoint));
+  [...(Array.isArray(checkpoint?.attempt_history) ? checkpoint.attempt_history : [])]
+    .reverse()
+    .forEach(attempt => append(attempt?.views, attempt?.attempt_id || 'history'));
+  return rows;
+}
+
 function hasUnknownBillingRisk(view = {}) {
   if (view?.status !== 'failed') return false;
   return view.billing_state === 'unknown'
@@ -256,19 +340,7 @@ function open({
 } = {}) {
   const kind = outputKind(sceneId);
   const existing = storage.getOutput(taskId, kind);
-  const unknownBillingViews = Object.entries(existing?.views || {})
-    .filter(([, view]) => requiresBillingReview(view))
-    .map(([key, view]) => ({
-      key,
-      generation_id: String(view.generation_id || ''),
-      submission_id: String(view.submission_id || ''),
-      error_code: String(view.error_code || ''),
-      provider_request_id: String(view.provider_request_id || ''),
-      provider_task_id: String(view.provider_task_id || ''),
-      failed_at: view.failed_at || '',
-      review_key: retryReviewKey(taskId, sceneId, key),
-      authorized: hasRetryAuthorization(view, retryReviewKey(taskId, sceneId, key)),
-    }));
+  const unknownBillingViews = billingReviewCandidates(existing, taskId, sceneId);
   if (unknownBillingViews.length === 1 && acknowledgeBillingUnknown === true && !unknownBillingViews[0].authorized) {
     authorizeRetry(existing, unknownBillingViews[0].key, {
       acceptDuplicateChargeRisk: true,
@@ -325,15 +397,22 @@ function open({
     cleanupUnpublishedFiles(existing);
   }
 
+  const attemptHistory = existing ? nextAttemptHistory(existing) : [];
+  const carriedAuthorizedViews = Object.fromEntries(unknownBillingViews
+    .filter(item => item.authorized && existing?.views?.[item.key] === item.view)
+    .map(item => [item.key, cloneJson(item.view, {})]));
+
   const checkpoint = {
     schema_version: CHECKPOINT_SCHEMA_VERSION,
+    attempt_id: crypto.randomUUID(),
     task_id: String(taskId),
     scene_id: String(sceneId),
     input_fingerprint: String(fingerprint),
     candidate_revision: Math.max(1, Number(candidateRevision || 1) || 1),
     status: 'running',
-    view_keys: [...new Set(viewKeys)],
-    views: {},
+    view_keys: [...new Set([...viewKeys, ...Object.keys(carriedAuthorizedViews)])],
+    views: carriedAuthorizedViews,
+    attempt_history: attemptHistory,
     retry_budget: {
       max_extra: Math.max(0, Number(retryBudget?.maxExtra ?? retryBudget?.max_extra ?? 0) || 0),
       used_extra: Math.max(0, Number(retryBudget?.usedExtra ?? retryBudget?.used_extra ?? 0) || 0),

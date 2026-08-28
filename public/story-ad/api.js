@@ -153,6 +153,14 @@ async function refreshAuth() {
 
 function errorMessage(data, status) {
   const raw = String(data?.error || data?.message || data?.code || '').trim();
+  const code = String(data?.code || '').trim().toUpperCase();
+  if (code === 'GENERATION_ACTIVE_PLAN_REQUIRED'
+    || /Active Plan|active_plan|person_plan_stale|scene_plan_stale|bundle_mismatch|input_fingerprint_mismatch|content_revision_mismatch/i.test(raw)) {
+    return '当前项目的生成版本正在同步，或已有任务正在处理。请等待当前操作结束并刷新页面后再试；本次没有提交新的模型调用。';
+  }
+  if (/SCENE_(?:VISUAL_)?QA|VISION_QA|视觉模型全部失败|PROVIDER_RESPONSE_INVALID|(?:^|[\s:;])RATE_LIMIT(?:$|[\s:;])|(?:smscrw|webang-maas|zhipu|deyunai)\//i.test(`${code} ${raw}`)) {
+    return '场景图片已保留，但审核服务暂时没有完成。可以稍后重新审核；重新审核不会重新生成图片。';
+  }
   if (/[\u3400-\u9fff]/.test(raw)) return raw;
   if (status === 401) return '登录状态已失效，请重新登录。';
   if (status === 403) return '当前账号没有执行此操作的权限。';

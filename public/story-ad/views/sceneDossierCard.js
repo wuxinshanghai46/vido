@@ -127,13 +127,51 @@ function qaRows(item = {}) {
   ].filter(([, pass]) => pass !== undefined && pass !== null).map(([label, pass]) => ({ label, pass, reasons: [] }));
 }
 
+const QA_SERVICE_FAILURE = /视觉模型全部失败|VISION_QA|PROVIDER_RESPONSE_INVALID|RATE_LIMIT|(?:smscrw|webang-maas|zhipu|deyunai)[/]/i;
+
+export function publicSceneQaReason(value = '') {
+  const reason = text(value);
+  if (!reason) return '';
+  if (QA_SERVICE_FAILURE.test(reason)) return '审核服务暂时没有返回有效结论；场景图片已保留，可以稍后重新审核。';
+  if (/Active Plan|active_plan|person_plan_stale|scene_plan_stale|bundle_mismatch/i.test(reason)) {
+    return '当前项目的生成版本正在同步，或已有任务正在处理；请等待后刷新重试。';
+  }
+  return reason;
+}
+
+export function sceneQaPublicState(item = {}) {
+  const rawReasons = [
+    item.qa?.error,
+    ...list(item.qa?.reasons),
+    ...list(item.repair_plan?.reasons),
+  ].map(text).filter(Boolean);
+  const serviceUnavailable = rawReasons.some(reason => QA_SERVICE_FAILURE.test(reason));
+  const action = text(item.repair_plan?.action);
+  if (serviceUnavailable) return {
+    kind: 'service_unavailable',
+    title: 'QA 服务暂时不可用，图片已保留',
+    message: '这不是图片内容被判失败。稍后可重新审核，图片调用 0。',
+  };
+  if (action === 'reverify') return {
+    kind: 'evidence_pending',
+    title: 'QA 尚未定位到具体图片',
+    message: '先重新审核取得逐图证据；不会重新生成图片。',
+  };
+  if (['regenerate_failed_views', 'rebuild_atlas', 'regenerate_full_scene'].includes(action)) return {
+    kind: 'content_failed',
+    title: '场景内容质量未通过',
+    message: '已定位到需要补图或重建的内容；其余成功图片继续保留。',
+  };
+  return { kind: 'unknown', title: '', message: '' };
+}
+
 export function sceneQaFailureDetails(item = {}) {
   const failedChecks = qaRows(item).filter(row => row.pass === false);
   const reasons = [
     ...failedChecks.flatMap(row => list(row.reasons)),
     ...list(item.repair_plan?.reasons),
     ...list(item.qa?.reasons),
-  ].map(text).filter(Boolean);
+  ].map(publicSceneQaReason).filter(Boolean);
   return {
     labels: [...new Set(failedChecks.map(row => text(row.label)).filter(Boolean))],
     reasons: [...new Set(reasons)].slice(0, 6),
@@ -144,6 +182,7 @@ export function renderSceneCoverCard(item = {}) {
   const dossier = normalizeSceneDossier(item);
   const master = dossier.views.master;
   const qaFailure = sceneQaFailureDetails(item);
+  const qaPublic = sceneQaPublicState(item);
   return `<div class="scene-cover-board is-${dossier.state}" aria-label="${escapeHtml(item.name || '场景')}场景资产摘要">
     <div class="scene-cover-visual">${master?.image_url
       ? mediaPreview(master, { label: `${item.name || '场景'} · 主视总览`, width: 960, zoomWidth: 1600, symbol: '场景主视', zoomable: true, zoomGroup: `scene-cover-${item.id || 'current'}` })
@@ -152,7 +191,7 @@ export function renderSceneCoverCard(item = {}) {
     </div>
     <div class="scene-cover-slots" aria-label="五类场景证据完整度">${SCENE_VIEW_ORDER.map(key => `<span class="is-${dossier.views[key]?.image_url ? 'complete' : dossier.viewStatuses[key]?.state || 'missing'}"><i aria-hidden="true"></i>${escapeHtml(SCENE_VIEW_LABELS[key])}</span>`).join('')}</div>
     ${sceneRuntimeFailureMarkup({ ...item, completed_view_keys: SCENE_VIEW_ORDER.filter(key => dossier.views[key]?.image_url) })}
-    ${dossier.state === 'conflict' ? `<div class="scene-cover-qa-failure" role="status"><b>未通过：${escapeHtml(qaFailure.labels.join('、') || '一致性 QA')}</b>${qaFailure.reasons.length ? `<ul>${qaFailure.reasons.slice(0, 3).map(reason => `<li>${escapeHtml(reason)}</li>`).join('')}</ul>` : '<span>尚无可定位的逐图证据；点击“修复未通过项”后，系统会先定位问题，再只修复对应图片并自动复核。</span>'}</div>` : ''}
+    ${qaPublic.kind === 'service_unavailable' ? `<div class="scene-cover-qa-failure is-service-unavailable" role="status"><b>${escapeHtml(qaPublic.title)}</b><span>${escapeHtml(qaPublic.message)}</span></div>` : (dossier.state === 'conflict' ? `<div class="scene-cover-qa-failure" role="status"><b>${escapeHtml(qaPublic.title || `未通过：${qaFailure.labels.join('、') || '一致性 QA'}`)}</b>${qaFailure.reasons.length ? `<ul>${qaFailure.reasons.slice(0, 3).map(reason => `<li>${escapeHtml(reason)}</li>`).join('')}</ul>` : `<span>${escapeHtml(qaPublic.message || '尚无可定位的逐图证据；请先重新审核，取得证据后只修复对应图片。')}</span>`}</div>` : '')}
   </div>`;
 }
 
@@ -166,6 +205,7 @@ export function renderSceneDossierCard(item = {}) {
   const lighting = evidenceGroup(rows, ['lighting']);
   const qa = qaRows(item);
   const qaFailure = sceneQaFailureDetails(item);
+  const qaPublic = sceneQaPublicState(item);
   const titleId = `scene-dossier-title-${text(item.id || 'current').replace(/[^a-z0-9_-]/ig, '-')}`;
   return `<section class="scene-dossier is-${dossier.state}" data-scene-dossier="${escapeHtml(item.id || '')}" aria-labelledby="${escapeHtml(titleId)}">
     <header class="scene-dossier-head"><div><small>完整场景档案卡 · 版本 ${escapeHtml(item.revision || 1)}</small><h2 id="${escapeHtml(titleId)}">${escapeHtml(item.name || '未命名场景')}</h2><p>${escapeHtml(item.story_purpose || item.description || '当前场景尚未填写剧情用途')}</p></div><div><span class="scene-dossier-status">${escapeHtml(statusText(dossier.state, dossier.completed))} · ${dossier.completed}/${dossier.total}</span><button class="btn small" type="button" data-export-scene-dossier>导出高清 PNG</button></div></header>
@@ -173,7 +213,7 @@ export function renderSceneDossierCard(item = {}) {
     <div class="scene-dossier-evidence-grid">${['reverse', 'interaction', 'detail'].map(key => viewSlot(item, dossier, key, { width: 960 })).join('')}</div>
     <div class="scene-dossier-lower"><div class="scene-dossier-layout">${viewSlot(item, dossier, 'layout', { width: 1400 })}</div><div class="scene-dossier-contract"><h3>场景视觉合同</h3><dl><div><dt>空间布局</dt><dd>${escapeHtml(spec.layout || spec.layoutText || '待补齐')}</dd></div><div><dt>材质与表面</dt><dd>${escapeHtml(spec.materials || spec.materialLightText || '待补齐')}</dd></div><div><dt>天气 / 时间 / 灯光</dt><dd>${escapeHtml([spec.weather, spec.time, spec.light].filter(Boolean).join(' · ') || '待补齐')}</dd></div><div><dt>互动与路线</dt><dd>${escapeHtml(spec.interaction || spec.interactionText || '待补齐')}</dd></div><div class="is-negative"><dt>禁止出现</dt><dd>${escapeHtml(spec.negative || spec.negativeText || '没有额外禁止项')}</dd></div></dl></div></div>
     <div class="scene-dossier-assets"><section><h3>固定空间与结构</h3><ul>${chips(structures)}</ul></section><section><h3>道具与摆放</h3><ul>${chips(props, '当前场景没有结构化道具摆放')}</ul></section><section><h3>材质与表面证据</h3><ul>${chips(materials)}</ul></section><section><h3>灯光证据</h3><ul>${chips(lighting, '灯光信息保留在上方视觉合同')}</ul></section></div>
-    <div class="scene-dossier-footer"><section><h3>一致性 QA</h3><div class="scene-dossier-qa">${qa.length ? qa.map(row => `<span class="is-${row.pass === true ? 'pass' : (row.pass === false ? 'fail' : 'unknown')}"><i aria-hidden="true"></i>${escapeHtml(row.label)}：${row.pass === true ? '通过' : (row.pass === false ? '未通过' : '待确认')}${row.pass === false && list(row.reasons).length ? `<small>${escapeHtml(list(row.reasons).slice(0, 3).join('；'))}</small>` : ''}</span>`).join('') : '<span class="is-unknown">尚无正式 QA 结论</span>'}</div>${qaFailure.labels.length && !qaFailure.reasons.length ? '<p class="scene-dossier-qa-guidance">当前审核没有返回可定位的逐图证据；“修复未通过项”会先定位，再执行一次有边界的定向修复并自动复核。</p>' : ''}</section><section><h3>生产引用</h3><p>${item.shot_refs?.length ? `用于 ${item.shot_refs.length} 个镜头：${escapeHtml(item.shot_refs.slice(0, 8).join('、'))}` : '尚未被分镜引用'} · 知识规则 ${escapeHtml(item.knowledge_policy?.rule_ids?.join('、') || '沿用任务快照')}</p><div class="scene-dossier-palette"><b>图片提取色</b><span>导出时从主视原图确定性取样，不伪造色彩合同。</span><div data-scene-dossier-palette aria-label="主视图颜色取样"></div></div></section></div>
+    <div class="scene-dossier-footer"><section><h3>一致性 QA</h3>${qaPublic.title ? `<p class="scene-dossier-qa-guidance is-${escapeHtml(qaPublic.kind)}"><b>${escapeHtml(qaPublic.title)}</b><br>${escapeHtml(qaPublic.message)}</p>` : ''}<div class="scene-dossier-qa">${qa.length ? qa.map(row => { const safeReasons = list(row.reasons).map(publicSceneQaReason).filter(Boolean); return `<span class="is-${row.pass === true ? 'pass' : (row.pass === false ? 'fail' : 'unknown')}"><i aria-hidden="true"></i>${escapeHtml(row.label)}：${row.pass === true ? '通过' : (row.pass === false ? '未通过' : '待确认')}${row.pass === false && safeReasons.length ? `<small>${escapeHtml(safeReasons.slice(0, 3).join('；'))}</small>` : ''}</span>`; }).join('') : '<span class="is-unknown">尚无正式 QA 结论</span>'}</div>${qaFailure.labels.length && !qaFailure.reasons.length ? '<p class="scene-dossier-qa-guidance">当前审核没有返回可定位的逐图证据；请先重新审核，取得证据后再执行有边界的定向补图。</p>' : ''}</section><section><h3>生产引用</h3><p>${item.shot_refs?.length ? `用于 ${item.shot_refs.length} 个镜头：${escapeHtml(item.shot_refs.slice(0, 8).join('、'))}` : '尚未被分镜引用'} · 知识规则 ${escapeHtml(item.knowledge_policy?.rule_ids?.join('、') || '沿用任务快照')}</p><div class="scene-dossier-palette"><b>图片提取色</b><span>导出时从主视原图确定性取样，不伪造色彩合同。</span><div data-scene-dossier-palette aria-label="主视图颜色取样"></div></div></section></div>
     <p class="scene-dossier-boundary">3D、360°、机位和路线继续使用页面下方“场景世界”，本档案卡只读取已有资产。</p>
   </section>`;
 }

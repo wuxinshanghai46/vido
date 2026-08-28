@@ -1789,12 +1789,28 @@ router.post('/tasks/:id/scene-assets/:sceneId/fix', asyncRoute(async (req, res) 
     request_key: String(body.request_key || body.requestKey || `${req.params.id}:scene_asset_fix:${req.params.sceneId}:${fixRevision}`).slice(0, 180),
   };
   req.body = authoritativeBody;
-  return queueTaskStage(req, res, 'scene_asset', job => sceneAssetService.fixSceneAsset(req.params.id, req.params.sceneId, {
-    ...authoritativeBody,
-    generation_id: job.generationId,
+  const qaOnly = plan.action === 'reverify';
+  const stage = qaOnly ? 'scene_qa' : 'scene_asset';
+  return queueTaskStage(req, res, stage, async job => {
+    if (qaOnly) {
+      const diagnosis = await sceneAssetService.reverifySceneAsset(req.params.id, req.params.sceneId);
+      const nextPlan = diagnosis.scene_asset?.repair_plan
+        || sceneAssetService.buildSceneRepairPlan(diagnosis.scene_asset || {});
+      return {
+        ...diagnosis,
+        fix_status: nextPlan.action === 'none'
+          ? 'verified_without_image_repair'
+          : 'reverified_without_image_repair',
+        provider_image_call_count: 0,
+      };
+    }
+    return sceneAssetService.fixSceneAsset(req.params.id, req.params.sceneId, {
+      ...authoritativeBody,
+      generation_id: job.generationId,
+    }, {
+      generationId: job.generationId,
+    });
   }, {
-    generationId: job.generationId,
-  }), {
     scopeId: req.params.sceneId,
     deadlineMs: 20 * 60 * 1000,
     failureContext: {

@@ -30,9 +30,34 @@ function worldText(scene = {}) {
     scene.story_purpose,
     spec.layout,
     spec.materials,
+    spec.interactionText,
+    spec.interaction_text,
     spec.interaction,
     spec.negative,
   ].map(value => clean(value, 1200)).join(' ');
+}
+
+function experienceContract(scene = {}) {
+  const spec = scene.scene_spec || scene.sceneSpec || {};
+  return {
+    ...(scene.scene_experience_contract || {}),
+    ...(scene.sceneExperienceContract || {}),
+    ...(spec.scene_experience_contract || {}),
+    ...(spec.sceneExperienceContract || {}),
+  };
+}
+
+function interactionText(scene = {}) {
+  const spec = scene.scene_spec || scene.sceneSpec || {};
+  return clean(
+    spec.interactionText
+      || spec.interaction_text
+      || spec.interaction
+      || scene.interactionText
+      || scene.interaction_text
+      || scene.interaction_summary,
+    900,
+  );
 }
 
 function sceneViews(scene = {}) {
@@ -94,7 +119,7 @@ function spatialModelAssets(scene = {}) {
  */
 function inferCapabilities(scene = {}) {
   const explicit = scene.capabilities || scene.scene_spec?.capabilities || {};
-  const contract = scene.scene_experience_contract || scene.scene_spec?.scene_experience_contract || {};
+  const contract = experienceContract(scene);
   const representation = clean(contract.representation || explicit.representation || 'physical', 40).toLowerCase();
   const extent = clean(contract.extent || explicit.extent || 'unspecified', 40).toLowerCase();
   const views = sceneViews(scene);
@@ -342,6 +367,14 @@ function historicalStoryboard(taskId, bundle = {}, worlds = []) {
 
 function characterWorldMatrix(bundle = {}, worlds = [], options = {}) {
   const people = list(bundle.assets?.people);
+  const plannedScenes = new Map(list(bundle.assets?.scenes)
+    .map(scene => [clean(scene.id || scene.scene_id, 120), scene]));
+  const castIntent = bundle.brief?.cast_intent
+    || bundle.brief?.brief_intake?.cast_intent
+    || bundle.cast_intent
+    || {};
+  const noHuman = clean(castIntent.decision, 40) === 'no_human'
+    || Number(castIntent.expected_people) === 0 && castIntent.status === 'explicit';
   const currentShots = list(bundle.storyboard?.shots);
   const historical = options.historical_storyboard || null;
   const shots = currentShots.length ? currentShots : list(historical?.payload);
@@ -360,29 +393,72 @@ function characterWorldMatrix(bundle = {}, worlds = [], options = {}) {
         return sameWorld && (!characterText || characterText.includes(person.name) || characterText.includes(person.profile?.displayName));
       });
       const personName = clean(person.name || person.profile?.displayName, 120);
+      const plannedScene = plannedScenes.get(world.id) || {};
+      const plannedInteraction = interactionText(plannedScene);
+      const plannedContract = experienceContract(plannedScene);
+      const plannedSpec = plannedScene.scene_spec || plannedScene.sceneSpec || {};
+      const explicitCharacterIds = [
+        ...list(plannedScene.character_ids),
+        ...list(plannedScene.cast_ids),
+        ...list(plannedScene.participant_ids),
+        ...list(plannedSpec.characterIds),
+        ...list(plannedSpec.character_ids),
+        ...list(plannedSpec.castIds),
+        ...list(plannedSpec.cast_ids),
+      ].map(value => clean(value?.id || value?.character_id || value, 120)).filter(Boolean);
+      const explicitCharacterNames = [
+        ...list(plannedScene.character_names),
+        ...list(plannedScene.cast_names),
+        ...list(plannedSpec.characterNames),
+        ...list(plannedSpec.character_names),
+        ...list(plannedSpec.participants),
+      ].map(value => clean(value?.name || value?.character_name || value?.actor || value?.character || value, 120)).filter(Boolean);
+      const anchorCharacterNames = [
+        ...list(plannedSpec.interactionAnchors),
+        ...list(plannedSpec.interaction_anchors),
+      ].map(value => clean(value?.character_name || value?.actor || value?.character, 120)).filter(Boolean);
+      const explicitPlanCharacter = explicitCharacterIds.includes(characterId)
+        || [...explicitCharacterNames, ...anchorCharacterNames].includes(personName)
+        || Boolean(personName && plannedInteraction.includes(personName));
+      const singlePersonPlanCharacter = !noHuman
+        && people.length === 1
+        && Boolean(plannedInteraction)
+        && (['single', 'background_only'].includes(clean(castIntent.decision, 40))
+          || plannedContract.actor_blocking_required === true
+          || /人物|角色|演员|出镜|走入|进入|触摸|拿起|展示|离开|person|actor|presenter/iu.test(plannedInteraction));
+      const interactionPlanMatch = explicitPlanCharacter || singlePersonPlanCharacter;
       const worldEvidence = clean([world.name, world.description, world.story_purpose].join(' '), 1500);
       const lookMatch = list(person.profile?.look_profiles).find(look => list(look.scene_ids).includes(world.id)
         || list(look.scene_names).some(name => worldEvidence.includes(clean(name, 120)))
         || (clean(look.story_state, 120) && worldEvidence.includes(clean(look.story_state, 120))));
-      const plannedMatch = Boolean(personName && worldEvidence.includes(personName)) || Boolean(lookMatch);
-      const defaultSuggested = plannedMatch || (people.length === 1 && worlds.length === 1);
+      const plannedMatch = Boolean(personName && worldEvidence.includes(personName)) || Boolean(lookMatch) || interactionPlanMatch;
+      const defaultSuggested = plannedMatch || (!noHuman && people.length === 1 && worlds.length === 1);
       const explicitPresence = clean(explicit?.presence, 30);
       const presence = explicitPresence || (matched.length ? 'confirmed' : (defaultSuggested ? 'suggested' : 'unassigned'));
+      const interactionCamera = list(world.cameras).find(camera => /interaction|actor|character|follow|人物|互动|跟随/u.test(clean([
+        camera.id, camera.name, camera.role, camera.movement,
+      ].join(' '), 600)));
       return {
         world_id: world.id,
         presence,
         shot_count: matched.length,
-        role: clean(explicit?.role || matched.map(shot => shot.action || shot.subject_action).filter(Boolean).join('；'), 260),
+        role: clean(explicit?.role
+          || matched.map(shot => shot.action || shot.subject_action).filter(Boolean).join('；')
+          || (interactionPlanMatch ? plannedInteraction : ''), 260),
         look_id: clean(explicit?.look_id || lookMatch?.id, 100),
         age_state_id: clean(explicit?.age_state_id || lookMatch?.age_state_id || person.profile?.age_states?.[0]?.id, 100),
         story_state_id: clean(explicit?.story_state_id || lookMatch?.story_state_id, 100),
         appearance_order: Math.max(0, finite(explicit?.appearance_order, 0)),
         entry_direction: clean(explicit?.entry_direction, 80), exit_direction: clean(explicit?.exit_direction, 80),
-        blocking: clean(explicit?.blocking, 260), camera_id: clean(explicit?.camera_id || world.cameras?.[0]?.id, 120),
-        source: explicitPresence ? 'manual' : (matched.length ? shotSource : (plannedMatch ? 'content_plan' : (defaultSuggested ? 'single_scene_default' : 'none'))),
+        blocking: clean(explicit?.blocking || (interactionPlanMatch ? plannedInteraction : ''), 260),
+        camera_id: clean(explicit?.camera_id || (interactionPlanMatch ? interactionCamera?.id : '') || world.cameras?.[0]?.id, 120),
+        source: explicitPresence ? 'manual' : (matched.length ? shotSource
+          : (interactionPlanMatch ? 'scene_plan_interaction'
+            : (plannedMatch ? 'content_plan' : (defaultSuggested ? 'single_scene_default' : 'none')))),
         reason: explicitPresence ? '用户已明确设置人物是否在该场景出场'
           : (matched.length ? `${shotSource === 'published_history' ? '来自历史已发布故事板' : '来自当前故事板'} ${matched.length} 个镜头`
-            : (plannedMatch ? '根据剧情文字、人物造型和场景阶段预先建议' : (defaultSuggested ? '当前只有一个人物和一个场景，默认建议出场' : '尚未在剧情文字或人工分配中确认'))),
+            : (interactionPlanMatch ? '来自场景方案中的人物动作、站位与可用机位要求'
+              : (plannedMatch ? '根据剧情文字、人物造型和场景阶段预先建议' : (defaultSuggested ? '当前只有一个人物和一个场景，默认建议出场' : '尚未在剧情文字或人工分配中确认')))),
       };
     }),
   }));

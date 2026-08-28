@@ -16,13 +16,25 @@ function checkpointBillingRows(outputs = [], taskId = '') {
   const normalizedTaskId = text(taskId);
   const found = [];
   const seen = new Set();
-  const add = (key, value = {}, outputKind = '') => {
+  const add = (key, value = {}, outputKind = '', identity = '', sourceLineage = 'current') => {
     const checkpointKey = text(key);
-    if (!checkpointKey || seen.has(checkpointKey)) return;
-    seen.add(checkpointKey);
+    const providerAttemptIdentity = text(value.submission_id)
+      ? `submission:${text(value.submission_id)}`
+      : (text(value.generation_id)
+        ? `generation:${text(value.generation_id)}`
+        : (text(value.provider_task_id)
+          ? `provider_task:${text(value.provider_task_id)}`
+          : (text(value.provider_request_id)
+            ? `provider_request:${text(value.provider_request_id)}`
+            : (text(value.platform_request_id) ? `platform_request:${text(value.platform_request_id)}` : ''))));
+    const identityKey = providerAttemptIdentity
+      ? `${text(outputKind)}:${providerAttemptIdentity}`
+      : text(identity || checkpointKey);
+    if (!checkpointKey || !identityKey || seen.has(identityKey)) return;
     const billing = text(value.billing_state).toLowerCase();
     const submission = text(value.provider_submission_state || value.submission_state || value.status).toLowerCase();
     if (billing !== 'unknown' && submission !== 'submitted_unknown') return;
+    seen.add(identityKey);
     found.push({
       id: `checkpoint:${checkpointKey}`,
       task_id: normalizedTaskId,
@@ -43,6 +55,7 @@ function checkpointBillingRows(outputs = [], taskId = '') {
         && Number(value.retry_authorization?.remaining_uses || 0) > 0,
       retry_authorization_key: text(value.retry_authorization?.checkpoint_key),
       source: 'generation_checkpoint',
+      source_lineage: sourceLineage,
       source_kind: outputKind,
       checkpoint_key: checkpointKey,
     });
@@ -62,6 +75,16 @@ function checkpointBillingRows(outputs = [], taskId = '') {
       } else if (kind.startsWith('scene_asset_checkpoint:')) {
         Object.entries(payload.views || {})
           .forEach(([key, value]) => add(`${kind}#${key}`, value, kind));
+        rows(payload.attempt_history).forEach((attempt, attemptIndex) => {
+          const attemptId = text(attempt?.attempt_id) || `legacy-${attemptIndex + 1}`;
+          Object.entries(attempt?.views || {}).forEach(([key, value]) => add(
+            `${kind}#${key}`,
+            value,
+            kind,
+            `${kind}@${attemptId}#${key}`,
+            'attempt_history',
+          ));
+        });
       }
     });
   return found;

@@ -80,6 +80,21 @@ function testProductResolverAndProjection() {
   assert.equal(historicalBundle.assets.products[0].id, 'legacy-product');
   assert.equal(historicalBundle.assets.products[0].image_url, '/legacy-product.png', '历史 context.assets 商品媒体必须恢复到商品卡');
 
+  const neutralTaskId = createTask('材料中性参考来源投影', '不锈钢材料表面');
+  const neutralContext = storage.getOutput(neutralTaskId, 'context');
+  storage.saveOutput(neutralTaskId, 'context', {
+    ...neutralContext,
+    product_presentation: { mode: 'material_surface', standalone_generation_supported: false },
+    product_asset: {
+      id: 'material-neutral-reference', type: 'product_material', image_url: '/neutral-reference.png',
+      source: 'new_story_ad_subject_reference_generator', reference_only: true, user_owned: false,
+    },
+  });
+  const neutralProduct = bundles.buildProjectBundle(neutralTaskId, { sections: 'assets', user }).assets.products[0];
+  assert.equal(neutralProduct.source, 'new_story_ad_subject_reference_generator', '前端必须拿到AI中性参考图来源');
+  assert.equal(neutralProduct.reference_only, true, '前端必须拿到仅参考标记，不能冒充真实材料样片');
+  assert.equal(neutralProduct.user_owned, false, 'AI中性参考图不得投影成用户自有样片');
+
   const emptyTaskId = createTask('无商品素材占位', '语义商品主题');
   const emptyBundle = bundles.buildProjectBundle(emptyTaskId, { sections: 'assets', user });
   assert.equal(emptyBundle.assets.products.length, 1, '无素材时仍保留语义商品占位');

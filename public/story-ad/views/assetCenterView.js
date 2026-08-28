@@ -28,6 +28,42 @@ function hasGeneratedMedia(item = {}) {
   return Boolean(item.dossier_sheet?.image_url
     || (Array.isArray(item.view_images) && item.view_images.length >= 4));
 }
+export function materialReferenceState(item = {}) {
+  const materialSurface = item.presentation?.mode === 'material_surface'
+    || item.presentation?.standalone_generation_supported === false;
+  const source = String(item.source || item.source_type || item.provenance?.source || '').toLowerCase();
+  const generatedNeutral = materialSurface && (item.reference_only === true
+    || source === 'new_story_ad_subject_reference_generator');
+  const realSample = materialSurface && Boolean(item.image_url) && !generatedNeutral
+    && (item.user_owned === true || item.ownership?.user_owned === true || /(?:^|_)(?:upload|uploaded|user_owned|user_reference)(?:_|$)/.test(source));
+  const sourcePending = materialSurface && Boolean(item.image_url) && !generatedNeutral && !realSample;
+  return {
+    materialSurface, generatedNeutral, realSample, sourcePending,
+    canContinue: materialSurface,
+    message: !materialSurface ? '' : (realSample
+      ? '已有真实材料样片，可用于核对材质外观。'
+      : (generatedNeutral
+        ? '已有中性参考图，可以继续；它不能替代真实样片，也不能证明专有纹理。'
+        : (sourcePending
+          ? '已有材料图片但来源待确认，可以继续；确认来源前不能证明专有纹理。'
+          : '缺少真实材料样片，可以继续；但不能证明专有纹理、型号或真实触感。'))),
+  };
+}
+
+export async function submitProductGeneration({ item = {}, bundle = {}, store = {}, confirm = confirmDialog } = {}) {
+  const name = item?.name || bundle.brief?.product_subject || '';
+  if (!name) return { submitted: false, reason: 'missing_name' };
+  const standalone = item?.presentation?.standalone_generation_supported !== false;
+  if (!standalone) {
+    const accepted = await confirm('生成中性参考图会调用 1 次图片模型，可能产生费用。它只用于构图和展示理解，不能替代真实材料样片，也不能证明专有纹理。是否继续？', {
+      title: `生成中性参考图：${name}`,
+      confirmText: '确认生成 1 张',
+    });
+    if (!accepted) return { submitted: false, cancelled: true, standalone };
+  }
+  await store.runStage('product-assets', { product_name: name, description: item?.description || '', reference_only: !standalone });
+  return { submitted: true, standalone };
+}
 export function drawerCheckpointDetails(item = {}) {
   const failed = item.failed_checkpoint_units || [];
   if (!failed.length) return '';
@@ -124,9 +160,11 @@ function assetCard(item, group) {
   const productDetail = group === 'products' ? [
     item.presentation?.label,
     item.presentation?.scene_linked ? `关联 ${item.linked_scene_ids?.length || 0} 个场景` : '',
-    item.status === 'not_applicable'
-      ? '随场景生成，不需要独立商品图'
-      : (item.image_url ? '已有独立素材' : '无独立商品图'),
+    materialReferenceState(item).materialSurface
+      ? materialReferenceState(item).message
+      : (item.status === 'not_applicable'
+        ? '随场景生成，不需要独立商品图'
+        : (item.image_url ? '已有独立素材' : '无独立商品图')),
   ] : [];
   const detail = (group === 'scenes' ? sceneDetail : (group === 'products' ? productDetail : [
     item.partial_checkpoint ? `已保留 ${item.completed_checkpoint_units || 0} 个成功单元 · 档案待补齐` : '',
@@ -147,6 +185,7 @@ function assetCard(item, group) {
   const recovery = item.checkpoint_recovery_summary || {};
   const retryBlocked = group === 'people' && recovery.retry_blocked === true;
   const cardMedia = assetCardMedia(item, group);
+  const materialReference = group === 'products' ? materialReferenceState(item) : {};
   return `<article class="asset-card ${GENERATABLE.has(group) ? 'is-subject' : ''} ${group === 'scenes' ? 'is-scene' : ''}">
     <div class="asset-card-preview">
       ${group === 'people'
@@ -161,7 +200,8 @@ function assetCard(item, group) {
     <div class="asset-card-actions">
       <button class="btn small" type="button" data-history-safe data-asset-group="${group}" data-asset-id="${escapeHtml(item.id)}">${group === 'people' ? '查看完整视图' : `查看${group === 'scenes' ? '完整场景档案' : '完整视图'}`}</button>
       ${group === 'people' && item.status === 'verified' && !item.provider_asset_id ? `<button class="btn small" type="button" data-history-safe data-sync-person-provider="${escapeHtml(item.id)}">同步 / 重试 Seedance 人物 ID</button>` : ''}
-      ${group === 'products' ? `<button class="btn small" type="button" data-upload-product="${escapeHtml(item.id)}">${item.image_url ? '更换主体图片' : '上传主体图片'}</button>` : ''}
+      ${group === 'products' ? `<button class="btn small" type="button" data-upload-product="${escapeHtml(item.id)}">${materialReference.materialSurface ? (materialReference.realSample ? '更换真实材料样片' : '上传真实材料样片') : (item.image_url ? '更换主体图片' : '上传主体图片')}</button>` : ''}
+      ${group === 'products' && materialReference.materialSurface ? `<button class="btn small" type="button" data-generate-product-reference="${escapeHtml(item.id)}">${materialReference.generatedNeutral ? '重新生成中性参考图（1 张，可能计费）' : '生成中性参考图（1 张，可能计费）'}</button>` : ''}
       ${group === 'scenes' ? `<button class="btn small" type="button" data-edit-scene-world="${escapeHtml(item.id)}">查看 / 修改场景设定</button>` : ''}
       ${needsProductVerification ? `<button class="btn small primary" type="button" data-history-safe data-verify-product="${escapeHtml(item.id)}">验证商品素材</button>` : ''}
     </div>
@@ -291,11 +331,13 @@ export async function mount(host, context) {
   const generateProduct = async (item = null, button = null) => {
     const name = item?.name || bundle.brief?.product_subject || '';
     if (!name) return toast('请先在目标与材料中填写商品或广告主体。', 'warning');
-    const standalone = item?.presentation?.standalone_generation_supported !== false;
     try {
+      const standalone = item?.presentation?.standalone_generation_supported !== false;
+      if (!standalone) setButtonBusy(button, true, '等待确认…');
+      const result = await submitProductGeneration({ item, bundle, store });
+      if (!result.submitted) return false;
       setButtonBusy(button, true, '正在提交商品生成…', { elapsed: true });
-      await store.runStage('product-assets', { product_name: name, description: item?.description || '', reference_only: !standalone });
-      toast(`${standalone ? '商品资产' : '展示主体参考图'}生成已提交，进度和耗时将在页面顶部显示。`, 'success');
+      toast(`${result.standalone ? '商品资产' : '中性参考图'}生成已提交，进度和耗时将在页面顶部显示。`, 'success');
       return true;
     } catch (error) { toast(error.message, 'danger'); return false; } finally { setButtonBusy(button, false); }
   };
@@ -415,7 +457,7 @@ export async function mount(host, context) {
   const showAsset = button => {
     const group = button.dataset.assetGroup;
     const item = (assets[group] || []).find(asset => String(asset.id) === button.dataset.assetId);
-    if (item) openDrawer(item, group, { readOnly: historicalReadOnly, generationActive, onGenerate: generate, onGenerateScene: generateScene, onVerifyProduct: verifyProduct, onSavePerson: savePerson, onSaveProduct: saveProduct, onSaveScene: saveScene, onAssistScene: assistScene, onUploadProduct: () => openUpload('products'), returnFocus: button });
+    if (item) openDrawer(item, group, { readOnly: historicalReadOnly, generationActive, onGenerate: generate, onGenerateScene: generateScene, onGenerateProduct: generateProduct, onVerifyProduct: verifyProduct, onSavePerson: savePerson, onSaveProduct: saveProduct, onSaveScene: saveScene, onAssistScene: assistScene, onUploadProduct: () => openUpload('products'), returnFocus: button });
   };
   host.querySelectorAll('[data-asset-id]').forEach(button => button.addEventListener('click', () => showAsset(button)));
   host.querySelectorAll('[data-verify-product]').forEach(button => button.addEventListener('click', event => {
@@ -426,6 +468,11 @@ export async function mount(host, context) {
   host.querySelectorAll('[data-upload-product]').forEach(button => button.addEventListener('click', event => {
     event.stopPropagation();
     openUpload('products');
+  }));
+  host.querySelectorAll('[data-generate-product-reference]').forEach(button => button.addEventListener('click', event => {
+    event.stopPropagation();
+    const item = (assets.products || []).find(asset => String(asset.id) === button.dataset.generateProductReference);
+    if (item) generateProduct(item, button);
   }));
   host.querySelectorAll('[data-edit-scene-world]').forEach(button => button.addEventListener('click', event => {
     event.stopPropagation();

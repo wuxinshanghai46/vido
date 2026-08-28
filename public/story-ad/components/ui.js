@@ -79,6 +79,7 @@ const GENERATION_STAGE_LABELS = {
   person_plan: '人物方案与人物图片',
   scene_config: '人物与场景方案',
   scene_asset: '场景视图',
+  scene_qa: '场景审核',
   blueprint: '剧情蓝图',
   storyboard: '文字分镜',
   keyframes: '关键帧',
@@ -90,7 +91,7 @@ const GENERATION_STAGE_LABELS = {
 };
 
 const GENERATION_UNIT_LABELS = {
-  person_plan: '个人物', subject_assets: '项资产', production_assets: '个制作单元', visual_assets: '个本批目标', person_provider_sync: '个人物', product_asset: '项商品', prop_asset: '项道具', scene_asset: '张场景图', blueprint: '个步骤', storyboard: '个分镜',
+  person_plan: '个人物', subject_assets: '项资产', production_assets: '个制作单元', visual_assets: '个本批目标', person_provider_sync: '个人物', product_asset: '项商品', prop_asset: '项道具', scene_asset: '张场景图', scene_qa: '个场景', blueprint: '个步骤', storyboard: '个分镜',
   keyframes: '张关键帧', video: '个视频片段', media: '个视频片段', tts: '段配音', compose: '个步骤', full: '个步骤',
 };
 
@@ -106,6 +107,7 @@ const GENERATION_STAGE_OWNING_VIEW = Object.freeze({
   person_sheet: 'assets',
   person_dossier: 'assets',
   scene_asset: 'scene',
+  scene_qa: 'scene',
   scene_panorama: 'scene',
   blueprint: 'plot',
   script_package: 'plot',
@@ -237,6 +239,7 @@ export function generationProgressView(bundle = {}) {
 export function generationProgressPanel(bundle = {}, currentView = '') {
   const view = generationProgressView(bundle);
   if (!view) return '';
+  if (currentView === 'scene' && ['scene_asset', 'scene_qa'].includes(view.stage)) return '';
   const owningView = generationProgressOwningView(view.stage);
   if (currentView && view.failed && !owningView) return '';
   if (currentView && owningView && currentView !== owningView) return '';

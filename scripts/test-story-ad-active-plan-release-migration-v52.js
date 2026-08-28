@@ -18,6 +18,8 @@ const storage = require('../src/services/newStoryAd/storageService');
 const assetPlan = require('../src/services/newStoryAd/assetPlanService');
 const publication = require('../src/services/newStoryAd/assetPlanPublicationService');
 const generationPermit = require('../src/services/newStoryAd/generationPermitService');
+const sceneCheckpoints = require('../src/services/newStoryAd/sceneGenerationCheckpointService');
+const taskStateAudit = require('../src/services/newStoryAd/taskStateAuditService');
 const coverage = require('../src/services/newStoryAd/storySceneCoverageService');
 const release = require('../src/services/storyAdReleaseBundleService');
 
@@ -257,6 +259,103 @@ const unknownResult = publication.migrateCompatibleRelease(legacyUnknown.taskId,
 assert.equal(unknownResult.blocked, true);
 assert(unknownResult.compatibility.issues.includes('unknown_billing_unquarantined'));
 
+const publicBlocked = createFixture({
+  id: 'public-release-sync-blocked', oldBundle: 'legacy-public-blocked',
+  castCount: 1, propCount: 0, sceneCount: 2,
+});
+storage.saveOutput(publicBlocked.taskId, 'scene_asset_checkpoint:public-blocked-scene', {
+  task_id: publicBlocked.taskId,
+  scene_id: 'public-blocked-scene',
+  views: {
+    detail: {
+      status: 'failed', billing_state: 'unknown', provider_submission_state: 'submitted_unknown',
+      submission_id: 'public-blocked-submission', provider_id: 'internal-provider-must-not-leak',
+    },
+  },
+});
+assert.equal(modelCalls(publicBlocked.taskId), 0);
+assert.throws(
+  () => generationPermit.issue(publicBlocked.taskId, 'scene_asset', { idempotencyKey: 'blocked-return-public-copy' }),
+  error => {
+    const publicText = JSON.stringify({ message: error?.message, details: error?.details });
+    return error?.code === 'GENERATION_BILLING_REVIEW_REQUIRED'
+      && error?.details?.model_call_started === false
+      && error?.details?.action === 'confirm_billing_risk_on_failed_item'
+      && !publicText.includes('unknown_billing_unquarantined')
+      && !publicText.includes('active_plan_bundle_mismatch')
+      && !publicText.includes('internal-provider-must-not-leak');
+  },
+  '迁移以 blocked 返回时，生成入口必须给可行动公开错误且不得泄露内部 issue/provider',
+);
+assert.equal(modelCalls(publicBlocked.taskId), 0, '发布同步阻断必须发生在任何模型调用之前');
+
+const rolloverUnknown = createFixture({
+  id: 'checkpoint-fingerprint-rollover', oldBundle: 'legacy-checkpoint-rollover',
+  castCount: 1, propCount: 0, sceneCount: 2,
+});
+let rolloverCheckpoint = sceneCheckpoints.open({
+  taskId: rolloverUnknown.taskId,
+  sceneId: 'rollover-scene',
+  fingerprint: 'old-scene-input-fingerprint',
+  candidateRevision: 1,
+  viewKeys: ['detail'],
+}).checkpoint;
+rolloverCheckpoint = sceneCheckpoints.markSubmitting(rolloverCheckpoint, 'detail', {
+  generationId: 'rollover-generation-old',
+  submissionId: 'rollover-submission-old',
+});
+rolloverCheckpoint = sceneCheckpoints.markFailed(rolloverCheckpoint, 'detail', Object.assign(
+  new Error('ambiguous provider response'),
+  {
+    code: 'PROVIDER_5XX_AMBIGUOUS',
+    billingState: 'unknown',
+    providerSubmissionState: 'submitted_unknown',
+    generationId: 'rollover-generation-old',
+    submissionId: 'rollover-submission-old',
+  },
+));
+rolloverCheckpoint = sceneCheckpoints.authorizeRetry(rolloverCheckpoint, 'detail', {
+  acceptDuplicateChargeRisk: true,
+  acceptedBy: 'v52-test',
+  reason: 'test-explicit-one-time-authorization',
+});
+const oldAttemptId = rolloverCheckpoint.attempt_id;
+const oldAuthorizationId = rolloverCheckpoint.views.detail.retry_authorization.id;
+const rolled = sceneCheckpoints.open({
+  taskId: rolloverUnknown.taskId,
+  sceneId: 'rollover-scene',
+  fingerprint: 'new-scene-input-fingerprint',
+  candidateRevision: 2,
+  viewKeys: ['detail'],
+});
+assert.equal(rolled.resumed, false);
+assert.notEqual(rolled.checkpoint.attempt_id, oldAttemptId, '指纹变化必须开启新尝试而不是覆盖旧尝试身份');
+assert.equal(rolled.checkpoint.attempt_history.length, 1, '旧 checkpoint 必须进入不可变尝试历史');
+assert.equal(rolled.checkpoint.attempt_history[0].attempt_id, oldAttemptId);
+assert.equal(rolled.checkpoint.attempt_history[0].views.detail.submission_id, 'rollover-submission-old');
+assert.equal(rolled.checkpoint.attempt_history[0].views.detail.retry_authorization.id, oldAuthorizationId);
+assert.equal(rolled.checkpoint.views.detail.retry_authorization.id, oldAuthorizationId,
+  '一次性重试授权必须随未知计费视图延续到新指纹 checkpoint');
+assert.equal(rolled.checkpoint.views.detail.retry_authorization.remaining_uses, 1);
+const immutableHistory = JSON.stringify(rolled.checkpoint.attempt_history);
+rolled.checkpoint.views.detail.provider_task_id = 'provider-task-observed-after-rollover';
+sceneCheckpoints.markPartial(rolled.checkpoint, new Error('test-current-attempt-only'));
+assert.equal(taskStateAudit.checkpointBillingRows(storage.readDb().outputs, rolloverUnknown.taskId).length, 1,
+  'current/history containing the same submission must remain one billing-risk row even when current gains a provider task id');
+assert.equal(JSON.stringify(storage.getOutput(rolloverUnknown.taskId, 'scene_asset_checkpoint:rollover-scene').attempt_history), immutableHistory,
+  '更新当前尝试不得改写已归档尝试历史');
+storage.saveModelCall({
+  id: 'rollover-unknown-call', task_id: rolloverUnknown.taskId, stage: 'scene_asset',
+  status: 'failed', billing_state: 'unknown', provider_submission_state: 'submitted_unknown',
+  submission_id: 'rollover-submission-old',
+});
+const rolloverMigration = publication.migrateCompatibleRelease(rolloverUnknown.taskId, {
+  fingerprint: rolloverUnknown.fingerprint,
+});
+assert.equal(rolloverMigration.migrated, true,
+  '指纹滚动后发布迁移必须仍能从 checkpoint lineage 识别原未知调用的一次性授权');
+assert.equal(modelCalls(rolloverUnknown.taskId), 1, '发布迁移不得新增或重复任何模型调用');
+
 const authorizedUnknown = createFixture({
   id: 'authorized-unknown-scene-retry', oldBundle: 'legacy-authorized-retry',
   castCount: 2, propCount: 0, sceneCount: 4,
@@ -297,6 +396,20 @@ const activeResult = publication.migrateCompatibleRelease(legacyActive.taskId, {
 });
 assert.equal(activeResult.blocked, true, '旧合同兼容迁移必须等待活动生成完全结束');
 assert(activeResult.compatibility.issues.includes('active_generation_exists'));
+const publicActiveBlocked = createFixture({
+  id: 'public-active-generation-blocked', oldBundle: 'legacy-public-active',
+  castCount: 1, propCount: 0, sceneCount: 2,
+});
+storage.updateTask(publicActiveBlocked.taskId, { active_generation_id: 'another-active-job', active_stage: 'scene_asset' });
+assert.throws(
+  () => generationPermit.issue(publicActiveBlocked.taskId, 'scene_asset', { idempotencyKey: 'active-generation-public-copy' }),
+  error => error?.code === 'GENERATION_RELEASE_SYNC_BLOCKED'
+    && error?.details?.wait_for_active_generation === true
+    && error?.details?.model_call_started === false
+    && !JSON.stringify({ message: error.message, details: error.details }).includes('active_generation_exists'),
+  'active generation safety block must be public/actionable and must not leak internal issue names',
+);
+assert.equal(modelCalls(publicActiveBlocked.taskId), 0, 'active generation safety block must not start a model call');
 
 const legacyWrongTarget = createLegacyV14Fixture('legacy-v14-wrong-target');
 const wrongTargetResult = publication.migrateCompatibleRelease(legacyWrongTarget.taskId, {

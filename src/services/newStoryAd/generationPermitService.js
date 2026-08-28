@@ -28,6 +28,39 @@ function stageEligibility(eligibility = {}, stage = '') {
     : eligibility;
 }
 
+function releaseSyncBlockedError(migration = {}, eligibility = {}) {
+  const issues = [
+    ...(Array.isArray(migration?.safetyIssues) ? migration.safetyIssues : []),
+    ...(Array.isArray(migration?.safety_issues) ? migration.safety_issues : []),
+    ...(Array.isArray(migration?.compatibility?.issues) ? migration.compatibility.issues : []),
+  ];
+  const billingReview = issues.some(issue => [
+    'active_unknown_billing_exists',
+    'unknown_billing_unquarantined',
+  ].includes(String(issue || '')));
+  const activeGeneration = issues.includes('active_generation_exists');
+  const error = new Error(billingReview
+    ? '当前任务有历史图片调用的计费状态尚未核清，系统已停止自动重试；请先在失败项中完成一次计费风险确认，再继续生成。'
+    : (activeGeneration
+      ? '当前任务仍有上一轮生成正在收尾，系统没有发起新的模型调用；请等待当前处理结束后刷新重试。'
+      : '当前任务暂时无法安全同步到本版本生成方案，系统没有发起模型调用；请刷新任务状态后重试。'));
+  error.code = billingReview ? 'GENERATION_BILLING_REVIEW_REQUIRED' : 'GENERATION_RELEASE_SYNC_BLOCKED';
+  error.status = 409;
+  error.retryable = false;
+  // Keep the public failure actionable without exposing internal validator,
+  // provider or release-bundle issue names.
+  error.details = {
+    release_sync_pending: true,
+    requires_billing_review: billingReview,
+    wait_for_active_generation: activeGeneration,
+    action: billingReview ? 'confirm_billing_risk_on_failed_item'
+      : (activeGeneration ? 'wait_then_refresh' : 'refresh_task_state'),
+    model_call_started: false,
+    plan_id: String(eligibility?.plan_id || ''),
+  };
+  return error;
+}
+
 function issue(taskId, stage, { idempotencyKey = '' } = {}) {
   if (!protectedStage(stage)) return null;
   let active = publication.activeRecord(taskId);
@@ -43,13 +76,9 @@ function issue(taskId, stage, { idempotencyKey = '' } = {}) {
       });
     } catch (error) {
       if (error?.code !== 'AUTHORITY_PROMOTION_BLOCKED') throw error;
-      const blocked = new Error('当前任务有历史图片调用的计费状态尚未核清，已锁定且不会自动重试；请先逐条完成计费核对，再继续生成。');
-      blocked.code = 'GENERATION_BILLING_REVIEW_REQUIRED';
-      blocked.status = 409;
-      blocked.retryable = false;
-      blocked.details = { blocking_generation_ids: error.blocking_generation_ids || [], release_migration: eligibility.release_migration };
-      throw blocked;
+      throw releaseSyncBlockedError({ safetyIssues: ['unknown_billing_unquarantined'] }, eligibility);
     }
+    if (migrated?.blocked === true) throw releaseSyncBlockedError(migrated, eligibility);
     if (migrated.migrated) {
       active = publication.activeRecord(taskId);
       eligibility = publication.eligibility(taskId, { fingerprint: active?.fingerprint || '' });
@@ -136,4 +165,12 @@ function consume(taskId, permit = null) {
   return consumed;
 }
 
-module.exports = { PROTECTED_STAGES, protectedStage, issue, consume, kindFor, stageEligibility };
+module.exports = {
+  PROTECTED_STAGES,
+  protectedStage,
+  issue,
+  consume,
+  kindFor,
+  stageEligibility,
+  releaseSyncBlockedError,
+};

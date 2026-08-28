@@ -15,9 +15,25 @@ export async function mount(host, context) {
   const generationActive = !!bundle?.project?.active_generation_id
   const activeTargets = bundle?.project?.active_target_generations && typeof bundle.project.active_target_generations === 'object'
     ? Object.values(bundle.project.active_target_generations) : [];
-  const sceneIsActive = sceneId => activeTargets.some(item => item?.stage === 'scene_asset'
-    && String(item?.target_id || '') === String(sceneId)
-    && ['queued', 'running'].includes(String(item?.status || '')));
+  const sceneIsActive = sceneId => activeTargets.some(item => {
+    const status = String(item?.status || '').toLowerCase();
+    return ['scene_asset', 'scene_qa'].includes(String(item?.stage || ''))
+      && String(item?.target_id || item?.scope_id || '') === String(sceneId)
+      && (!status || ['queued', 'running', 'processing', 'verifying'].includes(status));
+  });
+  const targetProgress = bundle?.project?.target_generation_progress && typeof bundle.project.target_generation_progress === 'object'
+    ? bundle.project.target_generation_progress : {};
+  const sceneActiveTarget = sceneId => activeTargets.find(item => ['scene_asset', 'scene_qa'].includes(String(item?.stage || ''))
+    && String(item?.target_id || item?.scope_id || '') === String(sceneId));
+  const sceneProgress = sceneId => {
+    const activeTarget = sceneActiveTarget(sceneId);
+    const activeKey = activeTarget ? `${activeTarget.stage}:${sceneId}` : '';
+    return (activeKey ? targetProgress[activeKey] : null)
+    || targetProgress[`scene_qa:${sceneId}`]
+    || targetProgress[`scene_asset:${sceneId}`]
+    || Object.values(targetProgress).find(item => String(item?.scene_id || item?.scope_id || '') === String(sceneId))
+    || null;
+  };
   const pendingScenes = scenes.filter(scene => scenePendingAction(scene));
   const generationReadyCount = pendingScenes.filter(scene => scenePendingAction(scene)?.kind === 'generate'
     && !sceneIsActive(scene.id || scene.scene_id)).length;
@@ -29,7 +45,7 @@ export async function mount(host, context) {
   host.innerHTML = `<section class="view-head scene-view-head"><div><h1>场景</h1><p>默认查看场景画面，需要时可切换到提示词核对。</p></div><div class="scene-view-actions"><span>${scenes.length ? '' : '预计 '}${preview.displayedCount} 个场景</span>${canConfirm ? '<button class="btn primary compact" data-confirm-scenes>确认场景，进入线稿</button>' : ''}</div></section>
     ${scenePlanReady || persistedScenePlanReady ? '' : scenePlanBlockedView(sceneEligibility, generationActive, { automatic: preview.autoInitialize || generationActive })}
     ${!scenePlanReady && !persistedScenePlanReady ? scenePromptPreviewMarkup(preview, (scene, index) => renderSceneProductionCard(scene, index, { provisional: true })) : ''}
-    ${persistedScenePlanReady ? `<section class="scene-production"><header><div><h2>场景提示词与画面</h2><p>提示词修改后自动保存；已有或生成中的画面默认展示，需要时可切回提示词。</p></div><div class="scene-view-actions"><span>${workflow.generated_count || 0}/${scenes.length} 已生成</span>${generationReadyCount ? `<button class="btn primary compact" data-generate-all-scenes>生成全部缺失场景（${generationReadyCount}）</button>` : ''}${fixReadyCount ? `<button class="btn primary compact" data-fix-all-scenes>修复全部未通过场景（${fixReadyCount}）</button>` : ''}</div></header><div class="scene-production-grid">${scenes.map((scene, index) => renderSceneProductionCard(scene, index, { generationActive: sceneIsActive(scene.id || scene.scene_id) })).join('')}</div></section>` : ''}`;
+    ${persistedScenePlanReady ? `<section class="scene-production"><header><div><h2>场景提示词与画面</h2><p>提示词修改后自动保存；已有或生成中的画面默认展示，需要时可切回提示词。</p></div><div class="scene-view-actions"><span>${workflow.generated_count || 0}/${scenes.length} 已生成</span>${generationReadyCount ? `<button class="btn primary compact" data-generate-all-scenes>生成全部缺失场景（${generationReadyCount}）</button>` : ''}${fixReadyCount ? `<button class="btn primary compact" data-fix-all-scenes>修复全部未通过场景（${fixReadyCount}）</button>` : ''}</div></header><div class="scene-production-grid">${scenes.map((scene, index) => { const sceneId = scene.id || scene.scene_id; return renderSceneProductionCard(scene, index, { generationActive: sceneIsActive(sceneId), progress: sceneProgress(sceneId) }); }).join('')}</div></section>` : ''}`;
 
   bindScenePlanUpdate(host, context);
   bindMediaLightbox(host);

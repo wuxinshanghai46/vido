@@ -55,6 +55,8 @@ const assetDossierSections = read('public/story-ad/views/assetCenterDossierSecti
 const sceneDossierCard = read('public/story-ad/views/sceneDossierCard.js');
 const sceneWorldPage = read('public/story-ad/views/sceneWorldPage.js');
 const assetPlanningDetails = read('public/story-ad/views/assetCenterPlanningDetails.js');
+const sceneQaActions = read('public/story-ad/views/sceneQaActions.js');
+const sceneRuntimeFailure = read('public/story-ad/views/sceneRuntimeFailureView.js');
 const assetPersonForm = read('public/story-ad/views/assetCenterPersonForm.js');
 const personDossierStyles = read('public/story-ad/person-dossier.css');
 assert.match(assets, /person-dossier-style/u, '资产中心按需加载人物详情样式');
@@ -75,6 +77,14 @@ assert.doesNotMatch(assetPersonForm, /▭ 2:1|高画质<\/span>|>2K<\/span>|>1�
 assert.doesNotMatch(assetPersonForm, /名称与身份|renderPersonLookEditors|renderPersonEvolutionEditor/u, '人物弹窗不得再拆成分段表单');
 assert.doesNotMatch(assetPlanningDetails.slice(0, assetPlanningDetails.indexOf('export function productDetails')), /type="file"|上传参考并生成/u, '随身道具不得继续要求上传参考图');
 assert.doesNotMatch(assetPlanningDetails, /data-owned-prop-form|由模型生成道具/u, '随身道具必须并入完整人物提示词，不再保留第二套表单');
+assert.match(assets, /缺少真实材料样片，可以继续；但不能证明专有纹理/u, '材料卡必须说明可以继续及证据边界');
+assert.match(assets, /data-generate-product-reference/u, '材料卡必须接通中性参考图生成入口');
+assert.match(assetPlanningDetails, /data-drawer-generate-product/u, '材料详情抽屉必须接通中性参考图入口');
+assert.match(assetPlanningDetails, /不能替代真实样片/u, '中性参考图必须明确不能冒充真实样片');
+assert.match(assetPlanningDetails, /qa\.reasons\.map\(publicSceneQaReason\)/u, '场景详情抽屉也必须使用普通用户 QA 投影');
+assert.match(sceneQaActions, /!billingAuthorized && !qaOnly/u, 'QA-only reverify must skip paid image confirmation and authorization');
+assert.doesNotMatch(sceneRuntimeFailure, /provider_id|model_id|provider_request_id|provider_task_id|http_status|error_code/u,
+  'ordinary scene runtime card must not expose provider/model/request internals');
 assert.match(sceneDossierCard, /function assetCardMedia/);
 assert.match(sceneDossierCard, /const portrait = \(item\.native_masters\?\.face\?\.image_url/, '人物主卡必须优先显示单人物标准人像');
 assert.match(sceneDossierCard, /asset-people-portraits/, '人物主卡必须使用独立人像预览组，而不是完整档案拼图');
@@ -644,6 +654,12 @@ assert.match(scenePromptPreview, /data-scene-detail-tab="images"/, '场景详情
 assert(scenePromptPreview.indexOf('status-tag') < scenePromptPreview.indexOf('data-enter-scene-world='), '场景状态必须位于进入场景按钮之前');
 assert.match(scenePromptPreview, /scene-card-entry/, '进入场景按钮必须使用紧凑场景操作样式');
 assert.match(scenePromptPreview, /scene-card-generate/, '单场景生成按钮必须使用紧凑场景操作样式');
+assert.match(scenePromptPreview, /data-scene-progress/u, 'current scene card must own its live progress');
+assert.match(sceneWorldPage, /target_generation_progress/u, 'scene page must read target-scoped progress instead of the representative global job');
+assert.match(sceneWorldPage, /scene_qa:\$\{sceneId\}/u, 'QA-only progress must be keyed by the current scene');
+assert.match(sceneWorldPage, /scene_asset:\$\{sceneId\}/u, 'image progress must be keyed by the current scene');
+assert.match(read('public/story-ad/components/ui.js'), /currentView === 'scene' && \['scene_asset', 'scene_qa'\]\.includes\(view\.stage\)/u,
+  'aggregate scene progress banner must not cover target-scoped current-scene progress');
 const dialogueTheme = read('public/story-ad/dialogue-theme.css');
 assert.match(dialogueTheme, /\.btn\.primary\{[^}]*box-shadow:none/u, '主操作默认态不得常驻高亮阴影');
 assert.match(dialogueTheme, /\.btn\.primary:not\(:disabled\):hover\{[^}]*linear-gradient/u, '主操作只能在悬停时进入紫色高亮反馈');

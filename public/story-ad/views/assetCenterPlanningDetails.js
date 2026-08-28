@@ -1,12 +1,19 @@
 import { escapeHtml, mediaPreview } from '../components/ui.js?v=20260828-production-v246';
 import { bindMediaLightbox } from './mediaLightbox.js?v=20260828-production-v246';
 import { personDossierShowcase } from './personDossierShowcase.js?v=20260828-production-v246';
-import { bindSceneDossierCard, renderSceneDossierCard } from './sceneDossierCard.js?v=20260828-production-v246';
+import { bindSceneDossierCard, publicSceneQaReason, renderSceneDossierCard } from './sceneDossierCard.js?v=20260828-production-v246';
 
 export function productDetails(item = {}) {
   const presentation = item.presentation || {};
+  const materialSurface = presentation.mode === 'material_surface' || presentation.standalone_generation_supported === false;
+  const source = String(item.source || item.source_type || item.provenance?.source || '').toLowerCase();
+  const generatedNeutral = materialSurface && (item.reference_only === true || source === 'new_story_ad_subject_reference_generator');
+  const realSample = materialSurface && Boolean(item.image_url) && !generatedNeutral
+    && (item.user_owned === true || item.ownership?.user_owned === true || /(?:^|_)(?:upload|uploaded|user_owned|user_reference)(?:_|$)/.test(source));
+  const sourcePending = materialSurface && Boolean(item.image_url) && !generatedNeutral && !realSample;
   return `<section class="product-presentation-card ${presentation.scene_linked ? 'is-scene-linked' : ''}"><div><small>展示方式</small><h3>${escapeHtml(presentation.label || '展示主体')}</h3></div><p>${escapeHtml(presentation.description || item.description || '尚未填写展示说明。')}</p>
     ${presentation.scene_linked ? '<ol><li>开场：先交代空间、问题或旧方案</li><li>主体介绍：人物从展示墙 / 成品空间带入</li><li>证据：材料细节、纹理、对比、组合或拆解效果</li><li>收尾：完整成果、价值结论与品牌落版</li></ol>' : '<p>使用独立商品多视图、细节、操作和结果证明卖点。</p>'}
+    ${materialSurface ? `<div class="material-reference-notice is-${realSample ? 'ready' : 'limited'}"><b>${realSample ? '真实材料样片已就绪' : (sourcePending ? '材料图片来源待确认，可以继续' : '缺少真实材料样片，但可以继续')}</b><p>${realSample ? '场景和审核可依据真实样片核对材质外观。' : (generatedNeutral ? '中性参考图只用于构图和展示理解，不能替代真实样片，也不能证明专有纹理、型号或真实触感。' : (sourcePending ? '确认图片来源前，它不能作为真实材料证据，也不能证明专有纹理。' : '系统仍可生成场景，但只能判断画面中可见的颜色、纹理和反光，不能证明专有纹理、型号或真实触感。'))}</p></div>` : ''}
     ${item.linked_scene_ids?.length ? `<small>已关联场景：${item.linked_scene_ids.map(escapeHtml).join('、')}</small>` : ''}</section>`;
 }
 
@@ -91,7 +98,7 @@ export function sceneDetails(item = {}) {
     ${specRows.length ? `<section class="drawer-profile"><h3>布局、材质与光线</h3>${specRows.map(([label, value]) => `<div><span>${escapeHtml(label)}</span><p>${escapeHtml(value)}</p></div>`).join('')}</section>` : ''}
     ${item.zones?.length ? `<section><div class="drawer-section-head"><h3>空间区域</h3><span>${item.zones.length}</span></div><div class="scene-zone-list">${item.zones.map(zone => `<article><b>${escapeHtml(zone.label || zone.id)}</b><span>${escapeHtml(zone.purpose || zone.id || '未提供用途')}</span></article>`).join('')}</div></section>` : ''}
     ${item.routes?.length ? `<section><div class="drawer-section-head"><h3>跨场景路线与连续性</h3><span>${item.routes.length}</span></div><div class="scene-route-list">${item.routes.map(route => `<article><b>${escapeHtml(route.from || '当前场景')} → ${escapeHtml(route.to || '当前场景')}</b><span>${escapeHtml([route.time, route.weather, route.light, route.movement].filter(Boolean).join(' · ') || '连续性说明未提供')}</span></article>`).join('')}</div></section>` : ''}
-    ${qaRows.length ? `<section><div class="drawer-section-head"><h3>场景质量状态</h3></div><div class="meta-list">${qaRows.map(([label, value]) => `<div class="meta-row"><span>${escapeHtml(label)}</span><b>${escapeHtml(boolText(value))}</b></div>`).join('')}</div>${qa.reasons?.length ? `<ul class="scene-qa-reasons">${qa.reasons.map(reason => `<li>${escapeHtml(reason)}</li>`).join('')}</ul>` : ''}</section>` : ''}</div>`;
+    ${qaRows.length ? `<section><div class="drawer-section-head"><h3>场景质量状态</h3></div><div class="meta-list">${qaRows.map(([label, value]) => `<div class="meta-row"><span>${escapeHtml(label)}</span><b>${escapeHtml(boolText(value))}</b></div>`).join('')}</div>${qa.reasons?.length ? `<ul class="scene-qa-reasons">${[...new Set(qa.reasons.map(publicSceneQaReason).filter(Boolean))].map(reason => `<li>${escapeHtml(reason)}</li>`).join('')}</ul>` : ''}</section>` : ''}</div>`;
 }
 
 export function sceneEditForm(item = {}) {
@@ -109,6 +116,9 @@ export function openAssetDrawer(item, group, handlers = {}, renderers = {}) {
   const dossier = item.dossier_sheet?.image_url ? { image_url: item.dossier_sheet.image_url } : null;
   const zones = Array.isArray(item.zones) ? item.zones : [];
   const cameras = Array.isArray(item.cameras) ? item.cameras : [];
+  const materialSurface = group === 'products' && (item.presentation?.mode === 'material_surface' || item.presentation?.standalone_generation_supported === false);
+  const productSource = String(item.source || item.source_type || item.provenance?.source || '').toLowerCase();
+  const generatedNeutral = materialSurface && (item.reference_only === true || productSource === 'new_story_ad_subject_reference_generator');
   const sceneGenerated = group === 'scenes' && Boolean(item.layout?.image_url || views.length || cameras.some(camera => camera.image_url));
   const metadata = group === 'people'
     ? [['资产类型', groupLabel], ['当前状态', item.status || '未确认'], ['角色或用途', item.role || '—']]
@@ -147,7 +157,7 @@ export function openAssetDrawer(item, group, handlers = {}, renderers = {}) {
     ${group === 'products' ? productDetails(item) : ''}${group === 'people' || editablePerson ? '' : profileDetails(item, group)}${knowledgePolicyTrace(item)}${readOnly ? '<p class="drawer-section-note" data-historical-drawer-readonly>当前为已确认步骤，只展示已保存内容；如需修改文字方案，请先在页面顶部开启编辑。</p>' : `${group === 'products' ? productEditForm(item) : ''}${group === 'scenes' ? sceneEditForm(item) : ''}`}
     ${editablePerson ? '' : `<div class="meta-list">${metadata.map(([label, value]) => `<div class="meta-row"><span>${escapeHtml(label)}</span><b>${escapeHtml(value)}</b></div>`).join('')}</div>`}</div>
     ${group === 'scenes' && !readOnly ? '<footer class="drawer-actions"><span>保存后可在场景卡片上单独生成该场景。</span></footer>' : ''}
-    ${group === 'products' ? `<footer class="drawer-actions product-reference-actions"><span>上传或更换主体图片后，可单独验证和生成商品资产。</span><div>${readOnly ? '' : `<button class="btn" type="button" data-drawer-upload-product>${item.image_url ? '更换主体图片' : '上传主体图片'}</button>`}</div></footer>` : ''}
+    ${group === 'products' ? `<footer class="drawer-actions product-reference-actions"><span>${materialSurface ? '可以继续场景制作；真实样片用于证明专有纹理，中性参考图不能替代真实样片。' : '上传或更换主体图片后，可单独验证和生成商品资产。'}</span><div>${readOnly ? '' : `<button class="btn" type="button" data-drawer-upload-product>${item.image_url && !generatedNeutral ? '更换 / 确认真实样片' : '上传真实材料样片'}</button>${materialSurface ? `<button class="btn" type="button" data-drawer-generate-product>${generatedNeutral ? '重新生成中性参考图（1 张，可能计费）' : '生成中性参考图（1 张，可能计费）'}</button>` : ''}`}</div></footer>` : ''}
     ${group === 'products' && item.image_url && item.status !== 'verified' ? '<footer class="drawer-actions"><span>关键帧使用商品图前，需要先完成外观、形状、颜色和材质一致性验证。</span><button class="btn primary" type="button" data-drawer-verify-product>验证商品素材</button></footer>' : ''}`;
   let closed = false;
   let personAutosave = null;
@@ -197,6 +207,9 @@ export function openAssetDrawer(item, group, handlers = {}, renderers = {}) {
   bindSubmit('[data-scene-edit]', onSaveScene);
   drawer.querySelector('[data-ai-assist-scene]')?.addEventListener('click', event => onAssistScene?.(item, drawer.querySelector('[data-scene-edit]'), event.currentTarget));
   drawer.querySelector('[data-drawer-upload-product]')?.addEventListener('click', () => { close(); onUploadProduct?.(item); });
+  drawer.querySelector('[data-drawer-generate-product]')?.addEventListener('click', async event => {
+    if (await onGenerateProduct?.(item, event.currentTarget) === true) close();
+  });
   document.body.append(backdrop, drawer);
   if (editablePerson && drawer.querySelector('[name="generation_prompt"]')) import('./personPromptAutosave.js?v=20260828-production-v246').then(module => {
     if (!closed) personAutosave = module.bindPersonPromptAutosave(drawer, item, { onSavePerson, onGenerate, close });

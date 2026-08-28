@@ -14,13 +14,9 @@ export function sceneRuntimeFailureMarkup(item = {}) {
     if (!['failed', 'billing-review', 'pending'].includes(state)) return null;
     return {
       label: VIEW_LABELS[key], state,
-      route: [text(status.provider_id), text(status.model_id)].filter(Boolean).join(' / '),
-      httpStatus: text(status.http_status), errorCode: text(status.error_code),
-      platformRequestId: text(status.platform_request_id), providerRequestId: text(status.provider_request_id),
-      providerTaskId: text(status.provider_task_id), billingState: text(status.billing_state),
-      submissionState: text(status.submission_state), message: text(status.message), durationMs: Number(status.duration_ms || 0) || 0,
+      billingState: text(status.billing_state), submissionState: text(status.submission_state),
     };
   }).filter(Boolean);
   if (!failures.length) return '';
-  return `<div class="scene-cover-runtime-failure" role="alert">${failures.map(failure => `<div><b>${escapeHtml(failure.label)}：${failure.state === 'billing-review' ? '计费待核对' : (failure.state === 'pending' ? '尚未提交' : '生成失败')}</b><span>${escapeHtml([failure.route, failure.httpStatus ? `HTTP ${failure.httpStatus}` : '', failure.errorCode, failure.durationMs ? `用时 ${(failure.durationMs / 1000).toFixed(2)} 秒` : ''].filter(Boolean).join(' · ') || failure.message || '供应商未返回结构化错误')}</span>${failure.platformRequestId ? `<small>平台请求：${escapeHtml(failure.platformRequestId)}</small>` : ''}${failure.providerRequestId || failure.providerTaskId ? `<small>厂商请求：${escapeHtml(failure.providerRequestId || failure.providerTaskId)}</small>` : ''}<small>提交：${escapeHtml(failure.submissionState || '未知')} · 计费：${escapeHtml(failure.billingState || '未知')}</small></div>`).join('')}</div>`;
+  return `<div class="scene-cover-runtime-failure" role="alert">${failures.map(failure => `<div><b>${escapeHtml(failure.label)}：${failure.state === 'billing-review' ? '计费待核对' : (failure.state === 'pending' ? '尚未提交' : '图片生成没有完成')}</b><span>${failure.state === 'billing-review' ? '图片结果与计费状态正在核对；核对完成前不会自动重复提交。' : (failure.state === 'pending' ? '该图片尚未提交，可以稍后继续。' : '其他已成功图片继续保留；只需补齐这一张。')}</span></div>`).join('')}</div>`;
 }

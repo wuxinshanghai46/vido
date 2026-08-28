@@ -338,7 +338,13 @@ router.post('/projects/:taskId/materials', asyncRoute(async (req, res) => {
     )), value];
   };
   let patch = {};
-  if (role === 'product') patch = { product_asset: asset };
+  if (role === 'product') patch = { product_asset: {
+    ...asset,
+    source: 'user_upload',
+    source_type: 'user_upload',
+    user_supplied: true,
+    reference_only: false,
+  } };
   else if (role === 'person') patch = { person_asset: asset };
   else if (role === 'animal') patch = { pet_profiles: appendUnique(current.pet_profiles, { ...asset, source: 'upload' }) };
   else if (role === 'scene') patch = { assets: appendUnique(current.assets, { ...asset, role: 'scene_reference' }) };

@@ -1,6 +1,7 @@
 const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
+const vm = require('vm');
 
 const root = path.join(__dirname, '..');
 const sceneWorlds = require('../src/services/storyAdWorkspace/sceneWorldService');
@@ -117,6 +118,62 @@ const assetLedMap = sceneWorlds.inferCapabilities(scene('gallery', '光影艺廊
 assert.strictEqual(assetLedMap.supports_structure_map, true, 'layout asset must enable structure map without indoor keywords');
 assert.strictEqual(assetLedMap.map_mode, 'structure_map', 'layout asset must select structure map mode');
 
+const interactionOnlyBundle = {
+  project: { id: 'interaction-only-plan' },
+  revisions: { content: 2 },
+  brief: { cast_intent: { status: 'explicit', decision: 'single', expected_people: 1 } },
+  assets: {
+    people: [{ id: 'chen-mo', subject_id: 'chen-mo', name: '陈默', profile: { displayName: '陈默' } }],
+    scenes: [scene('showroom', '现代家居展示厅', '材料与空间展示', {
+      cameras: [
+        { id: 'showroom-master', label: '主视角' },
+        { id: 'showroom-interaction', label: '人物互动机位', role: 'interaction', movement: '侧后方跟随' },
+      ],
+      scene_spec: {
+        interactionText: '人物从入口进入，沿中央通道行走，在右侧展架前停下并触摸材料，随后从后方出口离开。',
+        sceneExperienceContract: {
+          representation: 'physical', extent: 'enclosed', actor_blocking_required: true,
+        },
+      },
+    })],
+  },
+  storyboard: { shots: [] },
+};
+const interactionOnlyWorlds = sceneWorlds.buildSceneWorlds(interactionOnlyBundle);
+const interactionOnlyManifest = sceneWorlds.productionManifest(interactionOnlyBundle, interactionOnlyWorlds);
+const interactionCell = interactionOnlyManifest.character_world_matrix[0].cells[0];
+assert.strictEqual(interactionOnlyWorlds[0].capabilities.representation, 'physical',
+  'camelCase sceneExperienceContract must project into SceneWorld capabilities');
+assert.strictEqual(interactionOnlyWorlds[0].capabilities.extent, 'enclosed');
+assert.strictEqual(interactionCell.presence, 'suggested',
+  'single-person cast intent plus scene interaction plan must project before storyboard exists');
+assert.strictEqual(interactionCell.source, 'scene_plan_interaction');
+assert(interactionCell.role.includes('从入口进入'));
+assert(interactionCell.blocking.includes('右侧展架前停下'));
+assert.strictEqual(interactionCell.camera_id, 'showroom-interaction',
+  'interaction plan must bind the person to the interaction camera instead of always using the first camera');
+
+const ambiguousMultiBundle = {
+  project: { id: 'ambiguous-multi-plan' },
+  assets: {
+    people: [
+      { id: 'person-a', name: '人物甲', profile: { displayName: '人物甲' } },
+      { id: 'person-b', name: '人物乙', profile: { displayName: '人物乙' } },
+    ],
+    scenes: [scene('ambiguous', '未指定人物的空间', '一个等待分配的场景', {
+      scene_spec: {
+        interactionText: '人物进入后展示产品',
+        sceneExperienceContract: { actor_blocking_required: true },
+      },
+    })],
+  },
+  storyboard: { shots: [] },
+};
+const ambiguousWorlds = sceneWorlds.buildSceneWorlds(ambiguousMultiBundle);
+const ambiguousManifest = sceneWorlds.productionManifest(ambiguousMultiBundle, ambiguousWorlds);
+assert(ambiguousManifest.character_world_matrix.every(row => row.cells[0].presence === 'unassigned'),
+  'generic interaction text must not assign every person in an ambiguous multi-person plan');
+
 const apiSource = fs.readFileSync(path.join(root, 'public/story-ad/api.js'), 'utf8');
 const releaseSource = fs.readFileSync(path.join(root, 'public/story-ad/release.js'), 'utf8');
 const serverSource = fs.readFileSync(path.join(root, 'src/server.js'), 'utf8');
@@ -158,6 +215,22 @@ assert(workspaceSource.includes("host.dataset.viewerEngine = 'native-canvas'"));
 assert(!workspaceSource.includes("import('/vendor/three.module.min.js')"));
 assert(workspaceSource.includes('data-focus-camera'));
 assert(workspaceSource.includes('character-world-matrix'));
+assert(workspaceSource.includes('data-scene-authority-plan'), 'enter-scene studio must render one authoritative person/camera explanation panel');
+assert(workspaceSource.includes('谁在场、站在哪里'));
+assert(workspaceSource.includes('机位在哪里、朝哪里拍'));
+assert(workspaceSource.includes('未规划（不显示伪造点）'), 'missing person/camera coordinates must stay explicit instead of fabricating markers');
+assert(!workspaceSource.includes('(index - (matrixRows.length - 1) / 2) * 0.85'), 'person markers must not use evenly spaced fake coordinates');
+assert(!workspaceSource.includes('Math.cos(index) * 3.5'), 'camera markers must not use circular fake coordinates');
+const sceneWorldSandbox = {
+  list: value => Array.isArray(value) ? value : [],
+  escapeHtml: value => String(value ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#039;'),
+};
+vm.runInNewContext(`${workspaceSource.replace(/^import\s+.*?;\s*$/gm, '').replace(/\bexport\s+/g, '')}\nglobalThis.__sceneAuthorityPlan=sceneAuthorityPlan;`, sceneWorldSandbox);
+const authorityHtml = sceneWorldSandbox.__sceneAuthorityPlan({ ...bundle, production_manifest: manifest }, worlds[0]);
+assert.match(authorityHtml, /林岚[\s\S]*确认在场/);
+assert.match(authorityHtml, /站位坐标[\s\S]*未规划（不显示伪造点）/, 'missing character coordinates must be explicit in the actual rendered panel');
+assert.match(authorityHtml, /1\. 生产线总览[\s\S]*\(0\.10, 0\.20\)[\s\S]*\(0\.50, 0\.50\)/,
+  'camera authority panel must show saved position and look-at coordinates');
 assert(appSource.includes(releaseConfig.build_id));
 assert(indexSource.includes(releaseConfig.build_id));
 assert(!appSource.includes('20260803-person-age-lightbox-r33'));
