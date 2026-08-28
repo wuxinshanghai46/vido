@@ -390,22 +390,40 @@ async function main() {
   assert.equal(sceneAssets.needsLayoutView({ layout: '前厅、走廊和后场组成多个区域', interaction: '人物沿动线连续穿行' }), true);
 
   const originalVision = modelGateway.generateVision;
-  modelGateway.generateVision = async () => ({
-    text: JSON.stringify(passingSceneResult({
-      requirement_qa: rejectedContract.requirement_qa,
-      view_issues: rejectedContract.view_issues,
-    })),
+  const passingLayoutAcquisition = {
+    pass: true, estimated_downward_pitch_degrees: 88, visible_horizon: false,
+    dominant_vertical_wall_face: false, complete_perimeter_visible: true,
+    ceiling_removed_or_not_visible: true, master_like_composition: false,
+    evidence: ['完整边界与可用地面均入镜'], layout_role_score: 0.96,
+    footprint_coverage_score: 0.95, overhead_verticality_score: 0.97,
+    boundary_completeness_score: 0.96, scene_identity_score: 0.95,
+    camera_relocation_score: 0.94, reasons: [],
+  };
+  modelGateway.generateVision = async request => ({
+    text: JSON.stringify(request.systemPrompt?.includes('strict role validator')
+      ? passingLayoutAcquisition
+      : passingSceneResult({ requirement_qa: rejectedContract.requirement_qa, view_issues: rejectedContract.view_issues })),
     used_model: 'mock/rejected-scene',
   });
   currentScenePrompt(taskId, 'scene-rejected');
-  const rejectedGenerated = await sceneAssets.generateSceneAsset(taskId, { scene_id: 'scene-rejected', scene_spec: created.context.scene_spec });
+  let rejectedGenerated;
+  await assert.rejects(
+    () => sceneAssets.generateSceneAsset(taskId, { scene_id: 'scene-rejected', scene_spec: created.context.scene_spec }),
+    error => {
+      rejectedGenerated = { scene_asset: error.scene_asset };
+      return error?.code === 'SCENE_VISUAL_QA_REJECTED' && Boolean(error.scene_asset);
+    },
+  );
   assert.equal(rejectedGenerated.scene_asset.scene_contract.status, 'rejected');
   assert(storage.getOutput(taskId, 'scene_assets').some(asset => asset.scene_id === 'scene-rejected'), '验证不合格的场景图片仍应保存供用户对照');
 
   let reverifyPrompt = '';
   modelGateway.generateVision = async request => {
     reverifyPrompt = request.userPrompt || '';
-    return { text: JSON.stringify(passingSceneResult()), used_model: 'mock/reverify-scene' };
+    return {
+      text: JSON.stringify(request.systemPrompt?.includes('strict role validator') ? passingLayoutAcquisition : passingSceneResult()),
+      used_model: 'mock/reverify-scene',
+    };
   };
   const reverification = await sceneAssets.reverifySceneAsset(taskId, 'scene-rejected');
   assert.equal(reverification.scene_asset.scene_contract.status, 'verified');
@@ -416,7 +434,6 @@ async function main() {
   assert.match(reverifyPrompt, /do not fail solely because a proprietary, trade or unfamiliar finish name/i);
   assert.match(reverifyPrompt, /a smooth reflection or lighting gradient is not a seam by itself/i);
 
-  modelGateway.generateVision = originalVision;
   currentScenePrompt(taskId, 'scene-layout');
   const layoutGenerated = await sceneAssets.generateSceneAsset(taskId, {
     scene_id: 'scene-layout',
@@ -426,7 +443,6 @@ async function main() {
   assert.equal(layoutGenerated.scene_asset.view_images.length, 5);
   assert(layoutGenerated.scene_asset.view_images.some(view => view.key === 'layout'));
   assert.equal(layoutGenerated.scene_asset.scene_contract.layout_contract.status, 'available');
-
   const conflictingTask = storyAd.createTask({
     brief: '生成一整面连续完整的不锈钢背景墙用于商业展示',
     product_subject: '测试墙面',
@@ -470,6 +486,7 @@ async function main() {
   const reconciledContext = storage.getOutput(conflictingTask.task.id, 'context');
   assert.equal(reconciledContext.scene_spec.surfaceTopology.mode, 'continuous', '实际生成所用的纠偏设置必须写回任务上下文');
   assert.equal(reconciledContext.scene_spec.surfaceTopology.seam_policy, 'hidden');
+  modelGateway.generateVision = originalVision;
 
   console.log(JSON.stringify({
     success: true,
