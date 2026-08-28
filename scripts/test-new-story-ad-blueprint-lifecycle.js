@@ -306,7 +306,8 @@ async function main() {
     assert(taskStoreSource.includes('人物、场景和已通过的空间验证均已保留'));
     assert(taskStoreSource.includes("state.taskErrorCode === 'STAGE_DEADLINE_EXCEEDED'"));
     const plotRoomSource = fs.readFileSync(path.join(root, 'public/story-ad/views/plotRoomView.js'), 'utf8');
-    assert(plotRoomSource.includes('批量重生成全部剧情'));
+    assert(!plotRoomSource.includes('批量重生成全部剧情'), '旧批量重生成文案不得继续阻塞当前剧情合同');
+    assert(plotRoomSource.includes('data-regenerate-story'), '当前剧情必须保留用户显式重新生成入口');
     assert(plotRoomSource.includes("force_regenerate: true"));
     const routeSource = fs.readFileSync(path.join(root, 'src/routes/newStoryAd.js'), 'utf8');
     assert(routeSource.includes('force_regenerate: forceRegenerate'));
