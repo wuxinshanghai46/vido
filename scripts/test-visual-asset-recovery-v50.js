@@ -250,7 +250,7 @@ function testUiScope() {
   assert.ok(retry.includes("lane: 'subjects'"));
   assert.ok(sceneInteractions.includes("lane: 'scenes'"));
   assert.ok(sceneInteractions.includes('await authorizeBillingReviews({ bundle: context.bundle')
-    && !sceneInteractions.includes('confirmBillingAwareAction'), 'scene recovery click must write the revision-bound authorization directly without a second confirmation dialog');
+    && sceneInteractions.includes('confirmBillingAwareAction'), 'scene recovery must obtain explicit risk consent before writing revision-bound authorization');
   assert.ok(retry.includes('checkpoint_keys: reviews.map(review => review.review_key)'));
   assert.ok(retry.includes('expected_review_revisions:'), 'unknown units must be authorized by one revision-bound batch');
   assert.ok(view.includes('resume_partial_checkpoint = target.partial_checkpoint === true'));

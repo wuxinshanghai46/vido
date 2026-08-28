@@ -1,4 +1,5 @@
 import { request } from '../api.js?v=20260828-production-v239c';
+import { confirmDialog } from '../components/dialog.js?v=20260828-production-v239c';
 export { ensureSubjectRecoveryReady } from './subjectRecoveryPreflightAction.js?v=20260828-production-v239c';
 
 export async function loadBillingReviews({ bundle, lane = '', subjectId = '', sceneId = '' } = {}) {
@@ -15,8 +16,22 @@ export async function loadBillingReviews({ bundle, lane = '', subjectId = '', sc
 }
 
 export async function confirmBillingAwareAction({
-  bundle, lane = '', subjectId = '', sceneId = '',
+  bundle, lane = '', subjectId = '', sceneId = '', message = '', title = '', confirmText = '',
 } = {}) {
   const reviewBatch = await loadBillingReviews({ bundle, lane, subjectId, sceneId });
-  return { accepted: true, reviewBatch };
+  if (!reviewBatch.reviews.length) return { accepted: true, reviewBatch };
+  const units = reviewBatch.reviews
+    .map(review => review.unit_label || review.unit || review.view_key || review.review_key || '未知单元')
+    .slice(0, 6)
+    .join('、');
+  const accepted = await confirmDialog(
+    message || `检测到 ${reviewBatch.reviews.length} 个历史图片请求的计费结果无法确认（${units}）。继续会只重试缺失项，但供应商仍可能对原请求和本次请求分别计费。`,
+    {
+      title: title || '确认可能重复计费',
+      confirmText: confirmText || '我接受风险，继续',
+      cancelText: '先不重试',
+      danger: true,
+    },
+  );
+  return { accepted, reviewBatch };
 }

@@ -30,7 +30,7 @@ const { buildSceneSheetPrompt, buildLayoutAcquisitionPrompt, legacyScenePromptFi
 const SCENE_VIEW_KEYS = ['master', 'reverse', 'interaction', 'detail'];
 const REQUIRED_SCENE_VIEW_KEYS = ['layout', ...SCENE_VIEW_KEYS];
 const SCENE_GENERATION_ORDER = ['master', 'layout', 'reverse', 'interaction', 'detail'];
-const SCENE_REPAIR_PLAN_VERSION = 5;
+const SCENE_REPAIR_PLAN_VERSION = 6;
 const SCENE_GENERATION_CONTRACT_VERSION = 7;
 const LAYOUT_APPEARANCE_ROLE = 'master_derived_near_vertical_topdown';
 const SCENE_IMAGE_STAGE_BY_VIEW = Object.freeze({
@@ -533,6 +533,56 @@ function buildSceneRepairPlan(asset = {}) {
   const issues = (Array.isArray(contract.view_issues) ? contract.view_issues : [])
     .filter(issue => cleanText(issue?.evidence || issue?.visual_evidence || '', 300));
   const reasons = issues.map(issue => cleanText(issue.reason || issue.code, 300)).filter(Boolean).slice(0, 8);
+  // Completeness is deterministic evidence and must be repaired before any
+  // paid VLM re-verification. Historical assets can have a QA-unavailable
+  // contract while their checkpoint already proves exactly which view is
+  // absent or failed; sending those assets back to VLM only repeats the same
+  // incomplete-input failure and prevents the old task from progressing.
+  const visibleViewKeys = new Set((Array.isArray(asset.view_images) ? asset.view_images : [])
+    .filter(view => cleanText(view?.url || view?.image_url || '', 1000))
+    .map(view => cleanText(view?.key || view?.view || '', 40))
+    .filter(Boolean));
+  const failedStatusKeys = Object.entries(asset.view_statuses || {})
+    .filter(([, value]) => {
+      const status = cleanText(value?.status || value?.state || value, 40).toLowerCase();
+      return ['failed', 'error', 'rejected', 'billing_unknown'].includes(status);
+    })
+    .map(([key]) => cleanText(key, 40));
+  const deterministicRepairKeys = new Set([
+    ...(looksLikeStoredGeneratedAsset ? REQUIRED_SCENE_VIEW_KEYS.filter(key => !visibleViewKeys.has(key)) : []),
+    ...(Array.isArray(asset.failed_view_keys) ? asset.failed_view_keys : []),
+    ...failedStatusKeys,
+  ]);
+  const incompleteViewKeys = SCENE_GENERATION_ORDER.filter(key => deterministicRepairKeys.has(key));
+  if (incompleteViewKeys.length) {
+    const atlasStrategy = cleanText(
+      asset.view_strategy || asset.view_acquisition?.selected || asset.space_asset_contract?.strategy || '',
+      40,
+    ) === 'atlas_2x2';
+    if (atlasStrategy && incompleteViewKeys.some(key => key !== 'layout')) {
+      return {
+        version: SCENE_REPAIR_PLAN_VERSION,
+        action: 'rebuild_atlas',
+        view_keys: [...SCENE_GENERATION_ORDER],
+        view_labels: SCENE_GENERATION_ORDER.map(sceneViewLabel),
+        count: 2,
+        provider_image_call_count: 2,
+        reasons: incompleteViewKeys.map(key => `缺少或失败的必需视图：${sceneViewLabel(key)}`),
+        issue_codes: ['SCENE_VIEWS_INCOMPLETE'],
+        message: '空间母图派生视图不完整，系统将重建母图与俯视布局，共 2 次图片调用。',
+      };
+    }
+    return {
+      version: SCENE_REPAIR_PLAN_VERSION,
+      action: 'regenerate_failed_views',
+      view_keys: incompleteViewKeys,
+      view_labels: incompleteViewKeys.map(sceneViewLabel),
+      count: incompleteViewKeys.length,
+      reasons: incompleteViewKeys.map(key => `缺少或失败的必需视图：${sceneViewLabel(key)}`),
+      issue_codes: ['SCENE_VIEWS_INCOMPLETE'],
+      message: `系统将先补齐 ${incompleteViewKeys.length} 张确定缺失或失败的视图：${incompleteViewKeys.map(sceneViewLabel).join('、')}；补齐后再统一复核。`,
+    };
+  }
   if (contract.full_space_lock === true
     && Number(contract.schema_version || 0) >= 6
     && contract.camera_design_qa?.pass === true) {

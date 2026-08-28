@@ -430,7 +430,7 @@ async function main() {
     assert.deepEqual(progress.completed_view_keys, ['master', 'layout', 'reverse', 'interaction', 'detail']);
     assert.equal(storyAdService.taskSummary(storage.getTask(taskId)).generation_progress.stage, 'scene_asset', 'scene progress must reach the polling API');
     const publicSceneAsset = storyAdService.publicTaskBundle(taskId).outputs.scene_assets[0];
-    assert.equal(publicSceneAsset.repair_plan.version, 5, 'the public bundle must normalize scene assets before rendering the repair action');
+    assert.equal(publicSceneAsset.repair_plan.version, 6, 'the public bundle must normalize scene assets before rendering the repair action');
 
     const legacyUpgradeTaskId = 'spatial-legacy-v0-full-upgrade-test';
     seedSingleSceneTask(legacyUpgradeTaskId, 'legacy v0 full upgrade', 'legacy-room');

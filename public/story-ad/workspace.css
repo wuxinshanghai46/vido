@@ -78,7 +78,9 @@
 .project-progress-head span { color: var(--mint); font-weight: 800; }
 .project-progress-head .project-progress-stats { display: flex; margin-left: auto; align-items: center; gap: 14px; white-space: nowrap; }
 .project-progress-head .elapsed-time { color: var(--muted); font-size: 12px; font-style: normal; font-weight: 700; }
-.project-progress-head strong { color: var(--mint); font-size: 20px; }
+.project-progress-head b { font-size: 14px; line-height: 1.35; }
+.project-progress-head span { font-size: 12px; line-height: 1.4; }
+.project-progress-head strong { color: var(--mint); font-size: 14px; line-height: 1.35; }
 .project-progress-track { height: 8px; overflow: hidden; border-radius: 99px; background: var(--surface-3); }
 .project-progress-track i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--mint), color-mix(in srgb, var(--mint) 55%, white)); transition: width .28s ease; }
 .generation-lanes{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.generation-lanes>div{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:9px 10px;border-radius:10px;background:var(--surface-2)}.generation-lanes span{display:grid;min-width:0}.generation-lanes small{overflow:hidden;color:var(--muted);font-size:10px;text-overflow:ellipsis;white-space:nowrap}.generation-lanes strong{flex:0 0 auto;font-size:11px}

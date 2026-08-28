@@ -75,7 +75,8 @@ function resolveTextAdapter(model = {}) {
   const provider = (settings.providers || [])
     .find(p => p.enabled && p.api_key && providerMatches(p, providerId));
   if (!provider) throw new Error(`模型供应商 ${providerId} 当前不可用。`);
-  const expectsVision = /(?:scene_vision|consistency_qa|vision)/i.test(String(model._stageId || ''));
+  const expectsVision = model._capability === 'vision'
+    || /(?:scene_(?:vision|camera_qa|consistency_qa)|vision)/i.test(String(model._stageId || ''));
   const providerModel = (provider.models || [])
     .find(m => String(m.id || '').trim() === modelId && m.enabled !== false
       && (expectsVision ? visionUseMatches(m) : storyUseMatches(m)));

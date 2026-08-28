@@ -268,6 +268,8 @@ async function main() {
   assert.equal(auditRetryResult, auditSafePrompt);
 
   const currentFailurePlan = sceneAssets.buildSceneRepairPlan({
+    generation_contract_version: 7,
+    view_images: ['master', 'layout', 'reverse', 'interaction', 'detail'].map(key => ({ key, image_url: `/${key}.png` })),
     scene_contract: {
       schema_version: 3,
       status: 'rejected',
@@ -278,6 +280,18 @@ async function main() {
     },
   });
   assert.equal(currentFailurePlan.action, 'reverify', 'free-text reasons must never trigger paid regeneration');
+
+  const historicalMissingDetailPlan = sceneAssets.buildSceneRepairPlan({
+    generation_contract_version: 7,
+    scene_id: 'historical-missing-detail',
+    view_images: ['master', 'layout', 'reverse', 'interaction'].map(key => ({ key, image_url: `/${key}.png` })),
+    failed_view_keys: ['detail'],
+    view_statuses: { detail: { status: 'failed', billing_state: 'unknown' } },
+    scene_contract: { schema_version: 6, qa_unavailable: true, verification: { state: 'unavailable' }, view_issues: [] },
+  });
+  assert.equal(historicalMissingDetailPlan.action, 'regenerate_failed_views');
+  assert.deepEqual(historicalMissingDetailPlan.view_keys, ['detail']);
+  assert.equal(historicalMissingDetailPlan.count, 1, '历史场景必须只补确定缺失的 detail，不能先调用 VLM 复验');
   assert.deepEqual(currentFailurePlan.view_keys, []);
 
   const legacyMaterialFailurePlan = sceneAssets.buildSceneRepairPlan({
@@ -321,7 +335,7 @@ async function main() {
       spatial_coverage_qa: { pass: true },
     } : {},
   }])[0];
-  assert.equal(upgradedLegacyAsset.repair_plan.version, 5, 'stored v1 repair plans must be upgraded on read');
+  assert.equal(upgradedLegacyAsset.repair_plan.version, 6, 'stored v1 repair plans must be upgraded on read');
   assert.equal(upgradedLegacyAsset.repair_plan.action, 'regenerate_full_scene');
   assert.deepEqual(upgradedLegacyAsset.repair_plan.view_keys, ['master', 'layout', 'reverse', 'interaction', 'detail']);
   assert.equal(sceneAssets.sceneGenerationUpgradeRequired(upgradedLegacyAsset), true);
@@ -431,7 +445,7 @@ async function main() {
       view_issues: [{ code: 'CAMERA_DIVERSITY_LOW', view_keys: ['layout'], reason: 'coverage low', evidence: '', confidence: 0.8 }],
     },
   }])[0];
-  assert.equal(upgradedEvidenceFreeV4Asset.repair_plan.version, 5, 'stored v4 plans must be migrated through the generation-contract gate');
+  assert.equal(upgradedEvidenceFreeV4Asset.repair_plan.version, 6, 'stored v4 plans must be migrated through the generation-contract gate');
   assert.equal(upgradedEvidenceFreeV4Asset.repair_plan.action, 'regenerate_full_scene');
   assert.deepEqual(upgradedEvidenceFreeV4Asset.repair_plan.view_keys, ['master', 'layout', 'reverse', 'interaction', 'detail']);
 
@@ -569,10 +583,19 @@ async function main() {
   const originalAnalyze = sceneSpace.analyzeSceneViews;
   mediaAdapter.generateImage = async options => {
     calls.push(options);
-    return { url: '/new-reverse.png', image_url: '/new-reverse.png', provider_used: 'mock/repair' };
+    const url = /_detail_/.test(options.filename || '') ? '/new-detail.png' : '/new-reverse.png';
+    return { url, image_url: url, provider_used: 'mock/repair' };
   };
   sceneSpace.analyzeSceneViews = async options => passingContract(options.views);
   try {
+    const incompleteResult = await sceneAssets.fixSceneAsset(incompleteTaskId, incompleteSceneId, { scene_spec: sceneSpec, aspect_ratio: '16:9' });
+    assert.equal(incompleteResult.fix_status, 'repaired_and_verified');
+    assert.equal(calls.length, 1, 'old incomplete scene must make exactly one image call for the missing detail view');
+    assert.match(calls[0].filename, /_detail_/);
+    assert.equal(incompleteResult.scene_asset.view_images.find(view => view.key === 'detail').url, '/new-detail.png');
+    assert.deepEqual(incompleteResult.scene_asset.repair_history[0].regenerated_view_keys, ['detail']);
+    calls.length = 0;
+
     const result = await sceneAssets.fixSceneAsset(taskId, sceneId, { scene_spec: sceneSpec, aspect_ratio: '16:9' });
     assert.equal(result.fix_status, 'repaired_and_verified');
     assert.equal(calls.length, 1, 'only the rejected reverse view should be regenerated');

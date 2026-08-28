@@ -52,14 +52,23 @@ function testPlanner() {
   assert.equal(sceneAssetService.buildSceneRepairPlan({
     generation_contract_version: 7,
     scene_contract: { schema_version: 6, full_space_lock: false, verification: { state: 'rejected' }, view_issues: [] },
-    view_images: [{ key: 'master', image_url: '/master.png' }],
+    view_images: ['master', 'layout', 'reverse', 'interaction', 'detail'].map(key => ({ key, image_url: `/${key}.png` })),
   }).action, 'reverify', '没有逐图证据时必须零图片复验');
+
+  const missingDetail = sceneAssetService.buildSceneRepairPlan({
+    generation_contract_version: 7,
+    scene_contract: { schema_version: 6, qa_unavailable: true, verification: { state: 'unavailable' }, view_issues: [] },
+    view_images: ['master', 'layout', 'reverse', 'interaction'].map(key => ({ key, image_url: `/${key}.png` })),
+    failed_view_keys: ['detail'],
+  });
+  assert.equal(missingDetail.action, 'regenerate_failed_views');
+  assert.deepEqual(missingDetail.view_keys, ['detail']);
 
   const targeted = sceneAssetService.buildSceneRepairPlan({
     generation_contract_version: 7,
     view_strategy: 'independent',
     scene_contract: { schema_version: 6, full_space_lock: false, verification: { state: 'rejected' }, view_issues: [{ code: 'REVERSE_MISMATCH', reason: '反向入口漂移', evidence: '入口从左侧移动到右侧', view_keys: ['reverse'] }] },
-    view_images: [{ key: 'master', image_url: '/master.png' }],
+    view_images: ['master', 'layout', 'reverse', 'interaction', 'detail'].map(key => ({ key, image_url: `/${key}.png` })),
   });
   assert.equal(targeted.action, 'regenerate_failed_views');
   assert.deepEqual(targeted.view_keys, ['reverse']);
@@ -68,7 +77,7 @@ function testPlanner() {
     generation_contract_version: 7,
     view_strategy: 'atlas_2x2',
     scene_contract: { schema_version: 6, full_space_lock: false, verification: { state: 'rejected' }, view_issues: [{ code: 'REVERSE_MISMATCH', reason: '反向入口漂移', evidence: '入口从左侧移动到右侧', view_keys: ['reverse'] }] },
-    view_images: [{ key: 'master', image_url: '/master.png' }],
+    view_images: ['master', 'layout', 'reverse', 'interaction', 'detail'].map(key => ({ key, image_url: `/${key}.png` })),
   });
   assert.equal(atlas.action, 'rebuild_atlas');
   assert.equal(atlas.provider_image_call_count, 2);
@@ -90,16 +99,17 @@ async function testFixBinding() {
   const sandbox = {
     setButtonBusy() {},
     toast() {},
+    confirmBillingAwareAction: async () => ({ accepted: true, reviewBatch: { reviews: [] } }),
     authorizeBillingReviews: async () => { authorizationCalls += 1; return []; },
   };
   vm.runInNewContext(`${executable('public/story-ad/views/sceneQaActions.js')}\nglobalThis.__bind=bindSceneQaActions;`, sandbox);
   sandbox.__bind({ host, context: {
     bundle: { project: { id: 'task-qa' }, assets: { scenes: [{ id: 'scene-reverify', name: '复验场景' }] } },
-    store: { async runStage(pathname, body) { requests.push({ pathname, body }); return { accepted: true }; } },
+    store: { beginStageSubmission() {}, async runStage(pathname, body) { requests.push({ pathname, body }); return { accepted: true }; } },
     async refreshShell() {},
   }, controllerFor: async () => null, cardFor: () => null });
   await button.clickHandler();
-  assert.equal(authorizationCalls, 1, 'direct fix click must prepare any existing billing review without a confirmation dialog');
+  assert.equal(authorizationCalls, 1, 'direct fix click must authorize only after the billing review preflight');
   assert.equal(requests.length, 1);
   assert.equal(requests[0].pathname, 'scene-assets/scene-reverify/fix');
   assert.equal(requests[0].body.scene_id, 'scene-reverify');
@@ -138,7 +148,8 @@ async function main() {
   const interactions = read('public/story-ad/views/sceneQaActions.js');
   assert.match(interactions, /scene-assets\/\$\{encodeURIComponent\(sceneId\)\}\/fix/);
   assert.match(interactions, /authorizeBillingReviews/);
-  assert.doesNotMatch(interactions, /confirmBillingAwareAction|data-reverify-scene|data-repair-scene/);
+  assert.match(interactions, /confirmBillingAwareAction/);
+  assert.doesNotMatch(interactions, /data-reverify-scene|data-repair-scene/);
   assert.match(read('public/story-ad/views/sceneWorldPage.js'), /data-generate-all-scenes>生成全部缺失场景/);
   assert.match(read('public/story-ad/views/sceneWorldPage.js'), /data-fix-all-scenes>修复全部未通过场景/);
   const routes = read('src/routes/newStoryAd.js');

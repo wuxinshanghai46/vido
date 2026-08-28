@@ -117,7 +117,7 @@ function checkpointPreview(row = {}, sceneConfig = {}, diagnostics = new Map()) 
     view_statuses: viewStatuses,
     billing_review_required: unknownBilling,
     repair_plan: {
-      version: 5,
+      version: 6,
       action: 'regenerate_failed_views',
       view_keys: repairKeys,
       view_labels: repairKeys.map(key => VIEW_LABELS[key] || key),

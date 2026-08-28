@@ -1,5 +1,5 @@
 import { setButtonBusy, toast } from '../components/ui.js?v=20260828-production-v239c';
-import { authorizeBillingReviews } from './assetCenterBillingRetry.js?v=20260828-production-v239c';
+import { authorizeBillingReviews, confirmBillingAwareAction } from './assetCenterBillingRetry.js?v=20260828-production-v239c';
 import { sceneNeedsGeneration } from './sceneDossierCard.js?v=20260828-production-v239c';
 import { scenePendingAction } from './scenePromptPreview.js?v=20260828-production-v239c';
 import { bindSceneQaActions, submitSceneFix } from './sceneQaActions.js?v=20260828-production-v239c';
@@ -32,8 +32,11 @@ export function bindSceneCards(host, context) {
     if (!scene) return toast('未找到对应场景', 'error');
     setButtonBusy(button, true, '正在准备…');
     try {
+      const confirmation = await confirmBillingAwareAction({ bundle: context.bundle, lane: 'scenes', sceneId });
+      if (!confirmation.accepted) return;
+      await authorizeBillingReviews({ bundle: context.bundle, lane: 'scenes', sceneId, reviewBatch: confirmation.reviewBatch });
+      context.store.beginStageSubmission?.('scene_asset', 1, '正在提交场景生成任务。');
       await (await controllerFor(sceneId))?.flush();
-      await authorizeBillingReviews({ bundle: context.bundle, lane: 'scenes', sceneId });
       await submitScene(scene, button);
       toast('任务已提交'); await context.refreshShell();
     } catch (error) { toast(error.message || '生成场景失败', 'error'); setButtonBusy(button, false); }
@@ -49,13 +52,16 @@ export function bindSceneCards(host, context) {
     const targets = (context.bundle.assets?.scenes || []).filter(scene => sceneNeedsGeneration(scene)
       && !isActive(scene.id || scene.scene_id));
     if (!targets.length) { setButtonBusy(batchButton, false); return toast('没有需要生成的场景'); }
+    const generationConfirmation = await confirmBillingAwareAction({ bundle: context.bundle, lane: 'scenes' });
+    if (!generationConfirmation.accepted) { setButtonBusy(batchButton, false); return; }
+    context.store.beginStageSubmission?.('scene_asset', targets.length, `正在提交 ${targets.length} 个场景生成任务。`);
     try {
       await Promise.all(targets.map(async scene => {
         const sceneId = String(scene.id || scene.scene_id || '');
         await (await controllerFor(sceneId))?.flush();
       }));
     } catch { setButtonBusy(batchButton, false); return; }
-    await authorizeBillingReviews({ bundle: context.bundle, lane: 'scenes' });
+    await authorizeBillingReviews({ bundle: context.bundle, lane: 'scenes', reviewBatch: generationConfirmation.reviewBatch });
     setButtonBusy(batchButton, true, '正在提交…');
     const results = await Promise.allSettled(targets.map(scene => {
       const sceneId = String(scene.id || scene.scene_id || '');
@@ -74,13 +80,17 @@ export function bindSceneCards(host, context) {
     setButtonBusy(batchButton, true, '正在提交修复…', { elapsed: true });
     const targets = (context.bundle.assets?.scenes || []).filter(scene => scenePendingAction(scene)?.kind === 'fix');
     if (!targets.length) { setButtonBusy(batchButton, false); return toast('没有需要修复的场景'); }
+    const fixConfirmation = await confirmBillingAwareAction({ bundle: context.bundle, lane: 'scenes' });
+    if (!fixConfirmation.accepted) { setButtonBusy(batchButton, false); return; }
+    await authorizeBillingReviews({ bundle: context.bundle, lane: 'scenes', reviewBatch: fixConfirmation.reviewBatch });
+    context.store.beginStageSubmission?.('scene_asset', targets.length, `正在提交 ${targets.length} 个场景修复任务。`);
     const results = await Promise.allSettled(targets.map(scene => {
       const sceneId = String(scene.id || scene.scene_id || '');
       const button = [...host.querySelectorAll('[data-fix-scene]')]
         .find(item => String(item.dataset.fixScene || '') === sceneId);
-      return submitSceneFix({ context, controllerFor, cardFor, scene, button, refresh: false });
+      return submitSceneFix({ context, controllerFor, cardFor, scene, button, refresh: false, billingAuthorized: true });
     }));
-    const accepted = results.filter(item => item.status === 'fulfilled').length;
+    const accepted = results.filter(item => item.status === 'fulfilled' && item.value?.accepted !== false).length;
     const failed = results.length - accepted;
     if (accepted) toast(`已提交 ${accepted} 个场景修复任务${failed ? `，${failed} 个未提交` : ''}`, failed ? 'warning' : 'success');
     else toast(results.find(item => item.status === 'rejected')?.reason?.message || '全部场景修复提交失败', 'error');

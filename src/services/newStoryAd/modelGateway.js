@@ -157,7 +157,7 @@ function visionUseMatches(model) {
   const use = String(model?.use || model?.type || '').toLowerCase();
   const id = String(model?.id || model?.model_id || '').toLowerCase();
   return ['vision', 'vlm', 'multimodal'].includes(use)
-    || (storyUseMatches(model) && /(?:gpt-4o(?:-mini)?|gemini-(?:2|3))/.test(id));
+    || (storyUseMatches(model) && /(?:gpt-4o(?:-mini)?|gemini-(?:2|3)|claude-(?:3|opus|sonnet|haiku))/.test(id));
 }
 
 function imageUseMatches(model) {
@@ -1064,7 +1064,7 @@ async function generateVision({
         },
       ];
       const result = await (typeof _generateText === 'function' ? _generateText : providerAdapters.generateText)({
-        model: { ...model, _stageId: stage },
+        model: { ...model, _stageId: stage, _capability: 'vision' },
         stage,
         taskId,
         systemPrompt,
