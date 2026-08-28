@@ -1,5 +1,5 @@
-import { request } from '../api.js?v=20260828-production-v256';
-import { escapeHtml } from '../components/ui.js?v=20260828-production-v256';
+import { request } from '../api.js?v=20260829-production-v257';
+import { escapeHtml } from '../components/ui.js?v=20260829-production-v257';
 
 function storageKey(taskId, stage) {
   return `story-ad-generation-model:${taskId}:${stage}`;
