@@ -31,10 +31,15 @@ function checkpointBillingRows(outputs = [], taskId = '') {
       ? `${text(outputKind)}:${providerAttemptIdentity}`
       : text(identity || checkpointKey);
     if (!checkpointKey || !identityKey || seen.has(identityKey)) return;
+    // Outputs are scanned newest-first. A completed/confirmed unit with the
+    // same stable checkpoint identity resolves an older unknown snapshot, so
+    // reserve the identity before filtering to unknown rows. Scene attempt
+    // history supplies an attempt-scoped identity and therefore remains
+    // isolated from later, genuinely different provider attempts.
+    seen.add(identityKey);
     const billing = text(value.billing_state).toLowerCase();
     const submission = text(value.provider_submission_state || value.submission_state || value.status).toLowerCase();
     if (billing !== 'unknown' && submission !== 'submitted_unknown') return;
-    seen.add(identityKey);
     found.push({
       id: `checkpoint:${checkpointKey}`,
       task_id: normalizedTaskId,
