@@ -26,6 +26,8 @@ const sceneVisualPrompts = require('./sceneVisualPromptService');
 const sceneAssetFix = require('./sceneAssetFixService');
 const sceneViewCompleteness = require('./sceneViewCompletenessService');
 const sceneRepairPlans = require('./sceneRepairPlanService');
+const sceneAssetFiles = require('./sceneAssetFileIntegrityService');
+const targetProgress = require('./targetGenerationProgressService');
 const { buildSceneSheetPrompt, buildLayoutAcquisitionPrompt, legacyScenePromptFingerprintText, localizeSceneViews, relinkContractViews, localizeSceneAssets, buildDerivedViewPrompt, buildSceneAuditSafePrompt } = sceneVisualPrompts;
 
 const SCENE_VIEW_KEYS = ['master', 'reverse', 'interaction', 'detail'];
@@ -121,10 +123,17 @@ function normalizeSceneView(view = {}, index = 0) {
 
 function normalizeSceneAsset(asset = {}, index = 0) {
   if (!asset || typeof asset !== 'object') return null;
-  const viewImages = Array.isArray(asset.view_images)
+  const normalizedViews = Array.isArray(asset.view_images)
     ? asset.view_images.map(normalizeSceneView).filter(view => view.url || view.image_url).slice(0, 8)
     : [];
-  const primary = cleanText(asset.image_url || asset.url || viewImages[0]?.url || viewImages[0]?.image_url || '', 1000);
+  const partitionedViews = sceneAssetFiles.partitionViews(normalizedViews);
+  const viewImages = partitionedViews.available.map(item => item.view);
+  const missingFileViewKeys = partitionedViews.missing
+    .map(item => cleanText(item.view.key || item.view.view || `view_${item.index + 1}`, 40))
+    .filter(Boolean);
+  const storedPrimary = cleanText(asset.image_url || asset.url || '', 1000);
+  const primaryState = sceneAssetFiles.inspect(storedPrimary);
+  const primary = cleanText((primaryState.available ? storedPrimary : '') || viewImages[0]?.url || viewImages[0]?.image_url || '', 1000);
   if (!primary && !viewImages.length && !asset.layout_summary && !asset.material_summary) return null;
   const normalizedContract = asset.scene_contract && typeof asset.scene_contract === 'object'
     ? sceneSpace.normalizeContract(asset.scene_contract, {
@@ -190,6 +199,7 @@ function normalizeSceneAsset(asset = {}, index = 0) {
     checkpoint_error_code: cleanText(asset.checkpoint_error_code || '', 120),
     completed_view_keys: Array.isArray(asset.completed_view_keys) ? asset.completed_view_keys.map(value => cleanText(value, 40)).filter(Boolean) : [],
     failed_view_keys: Array.isArray(asset.failed_view_keys) ? asset.failed_view_keys.map(value => cleanText(value, 40)).filter(Boolean) : [],
+    missing_file_view_keys: missingFileViewKeys,
     view_statuses: asset.view_statuses && typeof asset.view_statuses === 'object'
       ? Object.fromEntries(Object.entries(asset.view_statuses).map(([key, value]) => [
           cleanText(key, 40),
@@ -199,7 +209,9 @@ function normalizeSceneAsset(asset = {}, index = 0) {
     billing_review_required: asset.billing_review_required === true,
     provider_used: cleanText(asset.provider_used || '', 240),
     prompt: cleanText(asset.prompt || '', 6000),
-    repair_plan: repairPlan,
+    repair_plan: missingFileViewKeys.length
+      ? buildSceneRepairPlan({ ...normalizedForPlan, failed_view_keys: [...new Set([...(asset.failed_view_keys || []), ...missingFileViewKeys])] })
+      : repairPlan,
     repair_history: Array.isArray(asset.repair_history) ? asset.repair_history.slice(-8) : [],
     scene_layer: asset.scene_layer && typeof asset.scene_layer === 'object' ? asset.scene_layer : null,
     scene_authority_fingerprint: cleanText(asset.scene_authority_fingerprint || asset.sceneAuthorityFingerprint || '', 100),
@@ -233,9 +245,14 @@ function updateSceneGenerationProgress(taskId, update = {}) {
       message: update.phase === 'verification' ? '正在验证场景空间一致性' : '',
     });
   }
-  const previous = task.generation_progress?.stage === 'scene_asset'
-    ? task.generation_progress
-    : {};
+  const executionGenerationId = cleanText(update.generationId || cancellation.current()?.generationId || '', 100);
+  const activeTargets = task.active_target_generations && typeof task.active_target_generations === 'object'
+    ? task.active_target_generations : {};
+  const activeTargetEntry = Object.entries(activeTargets).find(([, value]) => String(value?.generation_id || '') === executionGenerationId);
+  const inferredSceneId = cleanText(update.sceneId || update.scene_id || activeTargetEntry?.[1]?.target_id || '', 120);
+  const laneKey = targetProgress.key('scene_asset', inferredSceneId);
+  const previous = task.target_generation_progress?.[laneKey]
+    || (task.generation_progress?.stage === 'scene_asset' ? task.generation_progress : {});
   const keys = normalizeRepairViewKeys(update.viewKeys?.length ? update.viewKeys : previous.view_keys);
   const initialStates = Array.isArray(update.initialViewStates) ? update.initialViewStates : [];
   const priorStates = new Map([
@@ -269,8 +286,8 @@ function updateSceneGenerationProgress(taskId, update = {}) {
   const progress = {
     schema_version: 1,
     stage: 'scene_asset',
-    scene_id: cleanText(update.sceneId || update.scene_id || previous.scene_id || '', 120),
-    generation_id: task.active_generation_id || previous.generation_id || '',
+    scene_id: inferredSceneId || cleanText(previous.scene_id || '', 120),
+    generation_id: executionGenerationId || previous.generation_id || '',
     mode: update.mode || previous.mode || 'generate',
     phase,
     // A failed view is an intermediate, resumable unit state while later views
@@ -290,6 +307,14 @@ function updateSceneGenerationProgress(taskId, update = {}) {
     updated_at: now,
     ...(terminal ? { finished_at: now } : {}),
   };
+  if (progress.scene_id) {
+    const patch = targetProgress.upsert(task, {
+      stage: 'scene_asset', scopeId: progress.scene_id, sceneId: progress.scene_id,
+      generationId: progress.generation_id, status: progress.status, progress,
+    });
+    storage.updateTask(taskId, patch);
+    return patch.generation_progress;
+  }
   storage.updateTask(taskId, { generation_progress: progress });
   return progress;
 }

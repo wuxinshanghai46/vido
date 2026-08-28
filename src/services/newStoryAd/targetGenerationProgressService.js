@@ -1,0 +1,89 @@
+'use strict';
+
+function key(stage = '', scopeId = '') {
+  return `${String(stage || '')}:${String(scopeId || '')}`;
+}
+
+function maps(task = {}) {
+  return {
+    active: task.active_target_generations && typeof task.active_target_generations === 'object'
+      ? { ...task.active_target_generations } : {},
+    progress: task.target_generation_progress && typeof task.target_generation_progress === 'object'
+      ? { ...task.target_generation_progress } : {},
+  };
+}
+
+function aggregate(task = {}, stage = '') {
+  const state = maps(task);
+  const selectedStage = String(stage || task.active_stage || task.generation_progress?.stage || '');
+  const rows = Object.entries(state.progress)
+    .filter(([targetKey, row]) => String(row?.stage || targetKey.split(':')[0]) === selectedStage)
+    .map(([targetKey, row]) => ({ target_key: targetKey, ...row }));
+  if (!rows.length) return task.generation_progress || null;
+  const activeKeys = new Set(Object.keys(state.active));
+  const activeRows = rows.filter(row => activeKeys.has(row.target_key));
+  const relevant = activeRows.length
+    ? rows
+    : rows.filter(row => ['done', 'succeeded', 'failed', 'cancelled'].includes(String(row.status || '').toLowerCase()));
+  const source = relevant.length ? relevant : rows;
+  const total = source.reduce((sum, row) => sum + Math.max(0, Number(row.target_total || row.total || 0) || 0), 0);
+  const processed = source.reduce((sum, row) => sum + Math.max(0, Number(row.processed || row.completed || 0) || 0), 0);
+  const succeeded = source.reduce((sum, row) => sum + Math.max(0, Number(row.succeeded || 0) || 0), 0);
+  const failed = source.reduce((sum, row) => sum + Math.max(0, Number(row.failed || 0) || 0), 0);
+  const latest = [...source].sort((a, b) => String(a.updated_at || '').localeCompare(String(b.updated_at || ''))).pop() || {};
+  const anyFailed = source.some(row => String(row.status || '').toLowerCase() === 'failed');
+  const anyCancelled = source.some(row => String(row.status || '').toLowerCase() === 'cancelled');
+  const running = activeRows.length > 0;
+  const status = running ? 'running' : (anyFailed ? 'failed' : (anyCancelled ? 'cancelled' : 'done'));
+  return {
+    schema_version: 2,
+    stage: selectedStage,
+    generation_id: String((activeRows[activeRows.length - 1] || latest).generation_id || ''),
+    status,
+    phase: running ? (activeRows.some(row => row.phase === 'verification') ? 'verification' : 'generation') : 'complete',
+    target_total: total,
+    processed,
+    succeeded,
+    failed,
+    percent: total > 0 ? Math.min(100, Math.round((processed / total) * 100)) : (running ? 0 : 100),
+    active_target_keys: activeRows.map(row => row.target_key),
+    active_scene_ids: activeRows.map(row => String(row.scene_id || row.scope_id || '')).filter(Boolean),
+    started_at: source.map(row => row.started_at).filter(Boolean).sort()[0] || '',
+    updated_at: latest.updated_at || new Date().toISOString(),
+    ...(!running ? { finished_at: latest.finished_at || latest.updated_at || new Date().toISOString() } : {}),
+  };
+}
+
+function upsert(task = {}, options = {}) {
+  const stage = String(options.stage || '');
+  const scopeId = String(options.scopeId || options.scope_id || '');
+  const targetKey = key(stage, scopeId);
+  const state = maps(task);
+  if (options.resetStageIfIdle === true
+    && !Object.keys(state.active).some(value => value.startsWith(`${stage}:`))) {
+    Object.keys(state.progress).filter(value => value.startsWith(`${stage}:`)).forEach(value => delete state.progress[value]);
+  }
+  const previous = state.progress[targetKey] || {};
+  const now = options.updatedAt || new Date().toISOString();
+  state.progress[targetKey] = {
+    ...previous,
+    ...(options.progress || {}),
+    stage,
+    scope_id: scopeId,
+    scene_id: options.sceneId || options.scene_id || previous.scene_id || scopeId,
+    generation_id: options.generationId || options.generation_id || previous.generation_id || '',
+    status: options.status || options.progress?.status || previous.status || 'queued',
+    started_at: previous.started_at || options.startedAt || options.started_at || now,
+    updated_at: now,
+    ...(['done', 'succeeded', 'failed', 'cancelled'].includes(String(options.status || '').toLowerCase())
+      ? { finished_at: options.finishedAt || options.finished_at || now }
+      : {}),
+  };
+  const next = { ...task, target_generation_progress: state.progress };
+  return {
+    target_generation_progress: state.progress,
+    generation_progress: aggregate(next, stage),
+  };
+}
+
+module.exports = { aggregate, key, maps, upsert };

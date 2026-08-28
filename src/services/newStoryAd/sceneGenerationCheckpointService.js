@@ -4,6 +4,7 @@ const path = require('path');
 
 const storage = require('./storageService');
 const mediaAdapter = require('./mediaAdapter');
+const sceneAssetFiles = require('./sceneAssetFileIntegrityService');
 
 const CHECKPOINT_SCHEMA_VERSION = 1;
 const CHECKPOINT_OUTPUT_PREFIX = 'scene_asset_checkpoint:';
@@ -215,12 +216,16 @@ function cleanupUnpublishedFiles(checkpoint = {}) {
   if (!checkpoint || checkpoint.status === 'published') return 0;
   const assetRoot = path.resolve(mediaAdapter.ASSET_DIR);
   const thumbRoot = path.resolve(mediaAdapter.THUMB_DIR);
+  const published = sceneAssetFiles.publishedFilenames(storage, checkpoint.task_id);
   let removed = 0;
   Object.values(checkpoint.views || {}).forEach(view => {
     const file = localAssetFile(view);
     if (!file || !path.basename(file).includes('_candidate_')) return;
     const resolved = path.resolve(file);
     if (!(resolved.startsWith(assetRoot + path.sep))) return;
+    // Candidate-named files may already be referenced by the formal scene asset
+    // package. A QA/checkpoint state must never be allowed to delete published media.
+    if (published.has(path.basename(resolved))) return;
     try {
       if (fs.existsSync(resolved)) {
         fs.rmSync(resolved, { force: true });

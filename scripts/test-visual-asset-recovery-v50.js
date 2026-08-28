@@ -204,7 +204,9 @@ function testPartialProjection() {
     { kind: 'scene_config', payload: { spaces: [{ id: 'scene-1', name: 'Scene One' }] } },
     { kind: 'scene_asset_checkpoint:scene-1', payload: {
       scene_id: 'scene-1', status: 'failed', views: {
-        master: { status: 'succeeded', image_url: '/api/new-story-ad/assets/scene-master.png' },
+        // This fixture represents an actually reachable succeeded asset. Local
+        // /api paths are now verified against disk and must not be faked by tests.
+        master: { status: 'succeeded', image_url: 'https://test.invalid/scene-master.png' },
         layout: { status: 'failed', image_url: '/api/new-story-ad/assets/rejected-layout.png', billing_state: 'unknown', provider_submission_state: 'submitted_unknown' },
         detail: { status: 'failed', billing_state: 'not_submitted', provider_submission_state: 'not_submitted', error_code: 'GENERATION_STOPPED_AFTER_BILLING_UNKNOWN' },
       },

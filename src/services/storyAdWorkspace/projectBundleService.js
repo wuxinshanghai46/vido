@@ -12,6 +12,8 @@ const personOwnedPropProjection = require('./personOwnedPropProjectionService'),
 const { projectSceneWorldAssets } = require('./sceneWorldAssetProjectionService'), { projectSceneDossier } = require('./sceneDossierProjectionService'), subjectCheckpointProjection = require('../newStoryAd/subjectCheckpointProjectionService');
 const sceneWorkflowProjection = require('./sceneWorkflowProjectionService'), scenePromptConfirmation = require('../newStoryAd/scenePromptConfirmationService');
 const sceneAssetRuntimeProjection = require('./sceneAssetRuntimeProjectionService');
+const sceneAssetService = require('../newStoryAd/sceneAssetService');
+const sceneAssetFiles = require('../newStoryAd/sceneAssetFileIntegrityService');
 const sceneQaProjection = require('./sceneQaProjectionService');
 const MAX_MEDIA_ITEMS = 120;
 function clean(value = '', max = 240) { return String(value || '').replace(/\s+/g, ' ').trim().slice(0, max); }
@@ -94,6 +96,12 @@ function projectSummary(task = {}) {
     thumbnail_url: mediaUrl(task.thumbnail_url),
     final_video_url: mediaUrl(task.final_video_url),
     active_generation_id: clean(task.active_generation_id, 100),
+    active_target_generations: task.active_target_generations && typeof task.active_target_generations === 'object'
+      ? task.active_target_generations : {},
+    target_generation_progress: task.target_generation_progress && typeof task.target_generation_progress === 'object'
+      ? task.target_generation_progress : {},
+    generation_progress: task.generation_progress && typeof task.generation_progress === 'object'
+      ? task.generation_progress : null,
     error: failureProjection.publicFailureMessage(task.error, clean), error_code: failureProjection.publicErrorCode(task.error_code, task.error),
     created_at: task.created_at || '', updated_at: task.updated_at || '',
   };
@@ -281,6 +289,25 @@ function sceneAssets(outputs = {}, context = {}) {
   const shots = list(outputs.storyboard_table);
   const routes = list(plan.routes || plan.scene_routes || plan.transitions);
   const projectScene = (space = {}, asset = {}, reference = {}, index = 0, options = {}) => {
+    const integrity = sceneAssetFiles.partitionViews(list(asset.view_images));
+    const missingFileViewKeys = integrity.missing.map(item => clean(item.view?.key || item.view?.view || `view_${item.index + 1}`, 40));
+    if (missingFileViewKeys.length) {
+      const availableViews = integrity.available.map(item => item.view);
+      const failedViewKeys = [...new Set([...(asset.failed_view_keys || []), ...missingFileViewKeys])];
+      const primary = sceneAssetFiles.inspect(asset.image_url || asset.url).available
+        ? mediaUrl(asset)
+        : mediaUrl(availableViews[0] || {});
+      asset = {
+        ...asset,
+        image_url: primary,
+        url: primary,
+        view_images: availableViews,
+        view_count: availableViews.length,
+        failed_view_keys: failedViewKeys,
+        missing_file_view_keys: missingFileViewKeys,
+        repair_plan: sceneAssetService.buildSceneRepairPlan({ ...asset, view_images: availableViews, failed_view_keys: failedViewKeys }),
+      };
+    }
     const id = rawKeyOf(space) || rawKeyOf(asset) || rawKeyOf(reference) || `scene-${index + 1}`;
     const contract = asset.scene_contract && typeof asset.scene_contract === 'object' ? asset.scene_contract : {};
     const spec = space.scene_spec && typeof space.scene_spec === 'object'

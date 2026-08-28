@@ -6,6 +6,7 @@ const releaseBundle = require('../storyAdReleaseBundleService');
 const assetPlanCheckpointLineage = require('./assetPlanCheckpointLineageService');
 const generationUnits = require('./generationUnitService');
 const authorityLifecycle = require('./authorityLifecycleService');
+const targetProgress = require('./targetGenerationProgressService');
 
 const runningJobs = new Map();
 const EXECUTING_STAGES = new Set(['full', 'script_package', 'scene_config', 'production_assets', 'visual_assets', 'blueprint', 'storyboard', 'scene_asset', 'scene_panorama', 'keyframes', 'tts', 'video', 'compose', 'media']);
@@ -92,6 +93,34 @@ function scopedTaskPatch(task = {}, job = {}, status = 'queued', failure = {}) {
     active_generation_id: representative?.generation_id || '',
     active_stage: representative?.stage || '',
     ...(representative ? { status: 'running', stage: representative.stage } : {}),
+  };
+}
+
+function scopedProgressPatch(task = {}, job = {}, status = 'queued', scopedPatch = {}, failure = {}) {
+  let base = task;
+  if (['queued', 'running'].includes(status)
+    && !Object.keys(targetProgress.maps(task).active).some(value => value.startsWith(`${job.stage}:`))) {
+    const progress = targetProgress.maps(task).progress;
+    Object.keys(progress).filter(value => value.startsWith(`${job.stage}:`)).forEach(value => delete progress[value]);
+    base = { ...task, target_generation_progress: progress };
+  }
+  const lanePatch = targetProgress.upsert(base, {
+    stage: job.stage,
+    scopeId: job.scopeId,
+    generationId: job.id,
+    status,
+    startedAt: job.startedAt || job.queuedAt,
+    finishedAt: job.finishedAt,
+    progress: {
+      ...(failure.code ? { error_code: failure.code } : {}),
+      ...(failure.message ? { message: failure.message } : {}),
+      ...(failure.retryable !== undefined ? { retryable: failure.retryable === true } : {}),
+    },
+  });
+  const merged = { ...base, ...scopedPatch, target_generation_progress: lanePatch.target_generation_progress };
+  return {
+    target_generation_progress: lanePatch.target_generation_progress,
+    generation_progress: targetProgress.aggregate(merged, job.stage),
   };
 }
 
@@ -569,6 +598,10 @@ function queueStage({
   };
   runningJobs.set(key, job);
   const queuedTask = storage.getTask(taskId) || persisted || {};
+  const queuedScopedPatch = normalizedScopeId ? scopedTaskPatch(queuedTask, job, 'queued') : {};
+  const queuedProgressPatch = normalizedScopeId
+    ? scopedProgressPatch(queuedTask, job, 'queued', queuedScopedPatch)
+    : { generation_progress: null };
   storage.updateTask(taskId, {
     status: 'queued',
     stage: `${stage}_queued`,
@@ -577,7 +610,7 @@ function queueStage({
     generation_queued_at: queuedAt,
     generation_started_at: '',
     generation_finished_at: '',
-    generation_progress: null,
+    ...queuedProgressPatch,
     error: '',
     error_code: '',
     support_id: '',
@@ -585,7 +618,7 @@ function queueStage({
     active_content_revision: expectedRevision,
     active_input_fingerprint: job.inputFingerprint,
     ...assetPlanCheckpointLineage.queuedPlanningTaskPatch(stage, job.releaseBundleId),
-    ...(normalizedScopeId ? scopedTaskPatch(queuedTask, job, 'queued') : {}),
+    ...queuedScopedPatch,
   });
   storage.saveStage(taskId, stage, {
     status: 'queued',
@@ -651,6 +684,8 @@ function queueStage({
       provider_submission_state: 'not_applicable',
       started_at: job.startedAt,
     }, { reason: 'job_started' });
+    const runningTask = storage.getTask(taskId) || {};
+    const runningScopedPatch = normalizedScopeId ? scopedTaskPatch(runningTask, job, 'running') : {};
     storage.updateTask(taskId, {
       status: 'running',
       stage,
@@ -659,7 +694,8 @@ function queueStage({
       generation_started_at: job.startedAt,
       error: '',
       error_code: '',
-      ...(normalizedScopeId ? scopedTaskPatch(storage.getTask(taskId) || {}, job, 'running') : {}),
+      ...(normalizedScopeId ? scopedProgressPatch(runningTask, job, 'running', runningScopedPatch) : {}),
+      ...runningScopedPatch,
     });
     storage.saveStage(taskId, stage, {
       status: 'running',
@@ -708,19 +744,14 @@ function queueStage({
       if (normalizedScopeId) {
         const patch = scopedTaskPatch(current || {}, job, 'succeeded');
         const remaining = Object.keys(patch.active_target_generations || {}).length > 0;
-        const terminalProgress = !remaining
-          ? terminalGenerationProgress(current, stage, id, {
-            status: 'done', phase: 'complete', percent: 100,
-            finished_at: job.finishedAt, updated_at: job.finishedAt,
-          })
-          : null;
+        const progressPatch = scopedProgressPatch(current || {}, job, 'done', patch);
         storage.updateTask(taskId, {
           ...patch,
+          ...progressPatch,
           ...(!remaining ? {
             status: 'done', stage: `${stage}_done`, generation_finished_at: job.finishedAt,
             error: '', error_code: '', support_id: '',
           } : {}),
-          ...(terminalProgress ? { generation_progress: terminalProgress } : {}),
         });
       } else if (String(current?.active_generation_id || '') === id) {
         const stageUnchanged = String(current?.stage || '') === String(stage);
@@ -784,11 +815,9 @@ function queueStage({
           code: failure.code, message: job.error, retryable: failure.retryable,
         });
         const remaining = Object.keys(patch.active_target_generations || {}).length > 0;
-        const terminalProgress = !remaining ? terminalGenerationProgress(current, stage, id, {
-          status: 'failed', error_code: failure.code, support_id: id, message: job.error,
-          finished_at: job.finishedAt, updated_at: job.finishedAt,
-          ...(failureBillingState ? { billing_state: failureBillingState } : {}),
-        }) : null;
+        const progressPatch = scopedProgressPatch(current || {}, job, 'failed', patch, {
+          code: failure.code, message: job.error, retryable: failure.retryable,
+        });
         storage.saveStage(taskId, stage, {
           status: 'failed', started_at: job.startedAt, finished_at: job.finishedAt,
           output_summary: error?.partial_results_saved === true ? '部分生成失败；成功资产与检查点已保存' : '执行失败，未保存可用结果',
@@ -798,10 +827,10 @@ function queueStage({
         }, { systemFinalization: true });
         storage.updateTask(taskId, {
           ...patch,
+          ...progressPatch,
           ...(!remaining ? {
             status: 'failed', stage: `${stage}_failed`, generation_finished_at: job.finishedAt,
             error: job.error, error_code: failure.code, support_id: id, retryable: failure.retryable,
-            ...(terminalProgress ? { generation_progress: terminalProgress } : {}),
           } : {}),
         });
       } else if (String(current?.active_generation_id || '') === id) {
@@ -886,8 +915,12 @@ function queueStage({
           code: failure.code, message: job.error, retryable: true,
         });
         const remaining = Object.keys(patch.active_target_generations || {}).length > 0;
+        const progressPatch = scopedProgressPatch(current || {}, job, 'failed', patch, {
+          code: failure.code, message: job.error, retryable: true,
+        });
         storage.updateTask(taskId, {
           ...patch,
+          ...progressPatch,
           ...(!remaining ? {
             status: 'failed', stage: `${stage}_failed`, generation_finished_at: job.finishedAt,
             error: job.error, error_code: failure.code, support_id: id, retryable: true,

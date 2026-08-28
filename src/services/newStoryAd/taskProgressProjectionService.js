@@ -1,7 +1,7 @@
 const crypto = require('crypto');
 const publicFailure = require('./publicFailureProjectionService');
 
-const PROJECTION_VERSION = 'story-ad-progress-projection-v4';
+const PROJECTION_VERSION = 'story-ad-progress-projection-v5';
 
 function text(value = '', max = 500) {
   return String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, max);
@@ -53,6 +53,10 @@ function projectTaskProgress(task = {}, sinceRevision = '') {
     active_stage: text(task.active_stage, 80),
     active_target_generations: task.active_target_generations && typeof task.active_target_generations === 'object'
       ? task.active_target_generations : {},
+    target_generation_progress: task.target_generation_progress && typeof task.target_generation_progress === 'object'
+      ? Object.fromEntries(Object.entries(task.target_generation_progress).slice(0, 30).map(([key, value]) => [
+        text(key, 240), compactProgress(value),
+      ])) : {},
     generation_queued_at: text(task.generation_queued_at, 48),
     generation_started_at: text(task.generation_started_at, 48),
     generation_finished_at: text(task.generation_finished_at, 48),
