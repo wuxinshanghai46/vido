@@ -1,4 +1,4 @@
-import { beginReferenceRetry, restoreReferenceRetry } from './referenceReplacementState.js?v=20260828-production-v253';
+import { beginReferenceRetry, restoreReferenceRetry } from './referenceReplacementState.js?v=20260828-production-v254';
 
 async function runReferenceRetry(deps, path, body, missingMessage) {
   const { request, state, set, applyReferenceLiveState, syncReferencePolling } = deps;
