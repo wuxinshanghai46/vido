@@ -48,14 +48,15 @@ async function main() {
     stage: 'scene_asset', status: 'running', target_total: 5, processed: 5, succeeded: 4, failed: 1, percent: 100,
   } } };
   const progressView = uiSandbox.__progressView(partialBundle);
-  const progressPanel = uiSandbox.__progressPanel(partialBundle, 'scene');
+  const progressPanel = uiSandbox.__progressPanel(partialBundle, '');
+  assert.equal(uiSandbox.__progressPanel(partialBundle, 'scene'), '', '场景页使用卡片级进度，不得再显示可能串场的全局横幅');
   assert.equal(progressView.percent, 100, '处理完成必须如实保留100%，不能伪装成99%');
   assert.equal(progressView.succeededCount, 4);
   assert.equal(progressView.failedCount, 1);
   assert(progressPanel.includes('处理进度 5/5') && progressPanel.includes('成功 4，失败 1') && progressPanel.includes('处理进度 100%'), '100%必须明确是处理进度，并同时呈现成功/失败计数');
   const failedPanel = uiSandbox.__progressPanel({ project: { status: 'failed', error: '部分生成失败', generation_progress: {
     stage: 'scene_asset', status: 'failed', target_total: 5, processed: 5, succeeded: 4, failed: 1, percent: 100,
-  } } }, 'scene');
+  } } }, '');
   assert(failedPanel.includes('处理 5/5：成功 4，失败 1'), '任务转为终态失败后仍必须保留处理、成功和失败计数');
   const staleRunning = uiSandbox.__progressView({ project: {
     status: 'failed', stage: 'scene_asset_failed', active_generation_id: '', active_target_generations: {}, error: '部分生成失败',
@@ -65,10 +66,10 @@ async function main() {
   assert.equal(staleRunning.failed, true);
   assert(scenePreview.includes('scene-card-controls') && scenePreview.includes('sceneGenerationSettingsMarkup()'));
   assert(!sceneActions.includes('insertAdjacentHTML'));
-  const singleSceneHandler = sceneActions.slice(sceneActions.indexOf("host.querySelectorAll('[data-generate-scene]')"), sceneActions.indexOf("host.querySelector('[data-generate-all-scenes]')"));
+  const singleSceneHandler = sceneActions.slice(sceneActions.indexOf("host.querySelectorAll('[data-generate-scene]')"), sceneActions.indexOf("host.querySelector('[data-run-scene-actions]')"));
   assert(singleSceneHandler.indexOf("setButtonBusy(button, true, '正在准备…')") < singleSceneHandler.indexOf('await (await controllerFor(sceneId))?.flush()'), '场景点击后必须先给反馈，再等待自动保存');
-  const batchFixHandler = sceneActions.slice(sceneActions.indexOf("host.querySelector('[data-fix-all-scenes]')"));
-  assert(batchFixHandler.indexOf('beginStageSubmission') < batchFixHandler.indexOf('Promise.allSettled'), '批量修复必须在网络提交完成前立即投影全局进度');
+  const batchFixHandler = sceneActions.slice(sceneActions.indexOf("host.querySelector('[data-run-scene-actions]')"));
+  assert(batchFixHandler.indexOf('beginStageSubmission') < batchFixHandler.indexOf('Promise.allSettled'), '统一场景处理必须在网络提交完成前立即投影全局进度');
   assert(projectStore.includes('beginStageSubmissionState({ state, set }')
     && stageSubmissionState.includes("active_generation_id: state.bundle.project.active_generation_id || 'client-submitting'")
     && stageSubmissionState.includes('client_optimistic: true'), '客户端提交阶段必须同步创建可见的0%进度状态');

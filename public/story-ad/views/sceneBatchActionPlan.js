@@ -1,0 +1,26 @@
+import { scenePendingAction } from './scenePromptPreview.js?v=20260828-production-v252';
+
+function text(value = '') { return String(value || '').trim(); }
+
+export function buildSceneBatchActionPlan(scenes = [], activeTargets = []) {
+  const active = new Set((Array.isArray(activeTargets) ? activeTargets : [])
+    .filter(item => ['scene_asset', 'scene_qa'].includes(text(item?.stage))
+      && ['queued', 'running', 'processing', 'verifying'].includes(text(item?.status).toLowerCase()))
+    .map(item => text(item?.target_id || item?.scope_id))
+    .filter(Boolean));
+  const ready = [];
+  for (const scene of Array.isArray(scenes) ? scenes : []) {
+    const sceneId = text(scene?.id || scene?.scene_id);
+    const action = scenePendingAction(scene);
+    if (!sceneId || !action || active.has(sceneId)) continue;
+    ready.push({ scene, sceneId, action });
+  }
+  const generate = ready.filter(item => item.action.kind === 'generate');
+  const review = ready.filter(item => item.action.kind === 'fix' && item.action.billable === false);
+  const repair = ready.filter(item => item.action.kind === 'fix' && item.action.billable !== false);
+  return {
+    ready, generate, review, repair,
+    count: ready.length,
+    requiresBillingConfirmation: generate.length + repair.length > 0,
+  };
+}

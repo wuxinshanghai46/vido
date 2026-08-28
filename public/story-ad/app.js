@@ -3,8 +3,15 @@ import { bindHoverVideoPreviews, escapeHtml, formatDate, generationProgressPanel
 import { assertCurrentRelease, startReleaseHeartbeat } from './api.js?v=20260828-production-v252';
 import { confirmDialog } from './components/dialog.js?v=20260828-production-v252';
 
-await assertCurrentRelease();
-startReleaseHeartbeat();
+await assertCurrentRelease().then(() => startReleaseHeartbeat()).catch(error => {
+  if (error?.code === 'CLIENT_BUILD_EXPIRED') throw error;
+  const loadingHost = document.querySelector('#storyAdApp');
+  if (loadingHost) {
+    loadingHost.innerHTML = '<div class="fatal-error"><b>页面连接超时</b><span>没有继续等待未完成的请求，请检查网络后重试。</span><button class="btn" type="button" data-retry-page>重新加载</button></div>';
+    loadingHost.querySelector('[data-retry-page]')?.addEventListener('click', () => location.reload());
+  }
+  throw error;
+});
 
 const app = document.querySelector('#storyAdApp');
 const store = createProjectStore();

@@ -1,9 +1,8 @@
 import { setButtonBusy, toast } from '../components/ui.js?v=20260828-production-v252';
 import { authorizeBillingReviews, confirmBillingAwareAction } from './assetCenterBillingRetry.js?v=20260828-production-v252';
-import { sceneNeedsGeneration } from './sceneDossierCard.js?v=20260828-production-v252';
-import { scenePendingAction } from './scenePromptPreview.js?v=20260828-production-v252';
 import { bindSceneQaActions, submitSceneFix } from './sceneQaActions.js?v=20260828-production-v252';
 import { createSceneCardEditorRuntime } from './sceneCardEditorRuntime.js?v=20260828-production-v252';
+import { buildSceneBatchActionPlan } from './sceneBatchActionPlan.js?v=20260828-production-v252';
 
 export function bindSceneCards(host, context) {
   const editorRuntime = createSceneCardEditorRuntime(host, context);
@@ -41,67 +40,41 @@ export function bindSceneCards(host, context) {
       toast('任务已提交'); await context.refreshShell();
     } catch (error) { toast(error.message || '生成场景失败', 'error'); setButtonBusy(button, false); }
   }));
-  host.querySelector('[data-generate-all-scenes]')?.addEventListener('click', async event => {
+  host.querySelector('[data-run-scene-actions]')?.addEventListener('click', async event => {
     const batchButton = event.currentTarget;
     setButtonBusy(batchButton, true, '正在准备…');
-    const activeTargets = context.bundle?.project?.active_target_generations && typeof context.bundle.project.active_target_generations === 'object'
-      ? Object.values(context.bundle.project.active_target_generations) : [];
-    const isActive = sceneId => activeTargets.some(item => item?.stage === 'scene_asset'
-      && String(item?.target_id || '') === String(sceneId)
-      && ['queued', 'running'].includes(String(item?.status || '')));
-    const targets = (context.bundle.assets?.scenes || []).filter(scene => sceneNeedsGeneration(scene)
-      && !isActive(scene.id || scene.scene_id));
-    if (!targets.length) { setButtonBusy(batchButton, false); return toast('没有需要生成的场景'); }
-    const generationConfirmation = await confirmBillingAwareAction({ bundle: context.bundle, lane: 'scenes' });
-    if (!generationConfirmation.accepted) { setButtonBusy(batchButton, false); return; }
-    context.store.beginStageSubmission?.('scene_asset', targets.length, `正在提交 ${targets.length} 个场景生成任务。`);
+    const activeTargets = Object.values(context.bundle?.project?.active_target_generations || {});
+    const plan = buildSceneBatchActionPlan(context.bundle.assets?.scenes || [], activeTargets);
+    if (!plan.count) { setButtonBusy(batchButton, false); return toast('当前没有需要处理的场景'); }
     try {
-      await Promise.all(targets.map(async scene => {
-        const sceneId = String(scene.id || scene.scene_id || '');
-        await (await controllerFor(sceneId))?.flush();
+      await Promise.all(plan.ready.map(async item => {
+        await (await controllerFor(item.sceneId))?.flush();
       }));
     } catch { setButtonBusy(batchButton, false); return; }
-    await authorizeBillingReviews({ bundle: context.bundle, lane: 'scenes', reviewBatch: generationConfirmation.reviewBatch });
-    setButtonBusy(batchButton, true, '正在提交…');
-    const results = await Promise.allSettled(targets.map(scene => {
-      const sceneId = String(scene.id || scene.scene_id || '');
-      const button = [...host.querySelectorAll('[data-generate-scene]')]
-        .find(item => String(item.dataset.generateScene || '') === sceneId);
-      return submitScene(scene, button);
-    }));
-    const accepted = results.filter(item => item.status === 'fulfilled').length;
-    const failed = results.length - accepted;
-    if (accepted) toast(`已提交 ${accepted} 个场景任务${failed ? `，${failed} 个未提交` : ''}`, failed ? 'warning' : 'success');
-    else toast(results.find(item => item.status === 'rejected')?.reason?.message || '全部场景提交失败', 'error');
-    await context.refreshShell();
-  });
-  const bindFixBatch = (selector, billable) => host.querySelector(selector)?.addEventListener('click', async event => {
-    const batchButton = event.currentTarget;
-    setButtonBusy(batchButton, true, billable ? '正在提交修复…' : '正在提交审核…', { elapsed: true });
-    const targets = (context.bundle.assets?.scenes || []).filter(scene => {
-      const action = scenePendingAction(scene);
-      return action?.kind === 'fix' && (action.billable !== false) === billable;
-    });
-    if (!targets.length) { setButtonBusy(batchButton, false); return toast(billable ? '没有需要修复的场景' : '没有需要重新审核的场景'); }
-    if (billable) {
-      const fixConfirmation = await confirmBillingAwareAction({ bundle: context.bundle, lane: 'scenes' });
-      if (!fixConfirmation.accepted) { setButtonBusy(batchButton, false); return; }
-      await authorizeBillingReviews({ bundle: context.bundle, lane: 'scenes', reviewBatch: fixConfirmation.reviewBatch });
+    let confirmation = { accepted: true, reviewBatch: { reviews: [] } };
+    if (plan.requiresBillingConfirmation) {
+      confirmation = await confirmBillingAwareAction({ bundle: context.bundle, lane: 'scenes' });
+      if (!confirmation.accepted) { setButtonBusy(batchButton, false); return; }
+      await authorizeBillingReviews({ bundle: context.bundle, lane: 'scenes', reviewBatch: confirmation.reviewBatch });
     }
-    const results = await Promise.allSettled(targets.map(scene => {
-      const sceneId = String(scene.id || scene.scene_id || '');
+    if (plan.generate.length) context.store.beginStageSubmission?.('scene_asset', plan.generate.length, `正在提交 ${plan.generate.length} 个场景生成任务。`);
+    setButtonBusy(batchButton, true, '正在提交…');
+    const results = await Promise.allSettled(plan.ready.map(item => {
+      const { scene, sceneId, action } = item;
+      if (action.kind === 'generate') {
+        const button = [...host.querySelectorAll('[data-generate-scene]')]
+          .find(candidate => String(candidate.dataset.generateScene || '') === sceneId);
+        return submitScene(scene, button);
+      }
       const button = [...host.querySelectorAll('[data-fix-scene]')]
-        .find(item => String(item.dataset.fixScene || '') === sceneId);
-      return submitSceneFix({ context, controllerFor, cardFor, scene, button, refresh: false, billingAuthorized: true });
+        .find(candidate => String(candidate.dataset.fixScene || '') === sceneId);
+      return submitSceneFix({ context, controllerFor, cardFor, scene, button, refresh: false, billingAuthorized: true, promptFlushed: true });
     }));
     const accepted = results.filter(item => item.status === 'fulfilled' && item.value?.accepted !== false).length;
     const failed = results.length - accepted;
-    const label = billable ? '场景修复' : '场景重新审核';
-    if (accepted) toast(`已提交 ${accepted} 个${label}任务${failed ? `，${failed} 个未提交` : ''}`, failed ? 'warning' : 'success');
-    else toast(results.find(item => item.status === 'rejected')?.reason?.message || `全部${label}提交失败`, 'error');
+    if (accepted) toast(`已开始处理 ${accepted} 个场景${failed ? `，${failed} 个未提交` : ''}`, failed ? 'warning' : 'success');
+    else toast(results.find(item => item.status === 'rejected')?.reason?.message || '场景任务没有提交成功', 'error');
     await context.refreshShell();
   });
-  bindFixBatch('[data-review-all-scenes]', false);
-  bindFixBatch('[data-fix-all-scenes]', true);
   return editorRuntime.destroy;
 }

@@ -131,7 +131,7 @@ export function renderSceneCoverCard(item = {}) {
     </div>
     <div class="scene-cover-slots" aria-label="五类场景证据完整度">${SCENE_VIEW_ORDER.map(key => `<span class="is-${dossier.views[key]?.image_url ? 'complete' : dossier.viewStatuses[key]?.state || 'missing'}"><i aria-hidden="true"></i>${escapeHtml(SCENE_VIEW_LABELS[key])}</span>`).join('')}</div>
     ${sceneRuntimeFailureMarkup({ ...item, completed_view_keys: SCENE_VIEW_ORDER.filter(key => dossier.views[key]?.image_url) })}
-    ${qaPublic.kind === 'service_unavailable' ? `<details class="scene-cover-qa-notice"><summary><i aria-hidden="true"></i><b>审核暂不可用 · 图片已保留</b><span>重新审核 0 次图片调用</span><em>说明</em></summary><p>${escapeHtml(qaPublic.message)}</p></details>` : (dossier.state === 'conflict' ? `<div class="scene-cover-qa-failure" role="status"><b>${escapeHtml(qaPublic.title || `未通过：${qaFailure.labels.join('、') || '一致性 QA'}`)}</b>${qaFailure.reasons.length ? `<ul>${qaFailure.reasons.slice(0, 3).map(reason => `<li>${escapeHtml(reason)}</li>`).join('')}</ul>` : `<span>${escapeHtml(qaPublic.message || '尚无可定位的逐图证据；请先重新审核，取得证据后只修复对应图片。')}</span>`}</div>` : '')}
+    ${qaPublic.kind === 'service_unavailable' ? '<div class="scene-cover-qa-notice" role="status"><i aria-hidden="true"></i><b>审核暂不可用 · 图片已保留</b></div>' : (dossier.state === 'conflict' ? `<div class="scene-cover-qa-failure" role="status"><b>${escapeHtml(qaPublic.title || `未通过：${qaFailure.labels.join('、') || '一致性 QA'}`)}</b>${qaFailure.reasons.length ? `<ul>${qaFailure.reasons.slice(0, 3).map(reason => `<li>${escapeHtml(reason)}</li>`).join('')}</ul>` : `<span>${escapeHtml(qaPublic.message || '尚无可定位的逐图证据；请先重新审核，取得证据后只修复对应图片。')}</span>`}</div>` : '')}
   </div>`;
 }
 

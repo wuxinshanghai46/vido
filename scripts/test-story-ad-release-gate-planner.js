@@ -26,6 +26,7 @@ assert.equal(plan(['public/story-ad/views/briefView.js']).profile, 'ui');
 assert.deepEqual(plan(['public/story-ad/views/briefView.js']).gates.map(row => row.id), ['workspace_ui', 'release_core']);
 const workspaceUiGate = plan(['public/story-ad/views/briefView.js']).gates.find(row => row.id === 'workspace_ui');
 assert.match(workspaceUiGate.command, /test-story-ad-scene-qa-actions-v238\.js/);
+assert.match(workspaceUiGate.command, /test-story-ad-page-load-lifecycle-v253\.js/);
 assert.match(workspaceUiGate.command, /test-story-ad-scene-qa-layout-v252\.js/);
 assert.equal(plan(['scripts/test-story-ad-scene-card-v66.js']).profile, 'ui');
 assert.equal(plan(['scripts/test-story-ad-historical-asset-actions-v61.js']).profile, 'ui');

@@ -5,7 +5,33 @@ const TOKEN_KEYS = ['vido_token', 'token'];
 let refreshPromise = null;
 let releaseExpired = false;
 let releaseHeartbeat = null;
+let releaseCheckPromise = null;
 let serverReleaseIdentity = null;
+const RELEASE_CHECK_TIMEOUT_MS = 8000;
+const AUTH_REFRESH_TIMEOUT_MS = 10000;
+
+async function fetchWithDeadline(path, options = {}, timeoutMs = RELEASE_CHECK_TIMEOUT_MS, timeoutCode = 'REQUEST_TIMEOUT', consume = response => response) {
+  const controller = new AbortController();
+  const externalSignal = options.signal;
+  const abortFromExternal = () => controller.abort(externalSignal?.reason);
+  if (externalSignal?.aborted) abortFromExternal();
+  else externalSignal?.addEventListener?.('abort', abortFromExternal, { once: true });
+  const timer = setTimeout(() => controller.abort(), Math.max(1, Number(timeoutMs) || RELEASE_CHECK_TIMEOUT_MS));
+  try {
+    const response = await fetch(path, { ...options, signal: controller.signal });
+    return await consume(response);
+  } catch (error) {
+    if (controller.signal.aborted && !externalSignal?.aborted) {
+      const timeoutError = new Error('页面连接超时，请检查网络后重试。');
+      timeoutError.code = timeoutCode;
+      throw timeoutError;
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+    externalSignal?.removeEventListener?.('abort', abortFromExternal);
+  }
+}
 
 function preserveVisibleDraft() {
   try {
@@ -68,18 +94,23 @@ function expireAndReload(expectedBuild = '') {
   setTimeout(() => location.replace(url.toString()), 80);
 }
 
-async function readServerRelease() {
-  const response = await fetch(`/api/story-ad/version?_t=${Date.now()}`, {
+export async function readServerRelease(timeoutMs = RELEASE_CHECK_TIMEOUT_MS) {
+  const result = await fetchWithDeadline(`/api/story-ad/version?_t=${Date.now()}`, {
     credentials: 'include',
     cache: 'no-store',
     headers: { Accept: 'application/json' },
-  });
-  if (!response.ok) throw new Error('无法核对剧情广告版本。');
-  return response.json();
+  }, timeoutMs, 'RELEASE_CHECK_TIMEOUT', async response => ({
+    response,
+    data: response.ok ? await response.json() : null,
+  }));
+  if (!result.response.ok) throw new Error('无法核对剧情广告版本。');
+  return result.data;
 }
 
-export async function assertCurrentRelease() {
-  const release = await readServerRelease();
+export function assertCurrentRelease(options = {}) {
+  if (releaseCheckPromise) return releaseCheckPromise;
+  releaseCheckPromise = (async () => {
+  const release = await readServerRelease(options.timeoutMs);
   if (release.build_id !== CLIENT_BUILD_ID || release.contract_version !== CLIENT_CONTRACT_VERSION) {
     expireAndReload(release.build_id || '');
     const error = new Error('服务器已经发布新版本，正在刷新页面。');
@@ -101,6 +132,8 @@ export async function assertCurrentRelease() {
   serverReleaseIdentity = release;
   try { sessionStorage.removeItem(`story-ad-release-reload:${release.build_id}`); } catch {}
   return release;
+  })().finally(() => { releaseCheckPromise = null; });
+  return releaseCheckPromise;
 }
 
 export function startReleaseHeartbeat(intervalMs = 60000) {
@@ -134,13 +167,15 @@ function writeToken(token = '') {
 
 async function refreshAuth() {
   if (refreshPromise) return refreshPromise;
-  refreshPromise = fetch('/api/auth/refresh', {
+  refreshPromise = fetchWithDeadline('/api/auth/refresh', {
     method: 'POST',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
-  }).then(async response => {
+  }, AUTH_REFRESH_TIMEOUT_MS, 'AUTH_REFRESH_TIMEOUT', async response => ({
+    response,
+    data: response.ok ? await response.json() : null,
+  })).then(async ({ response, data }) => {
     if (!response.ok) return false;
-    const data = await response.json();
     const token = data?.success && data?.data?.access_token;
     if (!token) return false;
     writeToken(token);

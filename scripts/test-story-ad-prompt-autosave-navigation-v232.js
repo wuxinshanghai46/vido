@@ -55,9 +55,9 @@ function testCurrentUiContract() {
     '旧提示词确认字段不得继续参与当前页面、保存或生成链路');
   assert.match(sceneInteractions, /await .*\.flush\(\)/u, '场景生成前必须等待自动保存完成');
   assert.match(sceneInteractions, /prompt_version_id/u, '场景生成必须携带最新提示词版本');
-  assert.match(sceneInteractions, /data-generate-all-scenes/u, '场景页必须支持一次提交全部缺失场景');
-  assert.match(sceneInteractions, /Promise\.allSettled\(targets\.map/u, '批量生成必须提交独立场景任务，单场景失败不得阻止其他场景');
-  assert.match(scene, /data-generate-all-scenes/u, '场景页顶部必须展示批量生成入口');
+  assert.match(sceneInteractions, /data-run-scene-actions/u, '场景页必须用一个入口处理全部场景待办');
+  assert.match(sceneInteractions, /Promise\.allSettled\(plan\.ready\.map/u, '统一场景处理必须提交独立场景任务，单场景失败不得阻止其他场景');
+  assert.match(scene, /data-run-scene-actions/u, '场景页顶部必须只展示统一场景入口');
   assert.match(scene, /persistedScenePlanReady = scenes\.length > 0/u, '已持久化场景不得因 release eligibility 漂移从页面消失');
   assert.match(scene, /scenePlanReady \|\| persistedScenePlanReady \? '' : scenePlanBlockedView/u,
     '存在持久化场景时不得用重新生成提示词面板覆盖场景卡');

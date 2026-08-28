@@ -14,7 +14,7 @@ export function sceneActionErrorMessage(error = {}) {
   return raw || '当前场景操作没有完成，请稍后重试。';
 }
 
-export async function submitSceneFix({ context, controllerFor, cardFor, scene, button, refresh = true, billingAuthorized = false }) {
+export async function submitSceneFix({ context, controllerFor, cardFor, scene, button, refresh = true, billingAuthorized = false, promptFlushed = false }) {
   const sceneId = String(scene.id || scene.scene_id || '');
   const card = button?.closest('[data-scene-card]') || cardFor(sceneId);
   const promptState = scene.prompt_state || {};
@@ -28,7 +28,7 @@ export async function submitSceneFix({ context, controllerFor, cardFor, scene, b
   context.store.beginStageSubmission?.(qaOnly ? 'scene_qa' : 'scene_asset', 1, qaOnly
     ? '正在提交当前场景重新审核；已有图片全部保留，图片调用 0。'
     : '正在提交当前场景修复，成功资产会继续保留。');
-  await (await controllerFor(sceneId))?.flush();
+  if (!promptFlushed) await (await controllerFor(sceneId))?.flush();
   const result = await context.store.runStage(`scene-assets/${encodeURIComponent(sceneId)}/fix`, {
     scene_id: sceneId, space_id: sceneId, name: scene.name,
     prompt_version_id: card?.dataset.promptVersionId || promptState.prompt_version_id || '',

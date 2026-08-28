@@ -1,8 +1,9 @@
 import { bindSceneWorldWorkspace } from './sceneWorldView.js?v=20260828-production-v252';
 import { setButtonBusy, toast } from '../components/ui.js?v=20260828-production-v252';
 import { bindScenePlanUpdate, scenePlanBlockedView } from './scenePlanStatus.js?v=20260828-production-v252';
-import { renderSceneProductionCard, scenePendingAction, scenePromptPreviewMarkup, scenePromptPreviewState, startInitialScenePlan } from './scenePromptPreview.js?v=20260828-production-v252';
+import { renderSceneProductionCard, scenePromptPreviewMarkup, scenePromptPreviewState, startInitialScenePlan } from './scenePromptPreview.js?v=20260828-production-v252';
 import { bindMediaLightbox } from './mediaLightbox.js?v=20260828-production-v252';
+import { buildSceneBatchActionPlan } from './sceneBatchActionPlan.js?v=20260828-production-v252';
 
 export async function mount(host, context) {
   const { bundle, store } = context;
@@ -34,22 +35,14 @@ export async function mount(host, context) {
     || Object.values(targetProgress).find(item => String(item?.scene_id || item?.scope_id || '') === String(sceneId))
     || null;
   };
-  const pendingScenes = scenes.filter(scene => scenePendingAction(scene));
-  const generationReadyCount = pendingScenes.filter(scene => scenePendingAction(scene)?.kind === 'generate'
-    && !sceneIsActive(scene.id || scene.scene_id)).length;
-  const reviewReadyCount = pendingScenes.filter(scene => scenePendingAction(scene)?.kind === 'fix'
-    && scenePendingAction(scene)?.billable === false
-    && !sceneIsActive(scene.id || scene.scene_id)).length;
-  const repairReadyCount = pendingScenes.filter(scene => scenePendingAction(scene)?.kind === 'fix'
-    && scenePendingAction(scene)?.billable !== false
-    && !sceneIsActive(scene.id || scene.scene_id)).length;
+  const sceneActionPlan = buildSceneBatchActionPlan(scenes, activeTargets);
   const canConfirm = workflow.visuals_complete === true && scenes.length > 0
   const preview = scenePromptPreviewState(bundle, scenePlanReady || persistedScenePlanReady, generationActive);
 
   host.innerHTML = `<section class="view-head scene-view-head"><div><h1>场景</h1><p>默认查看场景画面，需要时可切换到提示词核对。</p></div><div class="scene-view-actions"><span>${scenes.length ? '' : '预计 '}${preview.displayedCount} 个场景</span>${canConfirm ? '<button class="btn primary compact" data-confirm-scenes>确认场景，进入线稿</button>' : ''}</div></section>
     ${scenePlanReady || persistedScenePlanReady ? '' : scenePlanBlockedView(sceneEligibility, generationActive, { automatic: preview.autoInitialize || generationActive })}
     ${!scenePlanReady && !persistedScenePlanReady ? scenePromptPreviewMarkup(preview, (scene, index) => renderSceneProductionCard(scene, index, { provisional: true })) : ''}
-    ${persistedScenePlanReady ? `<section class="scene-production"><header><div><h2>场景提示词与画面</h2><p>提示词修改后自动保存；已有或生成中的画面默认展示，需要时可切回提示词。</p></div><div class="scene-view-actions"><span>${workflow.generated_count || 0}/${scenes.length} 已生成</span>${generationReadyCount ? `<button class="btn primary compact" data-generate-all-scenes>生成全部缺失场景（${generationReadyCount}）</button>` : ''}${reviewReadyCount ? `<button class="btn compact" data-review-all-scenes>重新审核全部（${reviewReadyCount}，0 次图片调用）</button>` : ''}${repairReadyCount ? `<button class="btn primary compact" data-fix-all-scenes>修复未通过项（${repairReadyCount}）</button>` : ''}</div></header><div class="scene-production-grid">${scenes.map((scene, index) => { const sceneId = scene.id || scene.scene_id; return renderSceneProductionCard(scene, index, { generationActive: sceneIsActive(sceneId), progress: sceneProgress(sceneId) }); }).join('')}</div></section>` : ''}`;
+    ${persistedScenePlanReady ? `<section class="scene-production"><header><div><h2>场景提示词与画面</h2><p>提示词修改后自动保存；已有或生成中的画面默认展示，需要时可切回提示词。</p></div><div class="scene-view-actions"><span>${workflow.generated_count || 0}/${scenes.length} 已生成</span>${sceneActionPlan.count ? `<button class="btn primary compact" data-run-scene-actions>继续完成场景（${sceneActionPlan.count}）</button>` : ''}</div></header><div class="scene-production-grid">${scenes.map((scene, index) => { const sceneId = scene.id || scene.scene_id; return renderSceneProductionCard(scene, index, { generationActive: sceneIsActive(sceneId), progress: sceneProgress(sceneId) }); }).join('')}</div></section>` : ''}`;
 
   bindScenePlanUpdate(host, context);
   bindMediaLightbox(host);

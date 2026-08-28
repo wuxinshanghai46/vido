@@ -52,15 +52,13 @@ async function main() {
         return { left: value.left, right: value.right, top: value.top, bottom: value.bottom, width: value.width, height: value.height };
       };
       const notice = document.querySelector('.scene-cover-qa-notice');
-      const secondary = notice.querySelector('summary span');
       const button = document.querySelector('.scene-card-generate');
       const footer = document.querySelector('.scene-production-card>footer');
       return {
         card: rect('.scene-production-card'), visual: rect('.scene-cover-visual'), slots: rect('.scene-cover-slots'),
-        notice: rect('.scene-cover-qa-notice'), summary: rect('.scene-cover-qa-notice summary'),
+        notice: rect('.scene-cover-qa-notice'),
         pane: rect('.scene-production-pane'), footer: rect('.scene-production-card>footer'), button: rect('.scene-card-generate'),
-        open: notice.open, titleSize: parseFloat(getComputedStyle(notice.querySelector('summary b')).fontSize),
-        secondaryDisplay: getComputedStyle(secondary).display,
+        titleSize: parseFloat(getComputedStyle(notice.querySelector('b')).fontSize),
         cardScrollWidth: document.querySelector('.scene-production-card').scrollWidth,
         cardClientWidth: document.querySelector('.scene-production-card').clientWidth,
         footerContentRight: footer.getBoundingClientRect().right - parseFloat(getComputedStyle(footer).paddingRight),
@@ -68,27 +66,20 @@ async function main() {
       };
     });
     const closed = await snapshot();
-    assert.equal(closed.open, false, '黄色说明必须默认折叠');
-    assert.ok(closed.summary.height >= 34 && closed.summary.height <= 44, `桌面折叠摘要高度异常：${closed.summary.height}`);
+    assert.ok(closed.notice.height >= 34 && closed.notice.height <= 44, `桌面状态条高度异常：${closed.notice.height}`);
     assert.ok(closed.titleSize <= 12, `桌面标题字号过大：${closed.titleSize}`);
     assert.ok(closed.visual.bottom <= closed.slots.top + 1 && closed.slots.bottom <= closed.notice.top + 1, '黄色摘要不得覆盖主图或五视图状态条');
     assert.ok(closed.notice.bottom <= closed.pane.bottom + 1 && closed.pane.bottom <= closed.footer.top + 1, '黄色摘要必须在内容流中且位于页脚上方');
     assert.ok(Math.abs(closed.button.right - closed.footerContentRight) <= 2, '桌面重新审核按钮必须右对齐');
     assert.ok(closed.cardScrollWidth <= closed.cardClientWidth + 1, '桌面场景卡不得横向溢出');
 
-    await page.click('.scene-cover-qa-notice summary');
-    const expanded = await snapshot();
-    assert.equal(expanded.open, true);
-    assert.ok(expanded.notice.height > closed.notice.height, '展开后必须显示说明正文');
-    assert.ok(expanded.footer.top > closed.footer.top, '展开说明必须向下推动页脚，不能覆盖按钮');
-    assert.ok(expanded.notice.bottom <= expanded.pane.bottom + 1 && expanded.pane.bottom <= expanded.footer.top + 1);
+    assert.equal((await page.$$('body *')).length > 0 && (await page.evaluate(() => document.body.innerText.includes('这不是图片内容被判失败'))), false,
+      '用户不关心的技术解释不得渲染');
 
     await page.setViewport({ width: 375, height: 900 });
     await page.setContent(`<style>${css}</style><main style="width:100%;padding:8px">${card}</main>`);
     const mobile = await snapshot();
-    assert.equal(mobile.open, false);
-    assert.ok(mobile.summary.height >= 40 && mobile.summary.height <= 48, `窄屏触控高度异常：${mobile.summary.height}`);
-    assert.equal(mobile.secondaryDisplay, 'none', '窄屏只隐藏次级调用说明');
+    assert.ok(mobile.notice.height >= 40 && mobile.notice.height <= 48, `窄屏状态条高度异常：${mobile.notice.height}`);
     assert.ok(mobile.buttonWidth >= mobile.footer.width - 34, '窄屏重新审核按钮必须接近全宽');
     assert.ok(mobile.cardScrollWidth <= mobile.cardClientWidth + 1, '窄屏场景卡不得横向溢出');
     assert.ok(mobile.notice.bottom <= mobile.pane.bottom + 1 && mobile.pane.bottom <= mobile.footer.top + 1, '窄屏摘要不得覆盖页脚');
