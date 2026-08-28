@@ -1,4 +1,4 @@
-import { escapeHtml } from '../components/ui.js?v=20260829-production-v258';
+import { escapeHtml } from '../components/ui.js?v=20260829-production-v259';
 
 function count(value = 0) {
   return Math.max(0, Math.floor(Number(value) || 0));
