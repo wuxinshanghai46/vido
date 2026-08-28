@@ -528,10 +528,14 @@ const assetPersonStateModule = loadBrowserModule(
   'public/story-ad/views/assetCenterPersonState.js',
   ['personAgeDisplay', 'personAssetState', 'personLookSummary', 'assertSavedPerson'],
 );
+const sceneQaPublicStateModule = loadBrowserModule(
+  'public/story-ad/views/sceneQaPublicState.js',
+  ['publicSceneQaReason', 'sceneQaPublicState', 'sceneQaRows', 'sceneQaFailureDetails'],
+);
 const sceneDossierModule = loadBrowserModule(
   'public/story-ad/views/sceneDossierCard.js',
   ['assetCardMedia', 'sceneNeedsGeneration', 'normalizeSceneDossier', 'renderSceneDossierCard'],
-  { escapeHtml, mediaPreview, setButtonBusy() {}, toast() {} },
+  { escapeHtml, mediaPreview, setButtonBusy() {}, toast() {}, ...sceneQaPublicStateModule },
 );
 const personVoiceModule = loadBrowserModule(
   'public/story-ad/views/assetCenterPersonVoice.js',
@@ -565,6 +569,7 @@ const planningModule = loadBrowserModule(
     bindMediaLightbox() {},
     personDossierShowcase() { return ''; },
     renderSceneDossierCard: sceneDossierModule.renderSceneDossierCard,
+    publicSceneQaReason: sceneQaPublicStateModule.publicSceneQaReason,
     bindPersonLookForm: personLookModule.bindPersonLookForm,
   },
 );
