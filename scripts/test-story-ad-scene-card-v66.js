@@ -155,9 +155,9 @@ function testUiAndExportBoundaries() {
   assert(exporter.includes("request(url, { responseType: 'blob'") && exporter.includes('model_call_count: 0'));
   assert(!/generate(?:Image|Vision|Text)|runStage\(|fetch\([^)]*\/generate/i.test(exporter), '本地导出不得触发生成或任务阶段');
   assert(world.includes('data-plan-scene-experience') && world.includes('data-world-mode="panorama"'), '可选的3D/360规划与查看入口不得被场景档案替换');
-  assert(sceneWorldPage.includes('bindMediaLightbox(host)') && world.includes('bindMediaLightbox(overlay)'), '场景卡与机位大图必须绑定原图放大查看');
-  assert(world.includes('data-media-zoom-url=') && css.includes('object-fit:contain!important'), '场景列表和机位查看都必须保留完整画幅并提供原图入口');
-  assert(world.includes('previewUrl(node.image_url, 1600)') && world.includes('image.src = previewUrl(node.image_url, 960)'), '场景世界首屏与灯箱必须使用缓存衍生图，不能先请求多兆 PNG');
+  assert(sceneWorldPage.includes('bindMediaLightbox(host)') && !world.includes('bindMediaLightbox(overlay)'), '场景卡可查看原图，但进入场景后的机位必须在当前画布切换，不得叠加第二个灯箱');
+  assert(!world.includes('data-media-zoom-url=') && world.includes('data-media-original=') && css.includes('object-fit:contain!important'), '进入场景后的机位图片必须保留完整画幅，且不再提供二次弹窗入口');
+  assert(!world.includes('previewUrl(node.image_url, 1600)') && world.includes('image.src = previewUrl(node.image_url, 960)'), '场景世界首屏只加载缓存预览图，不得为已取消的灯箱额外准备高清请求');
   assert(mediaAdapter.assetThumbPathFromName('scene.png', 1200).endsWith('.1280.webp'));
   assert(mediaAdapter.assetThumbPathFromName('scene.png', 1800).endsWith('.1600.webp'), '高清衍生图必须按有限桶归一，避免同一文件产生重复缓存变体');
   assert(css.includes('aspect-ratio:16/9') && css.includes('min-height:220px'), '场景摘要必须给完整画幅足够的纵向空间，不能把竖图或方图压在旧的超宽矮容器中');
