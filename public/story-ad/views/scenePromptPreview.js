@@ -9,7 +9,7 @@ export function sceneProductionAction(scene = {}) {
   const action = String(plan.action || '');
   const labels = Array.isArray(plan.view_labels) ? plan.view_labels.filter(Boolean) : [];
   if (action === 'reverify') return {
-    kind: 'fix', button: '重新审核（0 次图片调用）', status: 'QA 服务暂时没有完成；已有图片全部保留。本操作只重新审核，不重新生成图片。', billable: false,
+    kind: 'fix', button: '重新审核（0 次图片调用）', status: '只重新审核，不重新生成图片。', billable: false,
   };
   if (action === 'regenerate_failed_views') return {
     kind: 'fix', button: `修复${labels.length ? `：${labels.join('、')}` : '失败视图'}（${Number(plan.count || labels.length || 0)} 张）`, status: `${plan.message || '仅重做有逐图证据的失败视图，其余图片保留。'} 完成后自动复核。`, billable: true,

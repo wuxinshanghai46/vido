@@ -5,6 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 const sceneAssetService = require('../src/services/newStoryAd/sceneAssetService');
+const sceneQaProjection = require('../src/services/storyAdWorkspace/sceneQaProjectionService');
 
 const root = path.resolve(__dirname, '..');
 const read = file => fs.readFileSync(path.join(root, file), 'utf8');
@@ -119,9 +120,51 @@ async function testFixBinding() {
   assert.match(requests[0].body.request_key, /^scene-fix:scene-reverify:/);
 }
 
+async function testBatchBinding() {
+  async function run(selector, scenes) {
+    let confirmationCalls = 0;
+    let authorizationCalls = 0;
+    const submitted = [];
+    const batchButton = { addEventListener(type, handler) { if (type === 'click') this.clickHandler = handler; } };
+    const host = {
+      querySelector(value) { return value === selector ? batchButton : null; },
+      querySelectorAll() { return []; },
+    };
+    const sandbox = {
+      setButtonBusy() {}, toast() {},
+      confirmBillingAwareAction: async () => { confirmationCalls += 1; return { accepted: true, reviewBatch: { reviews: [] } }; },
+      authorizeBillingReviews: async () => { authorizationCalls += 1; },
+      sceneNeedsGeneration: () => false,
+      scenePendingAction: scene => ({ kind: 'fix', billable: scene.repair_plan.action !== 'reverify' }),
+      bindSceneQaActions() {},
+      submitSceneFix: async ({ scene, billingAuthorized }) => { submitted.push({ action: scene.repair_plan.action, billingAuthorized }); return { accepted: true }; },
+      createSceneCardEditorRuntime: () => ({ controllerFor: async () => null, cardFor: () => null, switchTab() {}, destroy() {} }),
+    };
+    vm.runInNewContext(`${executable('public/story-ad/views/sceneCardInteractions.js')}\nglobalThis.__bind=bindSceneCards;`, sandbox);
+    sandbox.__bind(host, { bundle: { assets: { scenes } }, store: {}, async refreshShell() {} });
+    await batchButton.clickHandler({ currentTarget: batchButton });
+    return { confirmationCalls, authorizationCalls, submitted };
+  }
+  const review = await run('[data-review-all-scenes]', [
+    { id: 'review', repair_plan: { action: 'reverify' } },
+    { id: 'repair', repair_plan: { action: 'regenerate_failed_views' } },
+  ]);
+  assert.equal(review.confirmationCalls, 0, '批量重新审核不得弹出计费确认');
+  assert.equal(review.authorizationCalls, 0, '批量重新审核不得执行图片计费授权');
+  assert.deepEqual(review.submitted.map(item => item.action), ['reverify']);
+  const repair = await run('[data-fix-all-scenes]', [
+    { id: 'review', repair_plan: { action: 'reverify' } },
+    { id: 'repair', repair_plan: { action: 'regenerate_failed_views' } },
+  ]);
+  assert.equal(repair.confirmationCalls, 1, '付费批量修复必须保留计费确认');
+  assert.equal(repair.authorizationCalls, 1, '付费批量修复必须保留图片计费授权');
+  assert.deepEqual(repair.submitted.map(item => item.action), ['regenerate_failed_views']);
+}
+
 async function main() {
   testPlanner();
   await testFixBinding();
+  await testBatchBinding();
   const dossier = loadDossier();
   const prompt = loadPrompt(dossier);
   const reverify = completeScene('reverify', { count: 0, reasons: ['反向视图入口位置与主视图不一致'] });
@@ -134,13 +177,57 @@ async function main() {
   assert.match(reverifyHtml, /重新审核（0 次图片调用）/);
   assert.doesNotMatch(reverifyHtml, /data-scene-quality/);
   const qaUnavailable = completeScene('reverify');
+  qaUnavailable.qa.qa_unavailable = true;
+  qaUnavailable.qa.verification_state = 'unavailable';
   qaUnavailable.qa.reasons = ['new_story_ad.scene_camera_qa 视觉模型全部失败：smscrw/claude:UNKNOWN；webang-maas/gemini:PROVIDER_RESPONSE_INVALID；zhipu/glm:RATE_LIMIT'];
   qaUnavailable.scene_card.qa_checks[0].reasons = qaUnavailable.qa.reasons;
   const unavailableHtml = dossier.renderSceneCoverCard(qaUnavailable);
-  assert.match(unavailableHtml, /QA 服务暂时不可用，图片已保留/);
-  assert.match(unavailableHtml, /图片调用 0/);
+  assert.match(unavailableHtml, /<details class="scene-cover-qa-notice"><summary>/);
+  assert.doesNotMatch(unavailableHtml, /role="status"/);
+  assert.match(unavailableHtml, /审核暂不可用 · 图片已保留/);
+  assert.match(unavailableHtml, /重新审核 0 次图片调用/);
+  assert.doesNotMatch(unavailableHtml, /<details[^>]*\sopen(?:\s|>)/,
+    'QA service notice must remain collapsed by default so it does not cover the scene card');
+  assert.doesNotMatch(unavailableHtml, /scene-cover-qa-failure is-service-unavailable/,
+    'service availability must not reuse the large content-failure warning card');
   assert.doesNotMatch(unavailableHtml, /smscrw|webang-maas|zhipu|claude|gemini|PROVIDER_RESPONSE|RATE_LIMIT|UNKNOWN/,
     'ordinary scene card must not expose provider/model/internal QA codes');
+  const compactCss = read('public/story-ad/scene-dossier.css');
+  assert.match(compactCss, /\.scene-cover-qa-notice summary\{[^}]*min-height:36px[^}]*padding:6px 10px/);
+  assert.match(compactCss, /\.scene-cover-qa-notice summary b\{[^}]*font-size:11px/);
+  assert.match(compactCss, /\.scene-cover-qa-notice summary:focus-visible\{[^}]*outline:/);
+  assert.match(compactCss, /@media\(max-width:480px\)[^\n]*\.scene-cover-qa-notice summary\{[^}]*min-height:42px/);
+  assert.match(compactCss, /@media\(max-width:480px\)[^\n]*\.scene-cover-qa-notice summary span\{display:none\}/,
+    'narrow cards must hide secondary QA copy instead of wrapping over the controls');
+  assert.doesNotMatch(compactCss, /\.scene-cover-qa-notice[^\n{]*\{[^}]*position:(?:absolute|fixed)/,
+    'compact QA notice must stay in document flow and never cover the image or controls');
+  const unavailableCardHtml = prompt.renderSceneProductionCard(qaUnavailable);
+  assert.match(unavailableCardHtml, /只重新审核，不重新生成图片。/);
+  assert.doesNotMatch(unavailableCardHtml, /QA 服务暂时没有完成；已有图片全部保留/,
+    'card footer must not repeat the expanded QA notice copy');
+
+  const projectedUnavailable = sceneQaProjection.project({
+    full_space_lock: false, qa_unavailable: true, verification: { state: 'unavailable' },
+  });
+  assert.equal(projectedUnavailable.qa_unavailable, true);
+  assert.equal(projectedUnavailable.verification_state, 'unavailable');
+  assert.equal(dossier.sceneQaPublicState({ qa: projectedUnavailable, repair_plan: { action: 'reverify' } }).kind, 'service_unavailable',
+    '机器态必须在没有供应商关键词时稳定识别 QA 不可用');
+  const projectedRejected = sceneQaProjection.project({
+    full_space_lock: false, qa_unavailable: false, verification: { state: 'rejected', reasons: ['构图不一致'] },
+  });
+  assert.equal(projectedRejected.qa_unavailable, false);
+  assert.equal(projectedRejected.verification_state, 'rejected');
+  assert.equal(dossier.sceneQaPublicState({ qa: projectedRejected, repair_plan: { action: 'regenerate_failed_views' } }).kind, 'content_failed');
+  assert.notEqual(dossier.sceneQaPublicState({
+    qa: { ...projectedRejected, error: 'provider RATE_LIMIT' }, repair_plan: { action: 'reverify' },
+  }).kind, 'service_unavailable', '明确内容拒绝态不能因错误文案关键词被误投影为服务不可用');
+  assert.equal(dossier.sceneQaPublicState({
+    qa: { ...projectedUnavailable, error: '上游错误文案已变化' }, repair_plan: { action: 'reverify' },
+  }).kind, 'service_unavailable', 'QA 不可用机器态不得依赖错误文案');
+  assert.equal(dossier.sceneQaPublicState({
+    qa: { ...projectedUnavailable, full_space_lock: true }, repair_plan: { action: 'reverify' },
+  }).kind, 'unknown', '已通过空间锁的场景不得继续显示 QA 警告');
 
   const repair = completeScene('regenerate_failed_views', { count: 1, view_labels: ['反向空间'], message: '只重做反向空间。' });
   const repairHtml = prompt.renderSceneProductionCard(repair);
@@ -162,7 +249,13 @@ async function main() {
   assert.match(interactions, /confirmBillingAwareAction/);
   assert.doesNotMatch(interactions, /data-reverify-scene|data-repair-scene/);
   assert.match(read('public/story-ad/views/sceneWorldPage.js'), /data-generate-all-scenes>生成全部缺失场景/);
-  assert.match(read('public/story-ad/views/sceneWorldPage.js'), /data-fix-all-scenes>修复全部未通过场景/);
+  const worldPage = read('public/story-ad/views/sceneWorldPage.js');
+  assert.match(worldPage, /data-review-all-scenes>重新审核全部（\$\{reviewReadyCount\}，0 次图片调用）/);
+  assert.match(worldPage, /data-fix-all-scenes>修复未通过项（\$\{repairReadyCount\}）/);
+  assert.doesNotMatch(worldPage, /修复全部未通过场景/);
+  const cardInteractions = read('public/story-ad/views/sceneCardInteractions.js');
+  assert.match(cardInteractions, /bindFixBatch\('\[data-review-all-scenes\]', false\)/);
+  assert.match(cardInteractions, /if \(billable\)[\s\S]*confirmBillingAwareAction[\s\S]*authorizeBillingReviews/);
   const routes = read('src/routes/newStoryAd.js');
   assert.match(routes, /scene-assets\/:sceneId\/fix/);
   const fixRoute = routes.slice(

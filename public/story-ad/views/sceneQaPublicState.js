@@ -14,9 +14,14 @@ export function publicSceneQaReason(value = '') {
 }
 
 export function sceneQaPublicState(item = {}) {
+  if (item.qa?.full_space_lock === true) return { kind: 'unknown', title: '', message: '' };
   const rawReasons = [item.qa?.error, ...list(item.qa?.reasons), ...list(item.repair_plan?.reasons)]
     .map(text).filter(Boolean);
-  const serviceUnavailable = rawReasons.some(reason => QA_SERVICE_FAILURE.test(reason));
+  const verificationState = text(item.qa?.verification_state || item.verification?.state || item.qa?.space_lock_status).toLowerCase();
+  const explicitUnavailable = item.qa?.qa_unavailable === true || ['unavailable', 'service_unavailable'].includes(verificationState);
+  const explicitContentFailure = ['rejected', 'failed', 'content_failed'].includes(verificationState);
+  const serviceUnavailable = explicitUnavailable
+    || (!explicitContentFailure && rawReasons.some(reason => QA_SERVICE_FAILURE.test(reason)));
   const action = text(item.repair_plan?.action);
   if (serviceUnavailable) return {
     kind: 'service_unavailable', title: 'QA 服务暂时不可用，图片已保留',

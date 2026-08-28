@@ -4,9 +4,12 @@ function clean(value = '', max = 240) { return String(value || '').replace(/\s+/
 function list(value) { return Array.isArray(value) ? value.filter(Boolean) : []; }
 
 function project(contract = {}) {
+  const verificationState = clean(contract.verification?.state || contract.verification?.status, 80).toLowerCase();
   return {
     full_space_lock: contract.full_space_lock === true ? true : (contract.full_space_lock === false ? false : null),
     space_lock_status: clean(contract.space_lock_status, 80),
+    qa_unavailable: contract.qa_unavailable === true || verificationState === 'unavailable',
+    verification_state: verificationState,
     checked_at: clean(contract.verification?.checked_at || contract.verification?.updated_at, 80),
     error_code: clean(contract.qa_error_code, 120),
     error: clean(contract.qa_error, 300),

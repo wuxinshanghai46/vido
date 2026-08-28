@@ -22,6 +22,9 @@ async function main() {
   const preset = PROVIDER_PRESETS.smscrw;
   const adapter = PROVIDER_ADAPTER_DEFAULTS.smscrw;
   const provider = settings.providers.find(item => item?.id === 'smscrw' || item?.preset === 'smscrw');
+  const models = Array.isArray(provider?.models) && provider.models.length
+    ? provider.models.map(model => ({ ...model }))
+    : preset.defaultModels.map(model => ({ ...model, enabled: true }));
   const nextProvider = {
     ...(provider || {}),
     id: 'smscrw',
@@ -32,7 +35,10 @@ async function main() {
     enabled: true,
     adapter: adapter.adapter,
     adapter_config: adapter.adapter_config,
-    models: [{ ...preset.defaultModels[0], enabled: true }],
+    // Key rotation must never collapse the provider's text/vision/image/video
+    // catalogue to one image model. Preserve an existing catalogue; a fresh
+    // provider receives the complete preset.
+    models,
   };
   if (provider) Object.assign(provider, nextProvider);
   else settings.providers.push(nextProvider);
@@ -56,6 +62,7 @@ async function main() {
     configured: true,
     provider_id: 'smscrw',
     model_id: 'gpt-image-2',
+    preserved_model_count: models.length,
     api_key_stored: true,
     primary_priority: 1,
     fallback_provider_ids: ['webang-maas', 'deyunai'],

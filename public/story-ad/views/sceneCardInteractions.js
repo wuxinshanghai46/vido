@@ -75,15 +75,19 @@ export function bindSceneCards(host, context) {
     else toast(results.find(item => item.status === 'rejected')?.reason?.message || '全部场景提交失败', 'error');
     await context.refreshShell();
   });
-  host.querySelector('[data-fix-all-scenes]')?.addEventListener('click', async event => {
+  const bindFixBatch = (selector, billable) => host.querySelector(selector)?.addEventListener('click', async event => {
     const batchButton = event.currentTarget;
-    setButtonBusy(batchButton, true, '正在提交修复…', { elapsed: true });
-    const targets = (context.bundle.assets?.scenes || []).filter(scene => scenePendingAction(scene)?.kind === 'fix');
-    if (!targets.length) { setButtonBusy(batchButton, false); return toast('没有需要修复的场景'); }
-    const fixConfirmation = await confirmBillingAwareAction({ bundle: context.bundle, lane: 'scenes' });
-    if (!fixConfirmation.accepted) { setButtonBusy(batchButton, false); return; }
-    await authorizeBillingReviews({ bundle: context.bundle, lane: 'scenes', reviewBatch: fixConfirmation.reviewBatch });
-    context.store.beginStageSubmission?.('scene_asset', targets.length, `正在提交 ${targets.length} 个场景修复任务。`);
+    setButtonBusy(batchButton, true, billable ? '正在提交修复…' : '正在提交审核…', { elapsed: true });
+    const targets = (context.bundle.assets?.scenes || []).filter(scene => {
+      const action = scenePendingAction(scene);
+      return action?.kind === 'fix' && (action.billable !== false) === billable;
+    });
+    if (!targets.length) { setButtonBusy(batchButton, false); return toast(billable ? '没有需要修复的场景' : '没有需要重新审核的场景'); }
+    if (billable) {
+      const fixConfirmation = await confirmBillingAwareAction({ bundle: context.bundle, lane: 'scenes' });
+      if (!fixConfirmation.accepted) { setButtonBusy(batchButton, false); return; }
+      await authorizeBillingReviews({ bundle: context.bundle, lane: 'scenes', reviewBatch: fixConfirmation.reviewBatch });
+    }
     const results = await Promise.allSettled(targets.map(scene => {
       const sceneId = String(scene.id || scene.scene_id || '');
       const button = [...host.querySelectorAll('[data-fix-scene]')]
@@ -92,9 +96,12 @@ export function bindSceneCards(host, context) {
     }));
     const accepted = results.filter(item => item.status === 'fulfilled' && item.value?.accepted !== false).length;
     const failed = results.length - accepted;
-    if (accepted) toast(`已提交 ${accepted} 个场景修复任务${failed ? `，${failed} 个未提交` : ''}`, failed ? 'warning' : 'success');
-    else toast(results.find(item => item.status === 'rejected')?.reason?.message || '全部场景修复提交失败', 'error');
+    const label = billable ? '场景修复' : '场景重新审核';
+    if (accepted) toast(`已提交 ${accepted} 个${label}任务${failed ? `，${failed} 个未提交` : ''}`, failed ? 'warning' : 'success');
+    else toast(results.find(item => item.status === 'rejected')?.reason?.message || `全部${label}提交失败`, 'error');
     await context.refreshShell();
   });
+  bindFixBatch('[data-review-all-scenes]', false);
+  bindFixBatch('[data-fix-all-scenes]', true);
   return editorRuntime.destroy;
 }

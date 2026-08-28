@@ -6,6 +6,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const https = require('https');
+const childProcess = require('child_process');
 const { EventEmitter } = require('events');
 const { Readable } = require('stream');
 
@@ -160,6 +161,18 @@ assert.notEqual(pipeline.getStageConfig('new_story_ad.lip_sync')[0]?.provider_id
 
 assert.equal(gateway.candidatesForVisionStage('new_story_ad.scene_camera_qa')[0].provider_id, 'smscrw', '视觉理解真实候选必须以 SZZNAI Claude 开始');
 assert.equal(videoAdapter.videoCandidates({}, { includeCircuitOpen: true })[0].provider_id, 'smscrw', '视频真实候选必须以 SZZNAI Seedance 开始');
+
+const rotated = childProcess.spawnSync(process.execPath, [
+  path.join(__dirname, 'configure-smscrw-image-provider.js'), '--stdin', '--provider-only',
+], {
+  cwd: path.resolve(__dirname, '..'), env: { ...process.env, OUTPUT_DIR: outputDir, DB_ENABLED: '0' },
+  input: 'rotated-test-secret-not-real\n', encoding: 'utf8',
+});
+assert.equal(rotated.status, 0, rotated.stderr || rotated.stdout);
+const rotatedProvider = settingsService.loadSettings().providers.find(item => item.id === 'smscrw');
+assert.equal(rotatedProvider.api_key, 'rotated-test-secret-not-real');
+assert.deepEqual(rotatedProvider.models.map(model => model.id), expectedModels,
+  'SZZNAI Key 轮换不得把 11 个文本、视觉、图片和视频模型收缩成单一图片模型');
 
 const backupPath = path.join(outputDir, `${migration.MIGRATION_ID}-backup.json`);
 const backupText = fs.readFileSync(backupPath, 'utf8');

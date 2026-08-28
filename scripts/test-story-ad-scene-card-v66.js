@@ -132,7 +132,8 @@ function testUiAndExportBoundaries() {
 
   assert(card.includes("['master', 'reverse', 'interaction', 'detail', 'layout']"), '场景档案必须固定五类证据槽位');
   assert(card.includes('视图齐全，QA 未通过') && card.includes('QA 已通过并锁定'), '五张图片齐全与 QA 放行状态必须明确区分');
-  assert(runtimeFailure.includes('scene-cover-runtime-failure') && runtimeFailure.includes('平台请求：'), '场景摘要必须展示脱敏供应商、HTTP与平台请求诊断');
+  assert(runtimeFailure.includes('scene-cover-runtime-failure') && runtimeFailure.includes('其他已成功图片继续保留；只需补齐这一张。'), '场景摘要必须给普通用户展示安全、可行动的失败恢复说明');
+  assert.doesNotMatch(runtimeFailure, /provider|model|平台请求|HTTP|RATE_LIMIT|UNKNOWN/i, '普通场景摘要不得重新暴露供应商、模型或内部诊断');
   assert(card.includes('usedUrls.has(url)') && card.includes('没有使用其他视图冒充'), '同一图片不得跨槽复用');
   assert(card.includes("import('./sceneDossierExport.js"), '高清导出必须按需加载');
   assert(assetCenter.includes("group === 'scenes' ? sceneDetail") && scenePromptPreview.includes('data-enter-scene-world='), '场景摘要与顶部进入场景入口必须同时存在，并由独立场景流程承载');
