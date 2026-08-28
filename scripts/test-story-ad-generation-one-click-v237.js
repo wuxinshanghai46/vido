@@ -40,6 +40,7 @@ async function main() {
   const combinedVisual = read('public/story-ad/views/assetCenterBillingRetry.js');
   const planMigration = read('public/story-ad/views/assetCenterPlanMigrationAction.js');
   const projectStore = read('public/story-ad/store/projectStore.js');
+  const stageSubmissionState = read('public/story-ad/store/stageSubmissionState.js');
   const workspaceCss = read('public/story-ad/workspace.css');
   const uiSandbox = { Intl, Date, URL, document: { querySelectorAll: () => [] } };
   vm.runInNewContext(`${executable('public/story-ad/components/ui.js')}\nglobalThis.__progressView=generationProgressView;globalThis.__progressPanel=generationProgressPanel;`, uiSandbox);
@@ -68,7 +69,9 @@ async function main() {
   assert(singleSceneHandler.indexOf("setButtonBusy(button, true, '正在准备…')") < singleSceneHandler.indexOf('await (await controllerFor(sceneId))?.flush()'), '场景点击后必须先给反馈，再等待自动保存');
   const batchFixHandler = sceneActions.slice(sceneActions.indexOf("host.querySelector('[data-fix-all-scenes]')"));
   assert(batchFixHandler.indexOf('beginStageSubmission') < batchFixHandler.indexOf('Promise.allSettled'), '批量修复必须在网络提交完成前立即投影全局进度');
-  assert(projectStore.includes("active_generation_id: state.bundle.project.active_generation_id || 'client-submitting'") && projectStore.includes('client_optimistic: true'), '客户端提交阶段必须同步创建可见的0%进度状态');
+  assert(projectStore.includes('beginStageSubmissionState({ state, set }')
+    && stageSubmissionState.includes("active_generation_id: state.bundle.project.active_generation_id || 'client-submitting'")
+    && stageSubmissionState.includes('client_optimistic: true'), '客户端提交阶段必须同步创建可见的0%进度状态');
   assert.match(workspaceCss, /\.project-progress-head strong \{[^}]*font-size: 14px/);
   assert(responsive.includes('@media(max-width:900px)') && responsive.includes('@media(max-width:700px)'));
   assert(responsive.includes('.scene-card-controls') && responsive.includes('grid-template-columns:repeat(2,minmax(0,1fr))'));
