@@ -159,8 +159,11 @@ function main() {
 
   const index = fs.readFileSync(path.join(__dirname, '../public/story-ad/index.html'), 'utf8');
   const app = fs.readFileSync(path.join(__dirname, '../public/story-ad/app.js'), 'utf8');
-  const tokens = [...index.matchAll(/story-ad\/(?:styles|workspace|workflow|app)\.(?:css|js)\?v=([^"']+)/g)].map(match => match[1]);
-  assert(tokens.length >= 4 && new Set(tokens).size === 1, '入口 CSS 与 app 必须使用同一发布 token');
+  const workflowView = fs.readFileSync(path.join(__dirname, '../public/story-ad/views/workflowView.js'), 'utf8');
+  const tokens = [...index.matchAll(/story-ad\/[^"'?]+\.(?:css|js)\?v=([^"']+)/g)].map(match => match[1]);
+  const workflowToken = /story-ad\/workflow\.css\?v=([^"']+)/.exec(workflowView)?.[1] || '';
+  assert(tokens.length >= 11 && new Set(tokens).size === 1, '入口 CSS 与 app 必须使用同一发布 token');
+  assert.equal(workflowToken, tokens[0], '按需工作流 CSS 必须使用同一发布 token');
   assert(!app.includes('编辑器</button>') && !app.includes('素材</button>') && !app.includes('模板</button>') && !app.includes('设置</button>'), '剧情广告顶栏不得再显示无关平台导航');
   assert(app.includes(`?v=${tokens[0]}`), '动态视图必须与入口使用同一发布 token');
 
