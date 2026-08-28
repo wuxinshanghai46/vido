@@ -31,16 +31,29 @@ function aggregate(task = {}, stage = '') {
   const succeeded = source.reduce((sum, row) => sum + Math.max(0, Number(row.succeeded || 0) || 0), 0);
   const failed = source.reduce((sum, row) => sum + Math.max(0, Number(row.failed || 0) || 0), 0);
   const latest = [...source].sort((a, b) => String(a.updated_at || '').localeCompare(String(b.updated_at || ''))).pop() || {};
+  const sceneIds = [...new Set(source.map(row => String(row.scene_id || row.scope_id || '')).filter(Boolean))];
+  const singleLaneDetails = source.length === 1 ? Object.fromEntries([
+    'mode', 'view_keys', 'active_view_keys', 'completed_view_keys', 'view_states', 'verification_state',
+  ].filter(field => source[0][field] !== undefined).map(field => [field, source[0][field]])) : {};
   const anyFailed = source.some(row => String(row.status || '').toLowerCase() === 'failed');
   const anyCancelled = source.some(row => String(row.status || '').toLowerCase() === 'cancelled');
-  const running = activeRows.length > 0;
-  const status = running ? 'running' : (anyFailed ? 'failed' : (anyCancelled ? 'cancelled' : 'done'));
+  const allCompleted = source.length > 0 && source.every(row => String(row.status || '').toLowerCase() === 'completed');
+  const directLaneRunning = !activeRows.length && source.some(row => ['queued', 'running', 'verifying']
+    .includes(String(row.status || '').toLowerCase()));
+  const running = activeRows.length > 0 || directLaneRunning;
+  const status = running
+    ? (source.length === 1 && String(source[0].status || '').toLowerCase() === 'verifying' ? 'verifying' : 'running')
+    : (anyFailed ? 'failed' : (anyCancelled ? 'cancelled' : (allCompleted ? 'completed' : 'done')));
   return {
     schema_version: 2,
     stage: selectedStage,
     generation_id: String((activeRows[activeRows.length - 1] || latest).generation_id || ''),
     status,
-    phase: running ? (activeRows.some(row => row.phase === 'verification') ? 'verification' : 'generation') : 'complete',
+    phase: running
+      ? (activeRows.length
+        ? (activeRows.some(row => row.phase === 'verification') ? 'verification' : 'generation')
+        : (latest.phase || 'generation'))
+      : 'complete',
     target_total: total,
     processed,
     succeeded,
@@ -48,6 +61,8 @@ function aggregate(task = {}, stage = '') {
     percent: total > 0 ? Math.min(100, Math.round((processed / total) * 100)) : (running ? 0 : 100),
     active_target_keys: activeRows.map(row => row.target_key),
     active_scene_ids: activeRows.map(row => String(row.scene_id || row.scope_id || '')).filter(Boolean),
+    ...(sceneIds.length === 1 ? { scene_id: sceneIds[0] } : {}),
+    ...singleLaneDetails,
     started_at: source.map(row => row.started_at).filter(Boolean).sort()[0] || '',
     updated_at: latest.updated_at || new Date().toISOString(),
     ...(!running ? { finished_at: latest.finished_at || latest.updated_at || new Date().toISOString() } : {}),

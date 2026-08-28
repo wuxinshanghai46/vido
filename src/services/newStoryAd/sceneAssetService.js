@@ -134,7 +134,8 @@ function normalizeSceneAsset(asset = {}, index = 0) {
   const storedPrimary = cleanText(asset.image_url || asset.url || '', 1000);
   const primaryState = sceneAssetFiles.inspect(storedPrimary);
   const primary = cleanText((primaryState.available ? storedPrimary : '') || viewImages[0]?.url || viewImages[0]?.image_url || '', 1000);
-  if (!primary && !viewImages.length && !asset.layout_summary && !asset.material_summary) return null;
+  const missingLocalMedia = (primaryState.local && !primaryState.available) || missingFileViewKeys.length > 0;
+  if (!primary && !viewImages.length && !asset.layout_summary && !asset.material_summary && !missingLocalMedia) return null;
   const normalizedContract = asset.scene_contract && typeof asset.scene_contract === 'object'
     ? sceneSpace.normalizeContract(asset.scene_contract, {
       sceneId: asset.scene_id || asset.id,
@@ -249,9 +250,18 @@ function updateSceneGenerationProgress(taskId, update = {}) {
   const activeTargets = task.active_target_generations && typeof task.active_target_generations === 'object'
     ? task.active_target_generations : {};
   const activeTargetEntry = Object.entries(activeTargets).find(([, value]) => String(value?.generation_id || '') === executionGenerationId);
-  const inferredSceneId = cleanText(update.sceneId || update.scene_id || activeTargetEntry?.[1]?.target_id || '', 120);
+  const sceneLanes = Object.entries(task.target_generation_progress || {})
+    .filter(([key]) => key.startsWith('scene_asset:'));
+  const generationLane = sceneLanes.find(([, value]) => executionGenerationId
+    && String(value?.generation_id || '') === executionGenerationId);
+  const soleDirectLane = sceneLanes.length === 1 ? sceneLanes[0] : null;
+  const inferredSceneId = cleanText(
+    update.sceneId || update.scene_id || activeTargetEntry?.[1]?.target_id
+      || generationLane?.[1]?.scene_id || soleDirectLane?.[1]?.scene_id || '',
+    120,
+  );
   const laneKey = targetProgress.key('scene_asset', inferredSceneId);
-  const previous = task.target_generation_progress?.[laneKey]
+  const previous = generationLane?.[1] || task.target_generation_progress?.[laneKey]
     || (task.generation_progress?.stage === 'scene_asset' ? task.generation_progress : {});
   const keys = normalizeRepairViewKeys(update.viewKeys?.length ? update.viewKeys : previous.view_keys);
   const initialStates = Array.isArray(update.initialViewStates) ? update.initialViewStates : [];
