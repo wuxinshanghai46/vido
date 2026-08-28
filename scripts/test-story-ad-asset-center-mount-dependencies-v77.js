@@ -19,6 +19,8 @@ assert.deepEqual(mountHarnesses, ['test-story-ad-product-entry-taxonomy-v64.js',
 for (const name of mountHarnesses) {
   const source = fs.readFileSync(path.join(scriptsDir, name), 'utf8');
   assert.match(source, /__loadAssetCenterStage/, `${name} 必须注入资产阶段模块加载合同，不能在VM里遗漏真实运行依赖`);
+  assert.match(source, /loadGenerationModelPicker\s*:/, `${name} 必须注入生成模型目录加载合同，不能在VM里遗漏真实运行依赖`);
+  assert.match(source, /bindGenerationModelPicker\s*:/, `${name} 必须注入生成模型选择绑定合同，不能在VM里遗漏真实运行依赖`);
   if (name.includes('recovery-plan-action')) assert.match(source, /subjectRecoveryPreflightAction\.js[\s\S]*ensureSubjectRecoveryReady/,
     `${name} 必须执行真实安全预检点击模块，不能用noop跳过`);
   const observesBilling = /billingRecoveryBindings\.length/.test(source)

@@ -44,6 +44,11 @@ const sandbox = {
     checkpointRecoveryBanner: () => '',
   }),
   __loadAssetCenterStage: async () => ({ assetPlanStageView: ({ missingSubjectCount = 0 } = {}) => `<section data-plan-stage>${missingSubjectCount ? '<button data-generate-subject-assets>生成人物资产</button>' : ''}</section>` }),
+  loadGenerationModelPicker: async (taskId, stage, { label = '' } = {}) => ({
+    taskId, stage, mediaType: 'image', selected: 'mock/selected',
+    html: `<label data-generation-model-picker="${stage}">${label}</label>`,
+  }),
+  bindGenerationModelPicker: () => () => 'mock/selected',
   request: async () => ({}),
   bindMediaLightbox() {},
   emptyState: ({ title = '', body = '', action = '', actionId = '' } = {}) => `<section data-empty><b>${title}</b><p>${body}</p><button data-empty-action="${actionId}">${action}</button></section>`,

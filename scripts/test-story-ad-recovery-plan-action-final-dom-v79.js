@@ -54,6 +54,11 @@ let confirmationImpl = async () => ({ accepted: false });
 const viewSandbox = {
   __loadAssetCheckpointRecovery: async () => recoverySandbox.__recovery,
   __loadAssetCenterStage: async () => { stageLoads += 1; return { assetPlanStageView: planSandbox.__plan.assetPlanStageView }; },
+  loadGenerationModelPicker: async (taskId, stage, { label = '' } = {}) => ({
+    taskId, stage, mediaType: 'image', selected: 'mock/selected',
+    html: `<label data-generation-model-picker="${stage}">${label}</label>`,
+  }),
+  bindGenerationModelPicker: () => () => 'mock/selected',
   request: async () => ({}),
   bindMediaLightbox() {},
   emptyState: ({ title = '', body = '', action = '', actionId = '' } = {}) => `<section data-empty><b>${title}</b><p>${body}</p><button data-empty-action="${actionId}">${action}</button></section>`,
