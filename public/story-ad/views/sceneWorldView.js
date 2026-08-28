@@ -2,7 +2,6 @@ import { request } from '../api.js?v=20260828-production-v239c';
 import { escapeHtml, mediaPreview, toast } from '../components/ui.js?v=20260828-production-v239c';
 import { promptDialog } from '../components/dialog.js?v=20260828-production-v239c';
 import { list, worldById } from './sceneWorldData.js?v=20260828-production-v239c';
-import { bindMediaLightbox } from './mediaLightbox.js?v=20260828-production-v239c';
 const CAPABILITY_LABELS = {
   supports_photo_views: '真实图片视角',
   supports_panorama: '360原地环视（3DoF）',
@@ -307,7 +306,7 @@ function initSceneWorldViewer({ overlay, bundle, world }) {
     activateModeButton(mode);
     currentNode = node;
     host.innerHTML = `<div class="scene-world-photo-viewer"><div class="scene-world-photo-stage">
-      <img alt="${escapeHtml(world.name)}真实场景视图" data-media-original="${escapeHtml(node.image_url)}" data-media-zoom-url="${escapeHtml(previewUrl(node.image_url, 1600))}" data-media-preview-url="${escapeHtml(previewUrl(node.image_url, 960))}" data-media-zoom-label="${escapeHtml(`${world.name} · ${node.name || '真实场景视图'}`)}" data-media-zoom-group="scene-world-${escapeHtml(world.id || 'current')}">
+      <img alt="${escapeHtml(world.name)}真实场景视图" data-media-original="${escapeHtml(node.image_url)}">
       <div class="scene-world-photo-status"><b>${escapeHtml(node.name || '真实场景视图')}</b><small>${Math.max(1, nodes.indexOf(node) + 1)} / ${nodes.length} · 平面参考图</small></div>
       <div class="scene-world-photo-error" data-photo-error hidden>当前图片无法加载，请重试或检查场景资产。</div>
     </div><div class="scene-world-photo-strip">${nodes.map((item, index) => `<button type="button" data-photo-node="${escapeHtml(item.id)}" class="${item.id === node.id ? 'active' : ''}" title="${escapeHtml(item.name || `视角 ${index + 1}`)}"><img src="${escapeHtml(thumbUrl(item.image_url))}" loading="lazy" decoding="async" alt=""><span>${escapeHtml(item.name || `视角 ${index + 1}`)}${item.is_panorama ? '<small>3DoF</small>' : ''}</span></button>`).join('')}</div></div>`;
@@ -317,10 +316,13 @@ function initSceneWorldViewer({ overlay, bundle, world }) {
     image.addEventListener('error', () => { image.hidden = true; error.hidden = false; }, { once: true });
     image.src = previewUrl(node.image_url, 960);
     window.VidoMediaDelivery?.processImage?.(image);
-    host.querySelectorAll('[data-photo-node]').forEach(button => button.addEventListener('click', () => showPhoto(nodes.find(item => String(item.id) === String(button.dataset.photoNode)))));
-    host.dataset.viewerEngine = 'real-photo';
+    host.querySelectorAll('[data-photo-node]').forEach(button => button.addEventListener('click', () => showPhoto(nodes.find(item => String(item.id) === String(button.dataset.photoNode)), mode)));
+    overlay.querySelectorAll('[data-focus-camera]').forEach(button => button.classList.toggle('active', String(button.dataset.focusCamera) === String(node.camera_id || '')));
+    host.dataset.viewerEngine = mode === 'camera' ? 'scene-photo-camera' : 'real-photo';
     host.dataset.activePhotoNode = String(node.id || '');
-    if (help) help.textContent = '平面参考图 · 点击下方视角切换；360观察点会单独加载球形查看器';
+    if (help) help.textContent = mode === 'camera'
+      ? '机位实图在当前画布直接切换，不再打开第二个窗口；图片始终完整显示'
+      : '场景实图完整显示 · 点击下方视角直接切换；不会另开大图窗口';
   };
   const showPanorama = async node => {
     if (!node?.image_url) return;
@@ -355,8 +357,8 @@ function initSceneWorldViewer({ overlay, bundle, world }) {
     clearViewer();
     activateModeButton('spatial');
     host.dataset.viewerEngine = 'spatial-6dof-handoff';
-    host.innerHTML = '<div class="scene-world-mode-notice"><b>6DoF可移动空间</b><p>前后左右移动、人物路径和遮挡需使用深度 / 几何空间资产，不会用平面全景或结构代理冒充。</p><button class="btn" type="button" data-spatial-director-handoff>打开6DoF导演台</button></div>';
-    host.querySelector('[data-spatial-director-handoff]')?.addEventListener('click', () => overlay.querySelector('[data-open-director-studio]')?.click());
+    host.innerHTML = '<div class="scene-world-mode-notice"><b>6DoF可移动空间</b><p>前后左右移动、人物路径和遮挡需使用深度 / 几何空间资产，不会用平面全景或抽象方块冒充当前场景。</p><button class="btn" type="button" data-spatial-structure-reference>在当前窗口查看场景结构参考</button></div>';
+    host.querySelector('[data-spatial-structure-reference]')?.addEventListener('click', () => showMode('structure'));
     if (help) help.textContent = '6DoF仅在空间模型及深度 / 几何证据就绪后可用';
   };
   const showInitialNotice = () => {
@@ -372,13 +374,13 @@ function initSceneWorldViewer({ overlay, bundle, world }) {
     if (mode === 'spatial') return showSpatialNotice();
     if (mode === 'structure') return layoutNode ? showPhoto(layoutNode, 'structure') : showNative('structure');
     if (mode === 'blocking') return interactionNode ? showPhoto(interactionNode, 'blocking') : showNative('blocking');
-    if (mode === 'camera') return currentNode && !currentNode.is_panorama ? showPhoto(currentNode, 'camera') : showNative('camera');
+    if (mode === 'camera') return currentNode && !currentNode.is_panorama ? showPhoto(currentNode, 'camera') : (primaryNode ? showPhoto(primaryNode, 'camera') : showNative('camera'));
     return primaryNode ? showPhoto(primaryNode) : showInitialNotice();
   };
 
   overlay.querySelectorAll('[data-focus-observation]').forEach(button => button.addEventListener('click', () => {
     const node = nodes.find(item => String(item.id) === String(button.dataset.focusObservation));
-    if (node) showPhoto(node);
+    if (node) showPhoto(node, 'camera');
   }));
   overlay.querySelectorAll('[data-focus-camera]').forEach(button => button.addEventListener('click', () => {
     const cameraNode = list(world.cameras).find(item => String(item.id) === String(button.dataset.focusCamera));
@@ -406,9 +408,9 @@ async function openSceneWorldStudio(bundle, world) {
       <button class="active" type="button" data-world-mode="model">${hasRealPhotos ? '真实图片' : '场景结构'}</button>
       <button type="button" data-world-mode="panorama" ${realPhotoNodes.some(node => node.is_panorama) ? '' : 'disabled title="当前没有已验收的2:1等距柱状全景"'}>360原地环视（3DoF）</button>
       <button type="button" data-world-mode="spatial" ${world.capabilities?.supports_spatial_model ? '' : 'disabled title="当前没有深度、几何或空间模型"'}>可移动空间（6DoF）</button>
-      <button type="button" data-world-mode="structure">结构 / 路线</button>
-      <button type="button" data-world-mode="blocking">人物站位</button>
-      <button type="button" data-world-mode="camera">机位与镜头</button><button type="button" data-open-director-studio>3D导演预演</button>
+      <button type="button" data-world-mode="structure">空间布局（场景实图）</button>
+      <button type="button" data-world-mode="blocking">人物站位（场景实图）</button>
+      <button type="button" data-world-mode="camera">机位切换（当前窗口）</button>
     </nav>
     <div class="scene-world-studio-layout">
       <aside><h3>真实图片视角</h3><div class="scene-world-observation-list">${realPhotoNodes.length ? realPhotoNodes.map((node, index) => `<button type="button" data-focus-observation="${escapeHtml(node.id)}"><b>${escapeHtml(node.name || `视角 ${index + 1}`)}</b><small>${escapeHtml(node.view_key === 'layout' ? '俯视布局与路线参考' : node.is_panorama ? '可360度环视的全景观察点' : '现有真实场景图片')}</small></button>`).join('') : '<small>当前场景还没有真实图片。</small>'}</div><h3>空间区域</h3><div class="scene-world-zone-list">${list(world.zones).map(zone => `<button type="button" data-focus-zone="${escapeHtml(zone.id)}"><b>${escapeHtml(zone.name)}</b><small>${escapeHtml(zone.purpose || '场景区域')}</small></button>`).join('')}</div><h3>场景入口</h3><div class="scene-world-portal-list">${list(world.portals).length ? list(world.portals).map(portal => `<button type="button" data-open-world="${escapeHtml(portal.to_world_id)}">${escapeHtml(portal.label)}</button>`).join('') : '<small>当前没有跨场景入口</small>'}</div></aside>
@@ -418,7 +420,6 @@ async function openSceneWorldStudio(bundle, world) {
   </section>`;
   document.body.appendChild(overlay);
   document.body.classList.add('modal-open');
-  bindMediaLightbox(overlay);
 
   let disposeViewer = () => {};
   const close = () => {
@@ -430,13 +431,6 @@ async function openSceneWorldStudio(bundle, world) {
   overlay.addEventListener('click', event => { if (event.target === overlay) close(); });
 
   disposeViewer = initSceneWorldViewer({ overlay, bundle, world });
-  overlay.querySelector('[data-open-director-studio]')?.addEventListener('click', async () => {
-    try {
-      const module = await import('./directorStudioView.js?v=20260828-production-v239c');
-      await module.openDirectorStudio({ taskId: bundle.project.id, world });
-    } catch (error) { toast(error.message || '导演台加载失败', 'danger'); }
-  });
-
   overlay.querySelectorAll('[data-open-world]').forEach(button => button.addEventListener('click', () => {
     const next = worldById(bundle, button.dataset.openWorld);
     if (!next) return toast('目标场景尚未建立', 'warning');
