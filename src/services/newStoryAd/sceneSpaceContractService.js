@@ -666,6 +666,16 @@ function buildUnverifiedContract(options = {}, error = null) {
       field: cleanText(item?.title || '', 160),
       message: cleanText(item?.message || '', 300),
     }));
+  contract.qa_response_excerpt = cleanText(error?.candidate_text || '', 1200);
+  contract.qa_failed_models = (Array.isArray(error?.failed_models) ? error.failed_models : [])
+    .slice(0, 8)
+    .map(item => ({
+      provider_id: cleanText(item?.provider_id || '', 80),
+      model_id: cleanText(item?.model_id || '', 120),
+      code: cleanText(item?.code || '', 80),
+      message: cleanText(item?.message || '', 300),
+      schema_issues: stringList(item?.response_diagnostics?.issues || [], 12, 240),
+    }));
   contract.verification = verification.unavailable(error || { code: contract.qa_error_code, message: contract.qa_error });
   contract.vision_model = '';
   contract.view_issues = partialSceneQa
@@ -777,8 +787,8 @@ async function analyzeSceneViews(options = {}) {
     imageUrls: views.map(view => view.url || view.image_url).filter(Boolean),
     maxTokens: 3800,
   };
-  let result = await modelGateway.generateVision(request);
-  let parsed = safeJson(result.text);
+  let result;
+  let parsed;
   const sceneScoreFields = [
     ['scene_consistency_score', 'scene_continuity', 'scene_consistency'],
     ['geometry_consistency_score', 'anchor_consistency_score', 'spatial_consistency', 'geometry_consistency'],
@@ -881,6 +891,29 @@ async function analyzeSceneViews(options = {}) {
     return normalizeViewIssues(candidate.view_issues || candidate.viewIssues || [], requested)
       .every(issue => issue.code !== 'PHOTOREALISM_INVALID');
   };
+  const sceneQaMissingFields = candidate => [
+    !hasRequiredScores(candidate, sceneScoreFields) ? 'cross_view_qa.required_scores' : '',
+    !hasRequiredScores(candidate, requirementScoreFields) ? 'requirement_qa.required_scores' : '',
+    !hasRequiredScores(candidate.photographic_realism_qa || {}, photographicRealismScoreFields)
+      ? 'photographic_realism_qa.required_scores' : '',
+    !hasRequiredScores(candidate, spatialCoverageScoreFields) ? 'spatial_coverage_qa.required_scores' : '',
+    lacksRealismEvidence(candidate) ? 'photographic_realism_qa.visible_evidence' : '',
+    lacksIssueEvidence(candidate) ? 'view_issues.visible_evidence' : '',
+  ].filter(Boolean);
+  const validateSceneQaText = text => {
+    const candidate = safeJson(text);
+    const missingFields = sceneQaMissingFields(candidate);
+    if (!missingFields.length) return true;
+    const error = new Error(`场景五图 QA 缺少：${missingFields.join('、')}`);
+    error.code = 'VISION_QA_SCHEMA_INVALID';
+    error.retryable = true;
+    error.missing_fields = missingFields;
+    error.partial_scene_qa = candidate;
+    throw error;
+  };
+  request.validateText = validateSceneQaText;
+  result = await modelGateway.generateVision(request);
+  parsed = safeJson(result.text);
   if (!hasRequiredScores(parsed, sceneScoreFields)
     || !hasRequiredScores(parsed, requirementScoreFields)
     || !hasRequiredScores(parsed.photographic_realism_qa || {}, photographicRealismScoreFields)
@@ -935,6 +968,28 @@ async function analyzeSceneViews(options = {}) {
       + 'When material_reference_available is not true, do not fail solely because a proprietary, trade or unfamiliar finish name cannot be visually proven from memory. A smooth reflection or lighting gradient is not a seam by itself; only a coherent geometric edge, gap, groove, recess or sustained boundary is seam evidence. '
       + 'Master must map layout; reverse must differ by at least 75 degrees from master; interaction must map interaction and at least one zone; detail must map material_light or surface_topology. Do not infer missing evidence. Keep JSON under 2600 characters.',
     maxTokens: 2800,
+  };
+  const cameraQaMissingFields = candidate => [
+    !hasRequiredScores(candidate.camera_design_qa || {}, cameraDesignScoreFields)
+      ? 'camera_design_qa.required_scores' : '',
+    lacksCameraEvidence(candidate) ? 'cameras[master,reverse,interaction,detail].structured_evidence' : '',
+  ].filter(Boolean);
+  cameraRequest.validateText = text => {
+    const candidate = safeJson(text);
+    const missingFields = cameraQaMissingFields(candidate);
+    if (!missingFields.length) return true;
+    const error = new Error(`逐机位 QA 缺少：${missingFields.join('、')}`);
+    error.code = 'CAMERA_QA_SCHEMA_INVALID';
+    error.retryable = true;
+    error.missing_fields = missingFields;
+    error.details = missingFields.map(field => ({
+      code: 'CAMERA_QA_FIELD_MISSING',
+      title: field,
+      message: `逐机位 QA 缺少 ${field}`,
+      status: 'missing',
+    }));
+    error.partial_camera_qa = candidate;
+    throw error;
   };
   let cameraResult = await modelGateway.generateVision(cameraRequest);
   let cameraParsed = safeJson(cameraResult.text);

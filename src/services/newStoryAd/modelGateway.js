@@ -673,7 +673,12 @@ async function runSemanticValidation(validateText, text, meta = {}, stage = '') 
     const rawIssues = (error?.story_scene_coverage_issues || error?.content_mode_violations || [])
       .map(issue => String(issue || '').slice(0, 500))
       .filter(Boolean);
+    const schemaIssues = [
+      ...(Array.isArray(error?.missing_fields) ? error.missing_fields : []),
+      ...(Array.isArray(error?.details) ? error.details.map(item => item?.message || item?.field || item?.title || '') : []),
+    ].map(issue => String(issue || '').slice(0, 500)).filter(Boolean);
     const prioritizedIssues = [
+      ...schemaIssues,
       ...rawIssues.filter(issue => !/\.plot_beats\[\d+\]/.test(issue)),
       ...rawIssues.filter(issue => /\.plot_beats\[\d+\]/.test(issue)),
     ].filter((issue, index, rows) => rows.indexOf(issue) === index);

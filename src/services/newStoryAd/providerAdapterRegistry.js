@@ -22,7 +22,45 @@ function visionUseMatches(model = {}) {
   const use = String(model.use || model.type || '').toLowerCase();
   const id = String(model.id || '').toLowerCase();
   return ['vision', 'vlm', 'multimodal'].includes(use)
-    || (storyUseMatches(model) && /(?:gpt-4o(?:-mini)?|gemini-(?:2|3))/.test(id));
+    || (storyUseMatches(model) && /(?:gpt-4o(?:-mini)?|gemini-(?:2|3)|claude-(?:3|opus|sonnet|haiku))/.test(id));
+}
+
+function anthropicVisionContent(messages = [], fallbackText = '') {
+  const userMessages = (Array.isArray(messages) ? messages : [])
+    .filter(message => message?.role === 'user');
+  const blocks = [];
+  for (const message of userMessages) {
+    const content = Array.isArray(message.content) ? message.content : [message.content];
+    for (const part of content) {
+      if (typeof part === 'string' && part.trim()) {
+        blocks.push({ type: 'text', text: part });
+        continue;
+      }
+      if (part?.type === 'text' && String(part.text || '').trim()) {
+        blocks.push({ type: 'text', text: String(part.text) });
+        continue;
+      }
+      const imageUrl = String(part?.image_url?.url || part?.url || '').trim();
+      if (!imageUrl) continue;
+      const embedded = imageUrl.match(/^data:(image\/(?:jpeg|jpg|png|webp));base64,([A-Za-z0-9+/=]+)$/i);
+      if (embedded) {
+        blocks.push({
+          type: 'image',
+          source: {
+            type: 'base64',
+            media_type: embedded[1].toLowerCase().replace('image/jpg', 'image/jpeg'),
+            data: embedded[2],
+          },
+        });
+      } else if (/^https?:\/\//i.test(imageUrl)) {
+        blocks.push({ type: 'image', source: { type: 'url', url: imageUrl } });
+      }
+    }
+  }
+  if (!blocks.some(block => block.type === 'text') && String(fallbackText || '').trim()) {
+    blocks.unshift({ type: 'text', text: String(fallbackText) });
+  }
+  return blocks.length ? blocks : String(fallbackText || '');
 }
 
 function adapterFamily(provider = {}) {
@@ -333,7 +371,7 @@ function callDeyunaiClaudeMessages(config, systemPrompt, userPrompt, opts = {}) 
     const payload = {
       model: config.modelId,
       max_tokens: Math.max(1024, Math.min(16000, Number(opts.maxTokens) || 4096)),
-      messages: [{ role: 'user', content: userPrompt }],
+      messages: [{ role: 'user', content: anthropicVisionContent(opts.messages, userPrompt) }],
     };
     if (String(systemPrompt || '').trim()) payload.system = systemPrompt;
     const body = JSON.stringify(payload);
@@ -511,7 +549,7 @@ async function generateText({ model, systemPrompt, userPrompt, messages = null, 
   if (config.family.includes('anthropic') || config.providerId === 'anthropic') {
     result = await callAnthropicMessages(config, effectiveSystemPrompt, userPrompt, { maxTokens, temperature, timeoutMs, signal });
   } else if ((config.family.includes('deyunai') || /deyunai|漫路/i.test(config.providerId || '')) && /^claude-/i.test(config.modelId)) {
-    result = await callDeyunaiClaudeMessages(config, effectiveSystemPrompt, userPrompt, { maxTokens, temperature, timeoutMs, signal });
+    result = await callDeyunaiClaudeMessages(config, effectiveSystemPrompt, userPrompt, { messages, maxTokens, temperature, timeoutMs, signal });
   } else {
     result = await callOpenAICompatible(config, systemPrompt, userPrompt, {
       messages, maxTokens, temperature, timeoutMs, signal, structuredOutput, _client,
@@ -549,5 +587,6 @@ module.exports = {
   validateDeyunaiTextContract,
   providerRequestId,
   attachProviderErrorEvidence,
+  anthropicVisionContent,
   generateText,
 };

@@ -526,6 +526,44 @@ async function main() {
     scene_contract: rejectedReverseContract(),
   }]);
 
+  const incompleteTaskId = 'scene-reverify-missing-detail-test';
+  const incompleteSceneId = 'scene-reverify-missing-detail';
+  storage.createTask({ id: incompleteTaskId, title: 'missing detail preflight', request: context });
+  storage.saveOutput(incompleteTaskId, 'context', context);
+  storage.saveOutput(incompleteTaskId, 'scene_config', {
+    scene_mode: 'single',
+    spaces: [{ id: incompleteSceneId, name: 'missing detail scene', scene_spec: sceneSpec }],
+  });
+  currentScenePrompt(incompleteTaskId, incompleteSceneId);
+  storage.saveOutput(incompleteTaskId, 'scene_assets', [{
+    id: incompleteSceneId,
+    scene_id: incompleteSceneId,
+    generation_contract_version: 7,
+    scene_revision: 1,
+    name: 'missing detail scene',
+    image_url: urls.master,
+    view_images: ['master', 'reverse', 'interaction', 'layout'].map(key => ({ key, url: urls[key], image_url: urls[key] })),
+    layout_summary: sceneSpec.layoutText,
+    material_summary: sceneSpec.materialLightText,
+    interaction_summary: sceneSpec.interactionText,
+    negative: sceneSpec.negativeText,
+    surface_topology: sceneSpec.surfaceTopology,
+    layout_contract: { required: true, status: 'available' },
+  }]);
+  const callsBeforeIncompletePreflight = storage.getTaskBundle(incompleteTaskId, { diagnostics: true }).model_calls.length;
+  await assert.rejects(
+    () => sceneAssets.reverifySceneAsset(incompleteTaskId, incompleteSceneId),
+    error => error.code === 'SCENE_VIEWS_INCOMPLETE'
+      && error.provider_image_call_count === 0
+      && error.missing_view_keys?.includes('detail'),
+    'master/reverse/interaction/layout must not masquerade as a complete four-perspective set',
+  );
+  assert.equal(
+    storage.getTaskBundle(incompleteTaskId, { diagnostics: true }).model_calls.length,
+    callsBeforeIncompletePreflight,
+    'incomplete scene preflight must not call a visual or image model',
+  );
+
   const calls = [];
   const originalGenerateImage = mediaAdapter.generateImage;
   const originalAnalyze = sceneSpace.analyzeSceneViews;

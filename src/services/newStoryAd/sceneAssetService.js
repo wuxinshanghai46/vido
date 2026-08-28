@@ -1742,10 +1742,20 @@ async function reverifySceneAsset(taskId, sceneId) {
     url: sceneVisionThumbnailUrl(view.url || view.image_url),
     image_url: sceneVisionThumbnailUrl(view.image_url || view.url),
   }));
-  if (views.length < 4) {
-    const error = new Error('场景资产缺少完整四视图，需先重新生成当前场景');
+  const viewKeys = views.map(view => cleanText(view.key || view.view || '', 40)).filter(Boolean);
+  const requiredKeys = asset.layout_contract?.required === true || viewKeys.includes('layout')
+    ? REQUIRED_SCENE_VIEW_KEYS
+    : SCENE_VIEW_KEYS;
+  const missingViewKeys = requiredKeys.filter(key => !viewKeys.includes(key));
+  const duplicateViewKeys = [...new Set(viewKeys.filter((key, index) => viewKeys.indexOf(key) !== index))];
+  if (missingViewKeys.length || duplicateViewKeys.length) {
+    const error = new Error(`场景资产视图不完整：${missingViewKeys.length ? `缺少 ${missingViewKeys.join('、')}` : ''}${missingViewKeys.length && duplicateViewKeys.length ? '；' : ''}${duplicateViewKeys.length ? `重复 ${duplicateViewKeys.join('、')}` : ''}`);
     error.code = 'SCENE_VIEWS_INCOMPLETE';
     error.status = 422;
+    error.retryable = true;
+    error.missing_view_keys = missingViewKeys;
+    error.duplicate_view_keys = duplicateViewKeys;
+    error.provider_image_call_count = 0;
     throw error;
   }
   const contractOptions = {
