@@ -3,6 +3,15 @@ import { scenePendingAction } from './scenePromptPreview.js?v=20260828-productio
 function text(value = '') { return String(value || '').trim(); }
 
 export function buildSceneBatchActionPlan(scenes = [], activeTargets = []) {
+  const batchActive = (Array.isArray(activeTargets) ? activeTargets : []).some(item => (
+    text(item?.stage) === 'scene_asset'
+    && text(item?.target_id || item?.scope_id) === 'scene-batch'
+    && ['queued', 'running', 'processing', 'verifying'].includes(text(item?.status).toLowerCase())
+  ));
+  if (batchActive) return {
+    ready: [], generate: [], review: [], repair: [], count: 0,
+    requiresBillingConfirmation: false,
+  };
   const active = new Set((Array.isArray(activeTargets) ? activeTargets : [])
     .filter(item => ['scene_asset', 'scene_qa'].includes(text(item?.stage))
       && ['queued', 'running', 'processing', 'verifying'].includes(text(item?.status).toLowerCase()))

@@ -575,7 +575,7 @@ export function createProjectStore() {
     loadMoreMedia,
     refreshSections,
     updateRequest,
-    beginStageSubmission: (stage, total, message) => beginStageSubmissionState({ state, set }, stage, total, message),
+    beginStageSubmission: (stage, total, message, details) => beginStageSubmissionState({ state, set }, stage, total, message, details),
     runStage,
     saveScenePrompt: async (scene, prompt) => (await import('./scenePromptConfirmationStore.js?v=20260828-production-v254')).saveScenePrompt({ state, request }, scene, prompt),
     saveBlueprint,

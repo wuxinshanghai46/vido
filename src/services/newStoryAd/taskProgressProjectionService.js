@@ -20,6 +20,7 @@ function compactProgress(value = {}) {
   const source = value && typeof value === 'object' ? value : {};
   const allowed = [
     'stage', 'substage', 'status', 'phase', 'message', 'generation_id', 'started_at', 'updated_at',
+    'mode', 'current_scene_id', 'current_scene_name', 'current_action',
     'target_total', 'total', 'completed', 'processed', 'succeeded', 'failed',
     'current_index', 'percent', 'repair_attempt', 'max_repair_attempts',
     'configured_concurrency', 'effective_concurrency', 'peak_concurrency',
@@ -34,6 +35,9 @@ function compactProgress(value = {}) {
     const indexes = compactIndexList(source[key]);
     if (indexes.length) compact[key] = indexes;
   });
+  if (Array.isArray(source.batch_scene_ids)) {
+    compact.batch_scene_ids = [...new Set(source.batch_scene_ids.map(item => text(item, 120)).filter(Boolean))].slice(0, 30);
+  }
   if (compact.message) compact.message = publicFailure.publicFailureMessage(compact.message, text);
   if (compact.stage) compact.stage = publicFailure.publicStage(compact.stage);
   return compact;

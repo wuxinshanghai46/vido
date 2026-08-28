@@ -1,4 +1,4 @@
-export function beginStageSubmissionState({ state, set }, stage = 'full', total = 1, message = '正在提交任务，请稍候。') {
+export function beginStageSubmissionState({ state, set }, stage = 'full', total = 1, message = '正在提交任务，请稍候。', details = {}) {
   if (!state.bundle?.project) return;
   const now = new Date().toISOString();
   const count = Math.max(1, Math.floor(Number(total) || 1));
@@ -14,6 +14,7 @@ export function beginStageSubmissionState({ state, set }, stage = 'full', total 
     message,
     started_at: now,
     client_optimistic: true,
+    ...(details && typeof details === 'object' ? details : {}),
   };
   set({
     bundle: {

@@ -35,6 +35,13 @@ const visualRealismPolicy = require('../services/newStoryAd/visualRealismPolicyS
 const videoCore = require('../services/videoGenerationCore');
 const publicFailure = require('../services/newStoryAd/publicFailureProjectionService');
 const scenePromptConfirmation = require('../services/newStoryAd/scenePromptConfirmationService');
+const sceneBatchOrchestration = require('../services/newStoryAd/sceneBatchOrchestrationService').create({
+  storage,
+  sceneAssets: sceneAssetService,
+  promptAuthority: scenePromptConfirmation,
+  targetProgress: require('../services/newStoryAd/targetGenerationProgressService'),
+  cancellation,
+});
 const db = require('../models/database');
 function userFromReq(req) {
   return req.user || req.auth || {};
@@ -1644,6 +1651,23 @@ router.post('/tasks/:id/scene-assets', asyncRoute(async (req, res) => {
     },
   });
 })); registerPropRoutes(router, { asyncRoute, taskForReq, queueTaskStage, propAssetService });
+
+router.post('/tasks/:id/scene-actions', asyncRoute(async (req, res) => {
+  taskForReq(req);
+  const batchPlan = sceneBatchOrchestration.plan(req.params.id, req.body || {});
+  req.body = {
+    ...(req.body || {}),
+    request_key: String(req.body?.request_key || req.body?.requestKey
+      || `${req.params.id}:scene_batch:${batchPlan.signature}`).slice(0, 180),
+  };
+  return queueTaskStage(req, res, 'scene_asset', job => (
+    sceneBatchOrchestration.execute(req.params.id, batchPlan, job)
+  ), {
+    scopeId: sceneBatchOrchestration.DEFAULT_SCOPE_ID,
+    deadlineMs: Math.max(20 * 60 * 1000, batchPlan.actions.length * 12 * 60 * 1000),
+    failureContext: { scene_name: '场景批处理' },
+  });
+}));
 
 router.get('/tasks/:id/scene-assets/:sceneId/panorama/plan', asyncRoute(async (req, res) => {
   taskForReq(req);

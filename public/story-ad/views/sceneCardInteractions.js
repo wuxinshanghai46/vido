@@ -51,30 +51,39 @@ export function bindSceneCards(host, context) {
         await (await controllerFor(item.sceneId))?.flush();
       }));
     } catch { setButtonBusy(batchButton, false); return; }
-    let confirmation = { accepted: true, reviewBatch: { reviews: [] } };
-    if (plan.requiresBillingConfirmation) {
-      confirmation = await confirmBillingAwareAction({ bundle: context.bundle, lane: 'scenes' });
-      if (!confirmation.accepted) { setButtonBusy(batchButton, false); return; }
-      await authorizeBillingReviews({ bundle: context.bundle, lane: 'scenes', reviewBatch: confirmation.reviewBatch });
-    }
-    if (plan.generate.length) context.store.beginStageSubmission?.('scene_asset', plan.generate.length, `正在提交 ${plan.generate.length} 个场景生成任务。`);
-    setButtonBusy(batchButton, true, '正在提交…');
-    const results = await Promise.allSettled(plan.ready.map(item => {
-      const { scene, sceneId, action } = item;
-      if (action.kind === 'generate') {
-        const button = [...host.querySelectorAll('[data-generate-scene]')]
-          .find(candidate => String(candidate.dataset.generateScene || '') === sceneId);
-        return submitScene(scene, button);
+    try {
+      let confirmation = { accepted: true, reviewBatch: { reviews: [] } };
+      if (plan.requiresBillingConfirmation) {
+        confirmation = await confirmBillingAwareAction({ bundle: context.bundle, lane: 'scenes' });
+        if (!confirmation.accepted) { setButtonBusy(batchButton, false); return; }
+        await authorizeBillingReviews({ bundle: context.bundle, lane: 'scenes', reviewBatch: confirmation.reviewBatch });
       }
-      const button = [...host.querySelectorAll('[data-fix-scene]')]
-        .find(candidate => String(candidate.dataset.fixScene || '') === sceneId);
-      return submitSceneFix({ context, controllerFor, cardFor, scene, button, refresh: false, billingAuthorized: true, promptFlushed: true });
-    }));
-    const accepted = results.filter(item => item.status === 'fulfilled' && item.value?.accepted !== false).length;
-    const failed = results.length - accepted;
-    if (accepted) toast(`已开始处理 ${accepted} 个场景${failed ? `，${failed} 个未提交` : ''}`, failed ? 'warning' : 'success');
-    else toast(results.find(item => item.status === 'rejected')?.reason?.message || '场景任务没有提交成功', 'error');
-    await context.refreshShell();
+      context.store.beginStageSubmission?.('scene_asset', plan.count, `正在提交 ${plan.count} 个场景的连续处理任务。`, {
+        mode: 'scene_batch', batch_scene_ids: plan.ready.map(item => item.sceneId),
+      });
+      setButtonBusy(batchButton, true, '正在提交…');
+      const actions = plan.ready.map(({ scene, sceneId }) => {
+        const card = cardFor(sceneId);
+        return {
+          scene_id: sceneId,
+          name: scene.name,
+          prompt_version_id: card?.dataset.promptVersionId || scene.prompt_state?.prompt_version_id || '',
+          quality: card?.querySelector('[data-scene-quality]')?.value || 'standard',
+          resolution: card?.querySelector('[data-scene-resolution]')?.value || '2K',
+          aspect_ratio: context.bundle?.brief?.output_ratio || context.bundle?.project?.request?.output_ratio || '16:9',
+        };
+      });
+      const result = await context.store.runStage('scene-actions', {
+        actions,
+        request_key: `scene-batch:${context.bundle?.revisions?.content || 1}:${actions.map(item => `${item.scene_id}:${item.prompt_version_id}`).join('|')}`,
+      });
+      if (result.accepted === false) throw new Error(result.message || '场景连续处理任务未被接受');
+      toast(`已开始依次处理 ${plan.count} 个场景`, 'success');
+      await context.refreshShell();
+    } catch (error) {
+      toast(error.message || '场景连续处理任务没有提交成功', 'error');
+      setButtonBusy(batchButton, false);
+    }
   });
   return editorRuntime.destroy;
 }

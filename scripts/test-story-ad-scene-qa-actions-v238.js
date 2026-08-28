@@ -124,7 +124,7 @@ async function testBatchBinding() {
   async function run(scenes) {
     let confirmationCalls = 0;
     let authorizationCalls = 0;
-    const submitted = [];
+    const requests = [];
     const batchButton = { addEventListener(type, handler) { if (type === 'click') this.clickHandler = handler; } };
     const host = {
       querySelector(value) { return value === '[data-run-scene-actions]' ? batchButton : null; },
@@ -136,27 +136,34 @@ async function testBatchBinding() {
       authorizeBillingReviews: async () => { authorizationCalls += 1; },
       scenePendingAction: scene => ({ kind: 'fix', billable: scene.repair_plan.action !== 'reverify' }),
       bindSceneQaActions() {},
-      submitSceneFix: async ({ scene, billingAuthorized }) => { submitted.push({ action: scene.repair_plan.action, billingAuthorized }); return { accepted: true }; },
-      createSceneCardEditorRuntime: () => ({ controllerFor: async () => null, cardFor: () => null, switchTab() {}, destroy() {} }),
+      submitSceneFix: async () => { throw new Error('批量入口不得再调用单场景提交函数'); },
+      createSceneCardEditorRuntime: () => ({ controllerFor: async () => null, cardFor: sceneId => ({ dataset: { promptVersionId: `prompt-${sceneId}` }, querySelector: () => null }), switchTab() {}, destroy() {} }),
     };
     vm.runInNewContext(`${executable('public/story-ad/views/sceneBatchActionPlan.js')}\nglobalThis.__plan=buildSceneBatchActionPlan;`, sandbox);
     sandbox.buildSceneBatchActionPlan = sandbox.__plan;
     vm.runInNewContext(`${executable('public/story-ad/views/sceneCardInteractions.js')}\nglobalThis.__bind=bindSceneCards;`, sandbox);
-    sandbox.__bind(host, { bundle: { assets: { scenes } }, store: {}, async refreshShell() {} });
+    sandbox.__bind(host, { bundle: { project: { id: 'task-batch' }, revisions: { content: 1 }, assets: { scenes } }, store: {
+      beginStageSubmission() {},
+      async runStage(pathname, body) { requests.push({ pathname, body }); return { accepted: true }; },
+    }, async refreshShell() {} });
     await batchButton.clickHandler({ currentTarget: batchButton });
-    return { confirmationCalls, authorizationCalls, submitted };
+    return { confirmationCalls, authorizationCalls, requests };
   }
   const review = await run([{ id: 'review', repair_plan: { action: 'reverify' } }]);
   assert.equal(review.confirmationCalls, 0, '批量重新审核不得弹出计费确认');
   assert.equal(review.authorizationCalls, 0, '批量重新审核不得执行图片计费授权');
-  assert.deepEqual(review.submitted.map(item => item.action), ['reverify']);
+  assert.equal(review.requests.length, 1);
+  assert.equal(review.requests[0].pathname, 'scene-actions');
+  assert.equal(JSON.stringify(review.requests[0].body.actions.map(item => item.scene_id)), JSON.stringify(['review']));
   const mixed = await run([
     { id: 'review', repair_plan: { action: 'reverify' } },
     { id: 'repair', repair_plan: { action: 'regenerate_failed_views' } },
   ]);
   assert.equal(mixed.confirmationCalls, 1, '混合场景待办只允许一次计费确认');
   assert.equal(mixed.authorizationCalls, 1, '混合场景待办只允许一次图片计费授权');
-  assert.deepEqual(mixed.submitted.map(item => item.action), ['reverify', 'regenerate_failed_views']);
+  assert.equal(mixed.requests.length, 1, '混合待办必须只提交一个服务器批任务');
+  assert.equal(mixed.requests[0].pathname, 'scene-actions');
+  assert.equal(JSON.stringify(mixed.requests[0].body.actions.map(item => item.scene_id)), JSON.stringify(['review', 'repair']));
 }
 
 async function main() {

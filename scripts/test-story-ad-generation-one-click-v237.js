@@ -69,7 +69,9 @@ async function main() {
   const singleSceneHandler = sceneActions.slice(sceneActions.indexOf("host.querySelectorAll('[data-generate-scene]')"), sceneActions.indexOf("host.querySelector('[data-run-scene-actions]')"));
   assert(singleSceneHandler.indexOf("setButtonBusy(button, true, '正在准备…')") < singleSceneHandler.indexOf('await (await controllerFor(sceneId))?.flush()'), '场景点击后必须先给反馈，再等待自动保存');
   const batchFixHandler = sceneActions.slice(sceneActions.indexOf("host.querySelector('[data-run-scene-actions]')"));
-  assert(batchFixHandler.indexOf('beginStageSubmission') < batchFixHandler.indexOf('Promise.allSettled'), '统一场景处理必须在网络提交完成前立即投影全局进度');
+  assert(batchFixHandler.indexOf('beginStageSubmission') < batchFixHandler.indexOf("runStage('scene-actions'"), '统一场景处理必须在唯一一次网络提交前立即投影全局进度');
+  assert.equal((batchFixHandler.match(/runStage\('scene-actions'/g) || []).length, 1, '统一场景按钮只能提交一个服务器批任务');
+  assert(!batchFixHandler.includes('Promise.allSettled'), '统一场景按钮不得恢复旧版并发提交路径');
   assert(projectStore.includes('beginStageSubmissionState({ state, set }')
     && stageSubmissionState.includes("active_generation_id: state.bundle.project.active_generation_id || 'client-submitting'")
     && stageSubmissionState.includes('client_optimistic: true'), '客户端提交阶段必须同步创建可见的0%进度状态');

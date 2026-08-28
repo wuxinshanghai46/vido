@@ -40,6 +40,7 @@ function aggregate(task = {}, stage = '') {
   const allCompleted = source.length > 0 && source.every(row => String(row.status || '').toLowerCase() === 'completed');
   const directLaneRunning = !activeRows.length && source.some(row => ['queued', 'running', 'verifying']
     .includes(String(row.status || '').toLowerCase()));
+  const batchRow = [...source].reverse().find(row => String(row.mode || '') === 'scene_batch') || null;
   const running = activeRows.length > 0 || directLaneRunning;
   const status = running
     ? (source.length === 1 && String(source[0].status || '').toLowerCase() === 'verifying' ? 'verifying' : 'running')
@@ -63,6 +64,14 @@ function aggregate(task = {}, stage = '') {
     active_scene_ids: activeRows.map(row => String(row.scene_id || row.scope_id || '')).filter(Boolean),
     ...(sceneIds.length === 1 ? { scene_id: sceneIds[0] } : {}),
     ...singleLaneDetails,
+    ...(batchRow ? {
+      mode: 'scene_batch',
+      batch_scene_ids: Array.isArray(batchRow.batch_scene_ids) ? batchRow.batch_scene_ids : [],
+      current_scene_id: String(batchRow.current_scene_id || ''),
+      current_scene_name: String(batchRow.current_scene_name || ''),
+      current_action: String(batchRow.current_action || ''),
+      message: String(batchRow.message || ''),
+    } : {}),
     started_at: source.map(row => row.started_at).filter(Boolean).sort()[0] || '',
     updated_at: latest.updated_at || new Date().toISOString(),
     ...(!running ? { finished_at: latest.finished_at || latest.updated_at || new Date().toISOString() } : {}),

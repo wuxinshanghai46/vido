@@ -48,9 +48,15 @@ export function renderSceneProductionCard(scene = {}, index = 0, options = {}) {
   const progressDone = Math.max(0, Math.min(progressTotal, Number(progress?.processed ?? progress?.completed ?? 0) || 0));
   const progressPercent = Math.max(0, Math.min(100, Number.isFinite(Number(progress?.percent))
     ? Math.round(Number(progress.percent)) : Math.round((progressDone / progressTotal) * 100)));
-  const progressAction = String(progress?.stage || '').toLowerCase() === 'scene_qa' || String(progress?.phase || '').toLowerCase() === 'verification'
-    ? '正在审核当前场景' : (productionAction.kind === 'fix' ? '正在修复当前场景' : '正在生成当前场景');
-  const progressMarkup = options.generationActive ? `<div class="scene-card-live-progress" role="status" aria-live="polite" data-scene-progress="${sceneId}"><div><b>${escapeHtml(progressAction)}</b><span>${progressDone}/${progressTotal} · ${progressPercent}%</span></div><i aria-hidden="true"><b style="width:${progressPercent}%"></b></i><small>这里只显示“${escapeHtml(scene.name || `场景 ${index + 1}`)}”的当前动作，不会被其他场景进度覆盖。</small></div>` : '';
+  const batchMode = String(progress?.mode || '') === 'scene_batch';
+  const isCurrentBatchScene = !batchMode || String(progress?.current_scene_id || '') === String(scene.id || scene.scene_id || '');
+  const progressAction = batchMode && !isCurrentBatchScene
+    ? '等待依次处理'
+    : ((String(progress?.stage || '').toLowerCase() === 'scene_qa'
+      || String(progress?.phase || '').toLowerCase() === 'verification'
+      || String(progress?.current_action || '') === 'reverify')
+      ? '正在审核当前场景' : (productionAction.kind === 'fix' ? '正在修复当前场景' : '正在生成当前场景'));
+  const progressMarkup = options.generationActive ? `<div class="scene-card-live-progress" role="status" aria-live="polite" data-scene-progress="${sceneId}"><div><b>${escapeHtml(progressAction)}</b><span>${progressDone}/${progressTotal} · ${progressPercent}%</span></div><i aria-hidden="true"><b style="width:${progressPercent}%"></b></i><small>${batchMode ? '系统会按顺序自动处理，不需要再次点击。' : `这里只显示“${escapeHtml(scene.name || `场景 ${index + 1}`)}”的当前动作，不会被其他场景进度覆盖。`}</small></div>` : '';
   const promptPane = provisional
     ? `<pre>${escapeHtml(prompt || '待生成场景提示词。')}</pre>`
     : `<textarea data-scene-prompt-editor="${sceneId}" maxlength="12000">${escapeHtml(prompt || '')}</textarea><div class="scene-prompt-editor-actions"><small>自动保存；生成时使用最新版本。</small><span data-autosave-state="saved">已自动保存</span></div>`;

@@ -249,6 +249,13 @@ function updateSceneGenerationProgress(taskId, update = {}) {
   const executionGenerationId = cleanText(update.generationId || cancellation.current()?.generationId || '', 100);
   const activeTargets = task.active_target_generations && typeof task.active_target_generations === 'object'
     ? task.active_target_generations : {};
+  const activeSceneBatch = activeTargets['scene_asset:scene-batch'];
+  if (activeSceneBatch
+    && String(activeSceneBatch.generation_id || '') === executionGenerationId) {
+    // The durable batch orchestrator owns the user-facing scene count. Inner
+    // view generation must not replace it with a second 0/5 progress lane.
+    return task.generation_progress || null;
+  }
   const activeTargetEntry = Object.entries(activeTargets).find(([, value]) => String(value?.generation_id || '') === executionGenerationId);
   const sceneLanes = Object.entries(task.target_generation_progress || {})
     .filter(([key]) => key.startsWith('scene_asset:'));

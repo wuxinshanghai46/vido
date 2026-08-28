@@ -16,17 +16,23 @@ export async function mount(host, context) {
   const generationActive = !!bundle?.project?.active_generation_id
   const activeTargets = bundle?.project?.active_target_generations && typeof bundle.project.active_target_generations === 'object'
     ? Object.values(bundle.project.active_target_generations) : [];
+  const generationProgress = bundle?.project?.generation_progress || {};
+  const batchTarget = activeTargets.find(item => String(item?.stage || '') === 'scene_asset'
+    && String(item?.target_id || item?.scope_id || '') === 'scene-batch');
+  const batchActive = Boolean(batchTarget || (generationActive && String(generationProgress.mode || '') === 'scene_batch'));
+  const batchSceneIds = new Set(Array.isArray(generationProgress.batch_scene_ids) ? generationProgress.batch_scene_ids.map(String) : []);
   const sceneIsActive = sceneId => activeTargets.some(item => {
     const status = String(item?.status || '').toLowerCase();
     return ['scene_asset', 'scene_qa'].includes(String(item?.stage || ''))
       && String(item?.target_id || item?.scope_id || '') === String(sceneId)
       && (!status || ['queued', 'running', 'processing', 'verifying'].includes(status));
-  });
+  }) || (batchActive && (!batchSceneIds.size || batchSceneIds.has(String(sceneId))));
   const targetProgress = bundle?.project?.target_generation_progress && typeof bundle.project.target_generation_progress === 'object'
     ? bundle.project.target_generation_progress : {};
   const sceneActiveTarget = sceneId => activeTargets.find(item => ['scene_asset', 'scene_qa'].includes(String(item?.stage || ''))
     && String(item?.target_id || item?.scope_id || '') === String(sceneId));
   const sceneProgress = sceneId => {
+    if (batchActive && (!batchSceneIds.size || batchSceneIds.has(String(sceneId)))) return generationProgress;
     const activeTarget = sceneActiveTarget(sceneId);
     const activeKey = activeTarget ? `${activeTarget.stage}:${sceneId}` : '';
     return (activeKey ? targetProgress[activeKey] : null)
