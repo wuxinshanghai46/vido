@@ -1,9 +1,9 @@
-import { request, uploadAsset, uploadReferenceVideo } from '../api.js?v=20260828-production-v251';
-import { beginReferenceReplacement, referenceSyncInterrupted, replacementCurrent, removeProjectReference, restoreReferenceReplacement } from './referenceReplacementState.js?v=20260828-production-v251';
-import { cancelReferenceAnalysisRequest, retryReferenceAnalysisRequest, retryReferenceImportRequest } from './referenceRetryStore.js?v=20260828-production-v251';
-import { loadProjectList } from './projectListStore.js?v=20260828-production-v251';
-import { loadProjectBundle, refreshProjectBundle } from './projectBundleStore.js?v=20260828-production-v251';
-import { beginStageSubmissionState } from './stageSubmissionState.js?v=20260828-production-v251';
+import { request, uploadAsset, uploadReferenceVideo } from '../api.js?v=20260828-production-v252';
+import { beginReferenceReplacement, referenceSyncInterrupted, replacementCurrent, removeProjectReference, restoreReferenceReplacement } from './referenceReplacementState.js?v=20260828-production-v252';
+import { cancelReferenceAnalysisRequest, retryReferenceAnalysisRequest, retryReferenceImportRequest } from './referenceRetryStore.js?v=20260828-production-v252';
+import { loadProjectList } from './projectListStore.js?v=20260828-production-v252';
+import { loadProjectBundle, refreshProjectBundle } from './projectBundleStore.js?v=20260828-production-v252';
+import { beginStageSubmissionState } from './stageSubmissionState.js?v=20260828-production-v252';
 export function createProjectStore() {
   const state = {
     projects: [],
@@ -53,7 +53,7 @@ export function createProjectStore() {
     hydrateReferenceFailure();
     return bundle;
   }
-  const mediaStore = () => import('./mediaCatalogStore.js?v=20260828-production-v251'), loadMediaPage = async options => (await mediaStore()).loadMediaPage({ request, state }, options);
+  const mediaStore = () => import('./mediaCatalogStore.js?v=20260828-production-v252'), loadMediaPage = async options => (await mediaStore()).loadMediaPage({ request, state }, options);
   const loadMoreMedia = async (kind = 'keyframes', limit = 24) => (await mediaStore()).loadMoreMedia({ request, state, set }, kind, limit);
 
   async function refreshSections(sections) {
@@ -577,7 +577,7 @@ export function createProjectStore() {
     updateRequest,
     beginStageSubmission: (stage, total, message) => beginStageSubmissionState({ state, set }, stage, total, message),
     runStage,
-    saveScenePrompt: async (scene, prompt) => (await import('./scenePromptConfirmationStore.js?v=20260828-production-v251')).saveScenePrompt({ state, request }, scene, prompt),
+    saveScenePrompt: async (scene, prompt) => (await import('./scenePromptConfirmationStore.js?v=20260828-production-v252')).saveScenePrompt({ state, request }, scene, prompt),
     saveBlueprint,
     saveStoryboard,
     saveSketches,
