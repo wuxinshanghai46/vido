@@ -9,6 +9,7 @@ const outputDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vido-vision-routing-v24
 process.env.OUTPUT_DIR = outputDir;
 process.env.DB_ENABLED = '0';
 fs.writeFileSync(path.join(outputDir, 'settings.json'), JSON.stringify({ providers: [
+  { id: 'smscrw', preset: 'smscrw', enabled: true, api_key: 'test', api_url: 'https://ai.smscrw.cn/v1', models: [{ id: 'claude-sonnet-4-6', enabled: true, use: 'story' }] },
   { id: 'deyunai', preset: 'deyunai', enabled: true, api_key: 'test', api_url: 'https://example.invalid', models: [{ id: 'claude-sonnet-4-6', enabled: true, use: 'story', channel: 'overseas' }] },
   { id: 'webang-maas', enabled: true, api_key: 'test', api_url: 'https://example.invalid/v1', models: [{ id: 'gemini-2.5-flash', enabled: true, use: 'vision' }] },
   { id: 'zhipu', enabled: true, api_key: 'test', api_url: 'https://example.invalid/v1', models: [{ id: 'glm-4.6v-flash', enabled: true, use: 'vision' }] },
@@ -19,6 +20,7 @@ const gateway = require('../src/services/newStoryAd/modelGateway');
 const migration = require('./configure-story-ad-consistency-vision-routing-v240');
 
 const expected = [
+  'smscrw/claude-sonnet-4-6',
   'deyunai/claude-sonnet-4-6',
   'webang-maas/gemini-2.5-flash',
   'zhipu/glm-4.6v-flash',
@@ -34,6 +36,7 @@ for (const stage of migration.STAGES) {
 
 const settings = {
   providers: [
+    { id: 'smscrw', enabled: true, api_key: 'test', models: [{ id: 'claude-sonnet-4-6', enabled: true }] },
     { id: 'deyunai', enabled: true, api_key: 'test', models: [{ id: 'claude-sonnet-4-6', enabled: true }] },
     { id: 'webang-maas', enabled: true, api_key: 'test', models: [{ id: 'gemini-2.5-flash', enabled: true }] },
     { id: 'zhipu', enabled: true, api_key: 'test', models: [{ id: 'glm-4.6v-flash', enabled: true }] },

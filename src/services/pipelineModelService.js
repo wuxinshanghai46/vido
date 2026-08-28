@@ -166,40 +166,44 @@ const PIPELINE_SCHEMA = {
 // 代码 fallback 默认链路（当用户没在 admin 里手动配置时，作为预填展示）
 //   注意：这只是"建议默认值"，实际业务还是按各 service 内部的 fallback 逻辑跑
 const NEW_STORY_AD_TEXT_DEFAULTS = [
-  { provider_id: 'apismile', model_id: 'gpt-5.5', priority: 1, enabled: true },
-  { provider_id: 'webang-maas', model_id: 'gpt-5.6-terra', priority: 2, enabled: true },
-  { provider_id: 'apismile', model_id: 'gemini-2.5-pro', priority: 3, enabled: true },
-  { provider_id: 'apismile', model_id: 'gemini-2.5-flash', priority: 4, enabled: true },
-  { provider_id: 'aiapi', model_id: 'deepseek-chat', priority: 5, enabled: true },
-  { provider_id: 'deyunai', model_id: 'gemini-2.5-pro', priority: 6, enabled: true },
-  { provider_id: 'webang-maas', model_id: 'gpt-5.6-sol', priority: 7, enabled: false },
-  { provider_id: 'webang-maas', model_id: 'gpt-5.6-luna', priority: 8, enabled: false },
-  { provider_id: 'webang-maas', model_id: 'gemini-3.5-flash', priority: 9, enabled: false },
-  { provider_id: 'webang-maas', model_id: 'claude-opus-5', priority: 10, enabled: false },
-  { provider_id: 'webang-maas', model_id: 'gemini-2.5-flash', priority: 11, enabled: false },
-  { provider_id: 'webang-maas', model_id: 'gemini-2.5-pro', priority: 12, enabled: false },
-  { provider_id: 'deepseek', model_id: 'deepseek-chat', priority: 13, enabled: false },
-  { provider_id: 'deyunai', model_id: 'claude-sonnet-4-6', priority: 14, enabled: false },
-  { provider_id: 'deyunai', model_id: 'gpt-4o', priority: 15, enabled: false },
-  { provider_id: 'deyunai', model_id: 'gemini-2.5-flash', priority: 16, enabled: false },
+  { provider_id: 'smscrw', model_id: 'claude-sonnet-4-6', priority: 1, enabled: true },
+  { provider_id: 'apismile', model_id: 'gpt-5.5', priority: 2, enabled: true },
+  { provider_id: 'webang-maas', model_id: 'gpt-5.6-terra', priority: 3, enabled: true },
+  { provider_id: 'apismile', model_id: 'gemini-2.5-pro', priority: 4, enabled: true },
+  { provider_id: 'apismile', model_id: 'gemini-2.5-flash', priority: 5, enabled: true },
+  { provider_id: 'aiapi', model_id: 'deepseek-chat', priority: 6, enabled: true },
+  { provider_id: 'deyunai', model_id: 'gemini-2.5-pro', priority: 7, enabled: true },
+  { provider_id: 'webang-maas', model_id: 'gpt-5.6-sol', priority: 8, enabled: false },
+  { provider_id: 'webang-maas', model_id: 'gpt-5.6-luna', priority: 9, enabled: false },
+  { provider_id: 'webang-maas', model_id: 'gemini-3.5-flash', priority: 10, enabled: false },
+  { provider_id: 'webang-maas', model_id: 'claude-opus-5', priority: 11, enabled: false },
+  { provider_id: 'webang-maas', model_id: 'gemini-2.5-flash', priority: 12, enabled: false },
+  { provider_id: 'webang-maas', model_id: 'gemini-2.5-pro', priority: 13, enabled: false },
+  { provider_id: 'deepseek', model_id: 'deepseek-chat', priority: 14, enabled: false },
+  { provider_id: 'deyunai', model_id: 'claude-sonnet-4-6', priority: 15, enabled: false },
+  { provider_id: 'deyunai', model_id: 'gpt-4o', priority: 16, enabled: false },
+  { provider_id: 'deyunai', model_id: 'gemini-2.5-flash', priority: 17, enabled: false },
 ];
 const NEW_STORY_AD_DIALOGUE_DEFAULTS = [
-  { provider_id: 'apismile', model_id: 'gemini-2.5-flash', priority: 1, enabled: true },
-  { provider_id: 'webang-maas', model_id: 'gpt-5.6-luna', priority: 2, enabled: true },
-  { provider_id: 'aiapi', model_id: 'deepseek-chat', priority: 3, enabled: true },
-  { provider_id: 'deyunai', model_id: 'gemini-2.5-flash', priority: 4, enabled: true },
+  { provider_id: 'smscrw', model_id: 'claude-sonnet-4-6', priority: 1, enabled: true },
+  { provider_id: 'apismile', model_id: 'gemini-2.5-flash', priority: 2, enabled: true },
+  { provider_id: 'webang-maas', model_id: 'gpt-5.6-luna', priority: 3, enabled: true },
+  { provider_id: 'aiapi', model_id: 'deepseek-chat', priority: 4, enabled: true },
+  { provider_id: 'deyunai', model_id: 'gemini-2.5-flash', priority: 5, enabled: true },
 ];
 const NEW_STORY_AD_REFERENCE_VISION_DEFAULTS = [
-  { provider_id: 'deyunai', model_id: 'gemini-2.5-flash', priority: 1, enabled: true },
-  { provider_id: 'zhipu', model_id: 'glm-4.6v-flash', priority: 2, enabled: true },
-  { provider_id: 'apismile', model_id: 'gemini-2.5-pro', priority: 3, enabled: true },
-  { provider_id: 'apismile', model_id: 'gemini-2.5-flash', priority: 4, enabled: true },
-  { provider_id: 'webang-maas', model_id: 'gemini-2.5-flash', priority: 5, enabled: true },
+  { provider_id: 'smscrw', model_id: 'claude-sonnet-4-6', priority: 1, enabled: true },
+  { provider_id: 'deyunai', model_id: 'gemini-2.5-flash', priority: 2, enabled: true },
+  { provider_id: 'zhipu', model_id: 'glm-4.6v-flash', priority: 3, enabled: true },
+  { provider_id: 'apismile', model_id: 'gemini-2.5-pro', priority: 4, enabled: true },
+  { provider_id: 'apismile', model_id: 'gemini-2.5-flash', priority: 5, enabled: true },
+  { provider_id: 'webang-maas', model_id: 'gemini-2.5-flash', priority: 6, enabled: true },
 ];
 const NEW_STORY_AD_CONSISTENCY_VISION_DEFAULTS = [
-  { provider_id: 'deyunai', model_id: 'claude-sonnet-4-6', priority: 1, enabled: true },
-  { provider_id: 'webang-maas', model_id: 'gemini-2.5-flash', priority: 2, enabled: true },
-  { provider_id: 'zhipu', model_id: 'glm-4.6v-flash', priority: 3, enabled: true },
+  { provider_id: 'smscrw', model_id: 'claude-sonnet-4-6', priority: 1, enabled: true },
+  { provider_id: 'deyunai', model_id: 'claude-sonnet-4-6', priority: 2, enabled: true },
+  { provider_id: 'webang-maas', model_id: 'gemini-2.5-flash', priority: 3, enabled: true },
+  { provider_id: 'zhipu', model_id: 'glm-4.6v-flash', priority: 4, enabled: true },
 ];
 const NEW_STORY_AD_IMAGE_STAGE_IDS = new Set([
   'new_story_ad.person_sheet',
@@ -527,8 +531,9 @@ const STAGE_DEFAULTS = {
   'new_story_ad.keyframe': NEW_STORY_AD_IMAGE_DEFAULTS,
   'new_story_ad.storyboard_sketch': NEW_STORY_AD_IMAGE_DEFAULTS,
   'new_story_ad.video': [
-    { provider_id: 'deyunai', model_id: 'doubao-seedance-2-0-260128', priority: 1, enabled: true },
-    { provider_id: 'deyunai', model_id: 'doubao-seedance-2-0-fast-260128', priority: 2, enabled: true },
+    { provider_id: 'smscrw', model_id: 'doubao-seedance-2-0-260128', priority: 1, enabled: true },
+    { provider_id: 'deyunai', model_id: 'doubao-seedance-2-0-260128', priority: 2, enabled: true },
+    { provider_id: 'deyunai', model_id: 'doubao-seedance-2-0-fast-260128', priority: 3, enabled: true },
     { provider_id: 'topview', model_id: 'topview-image2video-pro', priority: 4, enabled: false },
     { provider_id: 'volcengine', model_id: 'doubao-seedance-2-0-260128', priority: 5, enabled: false },
   ],
@@ -544,9 +549,10 @@ const STAGE_DEFAULTS = {
     { provider_id: 'volcengine', model_id: 'jimeng_realman_avatar_picture_omni_v15', priority: 5, enabled: true },
   ],
   'new_story_ad.sound_generation': [
-    { provider_id: 'deyunai', model_id: 'doubao-seedance-2-0-260128', priority: 1, enabled: true },
-    { provider_id: 'deyunai', model_id: 'doubao-seedance-2-0-fast-260128', priority: 2, enabled: true },
-    { provider_id: 'volcengine', model_id: 'doubao-seedance-2-0-260128', priority: 3, enabled: false },
+    { provider_id: 'smscrw', model_id: 'doubao-seedance-2-0-260128', priority: 1, enabled: true },
+    { provider_id: 'deyunai', model_id: 'doubao-seedance-2-0-260128', priority: 2, enabled: true },
+    { provider_id: 'deyunai', model_id: 'doubao-seedance-2-0-fast-260128', priority: 3, enabled: true },
+    { provider_id: 'volcengine', model_id: 'doubao-seedance-2-0-260128', priority: 4, enabled: false },
   ],
   // 网剧
   'drama.script':        [{ provider_id: 'deepseek', model_id: 'deepseek-chat', priority: 1, enabled: true }],
@@ -1028,8 +1034,12 @@ function isVlmCapableModel(provider, model) {
 
   const providerText = `${provider?.id || ''} ${provider?.preset || ''} ${provider?.name || ''}`.toLowerCase();
   const modelText = `${model?.id || ''} ${model?.name || ''}`.toLowerCase();
-  const isDeyunai = providerText.includes('deyunai') || providerText.includes('漫路');
-  if (!isDeyunai) return false;
+  const isCompatibleMultimodalGateway = providerText.includes('deyunai')
+    || providerText.includes('漫路')
+    || providerText.includes('smscrw')
+    || providerText.includes('szznai')
+    || providerText.includes('ai.smscrw.cn');
+  if (!isCompatibleMultimodalGateway) return false;
 
   // DeyunAI exposes several multimodal models as chat/story models. They can
   // accept image_url messages and are valid candidates for strict visual QA.

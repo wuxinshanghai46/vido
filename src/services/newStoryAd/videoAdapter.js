@@ -291,6 +291,16 @@ function modelRoute(model = {}) {
   return `${String(model.provider_id || '').trim().toLowerCase()}/${String(model.model_id || '').trim().toLowerCase()}`;
 }
 
+function isDeyunaiSeedanceModel(model = {}) {
+  return String(model.provider_id || '').toLowerCase() === 'deyunai'
+    && /^doubao-seedance-2-0/i.test(String(model.model_id || ''));
+}
+
+function isSmscrwSeedanceModel(model = {}) {
+  return String(model.provider_id || '').toLowerCase() === 'smscrw'
+    && /^doubao-seedance-2-0/i.test(String(model.model_id || ''));
+}
+
 function shotNeedsNativeAudio(shot = {}) {
   return shot.sound_mode !== 'silent' && !!(
     shot.sound_design
@@ -660,6 +670,14 @@ async function generateProviderClip({ taskId, shot, previousShot, keyframe, audi
         resolution: options.video_resolution || options.videoResolution || ctx.video_resolution || '1080p',
         userId: ctx.user_id || '',
         agentId: VIDEO_STAGE,
+        idempotencyKey: [
+          taskId,
+          options._generationId || options.generation_id || 'generation',
+          index,
+          options._expectedLineages?.[index]?.fingerprint || 'lineage',
+          model.provider_id,
+          model.model_id,
+        ].join(':').slice(0, 128),
         generateAudio: nativeAudioRequested,
         signal: cancellation.signal(),
         onSubmitted: event => updateGenerationUnitStatus(taskId, index, {
@@ -820,10 +838,10 @@ async function generateShotVideos({ taskId = '', shots = [], keyframes = [], tts
   const tracks = Array.isArray(ttsAudio?.tracks) ? ttsAudio.tracks : (Array.isArray(ttsAudio) ? ttsAudio : []);
   const clips = Array.isArray(existingClips) ? existingClips.slice() : [];
   const pinnedModel = resolvePinnedVideoModel(options, clips);
-  const isDeyunaiSeedance = String(pinnedModel.provider_id || '').toLowerCase() === 'deyunai'
-    && /^doubao-seedance-2-0/i.test(String(pinnedModel.model_id || ''));
-  if (personIdentity.personRequired(ctx) && !isDeyunaiSeedance) {
-    const error = new Error(`人物广告必须使用支持人物素材库锁定的漫路 Seedance 2.0；当前候选 ${modelRoute(pinnedModel)} 不满足要求，已禁止降级`);
+  const isDeyunaiSeedance = isDeyunaiSeedanceModel(pinnedModel);
+  const isSmscrwSeedance = isSmscrwSeedanceModel(pinnedModel);
+  if (personIdentity.personRequired(ctx) && !isDeyunaiSeedance && !isSmscrwSeedance) {
+    const error = new Error(`人物广告必须使用支持人物参考锁定的 Seedance 2.0；当前候选 ${modelRoute(pinnedModel)} 不满足要求，已禁止降级`);
     error.code = 'PERSON_ASSET_VIDEO_MODEL_REQUIRED';
     error.status = 422;
     error.retryable = true;
@@ -833,7 +851,13 @@ async function generateShotVideos({ taskId = '', shots = [], keyframes = [], tts
   const deyunaiPersonAsset = isDeyunaiSeedance && hasPersonShot && useSeedanceReferenceAssets(options, { personRequired: hasPersonShot })
     ? await prepareDeyunaiPersonAsset({ taskId, ctx, options })
     : null;
-  const runOptions = { ...options, _pinnedVideoModel: pinnedModel, _deyunaiPersonAsset: deyunaiPersonAsset, _totalShots: list.length };
+  const runOptions = {
+    ...options,
+    seedance_input_mode: isSmscrwSeedance ? 'first_frame' : options.seedance_input_mode,
+    _pinnedVideoModel: pinnedModel,
+    _deyunaiPersonAsset: deyunaiPersonAsset,
+    _totalShots: list.length,
+  };
   const onlyIndex = Number.isFinite(Number(options.only_index ?? options.onlyIndex)) ? Math.max(0, Math.min(list.length - 1, Number(options.only_index ?? options.onlyIndex))) : null;
   const requestedIndexes = Array.isArray(options.only_indexes || options.onlyIndexes)
     ? (options.only_indexes || options.onlyIndexes).map(Number).filter(index => Number.isInteger(index) && index >= 0 && index < list.length)
@@ -1059,10 +1083,10 @@ async function generateSceneBlockVideos({ taskId = '', shots = [], keyframes = [
   const blocks = Array.isArray(sceneBlocks) && sceneBlocks.length ? sceneBlocks : sceneBlockService.buildSceneBlocks(list, contracts, options);
   const clips = Array.isArray(existingClips) ? existingClips.slice() : [];
   const pinnedModel = options._pinnedVideoModel || resolvePinnedVideoModel(options, clips);
-  const isDeyunaiSeedance = String(pinnedModel.provider_id || '').toLowerCase() === 'deyunai'
-    && /^doubao-seedance-2-0/i.test(String(pinnedModel.model_id || ''));
-  if (personIdentity.personRequired(ctx) && !isDeyunaiSeedance) {
-    const error = new Error(`人物广告必须使用支持人物素材库锁定的漫路 Seedance 2.0；当前候选 ${modelRoute(pinnedModel)} 不满足要求，已禁止降级`);
+  const isDeyunaiSeedance = isDeyunaiSeedanceModel(pinnedModel);
+  const isSmscrwSeedance = isSmscrwSeedanceModel(pinnedModel);
+  if (personIdentity.personRequired(ctx) && !isDeyunaiSeedance && !isSmscrwSeedance) {
+    const error = new Error(`人物广告必须使用支持人物参考锁定的 Seedance 2.0；当前候选 ${modelRoute(pinnedModel)} 不满足要求，已禁止降级`);
     error.code = 'PERSON_ASSET_VIDEO_MODEL_REQUIRED';
     error.status = 422;
     error.retryable = true;
@@ -1139,7 +1163,8 @@ async function generateSceneBlockVideos({ taskId = '', shots = [], keyframes = [
           const boundaryContract = options._boundaryRepairContracts?.[first] || null;
           const boundaryInputs = await boundaryGeneration.prepareInputs({ taskId, index: first, keyframe: keyframes[first] || {}, contract: boundaryContract, pinnedModelRoute: modelRoute(pinnedModel), options, prepareKeyframeReferenceAsset: prepareDeyunaiKeyframeReferenceAsset });
           const managedBoundary = boundaryInputs?.inputMode === boundaryRepair.MANAGED_DUAL_REFERENCE;
-          const referenceAssetMode = !keyframeFirstFrameOnly && (boundaryContract ? managedBoundary : useSeedanceReferenceAssets(options, { personRequired }));
+          const referenceAssetMode = isDeyunaiSeedance && !keyframeFirstFrameOnly
+            && (boundaryContract ? managedBoundary : useSeedanceReferenceAssets(options, { personRequired }));
           const prepareKeyframeReferenceAsset = typeof options._prepareKeyframeReferenceAsset === 'function' ? options._prepareKeyframeReferenceAsset : prepareDeyunaiKeyframeReferenceAsset;
           const sceneAssets = referenceAssetMode && personRequired && block.continuous && !boundaryContract
             ? await prepareDeyunaiSceneReferenceAssets({ taskId, block, options })
@@ -1152,7 +1177,9 @@ async function generateSceneBlockVideos({ taskId = '', shots = [], keyframes = [
             global_queue_ms: wave.global_queue_ms || 0,
           }, list.length));
           const runOptions = {
-            ...options, _pinnedVideoModel: pinnedModel,
+            ...options,
+            seedance_input_mode: isSmscrwSeedance ? 'first_frame' : options.seedance_input_mode,
+            _pinnedVideoModel: pinnedModel,
             _deyunaiPersonAsset: keyframeFirstFrameOnly ? null : (keyframeReferenceOnly ? keyframeAsset : deyunaiPersonAsset),
             _totalShots: list.length,
             _sceneBlock: block, _sceneBlockShotTitles: shotTitles,
@@ -1278,6 +1305,8 @@ module.exports = {
   VIDEO_DIR,
   VIDEO_STAGE,
   absoluteAssetUrl,
+  isDeyunaiSeedanceModel,
+  isSmscrwSeedanceModel,
   videoCandidates,
   resolvePinnedVideoModel,
   deyunaiAssetGroupType,

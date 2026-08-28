@@ -57,6 +57,8 @@ const BASE_FILES = [
   'scripts/configure-story-ad-consistency-vision-routing-v240.js',
   'scripts/test-story-ad-consistency-vision-routing-v240.js',
   'scripts/test-story-ad-vision-schema-fallback-v240.js',
+  'scripts/configure-story-ad-szznai-routing-v243.js',
+  'scripts/test-story-ad-szznai-routing-v243.js',
   'scripts/migrate-story-ad-era-identities-v170.js',
   'scripts/migrate-story-ad-person-count-contract-v174.js',
   'scripts/migrate-story-ad-person-demographics-v63.js',

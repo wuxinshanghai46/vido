@@ -246,8 +246,18 @@ const PROVIDER_PRESETS = {
     { id: 'gemini-3.1-flash-image-preview', name: 'Gemini 3.1 Flash Image Preview', type: 'image', use: 'image' },
     { id: 'gpt-image-1', name: 'GPT Image 1', type: 'image', use: 'image' },
   ] },
-  smscrw: { name: 'SMSCRW 图像服务', api_url: 'https://ai.smscrw.cn/v1', defaultModels: [
-    { id: 'gpt-image-2', name: 'GPT Image 2（SMSCRW）', type: 'image', use: 'image' },
+  smscrw: { name: 'SZZNAI（SMSCRW）', api_url: 'https://ai.smscrw.cn/v1', defaultModels: [
+    { id: 'claude-fable-5', name: 'Claude Fable 5', type: 'chat', use: 'story' },
+    { id: 'claude-opus-4-7', name: 'Claude Opus 4.7', type: 'chat', use: 'story' },
+    { id: 'claude-opus-4-8', name: 'Claude Opus 4.8', type: 'chat', use: 'story' },
+    { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6', type: 'chat', use: 'story' },
+    { id: 'MiniMax-H3', name: 'MiniMax H3', type: 'chat', use: 'story' },
+    { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', type: 'chat', use: 'story' },
+    { id: 'gemini-3-pro-image-preview', name: 'Gemini 3 Pro Image Preview', type: 'image', use: 'image' },
+    { id: 'gemini-3.1-flash-image-preview', name: 'Gemini 3.1 Flash Image Preview', type: 'image', use: 'image' },
+    { id: 'gemini-3.1-flash-lite-image', name: 'Gemini 3.1 Flash Lite Image', type: 'image', use: 'image' },
+    { id: 'gpt-image-2', name: 'GPT Image 2（SZZNAI）', type: 'image', use: 'image' },
+    { id: 'doubao-seedance-2-0-260128', name: 'Seedance 2.0（SZZNAI）', type: 'video', use: 'video' },
   ] },
   bridgellm: { name: 'BridgeLLM（ApiSmile 兼容）', api_url: 'http://43.98.167.151:3000/v1', defaultModels: [
     { id: 'gpt-image-2', name: 'GPT Image 2', type: 'image', use: 'image', enabled: false },
@@ -358,6 +368,12 @@ const PROVIDER_ADAPTER_DEFAULTS = {
         input_fidelity: false,
         response_format: false,
         sizes: { portrait: '1024x1536', landscape: '1536x1024', square: '1024x1024', four_three: '1024x768', three_four: '768x1024' },
+      },
+      video: {
+        task_endpoint: '/videos/generations',
+        status_endpoint: '/videos/generations/{task_id}',
+        content_endpoint: '/videos/{task_id}/content',
+        idempotency_header: 'Idempotency-Key',
       },
     },
   },

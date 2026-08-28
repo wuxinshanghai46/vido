@@ -26,6 +26,7 @@ const STAGES = Object.freeze([
   'new_story_ad.cross_shot_visual_qa',
 ]);
 const DESIRED = Object.freeze([
+  { provider_id: 'smscrw', model_id: 'claude-sonnet-4-6', enabled: true },
   { provider_id: 'deyunai', model_id: 'claude-sonnet-4-6', enabled: true },
   { provider_id: 'webang-maas', model_id: 'gemini-2.5-flash', enabled: true },
   { provider_id: 'zhipu', model_id: 'glm-4.6v-flash', enabled: true },
@@ -50,7 +51,7 @@ function configuredRoute(settings = loadSettings()) {
 function apply({ write = false } = {}) {
   const route = configuredRoute();
   if (route.length !== DESIRED.length) {
-    throw new Error(`${MIGRATION_ID}: 漫路、微众或智谱候选未完整配置，拒绝形成虚假后备顺序`);
+    throw new Error(`${MIGRATION_ID}: SZZNAI、漫路、微众或智谱候选未完整配置，拒绝形成虚假后备顺序`);
   }
   const config = pipeline.loadConfig();
   const before = Object.fromEntries(STAGES.map(stage => [stage, config.stages?.[stage] || []]));
