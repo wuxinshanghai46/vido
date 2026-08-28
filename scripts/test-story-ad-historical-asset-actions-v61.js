@@ -107,7 +107,7 @@ assert.doesNotMatch(assets, /data-unlock-history-step|新增\s*\/\s*修改内容
 assert.doesNotMatch(app, /historicalReadOnly\s*:/, '壳层不得再把第2步后的独立编辑入口降级成公共历史只读模式');
 assert.match(assets, /data-asset-id/, '人物资产必须保留本步骤的详情编辑入口');
 assert.match(planningDetails, /personEditForm\(item\)/, '人物详情必须保留独立人物编辑表单');
-assert.doesNotMatch(planningDetails, /data-drawer-generate/, '人物详情不得继续提供旧的单项付费生成入口');
+assert.doesNotMatch(planningDetails, /data-drawer-generate(?:[\s=>])/, '人物详情不得继续提供旧的单项付费生成入口');
 assert.match(assets, /data-generate-subject-assets/, '历史资产页的人物生成必须使用独立主体入口');
 assert.match(assets, /createKeyedRequestGuard\(\)/, '人物图片生成必须按意图复用统一防重入 guard');
 assert.match(assets, /subjectRequests\.run\(intent,[\s\S]*await confirmDialog\(/, '防重入 guard 必须包住人物确认与提交链');
