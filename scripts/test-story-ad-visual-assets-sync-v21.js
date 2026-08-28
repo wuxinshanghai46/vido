@@ -94,9 +94,9 @@ assert(sceneProduction.includes("lane: 'scenes'"), '场景按钮必须只核对�
 assert(billingRetryView.includes('accept_duplicate_charge_risk: true'));
 assert(billingRetryView.includes('/visual-assets/retry-authorizations'));
 assert(billingRetryView.includes('checkpoint_keys: reviews.map'), '批量计费风险授权必须携带精确 checkpoint 集合');
-assert.strictEqual((billingReviewDialog.match(/confirmDialog\(/g) || []).length, 0, '生成动作不得出现计费确认弹窗');
-assert(!billingReviewDialog.includes('本次一次确认同时覆盖'), '未知计费单元不得再要求二次确认');
-assert(!billingReviewDialog.includes('最多可能产生'), '直接生成动作不得显示重复费用确认文案');
+assert.strictEqual((billingReviewDialog.match(/confirmDialog\(/g) || []).length, 1, '只有历史计费未知恢复必须出现一次明确风险确认');
+assert(billingReviewDialog.includes('供应商仍可能对原请求和本次请求分别计费'), '未知计费恢复必须明确说明潜在重复收费');
+assert(billingReviewDialog.includes('确认可能重复计费'), '未知计费恢复必须使用清晰的风险标题');
 assert(!billingRetryView.includes('for (const review of reviews)'), '一次确认后不得由前端逐 checkpoint 产生部分写入');
 assert(!billingReviewDialog.includes('逐项核对：'), '不得再次为每个单元弹出确认框');
 assert(billingRetryView.includes("import('./assetCenterBillingReviewDialog.js"), '计费确认界面必须只在用户点击时按需加载');
