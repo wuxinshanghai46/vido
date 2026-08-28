@@ -22,6 +22,8 @@ function compactProgress(value = {}) {
     'stage', 'substage', 'status', 'phase', 'message', 'generation_id', 'started_at', 'updated_at',
     'mode', 'current_scene_id', 'current_scene_name', 'current_action',
     'target_total', 'total', 'completed', 'processed', 'succeeded', 'failed',
+    'image_target_total', 'image_processed', 'image_succeeded', 'image_failed', 'image_percent',
+    'current_view_key', 'current_view_label',
     'current_index', 'percent', 'repair_attempt', 'max_repair_attempts',
     'configured_concurrency', 'effective_concurrency', 'peak_concurrency',
     'wave_number', 'parallelism_lost_reason',

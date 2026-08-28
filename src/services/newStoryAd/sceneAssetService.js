@@ -28,6 +28,8 @@ const sceneViewCompleteness = require('./sceneViewCompletenessService');
 const sceneRepairPlans = require('./sceneRepairPlanService');
 const sceneAssetFiles = require('./sceneAssetFileIntegrityService');
 const targetProgress = require('./targetGenerationProgressService');
+const sceneBatchLiveProgress = require('./sceneBatchLiveProgressService').create({ storage, targetProgress,
+  normalizeViewKeys: value => normalizeRepairViewKeys(value), viewLabel: value => sceneViewLabel(value) });
 const { buildSceneSheetPrompt, buildLayoutAcquisitionPrompt, legacyScenePromptFingerprintText, localizeSceneViews, relinkContractViews, localizeSceneAssets, buildDerivedViewPrompt, buildSceneAuditSafePrompt } = sceneVisualPrompts;
 
 const SCENE_VIEW_KEYS = ['master', 'reverse', 'interaction', 'detail'];
@@ -253,9 +255,7 @@ function updateSceneGenerationProgress(taskId, update = {}) {
   const activeSceneBatch = activeTargets['scene_asset:scene-batch'];
   if (activeSceneBatch
     && String(activeSceneBatch.generation_id || '') === executionGenerationId) {
-    // The durable batch orchestrator owns the user-facing scene count. Inner
-    // view generation must not replace it with a second 0/5 progress lane.
-    return task.generation_progress || null;
+    return sceneBatchLiveProgress.update(taskId, task, executionGenerationId, update);
   }
   const activeTargetEntry = Object.entries(activeTargets).find(([, value]) => String(value?.generation_id || '') === executionGenerationId);
   const sceneLanes = Object.entries(task.target_generation_progress || {})

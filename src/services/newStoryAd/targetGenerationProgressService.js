@@ -34,6 +34,8 @@ function aggregate(task = {}, stage = '') {
   const sceneIds = [...new Set(source.map(row => String(row.scene_id || row.scope_id || '')).filter(Boolean))];
   const singleLaneDetails = source.length === 1 ? Object.fromEntries([
     'mode', 'view_keys', 'active_view_keys', 'completed_view_keys', 'view_states', 'verification_state',
+    'image_target_total', 'image_processed', 'image_succeeded', 'image_failed', 'image_percent',
+    'current_view_key', 'current_view_label', 'current_scene_progress',
   ].filter(field => source[0][field] !== undefined).map(field => [field, source[0][field]])) : {};
   const anyFailed = source.some(row => String(row.status || '').toLowerCase() === 'failed');
   const anyCancelled = source.some(row => String(row.status || '').toLowerCase() === 'cancelled');

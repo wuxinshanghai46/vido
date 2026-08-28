@@ -56,7 +56,7 @@ export function renderSceneProductionCard(scene = {}, index = 0, options = {}) {
       || String(progress?.phase || '').toLowerCase() === 'verification'
       || String(progress?.current_action || '') === 'reverify')
       ? '正在审核当前场景' : (productionAction.kind === 'fix' ? '正在修复当前场景' : '正在生成当前场景'));
-  const progressMarkup = options.generationActive ? `<div class="scene-card-live-progress" role="status" aria-live="polite" data-scene-progress="${sceneId}"><div><b>${escapeHtml(progressAction)}</b><span>${progressDone}/${progressTotal} · ${progressPercent}%</span></div><i aria-hidden="true"><b style="width:${progressPercent}%"></b></i><small>${batchMode ? '系统会按顺序自动处理，不需要再次点击。' : `这里只显示“${escapeHtml(scene.name || `场景 ${index + 1}`)}”的当前动作，不会被其他场景进度覆盖。`}</small></div>` : '';
+  const progressMarkup = options.generationActive && !options.batchManaged ? `<div class="scene-card-live-progress" role="status" aria-live="polite" data-scene-progress="${sceneId}"><div><b>${escapeHtml(progressAction)}</b><span>${progressDone}/${progressTotal} · ${progressPercent}%</span></div><i aria-hidden="true"><b style="width:${progressPercent}%"></b></i><small>当前场景进度</small></div>` : '';
   const promptPane = provisional
     ? `<pre>${escapeHtml(prompt || '待生成场景提示词。')}</pre>`
     : `<textarea data-scene-prompt-editor="${sceneId}" maxlength="12000">${escapeHtml(prompt || '')}</textarea><div class="scene-prompt-editor-actions"><small>自动保存；生成时使用最新版本。</small><span data-autosave-state="saved">已自动保存</span></div>`;
@@ -65,7 +65,7 @@ export function renderSceneProductionCard(scene = {}, index = 0, options = {}) {
     <nav class="scene-production-tabs"><button class="${preferredTab === 'prompt' ? 'is-active' : ''}" data-scene-detail-tab="prompt">提示词</button><button class="${preferredTab === 'images' ? 'is-active' : ''}" data-scene-detail-tab="images">场景画面 ${imageCount ? `(${imageCount})` : ''}</button></nav>
     <section class="scene-production-pane" data-scene-detail-pane="prompt" ${preferredTab === 'prompt' ? '' : 'hidden'}>${promptPane}</section>
     <section class="scene-production-pane" data-scene-detail-pane="images" ${preferredTab === 'images' ? '' : 'hidden'}>${renderSceneCoverCard(scene)}</section>
-    <footer><span>${provisional ? '正式规划后可生成画面' : (options.generationActive ? progressAction : productionAction.status)}</span>${progressMarkup}${!provisional ? `<div class="scene-card-controls">${productionAction.billable ? sceneGenerationSettingsMarkup() : ''}<button class="btn primary compact scene-card-generate" data-${productionAction.kind}-scene="${sceneId}" ${options.generationActive ? 'disabled' : ''}>${options.generationActive ? `${escapeHtml(progressAction)}…` : escapeHtml(productionAction.button)}</button></div>` : ''}</footer>
+    ${options.batchManaged ? '' : `<footer><span>${provisional ? '正式规划后可生成画面' : (options.generationActive ? progressAction : productionAction.status)}</span>${progressMarkup}${!provisional ? `<div class="scene-card-controls">${productionAction.billable ? sceneGenerationSettingsMarkup() : ''}<button class="btn primary compact scene-card-generate" data-${productionAction.kind}-scene="${sceneId}" ${options.generationActive ? 'disabled' : ''}>${options.generationActive ? `${escapeHtml(progressAction)}…` : escapeHtml(productionAction.button)}</button></div>` : ''}</footer>`}
   </article>`;
 }
 

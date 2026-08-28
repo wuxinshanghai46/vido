@@ -111,7 +111,7 @@ function main() {
   const briefAdvancedLazyJsFiles = allJsFiles.filter(file => /briefAdvancedConfig/.test(file));
   const briefPageLazyJsFiles = allJsFiles.filter(file => /briefView/.test(file));
   const panoramaLazyJsFiles = allJsFiles.filter(file => /(?:panoramaViewer|panoramaGeneration)/.test(file));
-  const sceneWorldLazyJsFiles = allJsFiles.filter(file => /sceneWorld(?:View|Page)/.test(file));
+  const sceneWorldLazyJsFiles = allJsFiles.filter(file => /(?:sceneWorld(?:View|Page)|sceneBatchProgressView)/.test(file));
   const sceneWorldAuthorityLazyJsFiles = allJsFiles.filter(file => /sceneWorldAuthorityPlan/.test(file));
   const dossierLazyJsFiles = allJsFiles.filter(file => /sceneDossier(?:Card|Export)/.test(file));
   const mediaLazyJsFiles = allJsFiles.filter(file => /(?:finalView|mediaCatalogStore|finalMediaPagination)/.test(file));

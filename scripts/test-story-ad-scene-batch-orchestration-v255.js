@@ -25,6 +25,7 @@ let peakCalls = 0;
 const callOrder = [];
 
 const sceneAssets = {
+  SCENE_GENERATION_ORDER: ['master', 'layout', 'reverse', 'interaction', 'detail'],
   normalizeSceneAssets(value) { return Array.isArray(value) ? value : []; },
   buildSceneRepairPlan(value = {}) { return value.repair_plan || { action: 'none' }; },
   async generateSceneAsset(id, body) {
@@ -34,7 +35,7 @@ const sceneAssets = {
     callOrder.push(`generate:${body.scene_id}`);
     await new Promise(resolve => setTimeout(resolve, 20));
     activeCalls -= 1;
-    return { provider_image_call_count: 0 };
+    return { provider_image_call_count: 0, scene_asset: { scene_id: body.scene_id, repair_plan: { action: 'none' } } };
   },
   async fixSceneAsset() { throw new Error('fixture must not use repair for an absent scene'); },
   async reverifySceneAsset(id, sceneId) {
@@ -86,6 +87,7 @@ async function main() {
     { scene_id: 'scene-review', name: '重复项必须去重', prompt_version_id: 'prompt-review' },
   ] });
   assert.deepEqual(plan.actions.map(item => item.action), ['generate', 'reverify']);
+  assert.deepEqual(plan.actions.map(item => item.image_total), [5, 0], '批进度必须按 Image 单元计数，纯审核不得伪造图片数量');
   assert.equal(plan.actions.length, 2, '同一场景必须只进入一次批处理');
   storage.updateTask(taskId, { active_target_generations: {
     'scene_qa:other': { generation_id: 'other', stage: 'scene_qa', target_id: 'other', status: 'running' },
@@ -116,6 +118,46 @@ async function main() {
   assert.equal(peakCalls, 1, '批处理内部不得并发争抢任务状态');
   assert.deepEqual(callOrder, ['generate:scene-generate', 'reverify:scene-review']);
 
+  const incompleteTaskId = 'scene-batch-v255-incomplete-task';
+  const incompleteCalls = [];
+  storage.createTask({ id: incompleteTaskId, title: 'incomplete scene batch fixture', content_revision: 1 });
+  storage.saveOutput(incompleteTaskId, 'scene_assets', [{
+    scene_id: 'scene-incomplete', name: '未完成场景', scene_revision: 1,
+    repair_plan: { action: 'regenerate_failed_views', version: 2, count: 1, view_keys: ['layout'] },
+  }]);
+  const incompleteOrchestrator = sceneBatchFactory.create({
+    storage, targetProgress, cancellation,
+    promptAuthority: { assertCurrentPrompt: (id, sceneId, input = {}) => ({ prompt_version_id: input.prompt_version_id || `prompt-${sceneId}` }) },
+    sceneAssets: {
+      SCENE_GENERATION_ORDER: sceneAssets.SCENE_GENERATION_ORDER,
+      normalizeSceneAssets: sceneAssets.normalizeSceneAssets,
+      buildSceneRepairPlan: sceneAssets.buildSceneRepairPlan,
+      async fixSceneAsset(id, sceneId) {
+        incompleteCalls.push(`fix:${sceneId}`);
+        return {
+          enhancement_pending: true,
+          scene_asset: { scene_id: sceneId, repair_plan: { action: 'regenerate_failed_views', count: 1, message: '俯视布局未完成' } },
+          provider_image_call_count: 1,
+        };
+      },
+      async generateSceneAsset(id, body) { incompleteCalls.push(`generate:${body.scene_id}`); return {}; },
+      async reverifySceneAsset() { throw new Error('fixture must stop before review'); },
+    },
+  });
+  const incompletePlan = incompleteOrchestrator.plan(incompleteTaskId, { actions: [
+    { scene_id: 'scene-incomplete', prompt_version_id: 'prompt-incomplete' },
+    { scene_id: 'scene-never-started', prompt_version_id: 'prompt-never' },
+  ] });
+  const incompleteResult = await incompleteOrchestrator.execute(incompleteTaskId, incompletePlan, { generationId: 'generation-incomplete' });
+  assert.equal(incompleteResult.status, 'failed');
+  assert.deepEqual(incompleteCalls, ['fix:scene-incomplete'], '当前场景仍有失败 Image 时必须停止后续场景');
+  assert.equal(incompleteResult.results[0].error_code, 'SCENE_ASSET_INCOMPLETE');
+  const incompleteProgress = storage.getTask(incompleteTaskId).generation_progress;
+  assert.equal(incompleteProgress.status, 'failed');
+  assert.equal(incompleteProgress.image_processed, 1);
+  assert.equal(incompleteProgress.image_succeeded, 0);
+  assert.equal(incompleteProgress.image_failed, 1, '审核未通过的 Image 必须显示为失败，不能伪装为生成完成');
+
   const resultRow = storage.listOutputs(taskId).find(row => row.kind.startsWith('scene_batch_result:'));
   assert(resultRow, '批处理必须持久化逐场景结果');
   assert.equal(resultRow.payload.results[1].error_code, 'SCENE_QA_EVIDENCE_UNAVAILABLE');
@@ -143,6 +185,7 @@ async function main() {
     succeeded: 1,
     failed: 1,
     peak_concurrency: peakCalls,
+    incomplete_scene_stopped_later_calls: true,
     provider_image_calls: 0,
   }));
 }
