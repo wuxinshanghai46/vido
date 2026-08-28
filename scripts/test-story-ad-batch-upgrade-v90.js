@@ -39,11 +39,14 @@ assert.equal(targets[1].repair_existing, false);
 
 const assetPersonState = fs.readFileSync(path.join(root, 'public/story-ad/views/assetCenterPersonState.js'), 'utf8');
 const assetView = fs.readFileSync(path.join(root, 'public/story-ad/views/assetCenterView.js'), 'utf8');
+const assetStageView = fs.readFileSync(path.join(root, 'public/story-ad/views/assetCenterStageView.js'), 'utf8');
 const sceneWorldPage = fs.readFileSync(path.join(root, 'public/story-ad/views/sceneWorldPage.js'), 'utf8');
 const sceneCardInteractions = fs.readFileSync(path.join(root, 'public/story-ad/views/sceneCardInteractions.js'), 'utf8');
 assert.match(assetPersonState, /visual_asset_contract_version \|\| 0\) >= 2/);
 assert.match(assetView, /旧版档案 · 待升级/);
-assert.match(assetView, /生成缺失人物 \/ 动物资产/, 'batch upgrade action must describe the current unified missing-subject flow');
+assert.match(assetStageView, /data-generate-subject-assets/, 'the current subject generation owner must expose the unified missing-subject action');
+assert.match(assetStageView, /生成人物资产/, 'the current subject generation owner must describe the unified missing-subject flow');
+assert.doesNotMatch(assetView, /生成缺失人物 \/ 动物资产/, 'the retired asset-center copy must not return to the current view');
 assert.doesNotMatch(assetView, /repair_existing: repairing/, '资产中心不得继续拥有场景修复入口');
 assert.match(sceneWorldPage, /import\('\.\/sceneCardInteractions\.js[^']*'\)\)\.bindSceneCards/, '场景页必须按需加载独立生成交互');
 assert.match(sceneCardInteractions, /runStage\('scene-assets'/, '场景交互模块必须独立拥有单场景生成入口');
@@ -74,7 +77,8 @@ const routeSource = fs.readFileSync(path.join(root, 'src/routes/newStoryAd.js'),
 const productionAssetOrchestratorSource = fs.readFileSync(path.join(root, 'src/services/newStoryAd/productionAssetOrchestratorService.js'), 'utf8');
 assert.match(routeSource, /productionAssetOrchestratorFactory\.create/, 'the route must delegate to the unified production asset orchestrator');
 assert.match(productionAssetOrchestratorSource, /target\.repair_existing/);
-assert.match(productionAssetOrchestratorSource, /sceneAssetService\.repairSceneAsset/);
+assert.match(productionAssetOrchestratorSource, /sceneAssetService\.fixSceneAsset/);
+assert.doesNotMatch(productionAssetOrchestratorSource, /sceneAssetService\.repairSceneAsset/, 'the retired scene repair entry must not re-enter production orchestration');
 
 const sceneWorld = fs.readFileSync(path.join(root, 'public/story-ad/views/sceneWorldView.js'), 'utf8');
 assert.match(sceneWorld, /选择360 \/ 3D模式/);
