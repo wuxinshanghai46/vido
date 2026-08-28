@@ -131,8 +131,10 @@ async function main() {
   assert(!batchHandler.includes('Promise.allSettled'), '统一按钮不得再次拆成并发场景请求');
   const actionPlan = fs.readFileSync(path.join(root, 'public/story-ad/views/sceneBatchActionPlan.js'), 'utf8');
   assert(actionPlan.includes("=== 'scene-batch'") && actionPlan.includes('if (batchActive)'), '批任务排队后必须立即隐藏重复提交入口');
-  const route = fs.readFileSync(path.join(root, 'src/routes/newStoryAd.js'), 'utf8');
-  assert(route.includes("router.post('/tasks/:id/scene-actions'") && route.includes("scopeId: sceneBatchOrchestration.DEFAULT_SCOPE_ID"));
+  const route = fs.readFileSync(path.join(root, 'src/routes/newStoryAd/sceneBatchRoutes.js'), 'utf8');
+  assert(route.includes("router.post('/tasks/:id/scene-actions'") && route.includes('scopeId: orchestration.DEFAULT_SCOPE_ID'));
+  const routeRoot = fs.readFileSync(path.join(root, 'src/routes/newStoryAd.js'), 'utf8');
+  assert(routeRoot.includes('registerSceneBatchRoutes(router'), '主路由必须注册拆分后的场景批处理模块');
 
   console.log(JSON.stringify({
     passed: true,
