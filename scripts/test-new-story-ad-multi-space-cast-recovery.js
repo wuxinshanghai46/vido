@@ -560,8 +560,15 @@ async function assertMultiSpacePromptsAndRecovery() {
     assert.strictEqual(partial.views.layout.status, 'failed');
     assert.strictEqual(partial.views.layout.billing_state, 'unknown');
     assert.strictEqual(partial.views.detail.status, 'succeeded');
-    const recoveredResult = await sceneAssets.generateSceneAsset(unknownTask, { space_id: 'space_park' });
-    assert.strictEqual(calls.length - unknownStart, 6, 'handleless synchronous HTTP 500 must permit one later independent recovery pass');
+    await assert.rejects(
+      () => sceneAssets.generateSceneAsset(unknownTask, { space_id: 'space_park' }),
+      error => error?.code === 'SCENE_ASSET_BILLING_UNKNOWN' && error?.details?.requires_billing_acknowledgement === true,
+    );
+    assert.strictEqual(calls.length - unknownStart, 3, 'billing-unknown view must not be submitted again automatically');
+    const recoveredResult = await sceneAssets.generateSceneAsset(unknownTask, {
+      space_id: 'space_park', acknowledge_billing_unknown: true, billing_acknowledged_by: 'regression-user',
+    });
+    assert.strictEqual(calls.length - unknownStart, 6, 'explicit user acknowledgement may resume only the unresolved scene views');
     const recovered = storage.getOutput(unknownTask, sceneCheckpoint.outputKind('space_park'));
     assert.strictEqual(recovered.views.layout.status, 'succeeded');
     assert.strictEqual(recoveredResult.scene_asset.view_acquisition.resumed_from_checkpoint, true);
@@ -591,7 +598,14 @@ async function assertMultiSpacePromptsAndRecovery() {
       },
     });
     const callsBeforeLegacyRecovery = calls.length;
-    await sceneAssets.generateSceneAsset(legacyUnknownTask, { space_id: 'space_park' });
+    await assert.rejects(
+      () => sceneAssets.generateSceneAsset(legacyUnknownTask, { space_id: 'space_park' }),
+      error => error?.code === 'SCENE_ASSET_BILLING_UNKNOWN',
+    );
+    assert.strictEqual(calls.length, callsBeforeLegacyRecovery, 'legacy ambiguous submission must also block automatic paid recovery');
+    await sceneAssets.generateSceneAsset(legacyUnknownTask, {
+      space_id: 'space_park', acknowledge_billing_unknown: true, billing_acknowledged_by: 'regression-user',
+    });
     const legacyRecoveryCalls = calls.slice(callsBeforeLegacyRecovery);
     assert.strictEqual(legacyRecoveryCalls.filter(call => /_master_/.test(call.filename)).length, 1, 'stale legacy fingerprint must rebuild master safely');
     assert.strictEqual(legacyRecoveryCalls.length, 5, 'stale legacy handleless synchronous 500 must rebuild one complete current-contract scene');
