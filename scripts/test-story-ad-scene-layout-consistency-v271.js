@@ -52,10 +52,12 @@ assert.deepEqual({ x: people[0].position.x, y: people[0].position.y }, { x: 0.4,
 assert.equal(people[0].routePoints.length, 1);
 
 const viewSource = fs.readFileSync(path.join(root, 'public/story-ad/views/sceneWorldView.js'), 'utf8');
+const layoutSource = fs.readFileSync(path.join(root, 'public/story-ad/views/sceneWorldLayoutViewer.js'), 'utf8');
 const css = fs.readFileSync(path.join(root, 'public/story-ad/workspace.css'), 'utf8');
-assert.match(viewSource, /scene-world-layout-overlay/);
+assert.match(layoutSource, /scene-world-layout-overlay/);
+assert.match(viewSource, /import\('\.\/sceneWorldLayoutViewer\.js/);
 assert.match(viewSource, /showLayout\(layoutNode, 'structure'\)/);
-assert.match(viewSource, /不显示伪造点/);
+assert.match(layoutSource, /不显示伪造点/);
 assert.doesNotMatch(viewSource, /mode === 'structure'\) return layoutNode \? showPhoto/);
 assert.match(css, /scene-world-photo-strip\{display:grid/);
 assert.doesNotMatch(css, /scene-world-photo-strip\{[^}]*overflow-x:auto/);
