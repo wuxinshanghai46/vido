@@ -1,8 +1,8 @@
-import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260830-production-v285';
-import { bindMoreMedia, moreMediaButton } from './finalMediaPagination.js?v=20260830-production-v285';
-import { bindGenerationModelPicker, loadGenerationModelPicker } from './generationModelPicker.js?v=20260830-production-v285';
-import { request } from '../api.js?v=20260830-production-v285';
-import { bindSoundDesign, soundDesignMarkup } from './finalSoundDesignView.js?v=20260830-production-v285';
+import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260830-production-v286';
+import { bindMoreMedia, moreMediaButton } from './finalMediaPagination.js?v=20260830-production-v286';
+import { bindGenerationModelPicker, loadGenerationModelPicker } from './generationModelPicker.js?v=20260830-production-v286';
+import { request } from '../api.js?v=20260830-production-v286';
+import { bindSoundDesign, soundDesignMarkup } from './finalSoundDesignView.js?v=20260830-production-v286';
 
 function itemIndex(item = {}, index = 0) {
   const value = Number(item.shot_index ?? item.shotIndex ?? item.index);
