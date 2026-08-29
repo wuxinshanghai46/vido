@@ -69,6 +69,7 @@ assert.equal(sceneRecoveryPlan.unknown_files.length, 0, '场景修复、QA证据
 assert.deepEqual(sceneRecoveryPlan.gates.map(row => row.id), ['upload_media', 'workspace_ui', 'release_core']);
 assert.equal(plan(['src/services/newStoryAd/blueprintQualityService.js']).profile, 'story_content');
 assert.equal(plan(['scripts/migrate-story-ad-public-media-models-v262.js']).profile, 'systemic');
+assert.equal(plan(['scripts/test-story-ad-public-image-model-catalog-v261.js']).profile, 'systemic');
 assert.deepEqual(plan(['src/services/newStoryAd/blueprintQualityService.js']).gates.map(row => row.id), ['story_content', 'workspace_ui', 'release_core']);
 assert.equal(plan(['src/services/newStoryAd/storyboardTableService.js', 'src/services/newStoryAd/referenceDetachService.js']).profile, 'reference_story_content');
 assert.deepEqual(

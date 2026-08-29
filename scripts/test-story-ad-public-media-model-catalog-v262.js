@@ -19,14 +19,29 @@ const IMAGE_LABELS = [
 ];
 const VIDEO_LABELS = ['Seedance · DY', 'Seedance · SZ', 'Seedance · WB'];
 const labels = rows => rows.map(row => `${row.public_name} · ${row.provider_code}`);
+const configuredImage = selection.PUBLIC_MEDIA_CHOICES.image.map((choice, index) => ({
+  route: choice.execution_route,
+  provider_id: choice.execution_route.split('/')[0],
+  model_id: choice.execution_route.split('/')[1],
+  media_type: 'image',
+  priority: index + 1,
+  available: true,
+}));
+const configuredVideo = selection.PUBLIC_MEDIA_CHOICES.video.map((choice, index) => ({
+  route: choice.execution_route,
+  provider_id: choice.execution_route.split('/')[0],
+  model_id: choice.execution_route.split('/')[1],
+  media_type: 'video',
+  priority: index + 1,
+  available: true,
+}));
 
 for (const stage of IMAGE_STAGES) {
-  const catalog = selection.catalog(stage);
+  const catalog = selection.publicCatalog(stage, configuredImage);
   assert.equal(catalog.schema_version, 3);
   assert.deepEqual(labels(catalog.models), IMAGE_LABELS);
   assert(catalog.models.every(model => !model.provider_id && !model.provider_name && !model.model_id && !model.model_name));
-  const imageSz = catalog.models.find(model => model.route === 'image-sz');
-  assert.equal(catalog.default_selection, imageSz.available ? 'image-sz' : '');
+  assert.equal(catalog.default_selection, 'image-sz');
 }
 
 assert.deepEqual(selection.PUBLIC_MEDIA_CHOICES.image.map(choice => choice.execution_route), [
@@ -43,23 +58,20 @@ assert.deepEqual(selection.PUBLIC_MEDIA_CHOICES.video.map(choice => choice.execu
   'webang-seedance/doubao-seedance-2-0-260128',
 ]);
 
-const syntheticVideo = selection.publicRows('new_story_ad.video', [
-  { route: 'deyunai/doubao-seedance-2-0-260128', available: true },
-  { route: 'smscrw/doubao-seedance-2-0-260128', available: true },
-  { route: 'webang-seedance/doubao-seedance-2-0-260128', available: true },
-]);
-assert.deepEqual(labels(syntheticVideo), VIDEO_LABELS);
+const videoCatalog = selection.publicCatalog('new_story_ad.video', configuredVideo);
+assert.deepEqual(labels(videoCatalog.models), VIDEO_LABELS);
+assert.equal(videoCatalog.default_selection, 'seedance-dy');
 
-const image = selection.applySelection('new_story_ad.scene_asset', { image_model: 'image-sz' });
-const nano = selection.applySelection('new_story_ad.scene_asset', { image_model: 'nano-dy' });
-const video = selection.applySelection('new_story_ad.video', { video_model_route: 'seedance-dy' });
+const image = selection.applyResolvedSelection({}, selection.resolveSelection('new_story_ad.scene_asset', 'image-sz', configuredImage));
+const nano = selection.applyResolvedSelection({}, selection.resolveSelection('new_story_ad.scene_asset', 'nano-dy', configuredImage));
+const video = selection.applyResolvedSelection({}, selection.resolveSelection('new_story_ad.video', 'seedance-dy', configuredVideo));
 assert.equal(image.image_model, 'smscrw/gpt-image-2');
 assert.equal(nano.image_model, 'deyunai/gemini-2.5-flash-image');
 assert.equal(video.video_model_route, 'deyunai/doubao-seedance-2-0-260128');
 assert.equal(image.single_attempt, true);
 assert.equal(nano.max_scene_retries, 0);
-assert.throws(() => selection.applySelection('new_story_ad.scene_asset', { image_model: 'smscrw/gpt-image-2' }), error => error.code === 'MEDIA_GENERATION_MODEL_SELECTION_INVALID');
-assert.throws(() => selection.applySelection('new_story_ad.scene_asset', { image_model: 'seedream' }), error => error.code === 'MEDIA_GENERATION_MODEL_SELECTION_INVALID');
+assert.throws(() => selection.resolveSelection('new_story_ad.scene_asset', 'smscrw/gpt-image-2', configuredImage), error => error.code === 'MEDIA_GENERATION_MODEL_SELECTION_INVALID');
+assert.throws(() => selection.resolveSelection('new_story_ad.scene_asset', 'seedream', configuredImage), error => error.code === 'MEDIA_GENERATION_MODEL_SELECTION_INVALID');
 
 const migrated = migration.desiredModels([
   { provider_id: 'smscrw', model_id: 'doubao-seedance-2-0-260128', priority: 1, enabled: true },

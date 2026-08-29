@@ -12,8 +12,16 @@ function source(relative) {
 }
 
 async function main() {
-  const sceneCatalog = selection.catalog('new_story_ad.scene_asset');
-  const videoCatalog = selection.catalog('new_story_ad.video');
+  const configuredImage = selection.PUBLIC_MEDIA_CHOICES.image.map((choice, index) => ({
+    route: choice.execution_route, provider_id: choice.execution_route.split('/')[0],
+    model_id: choice.execution_route.split('/')[1], media_type: 'image', priority: index + 1, available: true,
+  }));
+  const configuredVideo = selection.PUBLIC_MEDIA_CHOICES.video.map((choice, index) => ({
+    route: choice.execution_route, provider_id: choice.execution_route.split('/')[0],
+    model_id: choice.execution_route.split('/')[1], media_type: 'video', priority: index + 1, available: true,
+  }));
+  const sceneCatalog = selection.publicCatalog('new_story_ad.scene_asset', configuredImage);
+  const videoCatalog = selection.publicCatalog('new_story_ad.video', configuredVideo);
   assert.strictEqual(sceneCatalog.selection_required, true);
   assert.strictEqual(sceneCatalog.fallback_after_failure, false);
   assert.deepStrictEqual(sceneCatalog.models.map(model => `${model.public_name} · ${model.provider_code}`), [
@@ -27,7 +35,7 @@ async function main() {
   assert(videoCatalog.models.some(model => model.available), 'video catalog must expose a configured model');
 
   const publicSelection = sceneCatalog.models.find(model => model.available).route;
-  const chosen = selection.applySelection('new_story_ad.scene_asset', { image_model: publicSelection });
+  const chosen = selection.applyResolvedSelection({}, selection.resolveSelection('new_story_ad.scene_asset', publicSelection, configuredImage));
   assert.strictEqual(publicSelection, 'image-sz');
   assert.strictEqual(chosen.image_model, 'smscrw/gpt-image-2');
   assert.strictEqual(chosen.single_attempt, true);
@@ -38,7 +46,7 @@ async function main() {
   assert.throws(() => selection.catalog('new_story_ad.qa'), error => (
     error.code === 'MEDIA_GENERATION_MODEL_STAGE_INVALID'
   ));
-  assert.throws(() => selection.applySelection('new_story_ad.scene_asset', { image_model: 'deyunai/seedream-3.0' }), error => (
+  assert.throws(() => selection.resolveSelection('new_story_ad.scene_asset', 'deyunai/seedream-3.0', configuredImage), error => (
     error.code === 'MEDIA_GENERATION_MODEL_SELECTION_INVALID'
   ));
 

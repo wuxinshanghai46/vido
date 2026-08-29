@@ -104,9 +104,9 @@ function selectableRows(stageId = '') {
   return publicRows(normalized, rows(normalized));
 }
 
-function catalog(stageId = '') {
+function publicCatalog(stageId = '', configured = []) {
   const normalized = stage(stageId);
-  const models = selectableRows(normalized);
+  const models = publicRows(normalized, configured);
   const mediaType = normalized === 'new_story_ad.video' ? 'video' : 'image';
   const preferred = PUBLIC_MEDIA_CHOICES[mediaType].find(choice => choice.default === true);
   return {
@@ -118,6 +118,11 @@ function catalog(stageId = '') {
     default_selection: models.some(model => model.route === preferred?.id && model.available) ? preferred.id : '',
     models,
   };
+}
+
+function catalog(stageId = '') {
+  const normalized = stage(stageId);
+  return publicCatalog(normalized, rows(normalized));
 }
 
 function selectionFrom(body = {}, stageId = '') {
@@ -142,7 +147,13 @@ function requireSelection(stageId = '', body = {}) {
     error.retryable = false;
     throw error;
   }
-  const models = selectableRows(normalized);
+  return resolveSelection(normalized, selected, rows(normalized));
+}
+
+function resolveSelection(stageId = '', selectedId = '', configured = []) {
+  const normalized = stage(stageId);
+  const selected = clean(selectedId, 220).toLowerCase();
+  const models = publicRows(normalized, configured);
   const matched = models.find(model => model.route === selected);
   if (!matched) {
     const error = new Error('所选模型不在当前已配置的生成模型列表中，请重新选择。');
@@ -162,18 +173,21 @@ function requireSelection(stageId = '', body = {}) {
   }
   const mediaType = normalized === 'new_story_ad.video' ? 'video' : 'image';
   const choice = PUBLIC_MEDIA_CHOICES[mediaType].find(item => item.id === selected);
-  const configured = rows(normalized).find(model => model.route === choice.execution_route);
-  return { ...configured, selection_id: selected, public_name: matched.public_name, provider_code: matched.provider_code };
+  const resolved = configured.find(model => model.route === choice.execution_route);
+  return { ...resolved, selection_id: selected, public_name: matched.public_name, provider_code: matched.provider_code };
 }
 
-function applySelection(stageId = '', body = {}) {
-  const selected = requireSelection(stageId, body);
+function applyResolvedSelection(body = {}, selected = {}) {
   return selected.media_type === 'video'
     ? { ...body, video_provider: selected.provider_id, video_model: selected.model_id, video_model_route: selected.route }
     : { ...body, image_model: selected.route, single_attempt: true, max_scene_retries: 0 };
 }
 
+function applySelection(stageId = '', body = {}) {
+  return applyResolvedSelection(body, requireSelection(stageId, body));
+}
+
 module.exports = {
-  ALLOWED_STAGES, PUBLIC_MEDIA_CHOICES, applySelection, catalog, publicRows,
-  requireSelection, route, rows, selectableRows, selectionFrom, stage,
+  ALLOWED_STAGES, PUBLIC_MEDIA_CHOICES, applyResolvedSelection, applySelection, catalog, publicCatalog, publicRows,
+  requireSelection, resolveSelection, route, rows, selectableRows, selectionFrom, stage,
 };
