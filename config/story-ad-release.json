@@ -1,6 +1,6 @@
 {
-  "build_id": "20260829-production-v278b",
-  "contract_version": "story-scene-platform-v6",
+  "build_id": "20260829-production-v279",
+  "contract_version": "story-scene-platform-v7",
   "node_runtime": {
     "version": "v20.20.2",
     "platform": "linux-x64-glibc-217",

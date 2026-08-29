@@ -188,11 +188,11 @@ export function createProjectStore() {
     await refreshSections('summary');
     return data;
   }
-  async function saveSketches(sketches) {
+  async function saveStoryboardImages(images) {
     const taskId = state.bundle?.project?.id;
-    const data = await request(`/api/story-ad/projects/${encodeURIComponent(taskId)}/sketches`, {
+    const data = await request(`/api/story-ad/projects/${encodeURIComponent(taskId)}/storyboard-images`, {
       method: 'PUT',
-      body: { sketches },
+      body: { images },
     });
     await refreshSections('summary,shots');
     return data;
@@ -580,7 +580,7 @@ export function createProjectStore() {
     saveScenePrompt: async (scene, prompt) => (await import('./scenePromptConfirmationStore.js?v=20260829-production-v278b')).saveScenePrompt({ state, request }, scene, prompt),
     saveBlueprint,
     saveStoryboard,
-    saveSketches,
+    saveStoryboardImages,
     upload,
     attachMaterial,
     uploadReference,

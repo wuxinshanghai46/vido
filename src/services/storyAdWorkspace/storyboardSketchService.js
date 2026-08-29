@@ -7,7 +7,7 @@ const { v4: uuidv4 } = require('uuid');
 
 const ALLOWED_STATUSES = new Set(['draft', 'confirmed', 'skipped']);
 const activeSketchBatches = new Set();
-const SKETCH_BATCH_OUTPUT = 'storyboard_sketch_batch';
+const SKETCH_BATCH_OUTPUT = 'storyboard_image_batch';
 
 function batchProgress(taskId) {
   const value = storage.getOutput(taskId, SKETCH_BATCH_OUTPUT);
@@ -40,7 +40,7 @@ function clean(value = '', max = 800) {
   return String(value || '').replace(/\s+/g, ' ').trim().slice(0, max);
 }
 
-/** 规范化逐镜线稿记录，禁止脱离真实分镜创建游离数据。 */
+/** 规范化逐镜人物场景分镜图，禁止脱离真实分镜合同创建游离数据。 */
 function normalizeSketches(taskId, sketches = []) {
   const shots = storage.getOutput(taskId, 'storyboard_table') || [];
   const shotIndexes = new Set(shots.map((shot, index) => Number(shot.shot_index || shot.index || index + 1) || index + 1));
@@ -50,7 +50,7 @@ function normalizeSketches(taskId, sketches = []) {
       if (!shotIndexes.has(shotIndex)) return null;
       const status = ALLOWED_STATUSES.has(clean(item.status, 30)) ? clean(item.status, 30) : 'draft';
       return {
-        id: clean(item.id || `storyboard-sketch-${shotIndex}`, 120),
+        id: clean(item.id || `storyboard-image-${shotIndex}`, 120),
         shot_index: shotIndex,
         status,
         image_url: clean(item.image_url || item.imageUrl || item.url, 1200),
@@ -82,7 +82,7 @@ function sketchFingerprint(sketches = []) {
   })));
 }
 
-/** 保存线稿草稿；只有确认时才把构图约束写回现有分镜权威数据。 */
+/** 保存人物场景分镜图；只有确认时才把构图约束写回分镜权威数据。 */
 function saveSketches(taskId, sketches = [], user = {}) {
   const task = storage.getTask(taskId);
   if (!task) {
@@ -92,14 +92,14 @@ function saveSketches(taskId, sketches = [], user = {}) {
     throw error;
   }
   if (task.active_generation_id) {
-    const error = new Error('当前生成正在执行，不能同时修改线稿分镜');
+    const error = new Error('当前生成正在执行，不能同时修改人物场景分镜');
     error.status = 409;
     error.code = 'GENERATION_ACTIVE_EDIT_BLOCKED';
     throw error;
   }
   sketchGate.assertReady(taskId);
   const normalized = normalizeSketches(taskId, sketches);
-  const previous = storage.getOutput(taskId, 'storyboard_sketches') || [];
+  const previous = storage.getOutput(taskId, 'storyboard_images') || [];
   if (sketchFingerprint(previous) === sketchFingerprint(normalized)) {
     return { sketches: previous, changed: false, content_revision: Number(task.content_revision || 1) || 1 };
   }
@@ -130,25 +130,25 @@ function saveSketches(taskId, sketches = [], user = {}) {
     const note = clean(sketch.composition_notes, 1200);
     const currentNotes = String(shot.keyframe_notes || '')
       .split(/\r?\n/)
-      .filter(line => !line.trim().startsWith('线稿构图约束：'))
+      .filter(line => !/^\s*(?:线稿|分镜)构图约束：/.test(line))
       .join('\n')
       .trim();
     return {
       ...shot,
-      storyboard_sketch: {
+      storyboard_image: {
         id: sketch.id,
         image_url: sketch.image_url,
         composition_notes: note,
         status: sketch.status,
       },
-      keyframe_notes: [currentNotes, note ? `线稿构图约束：${note}` : ''].filter(Boolean).join('\n'),
+      keyframe_notes: [currentNotes, note ? `分镜构图约束：${note}` : ''].filter(Boolean).join('\n'),
     };
   });
 
   let result = { content_revision: Number(task.content_revision || 1) || 1 };
   if (changedConfirmed.size) result = storyAd.updateStoryboardTable(taskId, nextShots, user);
   const currentTask = storage.getTask(taskId);
-  storage.saveOutput(taskId, 'storyboard_sketches', persisted, {
+  storage.saveOutput(taskId, 'storyboard_images', persisted, {
     content_revision: Number(currentTask.content_revision || 1) || 1,
     snapshot_id: currentTask.current_snapshot_id || `manual:${taskId}`,
   });
@@ -160,7 +160,7 @@ function saveSketches(taskId, sketches = [], user = {}) {
   };
 }
 
-/** 为真实分镜生成一张低成本构图草图；结果只作为草稿保存，不自动进入关键帧合同。 */
+/** 为真实分镜生成一张绑定人物、场景、动作与机位的分镜图；结果确认后进入关键帧合同。 */
 async function generateSketch(taskId, shotIndex, options = {}, dependencies = {}) {
   const task = storage.getTask(taskId);
   if (!task) {
@@ -170,20 +170,20 @@ async function generateSketch(taskId, shotIndex, options = {}, dependencies = {}
     throw error;
   }
   if (task.active_generation_id) {
-    const error = new Error('当前生成正在执行，不能同时生成线稿');
+    const error = new Error('当前生成正在执行，不能同时生成人物场景分镜');
     error.status = 409;
     error.code = 'GENERATION_ACTIVE_EDIT_BLOCKED';
     throw error;
   }
   sketchGate.assertReady(taskId);
   if (activeSketchBatches.has(taskId) && options.batch_owner !== taskId) {
-    const error = new Error('当前项目正在批量生成线稿，请等待本批完成');
+    const error = new Error('当前项目正在批量生成人物场景分镜，请等待本批完成');
     error.status = 409;
     error.code = 'SKETCH_BATCH_IN_PROGRESS';
     throw error;
   }
   if (options.confirmed !== true) {
-    const error = new Error('生成线稿前需要用户明确确认本次图片调用');
+    const error = new Error('生成分镜图前需要用户明确确认本次图片调用');
     error.status = 400;
     error.code = 'SKETCH_GENERATION_CONFIRMATION_REQUIRED';
     throw error;
@@ -249,22 +249,22 @@ async function generateSketch(taskId, shotIndex, options = {}, dependencies = {}
     || context.person_asset
     || context.product_contract?.identity);
   if (hasBoundAssets && !referenceImages.length) {
-    const error = new Error('当前镜头已绑定人物、场景或商品，但没有可追溯参考图；已停止线稿生成，避免人物和空间漂移');
+    const error = new Error('当前镜头已绑定人物、场景或商品，但没有可追溯参考图；已停止分镜图生成，避免人物和空间漂移');
     error.status = 409;
     error.code = 'SKETCH_REFERENCE_ASSET_MISSING';
     error.retryable = false;
     throw error;
   }
   const prompt = [
-    '商业影视分镜线稿，黑白或灰度，干净的铅笔线条与少量明暗块。',
-    '只表达当前镜头的构图、主体数量、站位、视线、景别、机位和运动方向。',
+    '商业影视人物场景分镜图，清晰呈现已确认人物、场景、动作、站位、景别、机位和运动方向。',
+    '严格结合当前人物与场景参考资产，不得退化为只表达剧情流向的线稿。',
     '不要加入文字、字幕、镜头编号、水印、品牌标识或彩色成片效果。',
     `镜头标题：${clean(shot.title || `镜头 ${numericIndex}`, 160)}`,
     `画面：${clean(shot.visual || shot.visual_description || '', 1200)}`,
     `动作：${clean(shot.action || '', 800)}`,
     `场景：${clean(sceneAsset.name || shot.scene_zone || shot.scene_id || '', 220)}；剧情用途：${clean(sceneAsset.story_purpose || '', 500)}`,
     `故事与连续性权威：${clean(JSON.stringify(storyContext), 2600)}`,
-    '线稿必须画出本镜在故事中的动作因果，并承接上一镜退出状态、交给下一镜进入状态；银幕方向、视线、轴线和道具状态不得跳变。',
+    '分镜图必须画出本镜在故事中的动作因果，并承接上一镜退出状态、交给下一镜进入状态；银幕方向、视线、轴线和道具状态不得跳变。',
     referenceImages.length ? '附件参考图是当前任务的人物、商品与场景权威资产；只借鉴其中真实主体和空间关系，不复制档案排版、拼图边框或参考图背景。' : '',
     referenceImages.length ? '人物身份、服装、家具、桌床等道具、空间布局和机位方向必须与附件一致；附件中没有的物件不得自行增加。' : '',
     `镜头设置：${clean([
@@ -279,10 +279,10 @@ async function generateSketch(taskId, shotIndex, options = {}, dependencies = {}
   ].filter(line => !line.endsWith('：')).join('\n');
   const generated = await mediaAdapter.generateImage({
     taskId,
-    stage: 'new_story_ad.storyboard_sketch',
+    stage: 'new_story_ad.storyboard_image',
     prompt,
     auditSafePrompt: prompt,
-    filename: `storyboard_sketch_${taskId}_${numericIndex}_${Date.now()}`,
+    filename: `storyboard_image_${taskId}_${numericIndex}_${Date.now()}`,
     aspectRatio: clean(context.output_ratio || '9:16', 20),
     resolution: '1K',
     imageModel: options.image_model || options.imageModel || 'auto',
@@ -293,9 +293,9 @@ async function generateSketch(taskId, shotIndex, options = {}, dependencies = {}
     requireReferences: referenceImages.length > 0,
     inputFidelity: referenceImages.length ? 'high' : undefined,
   });
-  const previous = storage.getOutput(taskId, 'storyboard_sketches') || [];
+  const previous = storage.getOutput(taskId, 'storyboard_images') || [];
   const nextSketch = {
-    id: `storyboard-sketch-${numericIndex}`,
+    id: `storyboard-image-${numericIndex}`,
     shot_index: numericIndex,
     status: 'draft',
     image_url: clean(generated.image_url || generated.url, 1200),
@@ -311,36 +311,36 @@ async function generateSketch(taskId, shotIndex, options = {}, dependencies = {}
     ...previous.filter(item => Number(item.shot_index) !== numericIndex),
     nextSketch,
   ]);
-  storage.saveOutput(taskId, 'storyboard_sketches', next, {
+  storage.saveOutput(taskId, 'storyboard_images', next, {
     content_revision: Number(task.content_revision || 1) || 1,
     snapshot_id: task.current_snapshot_id || `manual:${taskId}`,
   });
   return { sketch: next.find(item => item.shot_index === numericIndex), provider_used: clean(generated.provider_used, 160) };
 }
 
-/** 按真实文字分镜顺序一次性生成所有缺失线稿；逐镜落盘，失败后重试只补缺失项。 */
+/** 按真实分镜合同并行生成所有缺失人物场景分镜图；逐镜落盘，失败后只补缺失项。 */
 async function generateSketchBatch(taskId, options = {}, dependencies = {}) {
   sketchGate.assertReady(taskId);
   if (options.confirmed !== true) {
-    const error = new Error('批量生成线稿前需要确认本次图片调用数量');
+    const error = new Error('批量生成分镜图前需要确认本次图片调用数量');
     error.status = 400;
     error.code = 'SKETCH_BATCH_CONFIRMATION_REQUIRED';
     throw error;
   }
   if (activeSketchBatches.has(taskId)) {
-    const error = new Error('当前项目已有线稿批次正在生成');
+    const error = new Error('当前项目已有分镜图批次正在生成');
     error.status = 409;
     error.code = 'SKETCH_BATCH_IN_PROGRESS';
     throw error;
   }
   const shots = storage.getOutput(taskId, 'storyboard_table') || [];
   if (!shots.length) {
-    const error = new Error('请先生成文字分镜，再批量生成线稿');
+    const error = new Error('请先生成绑定人物、场景、动作和机位的分镜合同，再生成分镜图');
     error.status = 409;
     error.code = 'STORYBOARD_REQUIRED_FOR_SKETCH_BATCH';
     throw error;
   }
-  const existing = storage.getOutput(taskId, 'storyboard_sketches') || [];
+  const existing = storage.getOutput(taskId, 'storyboard_images') || [];
   const existingByShot = new Map(existing.map(item => [Number(item.shot_index), item]));
   const targets = shots.map((shot, index) => Number(shot.shot_index || shot.index || index + 1) || index + 1)
     .filter(shotIndex => options.regenerate_all === true || !existingByShot.get(shotIndex)?.image_url);
@@ -355,7 +355,7 @@ async function generateSketchBatch(taskId, options = {}, dependencies = {}) {
       current_index: 0,
       started_at: new Date().toISOString(),
       finished_at: new Date().toISOString(),
-      message: '所有线稿均已存在，无需重复生成。',
+      message: '所有人物场景分镜图均已存在，无需重复生成。',
     });
     return { sketches: existing, requested: 0, completed: 0, skipped_existing: shots.length, progress };
   }
@@ -376,51 +376,57 @@ async function generateSketchBatch(taskId, options = {}, dependencies = {}) {
     finished_at: '',
     error: '',
     error_code: '',
-    message: `正在生成第 ${targets[0]} 镜线稿，完成后会显示在本页对应镜头卡片中。`,
+    message: `正在生成第 ${targets[0]} 镜人物场景分镜图，完成后会显示在本页对应镜头卡片中。`,
   });
   try {
-    for (const shotIndex of targets) {
-      saveBatchProgress(taskId, {
-        status: 'running',
-        current_index: shotIndex,
-        message: `正在生成第 ${shotIndex} 镜线稿，已完成 ${completed}/${targets.length}。`,
-      });
-      await generateSketch(taskId, shotIndex, {
+    const completedIndexes = [];
+    const results = await Promise.allSettled(targets.map(async shotIndex => {
+      const result = await generateSketch(taskId, shotIndex, {
         confirmed: true,
         batch_owner: taskId,
         client_request_id: `${batchId}:${shotIndex}`,
         image_model: options.image_model || options.imageModel,
       }, dependencies);
       completed += 1;
+      completedIndexes.push(shotIndex);
       saveBatchProgress(taskId, {
-        status: completed >= targets.length ? 'succeeded' : 'running',
+        status: 'running',
         completed,
-        completed_indexes: targets.slice(0, completed),
-        current_index: completed < targets.length ? targets[completed] : 0,
-        ...(completed >= targets.length ? { finished_at: new Date().toISOString() } : {}),
-        message: completed >= targets.length
-          ? `线稿批量生成完成，共完成 ${completed}/${targets.length}。`
-          : `第 ${shotIndex} 镜已完成，正在准备第 ${targets[completed]} 镜。`,
+        completed_indexes: [...completedIndexes].sort((a, b) => a - b),
+        current_index: 0,
+        message: `人物场景分镜图并行生成中，已完成 ${completed}/${targets.length}。`,
       });
+      return result;
+    }));
+    const failedIndexes = results.map((result, index) => result.status === 'rejected' ? targets[index] : 0).filter(Boolean);
+    if (failedIndexes.length) {
+      const firstFailure = results.find(result => result.status === 'rejected')?.reason || new Error('分镜图批次存在失败项');
+      firstFailure.details = { ...(firstFailure.details || {}), requested: targets.length, completed, remaining: failedIndexes.length, failed_indexes: failedIndexes };
+      saveBatchProgress(taskId, {
+        status: 'failed', completed, completed_indexes: [...completedIndexes].sort((a, b) => a - b), failed_indexes: failedIndexes,
+        current_index: 0, finished_at: new Date().toISOString(), error: clean(firstFailure.message, 600),
+        error_code: clean(firstFailure.code || 'STORYBOARD_IMAGE_BATCH_FAILED', 100),
+        message: `人物场景分镜图完成 ${completed}/${targets.length}，失败 ${failedIndexes.length}；重试只补失败镜头。`,
+      });
+      throw firstFailure;
     }
+    saveBatchProgress(taskId, {
+      status: 'succeeded', completed, completed_indexes: [...completedIndexes].sort((a, b) => a - b), current_index: 0,
+      finished_at: new Date().toISOString(), message: `人物场景分镜图批量生成完成，共完成 ${completed}/${targets.length}。`,
+    });
     return {
-      sketches: storage.getOutput(taskId, 'storyboard_sketches') || [],
+      sketches: storage.getOutput(taskId, 'storyboard_images') || [],
       requested: targets.length,
       completed,
       skipped_existing: shots.length - targets.length,
       progress: batchProgress(taskId),
     };
   } catch (error) {
-    error.details = { ...(error.details || {}), requested: targets.length, completed, remaining: targets.length - completed };
-    saveBatchProgress(taskId, {
-      status: 'failed',
-      completed,
-      completed_indexes: targets.slice(0, completed),
-      current_index: targets[completed] || 0,
-      finished_at: new Date().toISOString(),
-      error: clean(error.message, 600),
-      error_code: clean(error.code || 'SKETCH_BATCH_FAILED', 100),
-      message: `线稿批次在第 ${targets[completed] || targets.length} 镜停止；已完成 ${completed}/${targets.length}，重试只会补缺失项。`,
+    error.details = { ...(error.details || {}), requested: targets.length, completed, remaining: Math.max(0, targets.length - completed) };
+    if (batchProgress(taskId)?.status !== 'failed') saveBatchProgress(taskId, {
+      status: 'failed', completed, finished_at: new Date().toISOString(), error: clean(error.message, 600),
+      error_code: clean(error.code || 'STORYBOARD_IMAGE_BATCH_FAILED', 100),
+      message: `分镜图批次已停止；已完成 ${completed}/${targets.length}，重试只补缺失项。`,
     });
     throw error;
   } finally {
@@ -442,15 +448,15 @@ function getSketchBatch(taskId) {
     progress = saveBatchProgress(taskId, {
       status: 'failed',
       finished_at: new Date().toISOString(),
-      error: '线稿批次进程已中断。已完成图片已经保留，重新提交只会补生成缺失镜头。',
+      error: '分镜图批次进程已中断。已完成图片已经保留，重新提交只会补生成缺失镜头。',
       error_code: 'SKETCH_BATCH_INTERRUPTED',
-      message: `线稿批次已中断；已完成 ${Number(progress.completed || 0)}/${Number(progress.requested || 0)}，可以重新提交补齐。`,
+      message: `分镜图批次已中断；已完成 ${Number(progress.completed || 0)}/${Number(progress.requested || 0)}，可以重新提交补齐。`,
     });
   }
   return {
     progress,
     active,
-    sketches: storage.getOutput(taskId, 'storyboard_sketches') || [],
+    sketches: storage.getOutput(taskId, 'storyboard_images') || [],
   };
 }
 

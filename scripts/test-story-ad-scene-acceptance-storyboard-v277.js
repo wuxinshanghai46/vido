@@ -25,7 +25,7 @@ function acceptedScene() {
 
 function verifyStoryboardModuleMounts() {
   assert.doesNotThrow(() => vm.runInNewContext(executable('public/story-ad/views/storyboardView.js'), {}),
-    '线稿与分镜模块加载时不得访问尚不存在的镜头 card');
+    '人物场景分镜模块加载时不得访问尚不存在的镜头 card');
   const source = read('public/story-ad/views/storyboardView.js');
   const binding = source.match(/host\.querySelectorAll\('\[data-sketch-shot\]'\)\.forEach\(card => \{[\s\S]+?\n  \}\);/)?.[0] || '';
   assert.match(binding, /data-save-shot-voice/, '声音保存事件必须绑定在每个镜头 card 的作用域内');

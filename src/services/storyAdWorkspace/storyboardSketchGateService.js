@@ -1,4 +1,5 @@
 const storageDefault = require('../newStoryAd/storageService');
+const storyFlowSketchGate = require('./storyFlowSketchGateService');
 
 function clean(value = '', max = 300) {
   return String(value || '').replace(/\s+/g, ' ').trim().slice(0, max);
@@ -17,6 +18,7 @@ function inspect(taskId, dependencies = {}) {
   const rewrites = Array.isArray(review?.rewrite_issues) ? review.rewrite_issues.filter(Boolean) : [];
   const reviewHasVerdict = typeof review?.passed === 'boolean';
   const issues = [];
+  const flow = storyFlowSketchGate.inspect(taskId);
   const explicitFailure = task.stage === 'storyboard_failed'
     || meta.status === 'failed'
     || progress.phase === 'review_failed'
@@ -27,7 +29,9 @@ function inspect(taskId, dependencies = {}) {
   if (!Array.isArray(shots) || !shots.length) issues.push('还没有可用的文字分镜');
   if (meta.status && meta.status !== 'ready') issues.push(`文字分镜状态为 ${clean(meta.status, 40)}`);
   if (shots.length && contracts.length !== shots.length) issues.push(`关键帧合同不完整（${contracts.length}/${shots.length}）`);
-  const ready = !explicitFailure
+  if (!flow.ready) issues.unshift(flow.reason);
+  const ready = flow.ready
+    && !explicitFailure
     && Array.isArray(shots)
     && shots.length > 0
     && (!meta.status || meta.status === 'ready')
@@ -35,18 +39,19 @@ function inspect(taskId, dependencies = {}) {
   return {
     ready,
     code: ready ? '' : (explicitFailure ? 'STORYBOARD_REVIEW_REQUIRED' : 'STORYBOARD_CONTRACTS_NOT_READY'),
-    reason: ready ? '文字分镜审核与镜头合同已通过，可以生成线稿。' : clean(issues[0] || '文字分镜尚未通过审核，不能生成线稿。', 300),
+    reason: ready ? '流向线稿已确认，人物场景分镜合同已通过，可以生成分镜图。' : clean(issues[0] || '人物场景分镜尚未满足生成条件。', 300),
     issues: [...new Set(issues.map(value => clean(value, 300)).filter(Boolean))].slice(0, 20),
     shot_count: shots.length,
     contract_count: contracts.length,
     review_passed: reviewHasVerdict ? (review.passed === true && !blocking.length && !rewrites.length) : null,
+    flow,
   };
 }
 
 function assertReady(taskId, dependencies = {}) {
   const state = inspect(taskId, dependencies);
   if (state.ready) return state;
-  const error = new Error(state.reason || '文字分镜审核通过后才能生成线稿');
+  const error = new Error(state.reason || '流向线稿确认后才能生成人物场景分镜');
   error.status = state.code === 'TASK_NOT_FOUND' ? 404 : 409;
   error.code = state.code;
   error.retryable = false;

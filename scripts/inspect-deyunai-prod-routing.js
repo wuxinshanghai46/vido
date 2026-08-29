@@ -16,11 +16,17 @@ const script = String.raw`
     key_present: !!key, key_length: key.length,
     key_fingerprint: key ? crypto.createHash('sha256').update(key).digest('hex').slice(0, 12) : '',
     image_models: models.map(model => ({ id: model.id, enabled: model.enabled !== false, channel: model.channel || '', type: model.type || '', use: model.use || '' })),
-    storyboard_sketch_route: {
-      configured: pipeline.getStageConfig('new_story_ad.storyboard_sketch'),
-      defaults: pipeline.getStageDefaults('new_story_ad.storyboard_sketch'),
-      enabled_with_default: pipeline.pickAllEnabledWithDefault('new_story_ad.storyboard_sketch'),
-      available_candidates: mediaAdapter.availableImageCandidates('new_story_ad.storyboard_sketch').map(model => ({ provider_id: model.provider_id, model_id: model.model_id })),
+    story_flow_sketch_route: {
+      configured: pipeline.getStageConfig('new_story_ad.story_flow_sketch'),
+      defaults: pipeline.getStageDefaults('new_story_ad.story_flow_sketch'),
+      enabled_with_default: pipeline.pickAllEnabledWithDefault('new_story_ad.story_flow_sketch'),
+      available_candidates: mediaAdapter.availableImageCandidates('new_story_ad.story_flow_sketch').map(model => ({ provider_id: model.provider_id, model_id: model.model_id })),
+    },
+    storyboard_image_route: {
+      configured: pipeline.getStageConfig('new_story_ad.storyboard_image'),
+      defaults: pipeline.getStageDefaults('new_story_ad.storyboard_image'),
+      enabled_with_default: pipeline.pickAllEnabledWithDefault('new_story_ad.storyboard_image'),
+      available_candidates: mediaAdapter.availableImageCandidates('new_story_ad.storyboard_image').map(model => ({ provider_id: model.provider_id, model_id: model.model_id })),
     },
     effective_gpt_image_2_endpoint: 'https://api.deyunai.com/ent/v1/images/generations',
     effective_headers: ['Authorization: Bearer <provider api_key>', 'Content-Type: application/json'],

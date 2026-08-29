@@ -5,7 +5,7 @@ import { bindMediaLightbox } from './mediaLightbox.js?v=20260829-production-v278
 import { buildSceneBatchActionPlan } from './sceneBatchActionPlan.js?v=20260829-production-v278b';
 import { bindGenerationModelPicker, loadGenerationModelPicker } from './generationModelPicker.js?v=20260829-production-v278b';
 import { normalizeSceneDossier } from './sceneDossierCard.js?v=20260829-production-v278b';
-import { bindSceneConfirmAction } from './sceneQaPublicState.js?v=20260829-production-v278b';
+import { bindSceneConfirmAction } from './sceneQaPublicState.js?v=20260829-production-v279';
 
 export function latestSceneTargetProgress(progress = {}, sceneId = '', generationId = '') {
   const rows = Object.values(progress).filter(item => String(item?.stage || '') === 'scene_asset'
@@ -59,7 +59,7 @@ export async function mount(host, context) {
   const preview = scenePromptPreviewState(bundle, scenePlanReady || persistedScenePlanReady, generationActive);
 
   const completionAction = canConfirm
-    ? '<button class="btn primary compact" data-confirm-scenes>确认场景，进入线稿</button>'
+    ? '<button class="btn primary compact" data-confirm-scenes>确认场景，进入流向线稿</button>'
     : (canAcceptCurrent ? '<button class="btn primary compact" data-accept-current-scenes>使用当前图片继续</button>' : '');
   host.innerHTML = `<section class="view-head scene-view-head"><div><h1>场景</h1><p>默认查看场景画面，需要时可切换到提示词核对。</p></div></section>
     ${scenePlanReady || persistedScenePlanReady ? '' : scenePlanBlockedView(sceneEligibility, generationActive, { automatic: preview.autoInitialize || generationActive })}
@@ -70,7 +70,7 @@ export async function mount(host, context) {
 
   bindScenePlanUpdate(host, context);
   bindMediaLightbox(host);
-  const sceneInteractions = await import('./sceneCardInteractions.js?v=20260829-production-v278b');
+  const sceneInteractions = await import('./sceneCardInteractions.js?v=20260829-production-v279');
   const cleanupSceneCards = sceneInteractions.bindSceneCards(host, context);
   sceneInteractions.bindSceneCompletionActions(host, context);
   bindSceneConfirmAction(host, context);

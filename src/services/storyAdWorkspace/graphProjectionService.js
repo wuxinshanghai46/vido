@@ -351,8 +351,28 @@ function projectGraph(bundle = {}) {
     });
   }
 
+  const flowSketches = Array.isArray(bundle.story_flow?.sketches) ? bundle.story_flow.sketches : [];
+  const flowIds = [];
+  flowSketches.forEach((sketch, index) => {
+    const beatIndex = Number(sketch.beat_index || sketch.index || index + 1) || index + 1;
+    const flowId = add({
+      id: `story-flow:${beatIndex}`,
+      type: 'story_flow',
+      group: 'story_flow',
+      title: `流向线稿 ${beatIndex}`,
+      subtitle: sketch.flow_notes || '剧情事件与因果衔接',
+      status: sketch.status || 'draft',
+      media: sketch,
+      target: `/story-ad/projects/${encodeURIComponent(projectId)}?view=flow`,
+      detail: { beat_index: beatIndex, flow_notes: detailText(sketch.flow_notes, 600) },
+    });
+    flowIds.push(flowId);
+    if (storyId) connect(storyId, flowId, 'visualizes');
+    if (index > 0) connect(flowIds[index - 1], flowId, 'continues');
+  });
+
   const shots = Array.isArray(bundle.storyboard?.shots) ? bundle.storyboard.shots : [];
-  const sketches = Array.isArray(bundle.storyboard?.sketches) ? bundle.storyboard.sketches : [];
+  const sketches = Array.isArray(bundle.storyboard?.images) ? bundle.storyboard.images : [];
   const shotIds = [];
   shots.forEach((shot, index) => {
     const shotIndex = Number(shot.shot_index || shot.index || index + 1) || index + 1;
@@ -404,7 +424,8 @@ function projectGraph(bundle = {}) {
       },
     });
     shotIds.push(shotId);
-    if (storyId) connect(storyId, shotId, 'contains');
+    if (flowIds.length) connect(flowIds[Math.min(index, flowIds.length - 1)], shotId, 'directs');
+    else if (storyId) connect(storyId, shotId, 'contains');
     else if (inputRoot) connect(inputRoot, shotId, 'contains');
     if (index > 0) connect(shotIds[index - 1], shotId, 'continues');
 
@@ -512,7 +533,8 @@ function projectGraph(bundle = {}) {
     ['story', '剧情'],
     ['assets', '身份资产'],
     ['director', '导演台与运动设计'],
-    ['shots', '分镜与镜头'],
+    ['story_flow', '剧情流向线稿'],
+    ['shots', '人物场景分镜'],
     ['media', '生成结果'],
     ['final', '成片'],
   ].map(([id, label]) => {

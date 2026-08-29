@@ -564,8 +564,8 @@ function buildProjectBundle(taskId, { sections = '', user = {} } = {}) {
   if (include('story')) {
     bundle.story = referenceDrafts.storySection(context, outputs);
   }
-
   if (include('shots')) {
+    bundle.story_flow = referenceDrafts.storyFlowSection(taskId, outputs);
     bundle.storyboard = referenceDrafts.storyboardSection(context, outputs, raw);
     bundle.storyboard.sketch_gate = storyboardSketchGate.inspect(taskId);
     bundle.storyboard.reference_packs = list(outputs.shot_reference_packs).slice(0, 200);

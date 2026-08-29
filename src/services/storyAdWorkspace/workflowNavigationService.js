@@ -1,6 +1,7 @@
 'use strict';
 
 const sceneVisualAcceptance = require('../newStoryAd/sceneVisualAcceptanceService');
+const storyFlowSketchGate = require('./storyFlowSketchGateService');
 
 /**
  * Derive the sequential workspace state from persisted outputs only. A view is
@@ -29,6 +30,7 @@ function build({ task = {}, context = {}, outputs = {}, counts = {}, clean, list
       && outputs.asset_plan.scene_plan.spaces.length);
   const blueprintReady = Boolean(outputs.blueprint && list(outputs.blueprint.beats).length);
   const storyboardReady = list(outputs.storyboard_table).length > 0;
+  const flowState = storyFlowSketchGate.inspectSnapshot(task, outputs.blueprint || {}, outputs.story_flow_sketches || []);
   const keyframesReady = list(outputs.keyframes).length > 0;
   const clipsReady = list(outputs.video_clips).length > 0;
   const finalReady = Boolean(outputs.final_video?.video_url || outputs.final_video?.videoUrl);
@@ -50,6 +52,7 @@ function build({ task = {}, context = {}, outputs = {}, counts = {}, clean, list
     counts: {
       ...counts,
       shots: list(outputs.storyboard_table).length,
+      flow_sketches: flowState.confirmed,
       keyframes: list(outputs.keyframes).length,
       clips: list(outputs.video_clips).length,
     },
@@ -60,13 +63,14 @@ function build({ task = {}, context = {}, outputs = {}, counts = {}, clean, list
         ? '请等待参考视频分析成功并确认理解结果。'
         : '请先通过对话确认项目名称、内容类型和核心设想。', 'assets'),
       assets: step(blueprintReady || assetPlanReady, assetSetupComplete, '请先生成并确认详细剧情与对白。', 'scene'),
-      scene: step(assetSetupComplete, sceneSetupComplete, '请先确认人物资产。', 'storyboard'),
-      storyboard: step(sceneSetupComplete && blueprintReady, storyboardReady && shotDesignComplete, '请先生成并确认全部场景。', 'final'),
+      scene: step(assetSetupComplete, sceneSetupComplete, '请先确认人物资产。', 'flow'),
+      flow: step(sceneSetupComplete && blueprintReady, flowState.ready, '请先生成并确认全部场景。', 'storyboard'),
+      storyboard: step(flowState.ready, storyboardReady && shotDesignComplete, flowState.reason, 'final'),
       final: step(shotDesignComplete, finalReady, '请先完成并确认全部镜头设计。', ''),
       workflow: step(true, finalReady, '', ''),
     },
   };
-  result.current = ['brief', 'plot', 'assets', 'scene', 'storyboard', 'final']
+  result.current = ['brief', 'plot', 'assets', 'scene', 'flow', 'storyboard', 'final']
     .find(view => result.steps[view].enabled && !result.steps[view].completed) || 'final';
   return result;
 }

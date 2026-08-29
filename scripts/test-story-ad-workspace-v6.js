@@ -16,6 +16,7 @@ const { normalizeAppearanceAgeText } = require('../src/services/storyAdWorkspace
 const graphProjection = require('../src/services/storyAdWorkspace/graphProjectionService');
 const graphLayouts = require('../src/services/storyAdWorkspace/graphLayoutService');
 const sketches = require('../src/services/storyAdWorkspace/storyboardSketchService');
+const storyFlowGate = require('../src/services/storyAdWorkspace/storyFlowSketchGateService');
 const productAssets = require('../src/services/newStoryAd/productAssetResolverService');
 
 const owner = { id: 'workspace-owner', role: 'user' };
@@ -369,6 +370,15 @@ async function main() {
     '重置后布局版本不得回退形成并发覆盖',
   );
 
+  const flowState = storyFlowGate.blueprintState(taskId);
+  storage.saveOutput(taskId, 'story_flow_sketches', flowState.beats.map((beat, index) => ({
+    beat_index: Number(beat.beat_index || beat.index || index + 1) || index + 1,
+    image_url: `/api/new-story-ad/assets/flow-${index + 1}.png`,
+    status: 'confirmed',
+    source_blueprint_fingerprint: flowState.fingerprint,
+    source_content_revision: Number(flowState.task.content_revision || 1) || 1,
+  })));
+
   const draft = sketches.saveSketches(taskId, [{
     shot_index: 1,
     status: 'draft',
@@ -385,11 +395,11 @@ async function main() {
   }], owner);
   assert.equal(confirmed.changed, true);
   let shot = storage.getOutput(taskId, 'storyboard_table')[0];
-  assert(shot.keyframe_notes.includes('线稿构图约束：人物位于左侧，商品位于右侧。'));
+  assert(shot.keyframe_notes.includes('分镜构图约束：人物位于左侧，商品位于右侧。'));
   const confirmedAgain = sketches.saveSketches(taskId, confirmed.sketches, owner);
   assert.equal(confirmedAgain.changed, false);
   shot = storage.getOutput(taskId, 'storyboard_table')[0];
-  assert.equal((shot.keyframe_notes.match(/线稿构图约束：/g) || []).length, 1, '构图约束不得重复追加');
+  assert.equal((shot.keyframe_notes.match(/分镜构图约束：/g) || []).length, 1, '构图约束不得重复追加');
 
   const generated = await sketches.generateSketch(taskId, 2, {
     confirmed: true,
@@ -406,13 +416,13 @@ async function main() {
   });
   assert.equal(generated.sketch.status, 'draft');
   assert.equal(generated.sketch.shot_index, 2);
-  assert.equal(storage.getOutput(taskId, 'storyboard_sketches').length, 2);
+  assert.equal(storage.getOutput(taskId, 'storyboard_images').length, 2);
   await assert.rejects(
     sketches.generateSketch(taskId, 2, { confirmed: false }, { mediaAdapter: { generateImage: async () => ({}) } }),
     error => error?.code === 'SKETCH_GENERATION_CONFIRMATION_REQUIRED',
   );
 
-  console.log('story-ad workspace v6 service tests: project bundle, editable graph layout and sketches passed');
+  console.log('story-ad workspace service tests: project bundle, editable graph layout and storyboard images passed');
 }
 
 main().catch(error => {

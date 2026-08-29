@@ -12,7 +12,8 @@ const ALLOWED_STAGES = new Set([
   'new_story_ad.product_asset',
   'new_story_ad.scene_asset',
   'new_story_ad.scene_panorama',
-  'new_story_ad.storyboard_sketch',
+  'new_story_ad.story_flow_sketch',
+  'new_story_ad.storyboard_image',
   'new_story_ad.keyframe',
   'new_story_ad.video',
 ]);

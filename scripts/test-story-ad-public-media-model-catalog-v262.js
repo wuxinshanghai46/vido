@@ -11,7 +11,7 @@ const IMAGE_STAGES = [
   'new_story_ad.person_sheet', 'new_story_ad.person_dossier_atlas',
   'new_story_ad.prop_dossier_atlas', 'new_story_ad.product_asset',
   'new_story_ad.scene_asset', 'new_story_ad.scene_panorama',
-  'new_story_ad.storyboard_sketch', 'new_story_ad.keyframe',
+  'new_story_ad.story_flow_sketch', 'new_story_ad.storyboard_image', 'new_story_ad.keyframe',
 ];
 const IMAGE_LABELS = [
   'Image · SZ', 'Image · WB', 'Image · DY',

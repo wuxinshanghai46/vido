@@ -68,7 +68,7 @@ function applyModeTransition(previousContext = {}, nextContext = {}, request = {
       to,
       confirmed_at: new Date().toISOString(),
       retained: ['uploads', 'person_identity', 'scene_raw_assets'],
-      invalidated: ['asset_plan', 'scene_config', 'blueprint', 'storyboard', 'storyboard_sketches', 'keyframes', 'tts_audio', 'video_clips', 'final_video'],
+      invalidated: ['asset_plan', 'scene_config', 'blueprint', 'story_flow_sketches', 'storyboard', 'storyboard_images', 'keyframes', 'tts_audio', 'video_clips', 'final_video'],
     },
   };
 }

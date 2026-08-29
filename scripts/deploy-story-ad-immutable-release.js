@@ -211,6 +211,15 @@ async function migrateReleaseState() {
     releaseMigrationMode = 'same_contract_runtime_compatible';
     return { migration_id: '', task_count: 0, summary: { runtime_compatible: 1 }, model_calls: 0, paid_calls: 0 };
   }
+  if (previousContractVersion === 'story-scene-platform-v6'
+    && release.contract_version === 'story-scene-platform-v7') {
+    releaseMigrationMode = 'v7_seven_step_contract_isolation';
+    return {
+      migration_id: '', task_count: 0,
+      summary: { old_combined_storyboard_sketch_outputs_ignored: 1, seven_step_contract_enabled: 1 },
+      model_calls: 0, paid_calls: 0,
+    };
+  }
   throw new Error(`UNSUPPORTED_RELEASE_MIGRATION: refusing mixed checkpoint transition from ${previousBuildId || 'unknown'} (${previousBundleId}) to ${release.build_id}`);
 }
 

@@ -806,7 +806,8 @@ async function main() {
     assert.equal(mediaAdapter.requiredImageModelForStage('new_story_ad.person_sheet'), 'gpt-image-2');
     assert.equal(mediaAdapter.requiredImageModelForStage('new_story_ad.scene_asset'), 'gpt-image-2');
     assert.equal(mediaAdapter.requiredImageModelForStage('new_story_ad.keyframe'), 'gpt-image-2');
-    assert.equal(mediaAdapter.requiredImageModelForStage('new_story_ad.storyboard_sketch'), 'gpt-image-2');
+    assert.equal(mediaAdapter.requiredImageModelForStage('new_story_ad.story_flow_sketch'), 'gpt-image-2');
+    assert.equal(mediaAdapter.requiredImageModelForStage('new_story_ad.storyboard_image'), 'gpt-image-2');
     assert.equal(mediaAdapter.imageConfigStage('new_story_ad.person_dossier_atlas'), 'new_story_ad.person_dossier_atlas');
     assert.equal(mediaAdapter.imageConfigStage('new_story_ad.person_dossier_action'), 'new_story_ad.person_dossier_action');
     assert.equal(mediaAdapter.imageConfigStage('new_story_ad.prop_dossier_atlas'), 'new_story_ad.prop_dossier_atlas');
@@ -860,7 +861,7 @@ async function main() {
         message: '当前图片任务的提交或计费状态尚未确认，已停止自动切换，避免重复费用。',
       },
     );
-    const strictImageStages = ['new_story_ad.person_sheet', 'new_story_ad.scene_asset', 'new_story_ad.keyframe', 'new_story_ad.storyboard_sketch'];
+    const strictImageStages = ['new_story_ad.person_sheet', 'new_story_ad.scene_asset', 'new_story_ad.keyframe', 'new_story_ad.story_flow_sketch', 'new_story_ad.storyboard_image'];
     strictImageStages.forEach(stageId => {
       assert.ok(pipelineModels.getStageDefaults(stageId).length > 0, `${stageId} must keep at least one Image2 default`);
       assert.ok(pipelineModels.getStageDefaults(stageId).every(item => item.model_id === 'gpt-image-2'), `${stageId} defaults must contain only Image2`);

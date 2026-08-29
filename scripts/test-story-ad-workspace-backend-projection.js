@@ -272,6 +272,9 @@ function graphFixture() {
         ],
       },
     },
+    story_flow: {
+      sketches: [{ beat_index: 1, image_url: '/flow-beat-01.png', status: 'confirmed' }],
+    },
     storyboard: {
       shots: [{
         shot_id: 'SH01',
@@ -291,7 +294,7 @@ function graphFixture() {
         transition_duration_sec: 0.4,
         transition_reason: '保持动作方向连续。',
       }],
-      sketches: [{ shot_id: 'SH01', shot_index: 1, image_url: '/sketch-sh01.png' }],
+      images: [{ shot_id: 'SH01', shot_index: 1, image_url: '/storyboard-sh01.png' }],
     },
     generation: {
       keyframes: [
@@ -329,7 +332,10 @@ function testGraphStructuredDetailsAndStableIds() {
   assert.equal(shot.detail.bindings.camera_id, 'cam-master');
   assert.deepEqual(shot.detail.bindings.character_ids, ['cast-linyue']);
   assert.equal(shot.detail.transition.type, 'match_cut');
-  assert.equal(shot.media_url, '/sketch-sh01.png', 'storyboard sketch 必须成为对应 shot 节点媒体');
+  assert.equal(shot.media_url, '/storyboard-sh01.png', '人物场景分镜图必须成为对应 shot 节点媒体');
+  const flowNode = graph.nodes.find(node => node.type === 'story_flow');
+  assert.equal(flowNode.media_url, '/flow-beat-01.png', '剧情流向线稿必须是独立图节点');
+  assert(graph.edges.some(edge => edge.source === flowNode.id && edge.target === shot.id && edge.kind === 'directs'));
 
   const keyframes = graph.nodes.filter(node => node.type === 'keyframe');
   const repeatedKeyframes = repeated.nodes.filter(node => node.type === 'keyframe');
@@ -363,7 +369,7 @@ function testGraphStructuredDetailsAndStableIds() {
     transition_reason: longField,
     transition_match_anchor: longField,
   }));
-  largeFixture.storyboard.sketches = [];
+  largeFixture.storyboard.images = [];
   largeFixture.generation = { keyframes: [], clips: [] };
   const largeGraphBytes = Buffer.byteLength(JSON.stringify(graphs.projectGraph(largeFixture)));
   assert(largeGraphBytes < 3 * 1024 * 1024, `200 镜工作流投影必须小于 3 MiB，实际 ${largeGraphBytes} bytes`);

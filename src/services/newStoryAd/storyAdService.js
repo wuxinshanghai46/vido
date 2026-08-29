@@ -6,6 +6,7 @@ const { buildContext, contextPrompt, cleanText, normalizeCharacters, assertConte
 const sceneExperienceAssist = require('./sceneExperienceAssistService'), assistKnowledgePolicy = require('./assistKnowledgePolicyService'), blueprintLifecycle = require('./blueprintLifecycleService');
 const { generateStoryboardTable, rewriteStoryboard } = require('./storyboardTableService');
 const storyboardCoverageLifecycle = require('./storyboardCoverageLifecycleService');
+const storyFlowSketchGate = require('../storyAdWorkspace/storyFlowSketchGateService');
 const { reviewStoryboard } = require('./qualityReviewService'), storyboardContinuityGate = require('./storyboardContinuityGateService');
 const { buildKeyframeContracts } = require('./keyframeContractService'), knowledgePolicyRuntime = require('./knowledgePolicyRuntimeService');
 const { withContinuityContracts } = require('./continuityService');
@@ -870,6 +871,7 @@ async function generateScriptPackageStage(taskId, options = {}) {
 async function generateStoryboardStage(taskId, options = {}) {
   const task = storage.getTask(taskId);
   if (!task) throw new Error('任务不存在');
+  storyFlowSketchGate.assertReady(taskId);
   const ctx = assertContextConsistent(storage.getOutput(taskId, 'context') || task.request || {});
   contentSkill.assertSelected(ctx);
   const sceneAssets = storage.getOutput(taskId, 'scene_assets') || ctx.scene_assets || [];

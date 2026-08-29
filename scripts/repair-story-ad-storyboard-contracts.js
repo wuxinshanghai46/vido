@@ -18,7 +18,7 @@ async function main() {
   if (task.active_generation_id) throw new Error('任务正在生成，禁止修复');
   const context = storage.getOutput(taskId, 'context') || task.request || {};
   const shots = storage.getOutput(taskId, 'storyboard_table') || [];
-  const sketches = storage.getOutput(taskId, 'storyboard_sketches') || [];
+  const storyboardImages = storage.getOutput(taskId, 'storyboard_images') || [];
   const sceneAssets = storage.getOutput(taskId, 'scene_assets') || context.scene_assets || [];
   const blueprint = storage.getOutput(taskId, 'blueprint') || {};
   const reviewContext = {
@@ -29,7 +29,7 @@ async function main() {
       : (Array.isArray(blueprint.characters) ? blueprint.characters : []),
   };
   const callsBefore = storage.getTaskBundle(taskId, { diagnostics: true }).model_calls.length;
-  const sketchesBefore = storage.canonicalFingerprint(sketches);
+  const storyboardImagesBefore = storage.canonicalFingerprint(storyboardImages);
   const repaired = bindShotsToScenes(
     shots.map(shot => ({ ...shot, keyframe_notes: normalizeKeyframeNotes(shot, context) })),
     sceneAssets,
@@ -43,7 +43,7 @@ async function main() {
     apply,
     changed_indexes: changedIndexes,
     shot_count: shots.length,
-    sketch_count: sketches.length,
+    storyboard_image_count: storyboardImages.length,
     blocking_issues: review.blocking_issues || [],
     rewrite_issues: review.rewrite_issues || [],
     model_calls_before: callsBefore,
@@ -97,15 +97,15 @@ async function main() {
     },
   });
   const callsAfter = storage.getTaskBundle(taskId, { diagnostics: true }).model_calls.length;
-  const sketchesAfter = storage.canonicalFingerprint(storage.getOutput(taskId, 'storyboard_sketches') || []);
+  const storyboardImagesAfter = storage.canonicalFingerprint(storage.getOutput(taskId, 'storyboard_images') || []);
   if (callsAfter !== callsBefore) throw new Error(`模型调用数发生变化：${callsBefore} -> ${callsAfter}`);
-  if (sketchesAfter !== sketchesBefore) throw new Error('现有线稿在合同修复中发生变化');
+  if (storyboardImagesAfter !== storyboardImagesBefore) throw new Error('现有人物场景分镜图在合同修复中发生变化');
   console.log(JSON.stringify({
     ...audit,
     applied: true,
     keyframe_contracts: contracts.length,
     model_calls_after: callsAfter,
-    sketches_preserved: true,
+    storyboard_images_preserved: true,
   }, null, 2));
 }
 

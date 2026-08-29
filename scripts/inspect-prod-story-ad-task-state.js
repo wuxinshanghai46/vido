@@ -16,7 +16,8 @@ const remoteScript = String.raw`
     process.exit(0);
   }
   const shots = storage.getOutput(taskId, 'storyboard_table') || [];
-  const sketches = storage.getOutput(taskId, 'storyboard_sketches') || [];
+  const flowSketches = storage.getOutput(taskId, 'story_flow_sketches') || [];
+  const storyboardImages = storage.getOutput(taskId, 'storyboard_images') || [];
   const sceneAssets = storage.getOutput(taskId, 'scene_assets') || [];
   const review = storage.getOutput(taskId, 'quality_review') || {};
   const context = storage.getOutput(taskId, 'context') || task.request || {};
@@ -66,7 +67,12 @@ const remoteScript = String.raw`
       blocking_issues: review.blocking_issues || [],
       rewrite_issues: review.rewrite_issues || [],
     },
-    sketches: sketches.map(item => ({
+    flow_sketches: flowSketches.map(item => ({
+      beat_index: item.beat_index,
+      status: item.status || '',
+      image_url: item.image_url || '',
+    })),
+    storyboard_images: storyboardImages.map(item => ({
       shot_index: item.shot_index,
       status: item.status,
       has_image: Boolean(item.image_url),

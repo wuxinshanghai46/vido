@@ -1,6 +1,6 @@
-import { createProjectStore } from './store/projectStore.js?v=20260829-production-v278b';
+import { createProjectStore } from './store/projectStore.js?v=20260829-production-v279';
 import { bindHoverVideoPreviews, escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, syncInlineGenerationProgress, toast } from './components/ui.js?v=20260829-production-v278b';
-import { assertCurrentRelease, startReleaseHeartbeat } from './api.js?v=20260829-production-v278b';
+import { assertCurrentRelease, startReleaseHeartbeat } from './api.js?v=20260829-production-v279';
 import { confirmDialog } from './components/dialog.js?v=20260829-production-v278b';
 
 await assertCurrentRelease().then(() => startReleaseHeartbeat()).catch(error => {
@@ -15,22 +15,24 @@ await assertCurrentRelease().then(() => startReleaseHeartbeat()).catch(error => 
 
 const app = document.querySelector('#storyAdApp');
 const store = createProjectStore();
-const VIEW_ORDER = ['brief', 'plot', 'assets', 'scene', 'storyboard', 'final', 'workflow'];
+const VIEW_ORDER = ['brief', 'plot', 'assets', 'scene', 'flow', 'storyboard', 'final', 'workflow'];
 const VIEW_META = {
   brief: ['1', '对话立项'],
   plot: ['2', '剧情与对白'],
   assets: ['3', '人物资产'],
   scene: ['4', '场景世界'],
-  storyboard: ['5', '线稿与分镜'],
-  final: ['6', '镜头与合成'],
+  flow: ['5', '流向线稿'],
+  storyboard: ['6', '人物场景分镜'],
+  final: ['7', '镜头与合成'],
   workflow: ['⌘', '工作流画布'],
 };
 const VIEW_MODULES = {
   brief: () => import('./views/briefView.js?v=20260829-production-v278b'),
   assets: () => import('./views/assetCenterView.js?v=20260829-production-v278b'),
-  scene: () => import('./views/sceneWorldPage.js?v=20260829-production-v278b'),
+  scene: () => import('./views/sceneWorldPage.js?v=20260829-production-v279'),
   plot: () => import('./views/plotRoomView.js?v=20260829-production-v278b'),
-  storyboard: () => import('./views/storyboardView.js?v=20260829-production-v278b'),
+  flow: () => import('./views/storyFlowSketchView.js?v=20260829-production-v279'),
+  storyboard: () => import('./views/storyboardView.js?v=20260829-production-v279'),
   final: () => import('./views/finalView.js?v=20260829-production-v278b'),
   workflow: () => import('./views/workflowView.js?v=20260829-production-v278b'),
 };
@@ -39,6 +41,7 @@ const VIEW_SECTIONS = Object.freeze({
   assets: 'summary,assets',
   scene: 'summary,assets,shots',
   plot: 'summary,story',
+  flow: 'summary,assets,story,shots',
   storyboard: 'summary,assets,story,shots',
   final: 'summary,shots,media',
   workflow: 'summary,reference,assets,story,shots,media,graph',
@@ -193,6 +196,7 @@ function projectNavigation(bundle, active) {
   const countFor = view => ({
     assets: counts.subject_assets ?? counts.assets,
     scene: counts.scenes,
+    flow: counts.flow_sketches,
     storyboard: counts.shots,
     shot: counts.keyframes,
     final: counts.clips,

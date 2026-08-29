@@ -1,4 +1,4 @@
-const VIEW_PROGRESS = Object.freeze(['brief', 'assets', 'scene', 'plot', 'storyboard', 'final']);
+const VIEW_PROGRESS = Object.freeze(['brief', 'plot', 'assets', 'scene', 'flow', 'storyboard', 'final']);
 
 export function routeProgressIndex(view = '') {
   return VIEW_PROGRESS.indexOf(view === 'shot' ? 'final' : view);

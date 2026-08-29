@@ -164,12 +164,20 @@ function storyboardSection(context = {}, outputs = {}, raw = {}) {
     shots: savedShots.length ? savedShots : referenceDraft,
     reference_draft: referenceDraft,
     source: savedShots.length ? 'saved_storyboard' : (referenceDraft.length ? 'reference_analysis_projection' : 'empty'),
-    sketches: list(outputs.storyboard_sketches).slice(0, 200),
-    sketch_batch: outputs.storyboard_sketch_batch && typeof outputs.storyboard_sketch_batch === 'object'
-      ? outputs.storyboard_sketch_batch
+    images: list(outputs.storyboard_images).slice(0, 200),
+    image_batch: outputs.storyboard_image_batch && typeof outputs.storyboard_image_batch === 'object'
+      ? outputs.storyboard_image_batch
       : null,
     status: raw.storyboard_status || null,
     continuity: list(outputs.continuity_contracts || outputs.keyframe_contracts).slice(0, 200),
+  };
+}
+
+function storyFlowSection(taskId, outputs = {}) {
+  return {
+    sketches: list(outputs.story_flow_sketches).slice(0, 200),
+    batch: outputs.story_flow_sketch_batch && typeof outputs.story_flow_sketch_batch === 'object' ? outputs.story_flow_sketch_batch : null,
+    gate: require('./storyFlowSketchGateService').inspect(taskId),
   };
 }
 
@@ -178,5 +186,6 @@ module.exports = {
   referenceStoryboardDraft,
   referenceReady,
   storySection,
+  storyFlowSection,
   storyboardSection,
 };

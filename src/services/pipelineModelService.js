@@ -110,7 +110,8 @@ const PIPELINE_SCHEMA = {
     { id: 'new_story_ad.pet_dossier', name: '动物档案图集', type: 'image', desc: '生成动物主体的可复用身份图集' },
     { id: 'new_story_ad.prop_dossier_atlas', name: '道具档案图集', type: 'image', desc: '生成故事道具的可复用视觉图集' },
     { id: 'new_story_ad.product_asset', name: '商品主体资产', type: 'image', desc: '生成商业主体或商品的权威参考资产' },
-    { id: 'new_story_ad.storyboard_sketch', name: '剧情广告分镜线稿', type: 'image', desc: '在文字分镜之后批量生成构图线稿，供镜头设计确认' },
+    { id: 'new_story_ad.story_flow_sketch', name: '剧情广告流向线稿', type: 'image', desc: '按已确认剧情情节点生成整体故事流向草图，确认后才允许生成分镜' },
+    { id: 'new_story_ad.storyboard_image', name: '剧情广告人物场景分镜', type: 'image', desc: '按已确认流向线稿生成并呈现绑定人物、场景、动作与机位的逐镜画面' },
     { id: 'new_story_ad.scene_asset', name: '场景五视图 / 空间资产（兼容）', type: 'image', desc: '历史场景图片调用兼容入口；新任务按母图、主视角和增强视图分别路由' },
     { id: 'new_story_ad.scene_extension_atlas', name: '场景空间母图', type: 'image', desc: '生成可渐进派生主视角与空间增强视图的统一母图，不直接伪造360全景' },
     { id: 'new_story_ad.scene_extension_master', name: '场景基础主视角', type: 'image', desc: '生成场景基础可用主视角；成功后独立保存，不受后续增强视图失败影响' },
@@ -225,7 +226,8 @@ const NEW_STORY_AD_IMAGE_STAGE_IDS = new Set([
   'new_story_ad.scene_extension_detail',
   'new_story_ad.scene_panorama',
   'new_story_ad.keyframe',
-  'new_story_ad.storyboard_sketch',
+  'new_story_ad.story_flow_sketch',
+  'new_story_ad.storyboard_image',
 ]);
 const NEW_STORY_AD_REQUIRED_IMAGE_MODEL = 'gpt-image-2';
 const NEW_STORY_AD_PANORAMA_REQUIRED_CAPABILITIES = Object.freeze([
@@ -529,7 +531,8 @@ const STAGE_DEFAULTS = {
   'new_story_ad.scene_depth': [],
   'new_story_ad.scene_spatial_reconstruction': [],
   'new_story_ad.keyframe': NEW_STORY_AD_IMAGE_DEFAULTS,
-  'new_story_ad.storyboard_sketch': NEW_STORY_AD_IMAGE_DEFAULTS,
+  'new_story_ad.story_flow_sketch': NEW_STORY_AD_IMAGE_DEFAULTS,
+  'new_story_ad.storyboard_image': NEW_STORY_AD_IMAGE_DEFAULTS,
   'new_story_ad.video': [
     { provider_id: 'deyunai', model_id: 'doubao-seedance-2-0-260128', priority: 1, enabled: true },
     { provider_id: 'smscrw', model_id: 'doubao-seedance-2-0-260128', priority: 2, enabled: true },

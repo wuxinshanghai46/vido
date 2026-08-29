@@ -5,6 +5,7 @@ const projectBundles = require('../services/storyAdWorkspace/projectBundleServic
 const graphProjection = require('../services/storyAdWorkspace/graphProjectionService');
 const graphLayouts = require('../services/storyAdWorkspace/graphLayoutService');
 const storyboardSketches = require('../services/storyAdWorkspace/storyboardSketchService');
+const storyFlowSketches = require('../services/storyAdWorkspace/storyFlowSketchService');
 const sceneWorlds = require('../services/storyAdWorkspace/sceneWorldService');
 const directorScenes = require('../services/storyAdWorkspace/directorSceneService');
 const referenceUnderstandingConfirmations = require('../services/storyAdWorkspace/referenceUnderstandingConfirmationService');
@@ -380,19 +381,47 @@ router.post('/projects/:taskId/materials', asyncRoute(async (req, res) => {
   res.json({ success: true, task_id: req.params.taskId, ...updated });
 }));
 
-router.put('/projects/:taskId/sketches', asyncRoute(async (req, res) => {
+router.post('/projects/:taskId/flow-sketches/generate-batch', asyncRoute(async (req, res) => {
+  projectForRequest(req);
+  const body = mediaModelSelection.applySelection('new_story_ad.story_flow_sketch', req.body || {});
+  const result = storyFlowSketches.startBatch(req.params.taskId, body);
+  res.status(result.accepted === false ? 200 : 202).json({ success: true, task_id: req.params.taskId, ...result });
+}));
+
+router.get('/projects/:taskId/flow-sketches/generate-batch', asyncRoute(async (req, res) => {
+  projectForRequest(req);
+  res.json({ success: true, task_id: req.params.taskId, ...storyFlowSketches.getBatch(req.params.taskId) });
+}));
+
+router.post('/projects/:taskId/flow-sketches/confirm', asyncRoute(async (req, res) => {
+  projectForRequest(req);
+  res.json({ success: true, task_id: req.params.taskId, ...storyFlowSketches.confirmAll(req.params.taskId) });
+}));
+
+const rejectLegacySketchRoute = asyncRoute(async (req) => {
+  projectForRequest(req);
+  const error = new Error('旧“线稿与分镜”合并入口已禁用，请刷新页面后分别使用“流向线稿”和“人物场景分镜”。');
+  error.code = 'LEGACY_STORYBOARD_SKETCH_ROUTE_DISABLED';
+  error.status = 410;
+  error.retryable = false;
+  throw error;
+});
+router.all('/projects/:taskId/sketches', rejectLegacySketchRoute);
+router.all('/projects/:taskId/sketches/*', rejectLegacySketchRoute);
+
+router.put('/projects/:taskId/storyboard-images', asyncRoute(async (req, res) => {
   projectForRequest(req);
   const result = storyboardSketches.saveSketches(
     req.params.taskId,
-    req.body?.sketches || [],
+    req.body?.images || [],
     currentUser(req),
   );
   res.json({ success: true, task_id: req.params.taskId, ...result });
 }));
 
-router.post('/projects/:taskId/sketches/:shotIndex/generate', asyncRoute(async (req, res) => {
+router.post('/projects/:taskId/storyboard-images/:shotIndex/generate', asyncRoute(async (req, res) => {
   projectForRequest(req);
-  const body = mediaModelSelection.applySelection('new_story_ad.storyboard_sketch', req.body || {});
+  const body = mediaModelSelection.applySelection('new_story_ad.storyboard_image', req.body || {});
   const result = await storyboardSketches.generateSketch(
     req.params.taskId,
     req.params.shotIndex,
@@ -401,9 +430,9 @@ router.post('/projects/:taskId/sketches/:shotIndex/generate', asyncRoute(async (
   res.json({ success: true, task_id: req.params.taskId, ...result });
 }));
 
-router.post('/projects/:taskId/sketches/generate-batch', asyncRoute(async (req, res) => {
+router.post('/projects/:taskId/storyboard-images/generate-batch', asyncRoute(async (req, res) => {
   projectForRequest(req);
-  const body = mediaModelSelection.applySelection('new_story_ad.storyboard_sketch', req.body || {});
+  const body = mediaModelSelection.applySelection('new_story_ad.storyboard_image', req.body || {});
   const result = await storyboardSketches.generateSketchBatch(
     req.params.taskId,
     body,
@@ -411,7 +440,7 @@ router.post('/projects/:taskId/sketches/generate-batch', asyncRoute(async (req, 
   res.json({ success: true, task_id: req.params.taskId, ...result });
 }));
 
-router.get('/projects/:taskId/sketches/generate-batch', asyncRoute(async (req, res) => {
+router.get('/projects/:taskId/storyboard-images/generate-batch', asyncRoute(async (req, res) => {
   projectForRequest(req);
   const result = storyboardSketches.getSketchBatch(req.params.taskId);
   res.json({ success: true, task_id: req.params.taskId, ...result });

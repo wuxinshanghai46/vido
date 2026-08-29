@@ -21,6 +21,7 @@ const referenceVideoAnalyses = require('../src/services/newStoryAd/referenceVide
 const referenceDetach = require('../src/services/newStoryAd/referenceDetachService');
 const referenceConfirmation = require('../src/services/storyAdWorkspace/referenceUnderstandingConfirmationService');
 const bundles = require('../src/services/storyAdWorkspace/projectBundleService');
+const storyFlowGate = require('../src/services/storyAdWorkspace/storyFlowSketchGateService');
 const newStoryAdRouter = require('../src/routes/newStoryAd');
 
 const user = { id: 'reference-intake-owner', role: 'user' };
@@ -749,13 +750,28 @@ async function testFamilyRecognitionAndSequentialWorkflowGates() {
     });
     bundle = bundles.buildProjectBundle(taskId, { sections: 'all', user });
     assert.equal(bundle.navigation.steps.plot.completed, true);
-    assert.equal(bundle.navigation.steps.storyboard.enabled, false, '场景尚未确认时不得提前开放线稿与分镜');
+    assert.equal(bundle.navigation.steps.flow.enabled, false, '场景尚未确认时不得提前开放流向线稿');
+    assert.equal(bundle.navigation.steps.storyboard.enabled, false, '流向线稿未确认时不得提前开放人物场景分镜');
     assert.equal(bundle.navigation.steps.final.enabled, false);
     assert.equal(bundle.navigation.current, 'scene', '剧情和人物确认后必须先核对场景，再进入分镜');
 
     storyAd.updateTaskRequest(taskId, { scene_setup_confirmed: true }, user);
     bundle = bundles.buildProjectBundle(taskId, { sections: 'all', user });
-    assert.equal(bundle.navigation.steps.storyboard.enabled, true, '确认场景后才允许进入线稿与分镜');
+    assert.equal(bundle.navigation.steps.flow.enabled, true, '确认场景后才允许进入流向线稿');
+    assert.equal(bundle.navigation.steps.storyboard.enabled, false, '流向线稿确认前不得进入人物场景分镜');
+    assert.equal(bundle.navigation.current, 'flow');
+
+    const flowState = storyFlowGate.blueprintState(taskId);
+    storage.saveOutput(taskId, 'story_flow_sketches', flowState.beats.map((beat, index) => ({
+      beat_index: Number(beat.beat_index || beat.index || index + 1) || index + 1,
+      image_url: `/flow-${index + 1}.png`,
+      status: 'confirmed',
+      source_blueprint_fingerprint: flowState.fingerprint,
+      source_content_revision: Number(flowState.task.content_revision || 1) || 1,
+    })));
+    bundle = bundles.buildProjectBundle(taskId, { sections: 'all', user });
+    assert.equal(bundle.navigation.steps.flow.completed, true);
+    assert.equal(bundle.navigation.steps.storyboard.enabled, true, '确认全部流向线稿后才允许进入人物场景分镜');
     assert.equal(bundle.navigation.current, 'storyboard');
 
     storage.saveOutput(taskId, 'storyboard_table', [{
