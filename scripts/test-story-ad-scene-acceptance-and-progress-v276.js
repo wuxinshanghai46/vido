@@ -76,6 +76,8 @@ function verifyExplicitAcceptance() {
 
   fixture.outputs.scene_assets[0].scene_master.image_url = 'https://assets.test/scene-a/master-v2.png';
   assert.equal(service.inspect(fixture.outputs.scene_assets, accepted).accepted, false, 'asset changes must invalidate old acceptance');
+  acceptanceFactory.invalidateIfChanged(fixture.task.id, fixture.outputs.scene_assets, fixture.storage);
+  assert.equal(fixture.outputs.scene_visual_acceptance.status, 'invalidated');
   const invalidatedNav = navigation.build({
     task: { title: 'V276' }, context: { ...fixture.outputs.context, project_name: 'V276', brief: 'brief', asset_setup_confirmed: true },
     outputs: { ...fixture.outputs, blueprint: { beats: [{ id: 'b1' }] } }, counts: {},

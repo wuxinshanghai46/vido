@@ -1,4 +1,5 @@
 const revisionService = require('./revisionService');
+const sceneVisualAcceptance = require('./sceneVisualAcceptanceService');
 
 function currentState({ storage, taskId, task, normalizeScenePlan }) {
   const planInput = storage.getOutput(taskId, 'scene_config');
@@ -60,7 +61,10 @@ function publishAndInvalidate({
   );
   if (preserved) {
     storage.saveOutput(taskId, 'scene_config', explicitScenePlan, { content_revision: contentRevision });
-    if (sceneAssets.length) storage.saveOutput(taskId, 'scene_assets', sceneAssets, { content_revision: contentRevision });
+    if (sceneAssets.length) {
+      storage.saveOutput(taskId, 'scene_assets', sceneAssets, { content_revision: contentRevision });
+      sceneVisualAcceptance.invalidateIfChanged(taskId, sceneAssets, storage);
+    }
     else storage.deleteOutput(taskId, 'scene_assets');
   }
   return {

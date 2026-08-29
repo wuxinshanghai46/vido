@@ -72,6 +72,23 @@ function inspect(scenes = [], acceptance = null, storage = storageDefault) {
   };
 }
 
+function invalidateIfChanged(taskId, scenes = [], storage = storageDefault) {
+  const acceptance = storage.getOutput(taskId, OUTPUT_KIND);
+  if (!acceptance || acceptance.status !== 'accepted') return acceptance || null;
+  const planned = plannedScenes(scenes);
+  const supersededByQa = planned.length > 0 && planned.every(scene => scene?.qa?.full_space_lock === true);
+  const state = inspect(planned, acceptance, storage);
+  if (state.accepted && !supersededByQa) return acceptance;
+  const next = {
+    ...acceptance,
+    status: supersededByQa ? 'superseded_by_qa' : 'invalidated',
+    invalidated_at: new Date().toISOString(),
+    invalidation_reason: supersededByQa ? 'qa_verified' : 'scene_assets_changed',
+  };
+  storage.saveOutput(taskId, OUTPUT_KIND, next);
+  return next;
+}
+
 function create(deps = {}) {
   const storage = deps.storage || storageDefault;
   function acceptCurrent(taskId, actor = {}) {
@@ -111,4 +128,4 @@ function create(deps = {}) {
   return { acceptCurrent, inspect: (scenes, acceptance) => inspect(scenes, acceptance, storage) };
 }
 
-module.exports = { OUTPUT_KIND, REQUIRED_VIEWS, create, fingerprint, inspect, requiredViewMap };
+module.exports = { OUTPUT_KIND, REQUIRED_VIEWS, create, fingerprint, inspect, invalidateIfChanged, requiredViewMap };

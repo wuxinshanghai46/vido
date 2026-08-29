@@ -24,6 +24,7 @@ const sceneCurrentAuthority = require('./sceneCurrentAuthorityService');
 const sceneFailureDiagnostics = require('./sceneFailureDiagnosticsService');
 const worldSetting = require('./worldSettingContractService');
 const sceneVisualPrompts = require('./sceneVisualPromptService');
+const sceneVisualAcceptance = require('./sceneVisualAcceptanceService');
 const sceneAssetFix = require('./sceneAssetFixService');
 const sceneViewCompleteness = require('./sceneViewCompletenessService');
 const sceneRepairPlans = require('./sceneRepairPlanService');
@@ -635,6 +636,7 @@ function saveSceneAssetsToTask(taskId, sceneAssets = [], options = {}) {
   const ctx = assertContextConsistent(storage.getOutput(taskId, 'context') || task.request || {});
   const normalized = normalizeSceneAssets(sceneAssets);
   storage.saveOutput(taskId, 'scene_assets', normalized);
+  sceneVisualAcceptance.invalidateIfChanged(taskId, normalized, storage);
   const nextCtx = {
     ...ctx,
     ...(options.sceneSpec ? { scene_spec: options.sceneSpec } : {}),
@@ -771,6 +773,7 @@ function publishBaseSceneAsset({
   });
   const sceneAssets = mergeSceneAssets(storage.getOutput(taskId, 'scene_assets') || [], baseAsset);
   storage.saveOutput(taskId, 'scene_assets', sceneAssets);
+  sceneVisualAcceptance.invalidateIfChanged(taskId, sceneAssets, storage);
   const nextCtx = { ...ctx, scene_assets: sceneAssets };
   storage.saveOutput(taskId, 'context', nextCtx);
   storage.updateTask(taskId, { request: nextCtx, updated_at: new Date().toISOString() });
@@ -817,6 +820,7 @@ function finishWithBaseScene({ taskId, target, basePublication, checkpoint, erro
       },
     });
     storage.saveOutput(taskId, 'scene_assets', stored);
+    sceneVisualAcceptance.invalidateIfChanged(taskId, stored, storage);
     const task = storage.getTask(taskId) || {};
     const currentCtx = storage.getOutput(taskId, 'context') || task.request || {};
     const nextCtx = { ...currentCtx, scene_assets: stored };
