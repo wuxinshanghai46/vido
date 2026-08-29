@@ -165,6 +165,7 @@ function sha256(value) { return crypto.createHash('sha256').update(String(value)
 
 function scopedDomainFromPatch(file = '', patch = '') {
   const normalized = normalizeFile(file);
+  if (normalized === 'scripts/test-story-ad-storyboard-progress-concurrency-v284.js') return 'story_content';
   if ([
     'scripts/test-story-ad-generation-one-click-v237.js',
     'scripts/test-story-ad-scene-submit-feedback-v273.js',
