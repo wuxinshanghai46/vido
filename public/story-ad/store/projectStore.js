@@ -1,9 +1,9 @@
-import { request, uploadAsset, uploadReferenceVideo } from '../api.js?v=20260829-production-v280a';
-import { beginReferenceReplacement, referenceSyncInterrupted, replacementCurrent, removeProjectReference, restoreReferenceReplacement } from './referenceReplacementState.js?v=20260829-production-v280a';
-import { cancelReferenceAnalysisRequest, retryReferenceAnalysisRequest, retryReferenceImportRequest } from './referenceRetryStore.js?v=20260829-production-v280a';
-import { loadProjectList } from './projectListStore.js?v=20260829-production-v280a';
-import { loadProjectBundle, prefetchProjectBundle, refreshProjectBundle } from './projectBundleStore.js?v=20260829-production-v281';
-import { beginStageSubmissionState } from './stageSubmissionState.js?v=20260829-production-v280a';
+import { request, uploadAsset, uploadReferenceVideo } from '../api.js?v=20260829-production-v281a';
+import { beginReferenceReplacement, referenceSyncInterrupted, replacementCurrent, removeProjectReference, restoreReferenceReplacement } from './referenceReplacementState.js?v=20260829-production-v281a';
+import { cancelReferenceAnalysisRequest, retryReferenceAnalysisRequest, retryReferenceImportRequest } from './referenceRetryStore.js?v=20260829-production-v281a';
+import { loadProjectList } from './projectListStore.js?v=20260829-production-v281a';
+import { loadProjectBundle, prefetchProjectBundle, refreshProjectBundle } from './projectBundleStore.js?v=20260829-production-v281a';
+import { beginStageSubmissionState } from './stageSubmissionState.js?v=20260829-production-v281a';
 export function createProjectStore() {
   const state = {
     projects: [],
@@ -45,7 +45,6 @@ export function createProjectStore() {
     await loadProjects();
     return data;
   }
-
   async function loadBundle(taskId, sections = 'all') {
     const bundle = await loadProjectBundle({ request, set, state, taskId, sections });
     syncProgressPolling();
@@ -53,10 +52,7 @@ export function createProjectStore() {
     hydrateReferenceFailure();
     return bundle;
   }
-  async function prefetchBundle(taskId, sections = 'all') {
-    return prefetchProjectBundle({ request, set, state, taskId, sections });
-  }
-  const mediaStore = () => import('./mediaCatalogStore.js?v=20260829-production-v280a'), loadMediaPage = async options => (await mediaStore()).loadMediaPage({ request, state }, options);
+  const mediaStore = () => import('./mediaCatalogStore.js?v=20260829-production-v281a'), loadMediaPage = async options => (await mediaStore()).loadMediaPage({ request, state }, options);
   const loadMoreMedia = async (kind = 'keyframes', limit = 24) => (await mediaStore()).loadMoreMedia({ request, state, set }, kind, limit);
 
   async function refreshSections(sections) {
@@ -68,8 +64,7 @@ export function createProjectStore() {
     if (!current) return null;
     const task = data.task && typeof data.task === 'object' ? data.task : {};
     const context = data.context && typeof data.context === 'object' ? data.context : null;
-    const contentRevision = Math.max(1, Number(data.content_revision || task.content_revision || current.revisions?.content || 1) || 1);
-    const contentRevisionChanged = contentRevision !== (Number(current.revisions?.content || 0) || 0);
+    const contentRevision = Math.max(1, Number(data.content_revision || task.content_revision || current.revisions?.content || 1) || 1), contentRevisionChanged = contentRevision !== (Number(current.revisions?.content || 0) || 0);
     const clientEditSeq = Math.max(0, Number(data.acknowledged_client_edit_seq || task.latest_client_edit_seq || current.revisions?.client_edit_seq || 0) || 0);
     const next = {
       ...current,
@@ -575,14 +570,14 @@ export function createProjectStore() {
     createProject,
     deleteProject,
     loadBundle,
-    prefetchBundle,
+    prefetchBundle: (taskId, sections = 'all') => prefetchProjectBundle({ request, set, state, taskId, sections }),
     loadMediaPage,
     loadMoreMedia,
     refreshSections,
     updateRequest,
     beginStageSubmission: (stage, total, message, details) => beginStageSubmissionState({ state, set }, stage, total, message, details),
     runStage,
-    saveScenePrompt: async (scene, prompt) => (await import('./scenePromptConfirmationStore.js?v=20260829-production-v280a')).saveScenePrompt({ state, request }, scene, prompt),
+    saveScenePrompt: async (scene, prompt) => (await import('./scenePromptConfirmationStore.js?v=20260829-production-v281a')).saveScenePrompt({ state, request }, scene, prompt),
     saveBlueprint,
     saveStoryboard,
     saveStoryboardImages,
@@ -597,7 +592,7 @@ export function createProjectStore() {
     videoPreflight,
     startVideo,
     cancelGeneration,
-    acceptCurrentScenes: async () => (await import('./sceneAcceptanceStore.js?v=20260829-production-v280a')).acceptCurrentScenes({ state, request, refreshSections }),
+    acceptCurrentScenes: async () => (await import('./sceneAcceptanceStore.js?v=20260829-production-v281a')).acceptCurrentScenes({ state, request, refreshSections }),
     clearProject,
     syncProgressPolling,
     stopProgressPolling,
