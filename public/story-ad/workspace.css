@@ -363,6 +363,8 @@
 .storyboard-stage-bar > div { display: grid; gap: 5px; min-width: 0; flex: 1; }
 .storyboard-stage-bar span { color: var(--muted); font-size: 11px; }
 .storyboard-stage-bar > .storyboard-stage-actions { display: flex; align-items: center; justify-content: flex-end; gap: 10px; flex: 0 0 auto; }
+.storyboard-primary-actions { display: flex; align-items: center; justify-content: flex-end; gap: 10px; margin: 12px 0 14px; }
+@media (max-width: 760px) { .storyboard-primary-actions { align-items: stretch; flex-direction: column; } .storyboard-primary-actions .btn { width: 100%; } }
 .sketch-batch-progress { display: grid; gap: 8px; margin: -2px 0 14px; padding: 12px 14px; border: 1px solid color-mix(in srgb, var(--mint) 45%, var(--line)); border-radius: 12px; background: var(--surface); }
 .sketch-batch-progress.is-failed { border-color: color-mix(in srgb, var(--danger) 55%, var(--line)); }
 .sketch-batch-progress.is-complete { border-color: color-mix(in srgb, var(--success) 55%, var(--line)); }

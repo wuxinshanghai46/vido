@@ -10,6 +10,8 @@ if (!/^[a-f0-9-]{36}$/i.test(taskId)) {
 const remoteScript = String.raw`
   const storage = require('./src/services/newStoryAd/storageService');
   const bundleService = require('./src/services/storyAdWorkspace/projectBundleService');
+  const publication = require('./src/services/newStoryAd/assetPlanPublicationService');
+  const releaseBundle = require('./src/services/storyAdReleaseBundleService');
   const taskId = ${JSON.stringify(taskId)};
   const task = storage.getTask(taskId);
   if (!task) {
@@ -17,6 +19,8 @@ const remoteScript = String.raw`
     process.exit(0);
   }
   const rawContext = storage.getOutput(taskId, 'context') || task.request || {};
+  const activePlan = publication.activeRecord(taskId);
+  const generationEligibility = publication.eligibility(taskId, { fingerprint: activePlan?.fingerprint || '' });
   const peopleSource = rawContext.person_asset?.cast_assets || (rawContext.person_asset ? [rawContext.person_asset] : []);
   const bundle = bundleService.buildProjectBundle(taskId, { sections: 'assets,shots' });
   const generationRuns = storage.listGenerationRuns({ work_id: taskId }) || [];
@@ -25,6 +29,14 @@ const remoteScript = String.raw`
   console.log(JSON.stringify({
     found: true,
     task: { status: task.status, stage: task.stage, error_code: task.error_code || '' },
+    generation_release: {
+      current_bundle_id: releaseBundle.identity().bundle_id,
+      task_required_bundle_id: task.required_bundle_id || '',
+      active_plan_bundle_id: activePlan?.plan?.release_envelope?.producer_bundle_id || '',
+      eligible: generationEligibility.eligible === true,
+      issues: generationEligibility.issues || [],
+      release_migration: generationEligibility.release_migration || null,
+    },
     navigation: {
       brief_completed: bundle.navigation?.steps?.brief?.completed === true,
       asset_plan_eligible: bundle.navigation?.asset_plan_eligibility?.eligible === true,

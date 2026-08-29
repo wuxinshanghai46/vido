@@ -224,17 +224,21 @@ export async function mount(host, context) {
         : (sketchGate.ready
           ? '分镜图可生成或上传；全部确认后，黑白构图会作为必需参考进入彩色关键帧。'
           : `人物场景分镜需要修正：${gateReason}`))));
+  const headerAction = isReferenceDraft
+    ? '<button class="btn primary" type="button" data-save-reference-storyboard>保存参考分镜草稿</button>'
+    : (completedHistorical && !sketchGate.ready
+      ? '<span class="status-tag is-neutral">历史完成内容 · 只读</span>'
+      : '');
+  const primaryAction = !isReferenceDraft && !(completedHistorical && !sketchGate.ready)
+    ? `${sketchModelPicker.html}${mainSketchAction}`
+    : '';
   host.innerHTML = `
     <section class="view-head">
       <div><h1>人物场景分镜</h1><p>系统自动核对剧情流向并绑定前四步已确认的人物与场景，再生成 Shot List 和黑白分镜画面。</p>${isReferenceDraft ? '<span class="status-tag is-neutral">参考视频逐镜草稿 · 待优化</span>' : ''}</div>
-      <div class="view-actions">${shots.length ? (isReferenceDraft
-        ? '<button class="btn primary" type="button" data-save-reference-storyboard>保存参考分镜草稿</button>'
-        : (completedHistorical && !sketchGate.ready
-          ? '<span class="status-tag is-neutral">历史完成内容 · 只读</span>'
-          : `${sketchModelPicker.html}${mainSketchAction}`))
-        : `${sketchModelPicker.html}${mainSketchAction}`}</div>
+      ${headerAction ? `<div class="view-actions">${headerAction}</div>` : ''}
     </section>
     <div class="guide ${storyboardFailed || (shots.length && gateWarningVisible) ? 'is-danger' : ''}">${escapeHtml(guideMessage)}</div>
+    ${primaryAction ? `<div class="storyboard-primary-actions">${primaryAction}</div>` : ''}
     <div class="tabs">
       <button class="tab ${defaultPanel === 'shots' ? 'active' : ''}" type="button" role="tab" aria-selected="${defaultPanel === 'shots'}" data-board-tab="shots">镜头结构 ${shots.length}</button>
       <button class="tab ${defaultPanel === 'sketches' ? 'active' : ''}" type="button" role="tab" aria-selected="${defaultPanel === 'sketches'}" data-board-tab="sketches" ${sketchGate.ready || sketches.length ? '' : 'disabled'}>人物场景分镜图 ${generatedSketchCount}/${shots.length}</button>

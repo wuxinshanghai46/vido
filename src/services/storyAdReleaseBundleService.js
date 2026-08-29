@@ -9,6 +9,13 @@ const topology = require('./newStoryAd/narrativeTopologyCompilerService');
 const ROOT = path.resolve(__dirname, '../..');
 const RELEASE_PATH = path.join(ROOT, 'config', 'story-ad-release.json');
 const RUNTIME_MANIFEST_PATH = path.join(ROOT, 'config', 'story-ad-runtime-manifest.json');
+const COMPATIBLE_CONTRACT_TRANSITIONS = new Set([
+  // V8 removes the user-facing story-flow confirmation step, but it does not
+  // change the persisted person/scene authority contract. Existing V7 Active
+  // Plans may therefore be promoted lazily after all semantic envelope fields
+  // and the exact input fingerprint have passed their normal checks.
+  'story-scene-platform-v7->story-scene-platform-v8',
+]);
 
 function readJson(file, fallback = {}) {
   try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return fallback; }
@@ -76,4 +83,8 @@ function envelope(extra = {}) {
   };
 }
 
-module.exports = { identity, envelope, sha, canonical };
+function compatibleContractTransition(fromVersion = '', toVersion = '') {
+  return COMPATIBLE_CONTRACT_TRANSITIONS.has(`${String(fromVersion || '').trim()}->${String(toVersion || '').trim()}`);
+}
+
+module.exports = { identity, envelope, sha, canonical, compatibleContractTransition };

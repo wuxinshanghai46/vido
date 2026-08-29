@@ -81,6 +81,10 @@ function releaseCompatibility({ task = {}, context = {}, plan = {}, activeRecord
   const identity = releaseBundle.identity();
   const currentEnvelope = releaseBundle.envelope();
   const previousEnvelope = plan?.release_envelope || {};
+  const compatibleContractUpgrade = releaseBundle.compatibleContractTransition(
+    previousEnvelope.contract_version,
+    currentEnvelope.contract_version,
+  );
   const issues = [];
   if (!plan || typeof plan !== 'object') issues.push('active_plan_missing');
   else {
@@ -114,6 +118,7 @@ function releaseCompatibility({ task = {}, context = {}, plan = {}, activeRecord
       else if (clean(context.asset_plan_fingerprint) !== clean(plan.fingerprint)) issues.push('legacy_asset_plan_lineage_mismatch');
     }
     ENVELOPE_CONTRACT_FIELDS.forEach((field) => {
+      if (field === 'contract_version' && compatibleContractUpgrade) return;
       if (!clean(previousEnvelope[field]) || clean(previousEnvelope[field]) !== clean(currentEnvelope[field])) {
         issues.push(`active_plan_contract_component_mismatch:${field}`);
       }
@@ -136,6 +141,7 @@ function releaseCompatibility({ task = {}, context = {}, plan = {}, activeRecord
     content_revision: Number(task.content_revision || 1) || 1,
     fingerprint: clean(fingerprint),
     fingerprint_contract: FINGERPRINT_CONTRACT,
+    compatible_contract_transition: compatibleContractUpgrade,
     fingerprint_basis: clean(plan?.fingerprint_contract) === LEGACY_FINGERPRINT_CONTRACT
       ? 'legacy_v14_four_source_exact_match'
       : (clean(plan?.fingerprint_contract) ? 'same_contract_strict_hash' : 'legacy_revision_and_persisted_lineage'),

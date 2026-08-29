@@ -66,8 +66,8 @@ function rawPlan(castCount, propCount, sceneCount) {
     },
   });
 }
-function oldEnvelope(oldBundle) { return { ...release.envelope(), producer_bundle_id: oldBundle, build_id: `legacy-${oldBundle}` }; }
-function createFixture({ id, oldBundle, castCount, propCount, sceneCount, opaquePlanFingerprint = '' }) {
+function oldEnvelope(oldBundle, contractVersion = '') { return { ...release.envelope(), producer_bundle_id: oldBundle, build_id: `legacy-${oldBundle}`, ...(contractVersion ? { contract_version: contractVersion } : {}) }; }
+function createFixture({ id, oldBundle, castCount, propCount, sceneCount, opaquePlanFingerprint = '', fingerprintContract = '', contractVersion = '' }) {
   const ctx = context(id, castCount);
   storage.createTask({ id, title: '匿名历史任务', content_revision: 8, request: ctx, status: 'done', stage: 'scene_config_done' });
   storage.updateTask(id, { required_bundle_id: oldBundle }, { systemFinalization: true });
@@ -80,12 +80,13 @@ function createFixture({ id, oldBundle, castCount, propCount, sceneCount, opaque
   const candidateId = `${id}-candidate`;
   const base = {
     ...compiled, status: 'active', candidate_id: candidateId, active_revision: 3, content_revision: 8,
-    fingerprint, story_scene_contract_version: coverage.CONTRACT_VERSION, release_envelope: oldEnvelope(oldBundle),
+    fingerprint, ...(fingerprintContract ? { fingerprint_contract: fingerprintContract } : {}),
+    story_scene_contract_version: coverage.CONTRACT_VERSION, release_envelope: oldEnvelope(oldBundle, contractVersion),
   };
   const domains = Object.fromEntries(['person', 'scene'].map(domain => [domain, { bundle_id: oldBundle, fingerprint, content_revision: 8 }]));
   const plan = { ...base, domain_state: domains };
   storage.saveOutput(id, publication.CANDIDATE_KIND, { ...base, status: 'candidate', validation_status: 'passed', validation_issues: [] });
-  storage.saveOutput(id, publication.ACTIVE_KIND, { plan_id: candidateId, active_revision: 3, content_revision: 8, fingerprint, release_envelope: base.release_envelope, domain_state: domains, plan });
+  storage.saveOutput(id, publication.ACTIVE_KIND, { plan_id: candidateId, active_revision: 3, content_revision: 8, fingerprint, ...(fingerprintContract ? { fingerprint_contract: fingerprintContract } : {}), release_envelope: base.release_envelope, domain_state: domains, plan });
   storage.saveOutput(id, 'asset_plan', plan);
   return { taskId: id, fingerprint: currentFingerprint, planFingerprint: fingerprint, candidateId, plan };
 }
@@ -175,6 +176,38 @@ for (const fixture of fixtures) {
   assert.equal(repeated.compatibility.already_current, true);
   assert.equal(storage.getOutput(fixture.taskId, publication.RELEASE_MIGRATION_KIND).migrated_at, migrationTimestamp);
 }
+
+const v7SystemBindingFixture = createFixture({
+  id: 'v7-system-binding-compatible', oldBundle: 'v7-system-binding-bundle', castCount: 2, propCount: 0, sceneCount: 4,
+  fingerprintContract: publication.FINGERPRINT_CONTRACT, contractVersion: 'story-scene-platform-v7',
+});
+const v7Compatibility = publication.releaseCompatibility({
+  task: storage.getTask(v7SystemBindingFixture.taskId),
+  context: storage.getOutput(v7SystemBindingFixture.taskId, 'context'),
+  plan: publication.activeRecord(v7SystemBindingFixture.taskId).plan,
+  activeRecord: publication.activeRecord(v7SystemBindingFixture.taskId),
+  candidate: storage.getOutput(v7SystemBindingFixture.taskId, publication.CANDIDATE_KIND),
+  fingerprint: v7SystemBindingFixture.fingerprint,
+});
+assert.equal(v7Compatibility.compatible, true, 'V7→V8 only changes the user workflow and must preserve an exact V15 Active Plan');
+assert.equal(v7Compatibility.compatible_contract_transition, true);
+assert.deepEqual(v7Compatibility.issues, []);
+const v7CallsBefore = modelCalls(v7SystemBindingFixture.taskId);
+const v7Permit = generationPermit.issue(v7SystemBindingFixture.taskId, 'storyboard', { idempotencyKey: 'v282-storyboard' });
+assert.equal(v7Permit.stage, 'storyboard');
+assert.equal(publication.eligibility(v7SystemBindingFixture.taskId, { fingerprint: v7SystemBindingFixture.fingerprint }).eligible, true);
+assert.equal(publication.activeRecord(v7SystemBindingFixture.taskId).plan.release_envelope.contract_version, 'story-scene-platform-v8');
+assert.equal(modelCalls(v7SystemBindingFixture.taskId), v7CallsBefore, 'lazy authority promotion must not call a model');
+
+const v6IncompatibleFixture = createFixture({
+  id: 'v6-system-binding-incompatible', oldBundle: 'v6-system-binding-bundle', castCount: 2, propCount: 0, sceneCount: 4,
+  fingerprintContract: publication.FINGERPRINT_CONTRACT, contractVersion: 'story-scene-platform-v6',
+});
+assert.throws(
+  () => generationPermit.issue(v6IncompatibleFixture.taskId, 'storyboard', { idempotencyKey: 'v282-v6-reject' }),
+  error => error.code === 'GENERATION_ACTIVE_PLAN_REQUIRED',
+  'unregistered contract transitions must remain blocked before model execution',
+);
 
 const ownedSceneMigration = createFixture({ id: 'owned-scene-release-migration', oldBundle: 'legacy-owned-scene', castCount: 2, propCount: 0, sceneCount: 4 });
 const ownedSceneGenerationId = 'owned-scene-generation';
@@ -584,4 +617,4 @@ assert.equal(idempotent.status, 0, idempotent.stderr);
 assert.equal(JSON.parse(idempotent.stdout).idempotent, true);
 assert.notEqual(cli(['--apply']).status, 0);
 
-console.log(JSON.stringify({ passed: true, production_shape_fixtures: fixtures.length, incompatible_cases: incompatibleCases.length, owned_scene_release_migration: true, unrelated_generation_blocked: true, lazy_permit_release_migration: true, model_calls_added: 0, cli_dry_run: true, cli_apply_explicit_task: true }));
+console.log(JSON.stringify({ passed: true, production_shape_fixtures: fixtures.length, incompatible_cases: incompatibleCases.length, v7_to_v8_exact_plan_promoted: true, unregistered_transition_blocked: true, owned_scene_release_migration: true, unrelated_generation_blocked: true, lazy_permit_release_migration: true, model_calls_added: 0, cli_dry_run: true, cli_apply_explicit_task: true }));
