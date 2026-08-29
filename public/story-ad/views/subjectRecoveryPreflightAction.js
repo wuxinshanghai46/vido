@@ -1,4 +1,4 @@
-import { request } from '../api.js?v=20260829-production-v282';
+import { request } from '../api.js?v=20260829-production-v283';
 
 async function preflight(bundle = {}, generationPayload = {}, apply = false, proofToken = '') {
   const taskId = bundle?.project?.id || '';
