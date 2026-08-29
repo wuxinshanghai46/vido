@@ -35,6 +35,7 @@ function loadPrompt(dossier) {
     renderSceneCoverCard: dossier.renderSceneCoverCard,
     sceneNeedsGeneration: dossier.sceneNeedsGeneration,
     sceneGenerationSettingsMarkup: () => '<select data-scene-quality></select>',
+    elapsedTimeTag: () => '',
   };
   vm.runInNewContext(`${executable('public/story-ad/views/scenePromptPreview.js')}\nglobalThis.__prompt={sceneProductionAction,scenePendingAction,renderSceneProductionCard};`, sandbox);
   return sandbox.__prompt;
