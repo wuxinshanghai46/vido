@@ -669,7 +669,9 @@ const dialogueTheme = read('public/story-ad/dialogue-theme.css');
 assert.match(dialogueTheme, /\.btn\.primary\{[^}]*box-shadow:none/u, '主操作默认态不得常驻高亮阴影');
 assert.match(dialogueTheme, /\.btn\.primary:not\(:disabled\):hover\{[^}]*linear-gradient/u, '主操作只能在悬停时进入紫色高亮反馈');
 assert.match(dialogueTheme, /\.btn\.primary\[aria-pressed="true"\]/u, '真正选中态必须与普通未选中态分离');
-assert.match(sceneWorldPage, /scene_setup_confirmed:\s*true/, '场景生成完成后必须显式确认才能进入线稿');
+assert.match(sceneWorldPage, /bindSceneConfirmAction/, '场景页必须绑定拆分后的显式确认交互');
+assert.match(read('public/story-ad/views/sceneQaPublicState.js'), /scene_setup_confirmed:\s*true/,
+  '场景生成完成后必须显式确认才能进入线稿');
 assert.match(scenePromptPreview, /workflow\.initialization_required === true/, '首次进入场景页必须识别缺失的正式场景规划');
 assert.match(scenePromptPreview, /runStage\('scene-plan'/, '首次进入场景页必须自动提交正式场景提示词规划');
 assert.match(scenePromptPreview, /场景数量与提示词预览/, '正式规划完成前必须立即展示预计场景数量和独立提示词预览');
@@ -812,8 +814,10 @@ assert.equal(resumePayload.resume_partial_checkpoint, true, '批量入口遇到�
 assert.equal(resumePayload.regenerate_selected, false, '恢复部分检查点不得误标为重新生成并重复付费');
 const sceneWorldPageSource = fs.readFileSync(path.join(__dirname, '../public/story-ad/views/sceneWorldPage.js'), 'utf8');
 const sceneCardInteractionsSource = fs.readFileSync(path.join(__dirname, '../public/story-ad/views/sceneCardInteractions.js'), 'utf8');
+const sceneQaPublicStateSource = fs.readFileSync(path.join(__dirname, '../public/story-ad/views/sceneQaPublicState.js'), 'utf8');
 assert.match(sceneCardInteractionsSource, /runStage\(['"]scene-assets/, '场景页必须成为场景画面的唯一正常生成入口');
-assert.match(sceneWorldPageSource, /scene_setup_confirmed:\s*true/, '场景画面核对完成后必须显式确认才放行线稿');
+assert.match(sceneWorldPageSource, /bindSceneConfirmAction/, '场景页必须绑定显式确认交互');
+assert.match(sceneQaPublicStateSource, /scene_setup_confirmed:\s*true/, '场景画面核对完成后必须显式确认才放行线稿');
 assert.doesNotMatch(sceneWorldPageSource, /production_graph_v1/, '场景放行不得继续读取项目大包中不存在的旧 outputs 投影');
 const newStoryAdRouteSource = fs.readFileSync(path.join(__dirname, '../src/routes/newStoryAd.js'), 'utf8');
 assert.match(newStoryAdRouteSource, /body\.request_key\s*\|\|\s*body\.requestKey/, '排队幂等键必须承接界面 request_key');
