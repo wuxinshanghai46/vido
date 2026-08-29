@@ -1,5 +1,5 @@
-import { toast } from '../components/ui.js?v=20260829-production-v279b';
-import { bindTextAutosave } from '../components/textAutosave.js?v=20260829-production-v279b';
+import { toast } from '../components/ui.js?v=20260829-production-v279c';
+import { bindTextAutosave } from '../components/textAutosave.js?v=20260829-production-v279c';
 
 export function bindScenePromptEditor(card, context) {
   const editor = card?.querySelector('[data-scene-prompt-editor]');
