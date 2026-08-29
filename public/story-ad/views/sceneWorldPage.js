@@ -1,10 +1,10 @@
-import { bindSceneWorldWorkspace } from './sceneWorldView.js?v=20260829-production-v278b';
-import { bindScenePlanUpdate, scenePlanBlockedView } from './scenePlanStatus.js?v=20260829-production-v278b';
-import { renderSceneProductionCard, scenePromptPreviewMarkup, scenePromptPreviewState, startInitialScenePlan } from './scenePromptPreview.js?v=20260829-production-v278b';
-import { bindMediaLightbox } from './mediaLightbox.js?v=20260829-production-v278b';
-import { buildSceneBatchActionPlan } from './sceneBatchActionPlan.js?v=20260829-production-v278b';
-import { bindGenerationModelPicker, loadGenerationModelPicker } from './generationModelPicker.js?v=20260829-production-v278b';
-import { normalizeSceneDossier } from './sceneDossierCard.js?v=20260829-production-v278b';
+import { bindSceneWorldWorkspace } from './sceneWorldView.js?v=20260829-production-v279';
+import { bindScenePlanUpdate, scenePlanBlockedView } from './scenePlanStatus.js?v=20260829-production-v279';
+import { renderSceneProductionCard, scenePromptPreviewMarkup, scenePromptPreviewState, startInitialScenePlan } from './scenePromptPreview.js?v=20260829-production-v279';
+import { bindMediaLightbox } from './mediaLightbox.js?v=20260829-production-v279';
+import { buildSceneBatchActionPlan } from './sceneBatchActionPlan.js?v=20260829-production-v279';
+import { bindGenerationModelPicker, loadGenerationModelPicker } from './generationModelPicker.js?v=20260829-production-v279';
+import { normalizeSceneDossier } from './sceneDossierCard.js?v=20260829-production-v279';
 import { bindSceneConfirmAction } from './sceneQaPublicState.js?v=20260829-production-v279';
 
 export function latestSceneTargetProgress(progress = {}, sceneId = '', generationId = '') {
