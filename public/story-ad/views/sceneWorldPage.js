@@ -1,23 +1,17 @@
-import { bindSceneWorldWorkspace } from './sceneWorldView.js?v=20260829-production-v273c';
-import { setButtonBusy, toast } from '../components/ui.js?v=20260829-production-v273c';
-import { bindScenePlanUpdate, scenePlanBlockedView } from './scenePlanStatus.js?v=20260829-production-v273c';
-import { renderSceneProductionCard, scenePromptPreviewMarkup, scenePromptPreviewState, startInitialScenePlan } from './scenePromptPreview.js?v=20260829-production-v273c';
-import { bindMediaLightbox } from './mediaLightbox.js?v=20260829-production-v273c';
-import { buildSceneBatchActionPlan } from './sceneBatchActionPlan.js?v=20260829-production-v273c';
-import { bindGenerationModelPicker, loadGenerationModelPicker } from './generationModelPicker.js?v=20260829-production-v273c';
-import { normalizeSceneDossier } from './sceneDossierCard.js?v=20260829-production-v273c';
+import { bindSceneWorldWorkspace } from './sceneWorldView.js?v=20260829-production-v274';
+import { setButtonBusy, toast } from '../components/ui.js?v=20260829-production-v274';
+import { bindScenePlanUpdate, scenePlanBlockedView } from './scenePlanStatus.js?v=20260829-production-v274';
+import { renderSceneProductionCard, scenePromptPreviewMarkup, scenePromptPreviewState, startInitialScenePlan } from './scenePromptPreview.js?v=20260829-production-v274';
+import { bindMediaLightbox } from './mediaLightbox.js?v=20260829-production-v274';
+import { buildSceneBatchActionPlan } from './sceneBatchActionPlan.js?v=20260829-production-v274';
+import { bindGenerationModelPicker, loadGenerationModelPicker } from './generationModelPicker.js?v=20260829-production-v274';
+import { normalizeSceneDossier } from './sceneDossierCard.js?v=20260829-production-v274';
 
-export function latestSceneTargetProgress(targetProgress = {}, sceneId = '', activeGenerationId = '') {
-  const candidates = Object.values(targetProgress).filter(item => ['scene_asset', 'scene_qa'].includes(String(item?.stage || ''))
-    && String(item?.scene_id || item?.scope_id || '') === String(sceneId));
-  const active = candidates.filter(item => activeGenerationId
-    && String(item?.generation_id || '') === String(activeGenerationId));
-  const pool = active.length ? active : candidates;
-  return pool.sort((left, right) => {
-    const rightTime = Date.parse(right?.updated_at || right?.started_at || right?.finished_at || '') || 0;
-    const leftTime = Date.parse(left?.updated_at || left?.started_at || left?.finished_at || '') || 0;
-    return rightTime - leftTime;
-  })[0] || null;
+export function latestSceneTargetProgress(progress = {}, sceneId = '', generationId = '') {
+  const rows = Object.values(progress).filter(item => ['scene_asset', 'scene_qa'].includes(String(item?.stage || ''))
+    && String(item?.scene_id || item?.scope_id || '') === String(sceneId))
+    .sort((a, b) => (Date.parse(b?.updated_at || b?.started_at || '') || 0) - (Date.parse(a?.updated_at || a?.started_at || '') || 0));
+  return rows.find(item => generationId && item?.generation_id === generationId) || rows[0] || null;
 }
 
 export async function mount(host, context) {
@@ -71,7 +65,7 @@ export async function mount(host, context) {
 
   bindScenePlanUpdate(host, context);
   bindMediaLightbox(host);
-  const cleanupSceneCards = (await import('./sceneCardInteractions.js?v=20260829-production-v273c')).bindSceneCards(host, context);
+  const cleanupSceneCards = (await import('./sceneCardInteractions.js?v=20260829-production-v274')).bindSceneCards(host, context);
   if (preview.autoInitialize) startInitialScenePlan(bundle, store);
   if (scenes.length && (workflow.generated_count || 0) > 0) bindSceneWorldWorkspace(host, bundle, store);
   host.querySelector('[data-confirm-scenes]')?.addEventListener('click', async event => {
