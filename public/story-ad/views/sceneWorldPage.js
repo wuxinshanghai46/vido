@@ -59,7 +59,7 @@ export async function mount(host, context) {
   const preview = scenePromptPreviewState(bundle, scenePlanReady || persistedScenePlanReady, generationActive);
 
   const completionAction = canConfirm
-    ? '<button class="btn primary compact" data-confirm-scenes>确认场景，进入流向线稿</button>'
+    ? '<button class="btn primary compact" data-confirm-scenes>确认场景，进入剧情流向</button>'
     : (canAcceptCurrent ? '<button class="btn primary compact" data-accept-current-scenes>使用当前图片继续</button>' : '');
   host.innerHTML = `<section class="view-head scene-view-head"><div><h1>场景</h1><p>默认查看场景画面，需要时可切换到提示词核对。</p></div></section>
     ${scenePlanReady || persistedScenePlanReady ? '' : scenePlanBlockedView(sceneEligibility, generationActive, { automatic: preview.autoInitialize || generationActive })}

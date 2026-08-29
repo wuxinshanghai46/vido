@@ -273,11 +273,12 @@ function graphFixture() {
       },
     },
     story_flow: {
-      sketches: [{ beat_index: 1, image_url: '/flow-beat-01.png', status: 'confirmed' }],
+      contract: { status: 'confirmed', units: [{ beat_id: 'beat-1', beat_index: 1, title: '体验流向', action: '人物进入场景并完成体验', state_before: '场景外', state_after: '完成体验', character_ids: ['cast-linyue'], scene_id: 'scene-room' }] },
     },
     storyboard: {
       shots: [{
         shot_id: 'SH01',
+        source_beat_id: 'beat-1',
         shot_index: 1,
         title: '体验商品',
         visual: longVisual,
@@ -334,7 +335,8 @@ function testGraphStructuredDetailsAndStableIds() {
   assert.equal(shot.detail.transition.type, 'match_cut');
   assert.equal(shot.media_url, '/storyboard-sh01.png', '人物场景分镜图必须成为对应 shot 节点媒体');
   const flowNode = graph.nodes.find(node => node.type === 'story_flow');
-  assert.equal(flowNode.media_url, '/flow-beat-01.png', '剧情流向线稿必须是独立图节点');
+  assert.equal(flowNode.media_url, '', '剧情流向确认是零费用结构化节点，不得继续展示或消费旧流向图片');
+  assert.equal(flowNode.detail.model_call_count, 0);
   assert(graph.edges.some(edge => edge.source === flowNode.id && edge.target === shot.id && edge.kind === 'directs'));
 
   const keyframes = graph.nodes.filter(node => node.type === 'keyframe');

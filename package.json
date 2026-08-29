@@ -76,6 +76,7 @@
     "story-ad:v277:test": "node scripts/test-story-ad-scene-acceptance-storyboard-v277.js && npm run story-ad:v276:test",
     "story-ad:v278:test": "node scripts/test-story-ad-storyboard-flow-v278.js",
     "story-ad:v279:test": "node scripts/test-story-ad-detail-sketch-batch.js && node scripts/test-story-ad-storyboard-flow-v278.js",
+    "story-ad:v280:test": "node scripts/test-story-ad-zero-cost-flow-contract-v280.js && node scripts/test-story-ad-storyboard-flow-v278.js",
     "story-ad:scene-world:test": "npm run story-ad:scene-layout:test && node scripts/test-story-ad-scene-world-v1.js && node scripts/test-story-ad-regeneration-and-assignment-v2.js && node scripts/test-story-ad-visual-assets-sync-v21.js && npm run story-ad:scene-card:test",
     "story-ad:v100:test": "node scripts/test-story-ad-mode-isolated-section-recovery-v100.js",
     "story-ad:v101:test": "node scripts/test-story-ad-generation-mode-isolation-v101.js",

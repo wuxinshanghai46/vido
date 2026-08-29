@@ -162,6 +162,10 @@ function normalizeShot(shot, ctx, idx, defaultDuration = 3) {
     : proposedDialogue;
   const normalized = {
     storyboard_quality_policy_version: 2,
+    shot_id: clampText(shot.shot_id || shot.coverage_id || `shot_${n}`, 160),
+    source_beat_id: clampText(shot.source_beat_id || shot.source_story_beat_id || shot.flow_beat_id || '', 160),
+    coverage_id: clampText(shot.coverage_id || shot.shot_coverage?.coverage_id || '', 160),
+    story_flow_contract_fingerprint: clampText(shot.story_flow_contract_fingerprint || ctx.story_flow_contract?.contract_fingerprint || '', 220),
     index: n,
     title: clampText(shot.title || `镜头 ${n}`, 40),
     role: clampText(shot.role || shot.story_stage || shot.purpose || '', 40),
@@ -204,6 +208,9 @@ function normalizeShot(shot, ctx, idx, defaultDuration = 3) {
       name: canonicalSpeakerName(c?.name || '', characters),
       action: clampText(c?.action || '', 80),
     })).filter(c => c.name || c.action) : [],
+    character_ids: (Array.isArray(shot.character_ids) ? shot.character_ids : []).map(value => clampText(value, 160)).filter(Boolean).slice(0, 12),
+    look_bindings: shot.look_bindings && typeof shot.look_bindings === 'object' ? { ...shot.look_bindings } : {},
+    voice_bindings: shot.voice_bindings && typeof shot.voice_bindings === 'object' ? { ...shot.voice_bindings } : {},
     material_usage: clampText(shot.material_usage || promoVisual || visualLayers.find(layer => /product|material|proof|brand|offer|result/i.test(layer.type))?.content || '', 160),
     keyframe_notes: keyframeNotes,
     scene_id: clampText(shot.scene_id || shot.sceneId || shot.scene_asset_id || shot.sceneAssetId || '', 120),
@@ -215,6 +222,7 @@ function normalizeShot(shot, ctx, idx, defaultDuration = 3) {
     scene_zone_id: clampText(shot.scene_zone_id || shot.zone_id || (Array.isArray(shot.zone_ids) ? shot.zone_ids[0] : '') || '', 100),
     scene_zone_label_zh: clampText(shot.scene_zone_label_zh || shot.zone_label_zh || shot.scene_zone || shot.sceneZone || shot.zone || '', 160),
     scene_revision: Math.max(1, Number(shot.scene_revision || shot.sceneRevision || 1) || 1),
+    sound_profile_id: clampText(shot.sound_profile_id || shot.soundProfileId || '', 160),
     camera_id: clampText(shot.camera_id || shot.cameraId || '', 100),
     zone_ids: (Array.isArray(shot.zone_ids) ? shot.zone_ids : []).map(value => clampText(value, 100)).filter(Boolean).slice(0, 16),
     anchor_ids: (Array.isArray(shot.anchor_ids) ? shot.anchor_ids : []).map(value => clampText(value, 100)).filter(Boolean).slice(0, 24),
@@ -342,22 +350,38 @@ function storyboardBlueprintDigest(blueprint = {}) {
   return { ...global, beat_count: Array.isArray(beats) ? beats.length : 0 };
 }
 
-function coverageSourceBeats(blueprint = {}, fallbackBrief = '') {
+function coverageSourceBeats(blueprint = {}, fallbackBrief = '', storyFlowContract = null) {
   const beats = Array.isArray(blueprint.beats) ? blueprint.beats : [];
   const base = beats.length ? beats : [{ beat_index: 1, role: 'story', plot: fallbackBrief, spoken_line: '' }];
+  const flowUnits = Array.isArray(storyFlowContract?.units) ? storyFlowContract.units : [];
+  const people = Array.isArray(storyFlowContract?.people) ? storyFlowContract.people : [];
+  const scenes = Array.isArray(storyFlowContract?.scenes) ? storyFlowContract.scenes : [];
   return base.map((beat, index) => {
     const sourceId = beat.source_story_beat_id || beat.story_beat_id || beat.beat_id || beat.id || `story_beat_${index + 1}`;
+    const flow = flowUnits.find(unit => String(unit.beat_id || '') === String(sourceId)) || flowUnits[index] || {};
+    const characterIds = Array.isArray(flow.character_ids) ? flow.character_ids : [];
+    const characterNames = characterIds.map(id => people.find(person => person.character_id === id)?.name).filter(Boolean);
+    const boundScene = scenes.find(scene => scene.scene_id === flow.scene_id) || {};
     return {
       ...beat,
       source_story_beat_id: sourceId,
       story_beat_id: `${sourceId}:source:${index + 1}`,
       plot: beat.plot || beat.summary || fallbackBrief,
+      flow_beat_id: flow.beat_id || sourceId,
+      flow_character_ids: characterIds,
+      flow_character_names: characterNames,
+      flow_look_bindings: flow.look_bindings || {},
+      flow_voice_bindings: flow.voice_bindings || {},
+      flow_scene_id: flow.scene_id || '',
+      flow_scene_revision: boundScene.scene_revision || 1,
+      flow_sound_profile_id: boundScene.sound_profile_id || '',
+      story_flow_contract_fingerprint: storyFlowContract?.contract_fingerprint || '',
     };
   });
 }
 
 function storyboardCoveragePlan(blueprint, ctx) {
-  const base = coverageSourceBeats(blueprint, ctx.brief);
+  const base = coverageSourceBeats(blueprint, ctx.brief, ctx.story_flow_contract);
   const target = Math.max(
     productionLimits.shotCount(ctx.shot_count),
     productionLimits.requiredStoryboardShotCount(ctx.target_duration, base.length),
@@ -374,8 +398,8 @@ function storyboardCoveragePlan(blueprint, ctx) {
   });
 }
 
-function beatsFromCoveragePlan(blueprint, plan) {
-  const beats = coverageSourceBeats(blueprint, blueprint.brief || '');
+function beatsFromCoveragePlan(blueprint, plan, ctx = {}) {
+  const beats = coverageSourceBeats(blueprint, blueprint.brief || '', ctx.story_flow_contract);
   const sourceById = new Map(beats.map((beat, index) => [
     String(beat.story_beat_id),
     { beat, sourceIndex: index },
@@ -416,7 +440,7 @@ function beatsFromCoveragePlan(blueprint, plan) {
 }
 
 function plannedBeats(blueprint, ctx) {
-  return beatsFromCoveragePlan(blueprint, storyboardCoveragePlan(blueprint, ctx));
+  return beatsFromCoveragePlan(blueprint, storyboardCoveragePlan(blueprint, ctx), ctx);
 }
 
 function alignShotsToBeats(rows, beats) {
@@ -436,9 +460,24 @@ function alignShotsToBeats(rows, beats) {
     const shotIndex = indexesAreUsable ? claimed[index] : expected[index];
     const beat = beatByIndex.get(shotIndex) || sourceBeats[index] || {};
     const blueprintSpokenLine = cleanSpeech(beat.spoken_line || beat.voiceover || beat.copy || '', 90);
+    const authoritativeCharacters = (Array.isArray(beat.flow_character_names) ? beat.flow_character_names : [])
+      .map(name => ({ name, action: clampText(beat.action || beat.plot || '', 80) }));
     return {
       ...shot,
       index: shotIndex,
+      shot_id: beat.coverage_id || `shot_${shotIndex}`,
+      coverage_id: beat.coverage_id || '',
+      source_beat_id: beat.flow_beat_id || beat.source_story_beat_id || '',
+      story_flow_contract_fingerprint: beat.story_flow_contract_fingerprint || '',
+      character_ids: Array.isArray(beat.flow_character_ids) ? beat.flow_character_ids : [],
+      look_bindings: beat.flow_look_bindings || {},
+      voice_bindings: beat.flow_voice_bindings || {},
+      characters: authoritativeCharacters,
+      expected_people: authoritativeCharacters.length,
+      scene_id: beat.flow_scene_id || '',
+      scene_asset_id: beat.flow_scene_id || '',
+      scene_revision: beat.flow_scene_revision || 1,
+      sound_profile_id: beat.flow_sound_profile_id || '',
       dialogue_function: beat.dialogue_function || beat.dialogue_intent || shot.dialogue_function || '',
       blueprint_spoken_line: blueprintSpokenLine,
       voiceover: blueprintSpokenLine || shot.voiceover || shot.narration || '',
@@ -508,7 +547,7 @@ Return exactly ${beats.length} shots. Required fields: index, title, role, durat
 
 async function generateStoryboardTable(ctx, blueprint, { taskId = '', resumeShots = [], onCheckpoint = null } = {}) {
   const coveragePlan = storyboardCoveragePlan(blueprint, ctx);
-  const beats = beatsFromCoveragePlan(blueprint, coveragePlan);
+  const beats = beatsFromCoveragePlan(blueprint, coveragePlan, ctx);
   const expectedIndexes = new Set(beats.map((beat, index) => Number(beat?.beat_index || index + 1)));
   const resumedByIndex = new Map((Array.isArray(resumeShots) ? resumeShots : [])
     .map(shot => [Number(shot?.index || shot?.shot_index || 0), shot])
@@ -797,9 +836,28 @@ Return only the repaired shots with their original index. Do not invent unprovid
     const index = Number(shot?.index || shot?.shot_index || indexes[idx]);
     return [index, shot];
   }).filter(([index]) => indexes.includes(index)));
-  const merged = shots.map((shot, idx) => repairedByIndex.has(idx + 1)
-    ? { ...shot, ...repairedByIndex.get(idx + 1), index: idx + 1 }
-    : shot);
+  const merged = shots.map((shot, idx) => {
+    if (!repairedByIndex.has(idx + 1)) return shot;
+    const repaired = repairedByIndex.get(idx + 1);
+    return {
+      ...shot,
+      ...repaired,
+      index: idx + 1,
+      shot_id: shot.shot_id,
+      coverage_id: shot.coverage_id,
+      source_beat_id: shot.source_beat_id,
+      story_flow_contract_fingerprint: shot.story_flow_contract_fingerprint,
+      character_ids: shot.character_ids,
+      look_bindings: shot.look_bindings,
+      voice_bindings: shot.voice_bindings,
+      characters: shot.characters,
+      expected_people: shot.expected_people,
+      scene_id: shot.scene_id,
+      scene_asset_id: shot.scene_asset_id,
+      scene_revision: shot.scene_revision,
+      sound_profile_id: shot.sound_profile_id,
+    };
+  });
   return normalizeShots(merged, {
     ...ctx,
     characters: normalizeCharacters(

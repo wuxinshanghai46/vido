@@ -18,9 +18,11 @@ assert.match(routes, /LEGACY_STORYBOARD_SKETCH_ROUTE_DISABLED/);
 assert.match(routes, /router\.all\('\/projects\/:taskId\/sketches/);
 assert.match(routes, /rejectLegacySketchRoute/);
 assert.doesNotMatch(pipeline, /['"]new_story_ad\.storyboard_sketch['"]\s*:/);
-assert.match(app, /flow:\s*\['5', '流向线稿'\]/);
+assert.match(app, /flow:\s*\['5', '剧情流向确认'\]/);
 assert.match(app, /storyboard:\s*\['6', '人物场景分镜'\]/);
-assert.match(app, /final:\s*\['7', '镜头与合成'\]/);
+assert.match(app, /final:\s*\['7', '声音、视频与合成'\]/);
+assert.match(routes, /LEGACY_STORY_FLOW_SKETCH_ROUTE_DISABLED/);
+assert.doesNotMatch(pipeline, /['"]new_story_ad\.story_flow_sketch['"]\s*:/);
 assert.doesNotMatch(storyboard, /\/sketches(?:\/|`|'|")/);
 assert.doesNotMatch(storyboard, /生成分镜线稿图/);
 

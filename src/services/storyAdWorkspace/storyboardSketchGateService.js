@@ -39,7 +39,7 @@ function inspect(taskId, dependencies = {}) {
   return {
     ready,
     code: ready ? '' : (explicitFailure ? 'STORYBOARD_REVIEW_REQUIRED' : 'STORYBOARD_CONTRACTS_NOT_READY'),
-    reason: ready ? '流向线稿已确认，人物场景分镜合同已通过，可以生成分镜图。' : clean(issues[0] || '人物场景分镜尚未满足生成条件。', 300),
+    reason: ready ? '剧情流向绑定已确认，人物场景分镜合同已通过，可以生成分镜图。' : clean(issues[0] || '人物场景分镜尚未满足生成条件。', 300),
     issues: [...new Set(issues.map(value => clean(value, 300)).filter(Boolean))].slice(0, 20),
     shot_count: shots.length,
     contract_count: contracts.length,
@@ -51,7 +51,7 @@ function inspect(taskId, dependencies = {}) {
 function assertReady(taskId, dependencies = {}) {
   const state = inspect(taskId, dependencies);
   if (state.ready) return state;
-  const error = new Error(state.reason || '流向线稿确认后才能生成人物场景分镜');
+  const error = new Error(state.reason || '剧情流向绑定确认后才能生成人物场景分镜');
   error.status = state.code === 'TASK_NOT_FOUND' ? 404 : 409;
   error.code = state.code;
   error.retryable = false;

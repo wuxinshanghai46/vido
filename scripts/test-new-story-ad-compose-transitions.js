@@ -131,6 +131,17 @@ const runFfmpeg = promisify(execFile);
     assert.strictEqual(audioBridgeResult.audio_bridge_applied, true);
     assert.strictEqual(audioBridgeResult.audio_bridge_count, 1);
     assert.strictEqual(audioBridgeResult.technical_qa.audio_present, true, 'an authored audio bridge must create and verify a real final audio stream');
+    const roomTone = path.join(tempDir, 'room-tone.wav');
+    await runFfmpeg(ffmpegPath, ['-y', '-f', 'lavfi', '-i', 'sine=frequency=220:sample_rate=48000:duration=1.2', '-c:a', 'pcm_s16le', roomTone]);
+    const soundResult = await composeService.concatVideos({
+      taskId: 'compose-timeline-sound-test',
+      clips: [{ shot_index: 0, file_path: first }],
+      soundTracks: [{ file_path: roomTone, timeline_start_sec: 0.35, duration_sec: 0.8, volume: 0.2 }],
+    });
+    assert.ok(fs.existsSync(soundResult.file_path));
+    assert.match(soundResult.provider_used, /timeline-sound/);
+    assert.strictEqual(soundResult.sound_effect_track_count, 1);
+    assert.strictEqual(soundResult.technical_qa.audio_present, true, '逐镜环境声必须真实混入最终文件，而不是只保存文字描述');
     console.log('new story ad compose transitions: ok');
   } finally {
     fs.rmSync(tempDir, { recursive: true, force: true });

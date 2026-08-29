@@ -356,7 +356,7 @@ async function main() {
     assert.equal(peakImageCalls, 1, 'paid scene views must be submitted in authority order so one ambiguous provider failure can stop later submissions');
     assert.match(calls[0].filename, /_master_/);
     assert.deepEqual(calls[0].referenceImages || [], []);
-    assert.equal(calls[0].imageModel, 'gpt-image-2');
+    assert.equal(calls[0].imageModel, 'auto');
     assert.match(calls[0].prompt, /MASTER ESTABLISHING VIEW/i);
     assert.match(calls[0].prompt, /Visual medium: photoreal live action/i);
     assert.match(calls[0].prompt, /real on-location photograph/i);
@@ -369,7 +369,7 @@ async function main() {
     assert.deepEqual(calls[1].referenceImages, ['/mock-scene-view-1.png']);
     assert.equal(calls[1].requireReferences, true);
     assert.equal(calls[1].inputFidelity, 'low');
-    assert.equal(calls[1].imageModel, 'gpt-image-2');
+    assert.equal(calls[1].imageModel, 'auto');
     assert.match(calls[1].prompt, /NEAR-VERTICAL TOP-DOWN WHOLE-SPACE LAYOUT/i);
     assert.match(calls[1].prompt, /82 to 90 degree downward/i);
     assert.match(calls[1].prompt, /complete usable ground\/base footprint.*every scene boundary/i);
@@ -386,7 +386,7 @@ async function main() {
       assert.deepEqual(call.referenceImages, ['/mock-scene-view-1.png', '/mock-scene-view-2.png']);
       assert.equal(call.requireReferences, true);
       assert.equal(call.inputFidelity, 'low');
-      assert.equal(call.imageModel, 'gpt-image-2');
+      assert.equal(call.imageModel, 'auto');
       assert.match(call.prompt, /Reference image 1 is the master establishing view.*Reference image 2 is the master-derived near-vertical top-down spatial layout/i);
       assert.match(call.prompt, /master as the primary scene\/appearance identity/i);
       assert.match(call.prompt, /unoccupied/i);
@@ -803,11 +803,11 @@ async function main() {
     });
     assert.doesNotMatch(glassDetailPrompt, /required metal finish/i, 'generic detail fallback must not hard-code a metal industry');
     assert.match(glassDetailPrompt, /task-required finish/i);
-    assert.equal(mediaAdapter.requiredImageModelForStage('new_story_ad.person_sheet'), 'gpt-image-2');
-    assert.equal(mediaAdapter.requiredImageModelForStage('new_story_ad.scene_asset'), 'gpt-image-2');
-    assert.equal(mediaAdapter.requiredImageModelForStage('new_story_ad.keyframe'), 'gpt-image-2');
-    assert.equal(mediaAdapter.requiredImageModelForStage('new_story_ad.story_flow_sketch'), 'gpt-image-2');
-    assert.equal(mediaAdapter.requiredImageModelForStage('new_story_ad.storyboard_image'), 'gpt-image-2');
+    assert.equal(mediaAdapter.requiredImageModelForStage('new_story_ad.person_sheet'), '');
+    assert.equal(mediaAdapter.requiredImageModelForStage('new_story_ad.scene_asset'), '');
+    assert.equal(mediaAdapter.requiredImageModelForStage('new_story_ad.keyframe'), '');
+    assert.equal(mediaAdapter.requiredImageModelForStage('new_story_ad.story_flow_sketch'), '');
+    assert.equal(mediaAdapter.requiredImageModelForStage('new_story_ad.storyboard_image'), '');
     assert.equal(mediaAdapter.imageConfigStage('new_story_ad.person_dossier_atlas'), 'new_story_ad.person_dossier_atlas');
     assert.equal(mediaAdapter.imageConfigStage('new_story_ad.person_dossier_action'), 'new_story_ad.person_dossier_action');
     assert.equal(mediaAdapter.imageConfigStage('new_story_ad.prop_dossier_atlas'), 'new_story_ad.prop_dossier_atlas');
@@ -818,7 +818,7 @@ async function main() {
       { provider_id: 'deyunai', model_id: 'gpt-image-2' },
       { provider_id: 'deyunai', model_id: 'nano-banana' },
     ]);
-    assert.deepEqual(policyCandidates.map(item => item.model_id), ['gpt-image-2'], 'story-ad image policy must remove every Nano Banana fallback');
+    assert.deepEqual(policyCandidates.map(item => item.model_id), ['nano-banana-pro', 'gpt-image-2', 'nano-banana'], '图片阶段必须保留用户可选的 Image 与 Nano Banana 路线');
     const governedPrompt = mediaAdapter.rightsAwareImagePrompt('original commercial scene');
     assert.match(governedPrompt, /Originality requirement:/);
     assert.doesNotMatch(
@@ -861,13 +861,11 @@ async function main() {
         message: '当前图片任务的提交或计费状态尚未确认，已停止自动切换，避免重复费用。',
       },
     );
-    const strictImageStages = ['new_story_ad.person_sheet', 'new_story_ad.scene_asset', 'new_story_ad.keyframe', 'new_story_ad.story_flow_sketch', 'new_story_ad.storyboard_image'];
+    const strictImageStages = ['new_story_ad.person_sheet', 'new_story_ad.scene_asset', 'new_story_ad.keyframe', 'new_story_ad.storyboard_image'];
     strictImageStages.forEach(stageId => {
-      assert.ok(pipelineModels.getStageDefaults(stageId).length > 0, `${stageId} must keep at least one Image2 default`);
-      assert.ok(pipelineModels.getStageDefaults(stageId).every(item => item.model_id === 'gpt-image-2'), `${stageId} defaults must contain only Image2`);
-      assert.ok(pipelineModels.listAvailableModelsForStage(stageId).every(item => item.model_id === 'gpt-image-2'), `${stageId} admin candidates must contain only Image2`);
-      assert.equal(pipelineModels.validateStageModel(stageId, { provider_id: 'deyunai', model_id: 'nano-banana-pro' }).reason, 'stage_requires_gpt_image_2');
+      assert.ok(pipelineModels.getStageDefaults(stageId).length > 0, `${stageId} must keep at least one selectable image default`);
     });
+    assert.equal(pipelineModels.getStageMeta('new_story_ad.story_flow_sketch'), null, '第 5 步零费用合同不得重新注册图片模型阶段');
     const sanitizedPipeline = pipelineModels.sanitizePipelineConfig({
       stages: {
         'new_story_ad.scene_asset': [
@@ -877,7 +875,7 @@ async function main() {
         ],
       },
     });
-    assert.deepEqual(sanitizedPipeline.stages['new_story_ad.scene_asset'].map(item => item.model_id), ['gpt-image-2']);
+    assert.deepEqual(sanitizedPipeline.stages['new_story_ad.scene_asset'].map(item => item.model_id), ['nano-banana-pro', 'gpt-image-2', 'nano-banana']);
 
     const circuitTaskId = 'spatial-image2-circuit-test';
     seedSingleSceneTask(circuitTaskId, 'image2 circuit', 'circuit-room');
@@ -916,7 +914,7 @@ async function main() {
       all_views_empty_scene: calls.every(call => /no people/i.test(call.prompt)),
       empty_scene_missing_stages: calls.filter(call => !/no people/i.test(call.prompt)).map(call => call.stage),
       primary_view_backward_compatible: asset.image_url === '/mock-scene-view-1.png',
-      model_management_image2_only: true,
+      model_management_public_image_choices: true,
       task_extra_attempt_budget: sceneAssets.SCENE_IMAGE_EXTRA_ATTEMPTS,
       provider_circuit_breaker: true,
       partial_checkpoint_resume: true,

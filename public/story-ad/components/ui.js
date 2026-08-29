@@ -200,8 +200,10 @@ export function generationProgressView(bundle = {}) {
   const currentIndex = Math.max(0, Math.round(Number(progress.current_index) || 0));
   const stageLabel = GENERATION_STAGE_LABELS[stage] || '当前任务';
   const unitLabel = GENERATION_UNIT_LABELS[stage] || '项';
-  const startedAt = String(progress.started_at || project.generation_started_at || project.generation_queued_at || '');
-  const finishedAt = String(progress.finished_at || project.generation_finished_at || project.updated_at || '');
+  const progressMatchesActive = !project.active_generation_id || !progress.generation_id
+    || String(project.active_generation_id) === String(progress.generation_id);
+  const startedAt = String(progressMatchesActive ? (progress.started_at || '') : '');
+  const finishedAt = String(progress.finished_at || '');
   const failureCode = String(progress.error_code || project.error_code || '').toUpperCase();
   const failureText = String(progress.message || project.error || '');
   const billingUnknown = checkpointRecovery?.retryBlocked === true || progress.billing_state === 'unknown' || /billing(?:_| )state[^\n]*unknown|计费状态[^\n]*未知/i.test(failureText);

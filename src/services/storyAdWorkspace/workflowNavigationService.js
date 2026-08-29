@@ -30,7 +30,13 @@ function build({ task = {}, context = {}, outputs = {}, counts = {}, clean, list
       && outputs.asset_plan.scene_plan.spaces.length);
   const blueprintReady = Boolean(outputs.blueprint && list(outputs.blueprint.beats).length);
   const storyboardReady = list(outputs.storyboard_table).length > 0;
-  const flowState = storyFlowSketchGate.inspectSnapshot(task, outputs.blueprint || {}, outputs.story_flow_sketches || []);
+  let flowState = { ready: false, total: list(outputs.blueprint?.beats).length, confirmed: 0, reason: '请确认剧情流向及每个节点的人物、场景绑定。' };
+  if (task.id) {
+    try { flowState = storyFlowSketchGate.inspect(task.id); } catch {}
+  } else if (outputs.story_flow_contract?.status === 'confirmed') {
+    const units = list(outputs.story_flow_contract.units);
+    flowState = { ready: units.length > 0, total: units.length, confirmed: units.length, reason: units.length ? '' : flowState.reason };
+  }
   const keyframesReady = list(outputs.keyframes).length > 0;
   const clipsReady = list(outputs.video_clips).length > 0;
   const finalReady = Boolean(outputs.final_video?.video_url || outputs.final_video?.videoUrl);
@@ -52,7 +58,8 @@ function build({ task = {}, context = {}, outputs = {}, counts = {}, clean, list
     counts: {
       ...counts,
       shots: list(outputs.storyboard_table).length,
-      flow_sketches: flowState.confirmed,
+      flow_units: flowState.confirmed,
+      flow_sketches: 0,
       keyframes: list(outputs.keyframes).length,
       clips: list(outputs.video_clips).length,
     },

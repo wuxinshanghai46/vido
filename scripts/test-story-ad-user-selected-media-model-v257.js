@@ -101,7 +101,8 @@ async function main() {
     assert(routeSource.includes(`new_story_ad.${stage}`), `route boundary missing selection stage ${stage}`);
   }
   const workspaceRoute = source('src/routes/storyAdWorkspace.js');
-  assert(workspaceRoute.includes("applySelection('new_story_ad.story_flow_sketch'"));
+  assert(!workspaceRoute.includes("applySelection('new_story_ad.story_flow_sketch'"));
+  assert(workspaceRoute.includes('LEGACY_STORY_FLOW_SKETCH_ROUTE_DISABLED'));
   assert(workspaceRoute.includes("applySelection('new_story_ad.storyboard_image'"));
   const pickerSource = source('public/story-ad/views/generationModelPicker.js');
   assert(pickerSource.includes('data-generation-model-picker'));

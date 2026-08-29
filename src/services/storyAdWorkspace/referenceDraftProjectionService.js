@@ -175,8 +175,9 @@ function storyboardSection(context = {}, outputs = {}, raw = {}) {
 
 function storyFlowSection(taskId, outputs = {}) {
   return {
-    sketches: list(outputs.story_flow_sketches).slice(0, 200),
-    batch: outputs.story_flow_sketch_batch && typeof outputs.story_flow_sketch_batch === 'object' ? outputs.story_flow_sketch_batch : null,
+    contract: outputs.story_flow_contract && typeof outputs.story_flow_contract === 'object' ? outputs.story_flow_contract : null,
+    historical_sketches: list(outputs.story_flow_sketches).slice(0, 200),
+    historical_batch: outputs.story_flow_sketch_batch && typeof outputs.story_flow_sketch_batch === 'object' ? outputs.story_flow_sketch_batch : null,
     gate: require('./storyFlowSketchGateService').inspect(taskId),
   };
 }

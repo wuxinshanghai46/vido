@@ -15,9 +15,18 @@ const mediaAdapter = require('../src/services/newStoryAd/mediaAdapter');
 const personKeyframeQa = require('../src/services/newStoryAd/personConsistencyQaService');
 const productKeyframeQa = require('../src/services/newStoryAd/productConsistencyQaService');
 const continuity = require('../src/services/newStoryAd/continuityService');
+const storyboardImages = require('../src/services/storyAdWorkspace/storyboardSketchService');
 
 function delay(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function confirmStoryboardImages(taskId) {
+  const shots = storage.getOutput(taskId, 'storyboard_table') || [];
+  storage.saveOutput(taskId, 'storyboard_images', storyboardImages.normalizeSketches(taskId, shots.map((shot, index) => ({
+    shot_index: Number(shot.shot_index || shot.index || index + 1) || index + 1,
+    status: 'confirmed', image_url: `https://example.test/storyboard-${taskId}-${index + 1}.png`,
+  }))));
 }
 
 function verifiedSceneAsset(sceneId = 'verified-scene') {
@@ -196,6 +205,7 @@ async function testStageIntegrationWithoutPaidProvider() {
   });
   storage.saveOutput(taskId, 'storyboard_table', shots);
   storage.saveOutput(taskId, 'keyframe_contracts', contracts);
+  confirmStoryboardImages(taskId);
 
   const originalGenerateImage = mediaAdapter.generateImage;
   const originalPersonReview = personKeyframeQa.reviewPersonKeyframe;
@@ -265,6 +275,7 @@ async function testFailedBatchKeepsStructuredState() {
     visual_contract: {},
     continuity_lock: { transition_type: 'hard_cut' },
   })));
+  confirmStoryboardImages(taskId);
 
   const originalGenerateImage = mediaAdapter.generateImage;
   const originalPersonReview = personKeyframeQa.reviewPersonKeyframe;
@@ -356,6 +367,7 @@ async function testStrictMissingFillPreservesExistingFrames() {
   storage.saveOutput(taskId, 'storyboard_table', shots);
   storage.saveOutput(taskId, 'keyframe_contracts', contracts);
   storage.saveOutput(taskId, 'keyframes', existing);
+  confirmStoryboardImages(taskId);
 
   const originalGenerateImage = mediaAdapter.generateImage;
   const originalPersonReview = personKeyframeQa.reviewPersonKeyframe;
@@ -409,6 +421,7 @@ async function testStrictMissingFillNeverAutoRegeneratesAfterQaRejection() {
     subject_type: 'product_only',
     characters: [],
   }]);
+  confirmStoryboardImages(taskId);
 
   const originalGenerateImage = mediaAdapter.generateImage;
   const originalPersonReview = personKeyframeQa.reviewPersonKeyframe;
@@ -468,6 +481,7 @@ async function testTimeoutCannotAutoResubmitWithoutBillingAcknowledgement() {
     subject_type: 'product_only',
     characters: [],
   }]);
+  confirmStoryboardImages(taskId);
 
   const originalGenerateImage = mediaAdapter.generateImage;
   const originalPersonReview = personKeyframeQa.reviewPersonKeyframe;

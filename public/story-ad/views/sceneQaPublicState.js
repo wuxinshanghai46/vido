@@ -69,7 +69,7 @@ export function bindSceneConfirmAction(host, context) {
     try {
       await context.store.updateRequest({ scene_setup_confirmed: true }, { skipRefresh: true });
       const refreshed = await context.store.refreshSections('summary,assets,story,shots');
-      if (refreshed?.navigation?.steps?.flow?.enabled === false) throw new Error(refreshed.navigation.steps.flow.blocker || '流向线稿步骤尚未解锁');
+      if (refreshed?.navigation?.steps?.flow?.enabled === false) throw new Error(refreshed.navigation.steps.flow.blocker || '剧情流向确认步骤尚未解锁');
       context.navigate(`/story-ad/projects/${encodeURIComponent(context.bundle.project.id)}?view=flow`);
     } catch (error) {
       toast(error.message || '确认场景失败', 'error');

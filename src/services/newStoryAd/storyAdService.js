@@ -7,6 +7,7 @@ const sceneExperienceAssist = require('./sceneExperienceAssistService'), assistK
 const { generateStoryboardTable, rewriteStoryboard } = require('./storyboardTableService');
 const storyboardCoverageLifecycle = require('./storyboardCoverageLifecycleService');
 const storyboardGenerationPreflight = require('./storyboardGenerationPreflightService');
+const storyboardImageConfirmationGate = require('../storyAdWorkspace/storyboardImageConfirmationGateService');
 const { reviewStoryboard } = require('./qualityReviewService'), storyboardContinuityGate = require('./storyboardContinuityGateService');
 const { buildKeyframeContracts } = require('./keyframeContractService'), knowledgePolicyRuntime = require('./knowledgePolicyRuntimeService');
 const { withContinuityContracts } = require('./continuityService');
@@ -40,6 +41,7 @@ const videoPreflight = require('./videoPreflightService'), videoStatusProjection
 const videoAttemptLedger = require('./videoAttemptStore').createVideoAttemptStore(storage);
 const sceneBlockService = require('./sceneBlockService'), videoClipStatusRecovery = require('./videoClipStatusRecoveryService');
 const { buildSoundJourney } = require('./soundJourneyService');
+const soundDesignAssets = require('./soundDesignAssetService');
 const shotDesign = require('./shotDesignService');
 const sceneAssistCompleteness = require('./sceneAssistCompletenessService'), assistScenePlan = require('./assistScenePlanService'), assistTextFormatter = require('./assistTextFormatterService'), assistCreativeDirection = require('./assistCreativeDirectionService'), storySetup = require('./storySetupService');
 const storyBeatAssist = require('./storyBeatAssistService'), briefGoalAssist = require('./briefGoalAssistService'), briefGoalPrompt = require('./briefGoalPromptService'), briefDialogueAssist = require('./briefDialogueAssistService');
@@ -869,7 +871,7 @@ async function generateScriptPackageStage(taskId, options = {}) {
 }
 
 async function generateStoryboardStage(taskId, options = {}) {
-  const { task, ctx } = storyboardGenerationPreflight.assertReady(taskId, { sceneVerificationOptions });
+  const { task, ctx, story_flow_contract: storyFlowContract } = storyboardGenerationPreflight.assertReady(taskId, { sceneVerificationOptions });
   let blueprint = storage.getOutput(taskId, 'blueprint');
   if (!blueprint) blueprint = await generateBlueprintStage(taskId);
   if (!blueprint.fingerprint) {
@@ -886,6 +888,7 @@ async function generateStoryboardStage(taskId, options = {}) {
   const existingCoveragePlan = storage.getOutput(taskId, 'storyboard_coverage_plan') || null;
   const coverageCurrent = storyboardCoverageLifecycle.cacheCurrent(existingMeta, existingCoveragePlan, expectedCoveragePlan);
   if (existingMeta.status === 'ready' && existingMeta.blueprint_fingerprint === sourceFingerprint
+    && existingMeta.story_flow_contract_fingerprint === storyFlowContract.contract_fingerprint
     && coverageCurrent && existingShots.length && existingContracts.length === existingShots.length) {
     storage.saveStage(taskId, 'storyboard', { status: 'done', output_summary: `${existingShots.length} 个镜头（蓝图未变化，已复用）`, diagnostics: { cache_hit: true, blueprint_fingerprint: sourceFingerprint } });
     stageProgress.update(taskId, { stage: 'storyboard', status: 'done', phase: 'fingerprint_reused', completed: existingShots.length, total: existingShots.length, processed: existingShots.length, percent: 100, generationId, message: '蓝图指纹一致，已复用完整分镜和关键帧合同' });
@@ -899,6 +902,7 @@ async function generateStoryboardStage(taskId, options = {}) {
   const characterSeed = `${ctx.request_id || taskId}|${ctx.brief || ''}|${ctx.product_subject || ''}`;
   const stageCtx = {
     ...ctx,
+    story_flow_contract: storyFlowContract,
     scene_assets: Array.isArray(sceneAssets) ? sceneAssets : [],
     expected_storyboard_count: productionLimits.requiredStoryboardShotCount(
       ctx.target_duration,
@@ -916,6 +920,7 @@ async function generateStoryboardStage(taskId, options = {}) {
     source: 'generated',
     blueprint_revision: sourceRevision,
     blueprint_fingerprint: sourceFingerprint,
+    story_flow_contract_fingerprint: storyFlowContract.contract_fingerprint,
     started_at: startedAt,
   });
   const saveCheckpoint = storyboardCoverageLifecycle.checkpointWriter({
@@ -965,6 +970,7 @@ async function generateStoryboardStage(taskId, options = {}) {
       source: 'generated',
       blueprint_revision: sourceRevision,
       blueprint_fingerprint: sourceFingerprint,
+      story_flow_contract_fingerprint: storyFlowContract.contract_fingerprint,
       ...storyboardCoverageLifecycle.metadata(generated.coverage_plan, expectedCoveragePlan),
       completed_at: new Date().toISOString(),
     });
@@ -989,11 +995,13 @@ async function generateStoryboardStage(taskId, options = {}) {
     source: 'generated',
     blueprint_revision: sourceRevision,
     blueprint_fingerprint: sourceFingerprint,
+    story_flow_contract_fingerprint: storyFlowContract.contract_fingerprint,
     ...storyboardCoverageLifecycle.metadata(generated.coverage_plan, expectedCoveragePlan),
     completed_at: new Date().toISOString(),
   });
   storage.deleteOutput(taskId, 'storyboard_checkpoint');
   storage.saveOutput(taskId, 'sound_journey', buildSoundJourney(shots));
+  storage.saveOutput(taskId, soundDesignAssets.PROFILE_KIND, soundDesignAssets.compile(taskId).profiles);
   storage.saveOutput(taskId, 'quality_review', review);
   keyframeContractFreshness.persist(taskId, contracts);
   storage.saveStage(taskId, 'storyboard', { status: 'done', output_summary: `${shots.length} 个镜头`, diagnostics: review });
@@ -1424,6 +1432,7 @@ async function generateKeyframesStage(taskId, options = {}) {
     shots = generated.shots || [];
   }
   if (!Array.isArray(shots) || !shots.length) throw new Error('当前项目没有可用分镜表，请先生成分镜。');
+  storyboardImageConfirmationGate.assertReady(taskId);
   const boundShots = bindShotsToScenes(shots, ctx.scene_assets);
   if (JSON.stringify(boundShots) !== JSON.stringify(shots)) {
     shots = boundShots;
@@ -3390,6 +3399,7 @@ async function composeStage(taskId, options = {}) {
     transitions: shots,
     brandOverlay,
     targetDurationSec: ctx.target_duration,
+    soundTracks: soundDesignAssets.resolvedTracks(taskId),
   });
   const finalVideoWithLineage = {
     ...final_video,
@@ -3401,6 +3411,8 @@ async function composeStage(taskId, options = {}) {
       fingerprint: clip.scene_block_fingerprint || '',
       members: clip.scene_block_members || [],
     }])).values()],
+    audio_license_ledger_fingerprint: storage.canonicalFingerprint(storage.getOutput(taskId, soundDesignAssets.LEDGER_KIND) || []),
+    attribution_manifest: soundDesignAssets.attributionManifest(taskId),
   };
   storage.saveOutput(taskId, 'final_video', finalVideoWithLineage);
   storage.saveStage(taskId, 'compose', {

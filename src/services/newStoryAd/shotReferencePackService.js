@@ -64,8 +64,14 @@ function compile({ taskId = '', shotIndex = 0, ctx = {}, shot = {}, contract = {
   const candidates = references.keyframeReferenceCandidates(ctx, {
     sceneReference, previousFrame, shot, includePerson, includeProduct, layoutReference,
     directorReference: directorSnapshot?.image_url || panoramaReference?.image_url || '',
+    storyboardReference: shot.storyboard_image?.status === 'confirmed' ? shot.storyboard_image.image_url : '',
   });
   const limit = Math.max(1, Math.min(12, Number(providerLimit) || 4));
+  const required = candidates.filter(item => item.required === true);
+  if (required.length > limit) throw Object.assign(new Error(`第 ${shotIndex + 1} 镜有 ${required.length} 张必需参考图，但所选模型最多接收 ${limit} 张；不能静默丢弃人物、场景或分镜构图参考。`), {
+    code: 'REQUIRED_REFERENCE_LIMIT_EXCEEDED', status: 422, retryable: false,
+    required_roles: required.map(item => item.role), provider_limit: limit,
+  });
   const selected = candidates.slice(0, limit).map((item, order) => ({
     order: order + 1, role: item.role, url: item.url, required: item.required === true,
     reference_hash: fingerprint({ url: item.url, role: item.role }),

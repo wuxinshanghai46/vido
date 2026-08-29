@@ -1,0 +1,319 @@
+'use strict';
+
+const storage = require('../newStoryAd/storageService');
+
+const OUTPUT_KIND = 'story_flow_contract';
+const CONTRACT_VERSION = 1;
+const DOWNSTREAM_KINDS = Object.freeze([
+  'storyboard_checkpoint', 'storyboard_coverage_plan', 'storyboard_table', 'storyboard_meta',
+  'storyboard_images', 'storyboard_image_batch', 'storyboard_sketches', 'storyboard_sketch_batch',
+  'shot_reference_packs', 'continuity_contracts', 'keyframe_contracts', 'keyframes',
+  'quality_review', 'sound_journey', 'tts_audio', 'video_clips', 'video_scene_blocks', 'final_video',
+]);
+
+function list(value) { return Array.isArray(value) ? value.filter(Boolean) : []; }
+function clean(value = '', max = 1200) { return String(value || '').replace(/\s+/g, ' ').trim().slice(0, max); }
+function now() { return new Date().toISOString(); }
+function stableId(value, fallback = '') { return clean(value || fallback, 160); }
+
+function taskState(taskId) {
+  const task = storage.getTask(taskId);
+  if (!task) throw Object.assign(new Error('项目不存在'), { code: 'TASK_NOT_FOUND', status: 404 });
+  const context = storage.getOutput(taskId, 'context') || task.request || {};
+  const blueprint = storage.getOutput(taskId, 'blueprint') || {};
+  const sceneAssets = list(storage.getOutput(taskId, 'scene_assets') || context.scene_assets);
+  const sceneConfig = storage.getOutput(taskId, 'scene_config') || context.scene_plan || {};
+  const castProfiles = list(context.cast_profiles).length
+    ? list(context.cast_profiles)
+    : list(storage.getOutput(taskId, 'asset_plan')?.cast_profiles);
+  const castAssets = list(context.person_asset?.cast_assets).length
+    ? list(context.person_asset.cast_assets)
+    : (context.person_asset ? [context.person_asset] : []);
+  const cast = castProfiles.map((profile, index) => {
+    const id = stableId(profile.character_id || profile.cast_id || profile.id);
+    const asset = castAssets.find(item => [item.actor_id, item.character_id, item.subject_profile?.id, item.id]
+      .map(stableId).includes(id)) || castAssets[index] || {};
+    return {
+      ...profile,
+      person_revision: Number(asset.person_revision || asset.revision || profile.person_revision || profile.revision || context.person_contract?.person_revision || 0) || 0,
+      identity_reference_ids: list(asset.identity_views || asset.view_images || asset.atomic_assets)
+        .map((item, itemIndex) => stableId(item.id || item.asset_id || item.key, `identity_ref_${itemIndex + 1}`)),
+    };
+  });
+  const beats = list(blueprint.beats);
+  if (!beats.length) throw Object.assign(new Error('请先生成并确认剧情与对白。'), {
+    code: 'BLUEPRINT_REQUIRED_FOR_STORY_FLOW', status: 409, retryable: false,
+  });
+  if (context.scene_setup_confirmed !== true) throw Object.assign(new Error('请先完成并确认人物与场景资产。'), {
+    code: 'SCENE_CONFIRMATION_REQUIRED_FOR_STORY_FLOW', status: 409, retryable: false,
+  });
+  return { task, context, blueprint, sceneAssets, sceneConfig, cast, beats };
+}
+
+function beatId(beat = {}, index = 0) {
+  return stableId(beat.beat_id || beat.story_beat_id || beat.id, `beat_${index + 1}`);
+}
+
+function personAuthority(person = {}, index = 0) {
+  return {
+    character_id: stableId(person.character_id || person.cast_id || person.id),
+    name: clean(person.name || person.displayName || person.role || `人物 ${index + 1}`, 120),
+    person_revision: Math.max(0, Number(person.person_revision || person.revision || 0) || 0),
+    look_ids: list(person.look_profiles).map((look, lookIndex) => stableId(look.id || look.look_id, `look_${index + 1}_${lookIndex + 1}`)),
+    voice_id: stableId(person.voice_id || person.voiceId || person.tts_voice_id || person.voice_assignment?.voice_id),
+    identity_reference_ids: list(person.identity_reference_ids).map(value => stableId(value)).filter(Boolean),
+  };
+}
+
+function sceneAuthority(scene = {}, index = 0) {
+  const contract = scene.scene_contract && typeof scene.scene_contract === 'object' ? scene.scene_contract : {};
+  const views = list(scene.view_images || scene.views).map((view, viewIndex) => ({
+    view_id: stableId(view.view_id || view.key || view.id, `view_${viewIndex + 1}`),
+    image_url: clean(view.image_url || view.imageUrl || view.url, 1200),
+  }));
+  return {
+    scene_id: stableId(scene.scene_id || scene.space_id || scene.id),
+    name: clean(scene.name || scene.scene_name || scene.title || `场景 ${index + 1}`, 120),
+    scene_revision: Math.max(1, Number(scene.scene_revision || scene.revision || contract.revision || 1) || 1),
+    view_ids: views.map(view => view.view_id),
+    sound_profile_id: stableId(scene.sound_profile_id || scene.sound_profile?.id || contract.sound_profile_id || `sound_profile_${stableId(scene.scene_id || scene.space_id || scene.id)}`),
+  };
+}
+
+function authoritySnapshot(state) {
+  const people = state.cast.map(personAuthority);
+  const scenes = state.sceneAssets.map(sceneAuthority);
+  const blueprintFingerprint = clean(state.blueprint.fingerprint, 220) || storage.canonicalFingerprint({
+    title: state.blueprint.story_title || state.blueprint.title || '',
+    logline: state.blueprint.logline || '',
+    beats: state.beats,
+  });
+  const authorityFingerprint = storage.canonicalFingerprint({
+    blueprint_fingerprint: blueprintFingerprint,
+    people,
+    scenes,
+  });
+  return { people, scenes, blueprint_fingerprint: blueprintFingerprint, authority_fingerprint: authorityFingerprint };
+}
+
+function tokens(value = '') {
+  const text = clean(value, 2000).toLowerCase();
+  return new Set([
+    ...text.match(/[a-z0-9_\-]{2,}/g) || [],
+    ...text.replace(/[a-z0-9_\-]/g, '').split('').filter(char => /[\u3400-\u9fff]/.test(char)),
+  ]);
+}
+
+function overlapScore(left = '', right = '') {
+  const a = tokens(left); const b = tokens(right);
+  let score = 0;
+  a.forEach(value => { if (b.has(value)) score += 1; });
+  return score;
+}
+
+function plannedSceneForBeat(state, beat, index, scenes) {
+  const explicit = stableId(beat.scene_id || beat.sceneId || beat.scene_asset_id);
+  if (explicit && scenes.some(scene => scene.scene_id === explicit)) return explicit;
+  const spaces = list(state.sceneConfig.spaces || state.sceneConfig.scenes || state.sceneConfig.scene_plan);
+  for (const space of spaces) {
+    const covered = list(space.covered_beat_ids || space.beat_ids || space.story_beat_ids).map(String);
+    if (covered.includes(beatId(beat, index)) || covered.includes(String(index + 1))) {
+      const id = stableId(space.scene_id || space.space_id || space.id);
+      if (scenes.some(scene => scene.scene_id === id)) return id;
+    }
+  }
+  if (scenes.length === 1) return scenes[0].scene_id;
+  const beatText = [beat.title, beat.plot, beat.visual, beat.action, beat.location, beat.scene].filter(Boolean).join(' ');
+  const ranked = scenes.map(scene => ({ scene, score: overlapScore(beatText, `${scene.name} ${scene.description || ''}`) }))
+    .sort((a, b) => b.score - a.score);
+  return ranked[0]?.score > 0 && ranked[0].score > (ranked[1]?.score || 0) ? ranked[0].scene.scene_id : '';
+}
+
+function peopleForBeat(beat, people) {
+  const explicit = list(beat.character_ids || beat.characters || beat.people).map(item => (
+    typeof item === 'object' ? stableId(item.character_id || item.cast_id || item.id || item.name) : stableId(item)
+  ));
+  const resolved = new Set();
+  explicit.forEach(value => {
+    const match = people.find(person => person.character_id === value || person.name === value);
+    if (match) resolved.add(match.character_id);
+  });
+  const text = clean([beat.title, beat.plot, beat.visual, beat.action, beat.spoken_line].filter(Boolean).join(' '), 3000);
+  people.forEach(person => { if (person.name && text.includes(person.name)) resolved.add(person.character_id); });
+  if (!resolved.size && people.length === 1 && !/无人|空镜|纯场景|无人物/.test(text)) resolved.add(people[0].character_id);
+  return [...resolved];
+}
+
+function unitFromBeat(state, beat, index, authority) {
+  const characterIds = peopleForBeat(beat, authority.people);
+  return {
+    beat_id: beatId(beat, index),
+    beat_index: index + 1,
+    title: clean(beat.title || beat.role || `剧情节点 ${index + 1}`, 160),
+    plot: clean(beat.plot || beat.visual || beat.summary || '', 1600),
+    action: clean(beat.action || beat.character_action || '', 800),
+    state_before: clean(beat.state_before || beat.entry_frame_state || '', 600),
+    state_after: clean(beat.state_after || beat.exit_frame_state || '', 600),
+    spoken_line: clean(beat.spoken_line || beat.voiceover || beat.copy || '', 600),
+    character_ids: characterIds,
+    look_bindings: Object.fromEntries(characterIds.map(id => {
+      const person = authority.people.find(item => item.character_id === id);
+      return [id, person?.look_ids?.[0] || ''];
+    })),
+    voice_bindings: Object.fromEntries(characterIds.map(id => {
+      const person = authority.people.find(item => item.character_id === id);
+      return [id, person?.voice_id || ''];
+    })),
+    scene_id: plannedSceneForBeat(state, beat, index, authority.scenes),
+  };
+}
+
+function draft(taskId) {
+  const state = taskState(taskId);
+  const authority = authoritySnapshot(state);
+  const stored = storage.getOutput(taskId, OUTPUT_KIND);
+  const current = stored && stored.authority_fingerprint === authority.authority_fingerprint
+    && stored.blueprint_fingerprint === authority.blueprint_fingerprint;
+  const generatedUnits = state.beats.map((beat, index) => unitFromBeat(state, beat, index, authority));
+  const priorById = new Map(current ? list(stored.units).map(unit => [stableId(unit.beat_id), unit]) : []);
+  const units = generatedUnits.map(unit => {
+    const prior = priorById.get(unit.beat_id);
+    if (!prior) return unit;
+    return {
+      ...unit,
+      character_ids: list(prior.character_ids),
+      look_bindings: prior.look_bindings && typeof prior.look_bindings === 'object' ? prior.look_bindings : unit.look_bindings,
+      voice_bindings: prior.voice_bindings && typeof prior.voice_bindings === 'object' ? prior.voice_bindings : unit.voice_bindings,
+      scene_id: stableId(prior.scene_id) || unit.scene_id,
+    };
+  });
+  return {
+    contract_version: CONTRACT_VERSION,
+    status: current ? clean(stored.status, 30) || 'draft' : 'draft',
+    model_call_count: 0,
+    blueprint_fingerprint: authority.blueprint_fingerprint,
+    authority_fingerprint: authority.authority_fingerprint,
+    people: authority.people,
+    scenes: authority.scenes,
+    units,
+    historical_flow_sketch_count: list(storage.getOutput(taskId, 'story_flow_sketches')).length,
+    created_at: current ? clean(stored.created_at, 80) : '',
+    updated_at: current ? clean(stored.updated_at, 80) : '',
+    confirmed_at: current ? clean(stored.confirmed_at, 80) : '',
+  };
+}
+
+function validateUnits(base, supplied = []) {
+  const incoming = new Map(list(supplied).map(unit => [stableId(unit.beat_id), unit]));
+  const personIds = new Set(base.people.map(person => person.character_id));
+  const sceneIds = new Set(base.scenes.map(scene => scene.scene_id));
+  const errors = [];
+  const units = base.units.map(unit => {
+    const source = incoming.get(unit.beat_id) || unit;
+    const characterIds = [...new Set(list(source.character_ids).map(value => stableId(value)).filter(Boolean))];
+    characterIds.forEach(id => { if (!personIds.has(id)) errors.push(`${unit.title} 引用了不存在的人物 ${id}`); });
+    const sceneId = stableId(source.scene_id);
+    if (base.scenes.length && !sceneId) errors.push(`${unit.title} 尚未绑定场景`);
+    else if (sceneId && !sceneIds.has(sceneId)) errors.push(`${unit.title} 引用了不存在的场景 ${sceneId}`);
+    return {
+      ...unit,
+      character_ids: characterIds,
+      scene_id: sceneId,
+      look_bindings: Object.fromEntries(characterIds.map(id => {
+        const person = base.people.find(item => item.character_id === id);
+        const requested = stableId(source.look_bindings?.[id]);
+        const valid = person?.look_ids?.includes(requested) ? requested : (person?.look_ids?.[0] || '');
+        return [id, valid];
+      })),
+      voice_bindings: Object.fromEntries(characterIds.map(id => {
+        const person = base.people.find(item => item.character_id === id);
+        return [id, person?.voice_id || ''];
+      })),
+    };
+  });
+  if (errors.length) throw Object.assign(new Error(`剧情流向尚不能确认：${errors.join('；')}`), {
+    code: 'STORY_FLOW_CONTRACT_INVALID', status: 422, retryable: false, issues: errors,
+  });
+  return units;
+}
+
+function confirm(taskId, supplied = [], actor = {}) {
+  const base = draft(taskId);
+  const units = validateUnits(base, supplied);
+  const previous = storage.getOutput(taskId, OUTPUT_KIND) || {};
+  const nextFingerprint = storage.canonicalFingerprint({
+    blueprint_fingerprint: base.blueprint_fingerprint,
+    authority_fingerprint: base.authority_fingerprint,
+    units: units.map(unit => ({ beat_id: unit.beat_id, character_ids: unit.character_ids, look_bindings: unit.look_bindings, voice_bindings: unit.voice_bindings, scene_id: unit.scene_id })),
+  });
+  const changed = previous.contract_fingerprint !== nextFingerprint || previous.status !== 'confirmed';
+  const timestamp = now();
+  const contract = {
+    ...base,
+    units,
+    status: 'confirmed',
+    contract_fingerprint: nextFingerprint,
+    model_call_count: 0,
+    created_at: previous.created_at || timestamp,
+    updated_at: timestamp,
+    confirmed_at: timestamp,
+    confirmed_by: clean(actor.id || actor.user_id || actor.email || 'user', 120),
+  };
+  const task = storage.getTask(taskId) || {};
+  if (changed && !previous.contract_fingerprint) {
+    const legacy = Object.fromEntries(DOWNSTREAM_KINDS
+      .map(kind => [kind, storage.getOutput(taskId, kind)])
+      .filter(([, value]) => value !== null && value !== undefined));
+    if (Object.keys(legacy).length) storage.saveOutput(taskId, 'story_flow_migration_archive', {
+      status: 'historical_read_only',
+      reason: 'pre_structured_story_flow_contract',
+      archived_at: timestamp,
+      outputs: legacy,
+    });
+  }
+  storage.saveOutput(taskId, OUTPUT_KIND, contract, {
+    content_revision: Number(task.content_revision || 1) || 1,
+    snapshot_id: task.current_snapshot_id || `story-flow:${taskId}`,
+  });
+  if (changed) storage.deleteOutputs(taskId, DOWNSTREAM_KINDS);
+  return { contract, gate: inspect(taskId), model_call_count: 0, downstream_invalidated: changed };
+}
+
+function inspect(taskId) {
+  let base;
+  try { base = draft(taskId); } catch (error) {
+    return {
+      ready: false, total: 0, confirmed: 0, code: error.code || 'STORY_FLOW_NOT_READY',
+      reason: clean(error.message || '请先完成剧情、人物和场景。', 300),
+    };
+  }
+  const stored = storage.getOutput(taskId, OUTPUT_KIND) || {};
+  const fresh = stored.blueprint_fingerprint === base.blueprint_fingerprint
+    && stored.authority_fingerprint === base.authority_fingerprint;
+  const complete = list(stored.units).length === base.units.length
+    && list(stored.units).every(unit => !base.scenes.length || stableId(unit.scene_id));
+  const ready = fresh && complete && stored.status === 'confirmed';
+  return {
+    ready,
+    total: base.units.length,
+    confirmed: ready ? base.units.length : 0,
+    blueprint_fingerprint: base.blueprint_fingerprint,
+    authority_fingerprint: base.authority_fingerprint,
+    contract_fingerprint: clean(stored.contract_fingerprint, 220),
+    reason: ready
+      ? '剧情流向及人物、场景绑定已确认，可以生成正式人物场景分镜。'
+      : (fresh && stored.status === 'draft' ? '请确认剧情流向及每个节点的人物、场景绑定。' : '剧情或人物场景资产已变化，请重新确认剧情流向绑定。'),
+  };
+}
+
+function assertReady(taskId) {
+  const state = inspect(taskId);
+  if (state.ready) return { ...state, contract: storage.getOutput(taskId, OUTPUT_KIND) };
+  throw Object.assign(new Error(state.reason), {
+    code: 'STORY_FLOW_CONFIRMATION_REQUIRED', status: 409, retryable: false, story_flow_gate: state,
+  });
+}
+
+module.exports = {
+  CONTRACT_VERSION, DOWNSTREAM_KINDS, OUTPUT_KIND, assertReady, authoritySnapshot, confirm, draft, inspect,
+};

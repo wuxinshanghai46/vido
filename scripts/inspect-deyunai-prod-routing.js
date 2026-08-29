@@ -17,10 +17,7 @@ const script = String.raw`
     key_fingerprint: key ? crypto.createHash('sha256').update(key).digest('hex').slice(0, 12) : '',
     image_models: models.map(model => ({ id: model.id, enabled: model.enabled !== false, channel: model.channel || '', type: model.type || '', use: model.use || '' })),
     story_flow_sketch_route: {
-      configured: pipeline.getStageConfig('new_story_ad.story_flow_sketch'),
-      defaults: pipeline.getStageDefaults('new_story_ad.story_flow_sketch'),
-      enabled_with_default: pipeline.pickAllEnabledWithDefault('new_story_ad.story_flow_sketch'),
-      available_candidates: mediaAdapter.availableImageCandidates('new_story_ad.story_flow_sketch').map(model => ({ provider_id: model.provider_id, model_id: model.model_id })),
+      story_flow_image_stage_registered: Boolean(pipeline.getStageMeta('new_story_ad.story_flow_sketch')),
     },
     storyboard_image_route: {
       configured: pipeline.getStageConfig('new_story_ad.storyboard_image'),

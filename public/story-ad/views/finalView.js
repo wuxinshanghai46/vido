@@ -1,6 +1,8 @@
 import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260829-production-v279d';
 import { bindMoreMedia, moreMediaButton } from './finalMediaPagination.js?v=20260829-production-v279d';
 import { bindGenerationModelPicker, loadGenerationModelPicker } from './generationModelPicker.js?v=20260829-production-v279d';
+import { request } from '../api.js?v=20260829-production-v280';
+import { bindSoundDesign, soundDesignMarkup } from './finalSoundDesignView.js?v=20260829-production-v280';
 
 function itemIndex(item = {}, index = 0) {
   const value = Number(item.shot_index ?? item.shotIndex ?? item.index);
@@ -55,7 +57,7 @@ export async function mount(host, context) {
   const shots = bundle?.storyboard?.shots || [];
   const keyframes = Array.isArray(generation.keyframes) ? generation.keyframes : [];
   const clips = Array.isArray(generation.clips) ? generation.clips : [];
-  const soundJourney = Array.isArray(generation.sound_journey) ? generation.sound_journey : [];
+  const soundDesign = await request(`/api/story-ad/projects/${encodeURIComponent(bundle.project.id)}/sound-design`).catch(() => ({ shots: [], profiles: [], assets: [], timeline: [], ledger: [] }));
   const finalVideo = generation.final_video || (bundle?.project?.final_video_url ? {
     video_url: bundle.project.final_video_url,
     status: '已生成',
@@ -70,21 +72,19 @@ export async function mount(host, context) {
   const videoModelPicker = await loadGenerationModelPicker(bundle.project.id, 'new_story_ad.video', { label: '视频模型' });
   host.innerHTML = `
     <section class="view-head">
-      <div><h1>镜头、声音与成片</h1><p>第 6 步统一查看正式镜头、场景声、动作音、配音、音乐、视频片段和最终成片。</p></div>
+      <div><h1>声音、视频与合成</h1><p>第 7 步统一完成彩色关键帧、配音、场景环境声、拟音、音效、视频片段和最终成片。</p></div>
       <div class="view-actions">
         ${keyframes.length ? `${videoModelPicker.html}<button class="btn" type="button" data-generate-video>生成视频</button>` : `${keyframeModelPicker.html}<button class="btn" type="button" data-generate-keyframes>生成关键帧</button>`}
         ${clips.length ? '<button class="btn" type="button" data-generate-tts>生成配音</button><button class="btn primary" type="button" data-compose>合成成片</button>' : ''}
       </div>
     </section>
-    <div class="guide">关键帧和视频都使用当前项目的版本化分镜与资产；视频提交前必须再次核对镜头和费用。</div>
+    <div class="production-lanes" aria-label="生产轨道"><span data-production-lane><b>关键帧</b><small>${keyframes.length}/${shots.length}</small></span><span data-production-lane><b>声音</b><small>${soundDesign.timeline?.length || 0} 条素材</small></span><span data-production-lane><b>视频</b><small>${clips.length}/${shots.length}</small></span><span data-production-lane><b>合成</b><small>${finalVideo ? '已完成' : '待完成'}</small></span></div>
+    <div class="guide">彩色关键帧必须消费第 6 步已确认的黑白分镜构图；视频和声音按 shot_id、character_id、scene_id 绑定，付费提交前仍需核对模型和费用。</div>
     ${finalVideo ? `<section class="card final-player">
       <div class="card-head"><div><h2>最终成片</h2><p>${escapeHtml(finalVideo.status || '已生成')} · 播放器保持源视频比例</p></div>${finalUrl ? `<a class="btn primary final-download" href="${escapeHtml(downloadUrl)}" download="${escapeHtml(finalVideo.filename || 'vido-final.mp4')}" aria-label="下载原始成片"><span aria-hidden="true">↓</span><span><b>下载原始成片</b><small>保留原始比例和清晰度</small></span></a>` : ''}</div>
       <div class="final-media">${finalVideoPlayer(finalVideo, posterUrl)}</div>
     </section>` : ''}
-    <section class="card generation-section sound-journey-section">
-      <div class="card-head"><div><h2>场景声音设计</h2><p>${soundJourney.length}/${shots.length || 0} 个镜头已有声音方案；根据场景背景分别匹配，不统一套用。</p></div></div>
-      <div class="card-body">${soundJourney.length ? `<div class="sound-journey-list">${soundJourney.map((item, index) => `<article><b>SH${String(item.shot_index || index + 1).padStart(2, '0')}</b><span>${escapeHtml(item.ambient || '环境底噪待确认')}</span><span>${escapeHtml((item.sfx || []).join('、') || '动作音待确认')}</span><span>${escapeHtml(item.music || '音乐情绪待确认')}</span><span>${escapeHtml(item.transition || '声音桥待确认')}</span></article>`).join('')}</div>` : emptyState({ title: '尚未形成逐镜声音方案', body: '保存第 5 步分镜后，系统会按竹林、雪夜、集市、道路等不同背景建立环境音、动作音、音乐和声音桥。' })}</div>
-    </section>
+    ${soundDesignMarkup(soundDesign)}
     <details class="card generation-section generation-details">
       <summary class="card-head"><div><h2>关键帧</h2><p>已加载 ${keyframes.length}/${keyframeTotal} · 默认收起，点击展开</p></div><span class="details-chevron" aria-hidden="true">⌄</span></summary>
       <div class="card-body">${keyframes.length ? `<div class="generation-grid">${keyframes.map((item, index) => mediaCard(item, index, '关键帧')).join('')}</div>${moreMediaButton(mediaCatalog.keyframes, 'keyframes', '继续加载关键帧')}` : emptyState({
@@ -105,6 +105,8 @@ export async function mount(host, context) {
 
   const selectedKeyframeModel = bindGenerationModelPicker(host, keyframeModelPicker);
   const selectedVideoModel = bindGenerationModelPicker(host, videoModelPicker);
+
+  bindSoundDesign(host, { bundle, store, refreshShell: context.refreshShell });
 
   const run = async (button, path, pending, success) => {
     try {

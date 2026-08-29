@@ -36,7 +36,6 @@ function main() {
     'new_story_ad.story_facts',
     'new_story_ad.story_facts_compact_retry',
     'new_story_ad.story_facts_repair',
-    'new_story_ad.story_flow_sketch',
     'new_story_ad.storyboard_image',
     'new_story_ad.scene_panorama',
     'new_story_ad.scene_panorama_qa',

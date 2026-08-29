@@ -351,23 +351,30 @@ function projectGraph(bundle = {}) {
     });
   }
 
-  const flowSketches = Array.isArray(bundle.story_flow?.sketches) ? bundle.story_flow.sketches : [];
+  const flowContract = bundle.story_flow?.contract && typeof bundle.story_flow.contract === 'object' ? bundle.story_flow.contract : {};
+  const flowUnits = Array.isArray(flowContract.units) ? flowContract.units : [];
   const flowIds = [];
-  flowSketches.forEach((sketch, index) => {
-    const beatIndex = Number(sketch.beat_index || sketch.index || index + 1) || index + 1;
+  const flowByBeat = new Map();
+  flowUnits.forEach((unit, index) => {
+    const beatIndex = Number(unit.beat_index || unit.index || index + 1) || index + 1;
     const flowId = add({
-      id: `story-flow:${beatIndex}`,
+      id: `story-flow:${clean(unit.beat_id, 120) || beatIndex}`,
       type: 'story_flow',
       group: 'story_flow',
-      title: `流向线稿 ${beatIndex}`,
-      subtitle: sketch.flow_notes || '剧情事件与因果衔接',
-      status: sketch.status || 'draft',
-      media: sketch,
+      title: unit.title || `剧情流向 ${beatIndex}`,
+      subtitle: unit.action || unit.plot || '剧情事件与状态衔接',
+      status: flowContract.status || 'draft',
       target: `/story-ad/projects/${encodeURIComponent(projectId)}?view=flow`,
-      detail: { beat_index: beatIndex, flow_notes: detailText(sketch.flow_notes, 600) },
+      detail: {
+        beat_id: clean(unit.beat_id, 120), beat_index: beatIndex,
+        state_before: detailText(unit.state_before, 600), action: detailText(unit.action || unit.plot, 800), state_after: detailText(unit.state_after, 600),
+        bindings: { character_ids: uniqueText(unit.character_ids, 40, 120), scene_id: clean(unit.scene_id, 120) },
+        model_call_count: 0,
+      },
     });
     flowIds.push(flowId);
-    if (storyId) connect(storyId, flowId, 'visualizes');
+    if (unit.beat_id) flowByBeat.set(String(unit.beat_id), flowId);
+    if (storyId) connect(storyId, flowId, 'defines');
     if (index > 0) connect(flowIds[index - 1], flowId, 'continues');
   });
 
@@ -424,7 +431,7 @@ function projectGraph(bundle = {}) {
       },
     });
     shotIds.push(shotId);
-    if (flowIds.length) connect(flowIds[Math.min(index, flowIds.length - 1)], shotId, 'directs');
+    if (flowIds.length) connect(flowByBeat.get(String(shot.source_beat_id || '')) || flowIds[Math.min(index, flowIds.length - 1)], shotId, 'directs');
     else if (storyId) connect(storyId, shotId, 'contains');
     else if (inputRoot) connect(inputRoot, shotId, 'contains');
     if (index > 0) connect(shotIds[index - 1], shotId, 'continues');
@@ -533,7 +540,7 @@ function projectGraph(bundle = {}) {
     ['story', '剧情'],
     ['assets', '身份资产'],
     ['director', '导演台与运动设计'],
-    ['story_flow', '剧情流向线稿'],
+    ['story_flow', '剧情流向确认'],
     ['shots', '人物场景分镜'],
     ['media', '生成结果'],
     ['final', '成片'],

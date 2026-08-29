@@ -95,6 +95,7 @@ function keyframeReferenceCandidates(ctx = {}, options = {}) {
   const rows = [];
   const push = (url, role, priority, required = false) => { if (url) rows.push({ url, role, priority, required }); };
   push(options.directorReference, 'director_composition', 110, true);
+  push(options.storyboardReference, 'storyboard_composition', 108, true);
   if (!options.directorReference) push(options.sceneReference, 'scene_identity', 100, true);
   if (board) push(board, 'cast_identity_board', 98, true);
   else cast.forEach((url, index) => push(url, `person_identity_${index + 1}`, 96 - index, true));
@@ -113,7 +114,12 @@ function keyframeReferenceCandidates(ctx = {}, options = {}) {
 
 function keyframeReferenceUrls(ctx = {}, options = {}) {
   const limit = Math.max(1, Math.min(12, Number(options.providerLimit || options.limit || 4) || 4));
-  return keyframeReferenceCandidates(ctx, options).slice(0, limit).map(item => item.url);
+  const candidates = keyframeReferenceCandidates(ctx, options);
+  const required = candidates.filter(item => item.required);
+  if (required.length > limit) throw Object.assign(new Error(`当前镜头有 ${required.length} 张必需参考图，但所选模型最多接收 ${limit} 张；已在付费调用前停止，请更换支持更多参考图的模型。`), {
+    code: 'REQUIRED_REFERENCE_LIMIT_EXCEEDED', status: 422, retryable: false,
+  });
+  return candidates.slice(0, limit).map(item => item.url);
 }
 
 module.exports = {

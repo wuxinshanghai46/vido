@@ -512,6 +512,25 @@ function adjustSubtitlesForTransitionOverlaps(subtitles = [], plan = []) {
   });
 }
 
+async function mixTimelineSound(videoPath = '', tracks = [], outputPath = '') {
+  const usable = (Array.isArray(tracks) ? tracks : []).filter(track => track?.file_path && fs.existsSync(track.file_path));
+  if (!usable.length) return videoPath;
+  const duration = Math.max(0.2, await videoAdapter.probeDuration(videoPath));
+  const args = ['-y', '-i', videoPath];
+  usable.forEach(track => args.push('-i', track.file_path));
+  const filters = ['[0:a]aformat=sample_rates=48000:channel_layouts=stereo[base]'];
+  usable.forEach((track, index) => {
+    const delay = Math.max(0, Math.round(Number(track.timeline_start_sec || 0) * 1000));
+    const length = Math.max(0.05, Number(track.duration_sec || duration) || duration);
+    const volume = clampVolume(track.volume, 0.35, 0, 1);
+    filters.push(`[${index + 1}:a]aformat=sample_rates=48000:channel_layouts=stereo,atrim=0:${length.toFixed(3)},adelay=${delay}|${delay},volume=${volume}[sound${index}]`);
+  });
+  filters.push(`[base]${usable.map((_, index) => `[sound${index}]`).join('')}amix=inputs=${usable.length + 1}:duration=first:dropout_transition=0:normalize=0[mixed]`);
+  args.push('-filter_complex', filters.join(';'), '-map', '0:v:0', '-map', '[mixed]', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k', '-t', duration.toFixed(3), '-movflags', '+faststart', outputPath);
+  await execFfmpeg(args, ffmpegDurationBudgetMs(duration));
+  return outputPath;
+}
+
 async function concatVideos({
   taskId = '',
   clips = [],
@@ -525,6 +544,7 @@ async function concatVideos({
   transitions = [],
   brandOverlay = null,
   targetDurationSec = 0,
+  soundTracks = [],
 } = {}) {
   ensureDir(COMPOSE_DIR);
   const visualUnits = buildVisualComposeUnits(clips);
@@ -532,7 +552,8 @@ async function concatVideos({
   if (!rawInputs.length) throw new Error('最终合成至少需要一个已通过审核的本地视频镜头。');
   const tracks = Array.isArray(ttsAudio?.tracks) ? ttsAudio.tracks : (Array.isArray(ttsAudio) ? ttsAudio : []);
   const transitionRows = visualUnits.map(unit => transitions[unit.first_index] || {});
-  const anyVoiceTrack = visualUnits.some(unit => unit.member_indexes.some(index => !!localAudioPath(tracks[index] || {})));
+  const anyVoiceTrack = visualUnits.some(unit => unit.member_indexes.some(index => !!localAudioPath(tracks[index] || {})))
+    || (Array.isArray(soundTracks) && soundTracks.length > 0);
   const authoredAudioTransitions = transitionRows.some((row, index) => index > 0
     && (['dissolve', 'fade'].includes(transitionType(row)) || String(row?.audio_bridge || row?.audioBridge || '').trim()));
   const inputs = [];
@@ -574,16 +595,24 @@ async function concatVideos({
   }
   let finalPath = out;
   let finalUrl = publicComposeUrl(filename);
+  let soundTrackCount = 0;
+  if (Array.isArray(soundTracks) && soundTracks.length) {
+    const soundFilename = `${safeBase(`sound_${taskId || 'task'}_${Date.now()}`)}.mp4`;
+    const soundPath = path.join(COMPOSE_DIR, soundFilename);
+    finalPath = await mixTimelineSound(finalPath, soundTracks, soundPath);
+    finalUrl = publicComposeUrl(soundFilename);
+    soundTrackCount = soundTracks.filter(track => track?.file_path && fs.existsSync(track.file_path)).length;
+  }
   const bgmPath = localBgmPath(bgmAsset || {});
   const validSubtitles = subtitleEnabled
     ? adjustSubtitlesForTransitionOverlaps((Array.isArray(subtitles) ? subtitles : []).filter(item => item && item.text), transitionPlan)
     : [];
   const needsEffects = !!bgmPath || validSubtitles.length > 0;
-  let providerUsed = `local-ffmpeg/new-story-ad-compose${needsTransitionFilters ? '+authored-transitions' : ''}`;
+  let providerUsed = `local-ffmpeg/new-story-ad-compose${needsTransitionFilters ? '+authored-transitions' : ''}${soundTrackCount ? '+timeline-sound' : ''}`;
   if (needsEffects) {
     const { applyEffects } = require('../effectsService');
     const fx = await applyEffects({
-      videoPath: out,
+      videoPath: finalPath,
       texts: validSubtitles,
       bgm: bgmPath ? {
         path: bgmPath,
@@ -626,7 +655,7 @@ async function concatVideos({
   const technicalQa = await finalVideoQa.inspectFinalVideo({
     filePath: finalPath,
     expectedDurationSec,
-    requireAudio: voiceTrackCount > 0 || !!bgmPath || authoredAudioTransitions,
+    requireAudio: voiceTrackCount > 0 || soundTrackCount > 0 || !!bgmPath || authoredAudioTransitions,
     transitionPlan,
     inputDurations: durations,
   });
@@ -649,6 +678,8 @@ async function concatVideos({
     voiceover_applied: voiceTrackCount > 0,
     voiceover_track_count: voiceTrackCount,
     bgm_applied: !!bgmPath,
+    sound_effects_applied: soundTrackCount > 0,
+    sound_effect_track_count: soundTrackCount,
     audio_bridge_applied: transitionPlan.some(row => row.audio_bridge_execution === 'j_cut_crossfade'),
     audio_bridge_count: transitionPlan.filter(row => row.audio_bridge_execution === 'j_cut_crossfade').length,
     subtitle_applied: validSubtitles.length > 0,
@@ -690,5 +721,6 @@ module.exports = {
   adjustSubtitlesForTransitionOverlaps,
   normalizeBrandOverlay,
   applyBrandOverlay,
+  mixTimelineSound,
   concatVideos,
 };

@@ -11,7 +11,7 @@ const IMAGE_STAGES = [
   'new_story_ad.person_sheet', 'new_story_ad.person_dossier_atlas',
   'new_story_ad.prop_dossier_atlas', 'new_story_ad.product_asset',
   'new_story_ad.scene_asset', 'new_story_ad.scene_panorama',
-  'new_story_ad.story_flow_sketch', 'new_story_ad.storyboard_image', 'new_story_ad.keyframe',
+  'new_story_ad.storyboard_image', 'new_story_ad.keyframe',
 ];
 const IMAGE_LABELS = [
   'Image · SZ', 'Image · WB', 'Image · DY',
@@ -43,6 +43,7 @@ for (const stage of IMAGE_STAGES) {
   assert(catalog.models.every(model => !model.provider_id && !model.provider_name && !model.model_id && !model.model_name));
   assert.equal(catalog.default_selection, 'image-sz');
 }
+assert.throws(() => selection.publicCatalog('new_story_ad.story_flow_sketch', configuredImage), error => error.code === 'MEDIA_GENERATION_MODEL_STAGE_INVALID');
 
 assert.deepEqual(selection.PUBLIC_MEDIA_CHOICES.image.map(choice => choice.execution_route), [
   'smscrw/gpt-image-2',

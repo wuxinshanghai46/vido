@@ -5,7 +5,7 @@ const projectBundles = require('../services/storyAdWorkspace/projectBundleServic
 const graphProjection = require('../services/storyAdWorkspace/graphProjectionService');
 const graphLayouts = require('../services/storyAdWorkspace/graphLayoutService');
 const storyboardSketches = require('../services/storyAdWorkspace/storyboardSketchService');
-const storyFlowSketches = require('../services/storyAdWorkspace/storyFlowSketchService');
+const storyFlowSketches = require('../services/storyAdWorkspace/storyFlowContractService');
 const sceneWorlds = require('../services/storyAdWorkspace/sceneWorldService');
 const directorScenes = require('../services/storyAdWorkspace/directorSceneService');
 const referenceUnderstandingConfirmations = require('../services/storyAdWorkspace/referenceUnderstandingConfirmationService');
@@ -16,6 +16,7 @@ const videoCore = require('../services/videoGenerationCore');
 const storage = require('../services/newStoryAd/storageService');
 const mediaCatalog = require('../services/newStoryAd/mediaCatalogService');
 const mediaModelSelection = require('../services/newStoryAd/mediaGenerationModelSelectionService');
+const soundDesignAssets = require('../services/newStoryAd/soundDesignAssetService');
 
 const router = express.Router();
 
@@ -381,26 +382,34 @@ router.post('/projects/:taskId/materials', asyncRoute(async (req, res) => {
   res.json({ success: true, task_id: req.params.taskId, ...updated });
 }));
 
-router.post('/projects/:taskId/flow-sketches/generate-batch', asyncRoute(async (req, res) => {
+router.get('/projects/:taskId/story-flow', asyncRoute(async (req, res) => {
   projectForRequest(req);
-  const body = mediaModelSelection.applySelection('new_story_ad.story_flow_sketch', req.body || {});
-  const result = storyFlowSketches.startBatch(req.params.taskId, body);
-  res.status(result.accepted === false ? 200 : 202).json({ success: true, task_id: req.params.taskId, ...result });
+  res.json({ success: true, task_id: req.params.taskId, contract: storyFlowSketches.draft(req.params.taskId), gate: storyFlowSketches.inspect(req.params.taskId) });
 }));
 
-router.get('/projects/:taskId/flow-sketches/generate-batch', asyncRoute(async (req, res) => {
+router.post('/projects/:taskId/story-flow/confirm', asyncRoute(async (req, res) => {
   projectForRequest(req);
-  res.json({ success: true, task_id: req.params.taskId, ...storyFlowSketches.getBatch(req.params.taskId) });
+  res.json({ success: true, task_id: req.params.taskId, ...storyFlowSketches.confirm(
+    req.params.taskId,
+    req.body?.units || [],
+    currentUser(req),
+  ) });
 }));
 
-router.post('/projects/:taskId/flow-sketches/confirm', asyncRoute(async (req, res) => {
+const rejectLegacyFlowSketchRoute = asyncRoute(async (req) => {
   projectForRequest(req);
-  res.json({ success: true, task_id: req.params.taskId, ...storyFlowSketches.confirmAll(req.params.taskId) });
-}));
+  const error = new Error('旧剧情流向图片生成入口已禁用。第 5 步现在只做零费用的剧情、人物和场景绑定确认。');
+  error.code = 'LEGACY_STORY_FLOW_SKETCH_ROUTE_DISABLED';
+  error.status = 410;
+  error.retryable = false;
+  throw error;
+});
+router.all('/projects/:taskId/flow-sketches', rejectLegacyFlowSketchRoute);
+router.all('/projects/:taskId/flow-sketches/*', rejectLegacyFlowSketchRoute);
 
 const rejectLegacySketchRoute = asyncRoute(async (req) => {
   projectForRequest(req);
-  const error = new Error('旧“线稿与分镜”合并入口已禁用，请刷新页面后分别使用“流向线稿”和“人物场景分镜”。');
+  const error = new Error('旧“线稿与分镜”合并入口已禁用，请刷新页面后分别使用“剧情流向确认”和“人物场景分镜”。');
   error.code = 'LEGACY_STORYBOARD_SKETCH_ROUTE_DISABLED';
   error.status = 410;
   error.retryable = false;
@@ -408,6 +417,26 @@ const rejectLegacySketchRoute = asyncRoute(async (req) => {
 });
 router.all('/projects/:taskId/sketches', rejectLegacySketchRoute);
 router.all('/projects/:taskId/sketches/*', rejectLegacySketchRoute);
+
+router.get('/projects/:taskId/sound-design', asyncRoute(async (req, res) => {
+  projectForRequest(req);
+  res.json({ success: true, task_id: req.params.taskId, ...soundDesignAssets.compile(req.params.taskId) });
+}));
+
+router.post('/projects/:taskId/sound-assets', asyncRoute(async (req, res) => {
+  projectForRequest(req);
+  res.json({ success: true, task_id: req.params.taskId, ...soundDesignAssets.addUserAsset(req.params.taskId, req.body || {}, currentUser(req)) });
+}));
+
+router.get('/projects/:taskId/sound-library', asyncRoute(async (req, res) => {
+  projectForRequest(req);
+  res.json({ success: true, task_id: req.params.taskId, ...(await soundDesignAssets.searchOpenverse(req.query.q || '')) });
+}));
+
+router.post('/projects/:taskId/sound-assets/openverse', asyncRoute(async (req, res) => {
+  projectForRequest(req);
+  res.json({ success: true, task_id: req.params.taskId, ...(await soundDesignAssets.importOpenverseAsset(req.params.taskId, req.body || {})) });
+}));
 
 router.put('/projects/:taskId/storyboard-images', asyncRoute(async (req, res) => {
   projectForRequest(req);

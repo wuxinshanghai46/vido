@@ -10,14 +10,14 @@ const { assertSceneModeAssets, normalizeScenePlan, resolveSceneMode } = require(
 function assertReady(taskId, options = {}) {
   const task = storage.getTask(taskId);
   if (!task) throw new Error('任务不存在');
-  storyFlowSketchGate.assertReady(taskId);
+  const flow = storyFlowSketchGate.assertReady(taskId);
   const ctx = assertContextConsistent(storage.getOutput(taskId, 'context') || task.request || {});
   contentSkill.assertSelected(ctx);
   const sceneAssets = storage.getOutput(taskId, 'scene_assets') || ctx.scene_assets || [];
   const scenePlan = normalizeScenePlan(storage.getOutput(taskId, 'scene_config') || {});
   assertSceneModeAssets(resolveSceneMode(ctx.scene_mode, scenePlan), sceneAssets, scenePlan.spaces,
     typeof options.sceneVerificationOptions === 'function' ? options.sceneVerificationOptions(taskId) : {});
-  return { task, ctx };
+  return { task, ctx, story_flow_contract: flow.contract };
 }
 
 module.exports = { assertReady };

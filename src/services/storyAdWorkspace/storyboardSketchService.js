@@ -40,15 +40,33 @@ function clean(value = '', max = 800) {
   return String(value || '').replace(/\s+/g, ' ').trim().slice(0, max);
 }
 
+function shotContractFingerprint(shot = {}, index = 0) {
+  return storage.canonicalFingerprint({
+    shot_id: clean(shot.shot_id || `shot_${index + 1}`, 160),
+    source_beat_id: clean(shot.source_beat_id, 160),
+    scene_id: clean(shot.scene_id || shot.scene_asset_id, 160),
+    character_ids: Array.isArray(shot.character_ids) ? shot.character_ids.map(value => clean(value, 160)) : [],
+    look_bindings: shot.look_bindings || {},
+    visual: clean(shot.visual || shot.visual_description, 1600),
+    action: clean(shot.action, 800),
+    shot_size: clean(shot.shot_size, 80),
+    camera_angle: clean(shot.camera_angle, 80),
+    camera_movement: clean(shot.camera_movement, 120),
+    lens_mm: Number(shot.lens_mm || 0) || 0,
+  });
+}
+
 /** 规范化逐镜人物场景分镜图，禁止脱离真实分镜合同创建游离数据。 */
 function normalizeSketches(taskId, sketches = []) {
   const shots = storage.getOutput(taskId, 'storyboard_table') || [];
   const shotIndexes = new Set(shots.map((shot, index) => Number(shot.shot_index || shot.index || index + 1) || index + 1));
+  const shotByIndex = new Map(shots.map((shot, index) => [Number(shot.shot_index || shot.index || index + 1) || index + 1, { shot, index }]));
   return (Array.isArray(sketches) ? sketches : [])
     .map((item, index) => {
       const shotIndex = Number(item.shot_index || item.shotIndex || item.index || index + 1) || index + 1;
       if (!shotIndexes.has(shotIndex)) return null;
       const status = ALLOWED_STATUSES.has(clean(item.status, 30)) ? clean(item.status, 30) : 'draft';
+      const currentShot = shotByIndex.get(shotIndex);
       return {
         id: clean(item.id || `storyboard-image-${shotIndex}`, 120),
         shot_index: shotIndex,
@@ -58,6 +76,7 @@ function normalizeSketches(taskId, sketches = []) {
         source: clean(item.source || (item.image_url || item.imageUrl ? 'upload' : 'manual'), 60),
         reference_count: Math.max(0, Number(item.reference_count || 0) || 0),
         story_context_fingerprint: clean(item.story_context_fingerprint || item.storyContextFingerprint, 160),
+        shot_contract_fingerprint: shotContractFingerprint(currentShot?.shot || {}, currentShot?.index || 0),
         source_content_revision: Math.max(1, Number(item.source_content_revision || item.sourceContentRevision || 1) || 1),
         knowledge_policy: item.knowledge_policy && typeof item.knowledge_policy === 'object' ? item.knowledge_policy : null,
         updated_at: clean(item.updated_at, 80) || new Date().toISOString(),
@@ -78,6 +97,7 @@ function sketchFingerprint(sketches = []) {
     source: item.source,
     reference_count: item.reference_count,
     story_context_fingerprint: item.story_context_fingerprint,
+    shot_contract_fingerprint: item.shot_contract_fingerprint,
     source_content_revision: item.source_content_revision,
   })));
 }
@@ -140,6 +160,7 @@ function saveSketches(taskId, sketches = [], user = {}) {
         image_url: sketch.image_url,
         composition_notes: note,
         status: sketch.status,
+        shot_contract_fingerprint: sketch.shot_contract_fingerprint,
       },
       keyframe_notes: [currentNotes, note ? `分镜构图约束：${note}` : ''].filter(Boolean).join('\n'),
     };
@@ -303,6 +324,7 @@ async function generateSketch(taskId, shotIndex, options = {}, dependencies = {}
     source: 'generated',
     reference_count: referenceImages.length,
     story_context_fingerprint: storyContextFingerprint,
+    shot_contract_fingerprint: shotContractFingerprint(shot, numericIndex - 1),
     source_content_revision: Number(task.content_revision || 1) || 1,
     knowledge_policy: knowledgePolicyRuntime.trace(sketchKnowledge),
     updated_at: new Date().toISOString(),
@@ -460,4 +482,4 @@ function getSketchBatch(taskId) {
   };
 }
 
-module.exports = { generateSketch, generateSketchBatch, getSketchBatch, normalizeSketches, saveSketches };
+module.exports = { generateSketch, generateSketchBatch, getSketchBatch, normalizeSketches, saveSketches, shotContractFingerprint };

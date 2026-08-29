@@ -894,9 +894,10 @@ assert.match(storyboard, /const pageSize = 20/, '长片分镜台必须分页，�
 assert.match(storyboard, /visibleShots\.map/, '分镜与线稿只能渲染当前分页');
 assert.match(storyboard, /data-storyboard-page/, '长片分镜台必须提供上一页和下一页入口');
 const sketchActions = storyboard.slice(storyboard.indexOf('class="sketch-actions"'), storyboard.indexOf('</div>', storyboard.indexOf('class="sketch-actions"')));
-const sketchOrder = ['data-generate-sketch', 'data-upload-sketch', 'data-skip-sketch', 'data-confirm-sketch'].map(token => sketchActions.indexOf(token));
-assert(sketchOrder.every(index => index >= 0), '线稿四个操作必须属于同一个 DOM 操作组');
-assert.deepEqual([...sketchOrder].sort((a, b) => a - b), sketchOrder, '线稿操作的 DOM/键盘顺序必须为生成、上传、跳过、确认');
+const sketchOrder = ['data-generate-sketch', 'data-upload-sketch', 'data-confirm-sketch'].map(token => sketchActions.indexOf(token));
+assert(sketchOrder.every(index => index >= 0), '黑白分镜的生成、上传、确认必须属于同一个 DOM 操作组');
+assert.deepEqual([...sketchOrder].sort((a, b) => a - b), sketchOrder, '黑白分镜操作的 DOM/键盘顺序必须为生成、上传、确认');
+assert.doesNotMatch(sketchActions, /data-skip-sketch/, '未确认的黑白分镜不得通过跳过按钮进入关键帧');
 
 const shot = read('public/story-ad/views/shotDesignerView.js');
 assert.match(shot, /const railPageSize = 20/, '长片镜头设计侧栏必须限制单次渲染数量');
@@ -1017,7 +1018,7 @@ assert.match(hoverVideo, /poster="\/api\/assets\/poster"/);
 assert.match(hoverVideo, /data-hover-video-preview/);
 const progressPanel = sandbox.__generationProgressPanel({
   project: { active_generation_id: 'gen-1', generation_started_at: '2026-08-01T00:00:00.000Z' },
-  generation: { progress: { stage: 'keyframes', status: 'running', completed: 2, total: 6, active_indexes: [3, 4], percent: 33 } },
+  generation: { progress: { stage: 'keyframes', status: 'running', completed: 2, total: 6, active_indexes: [3, 4], percent: 33, started_at: '2026-08-01T00:00:00.000Z' } },
 });
 assert.match(progressPanel, /33%/);
 assert.match(progressPanel, /已耗时 \d+分\d{2}秒/);

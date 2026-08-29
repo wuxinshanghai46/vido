@@ -17,19 +17,21 @@ export function friendlyBindings(bundle = {}, shot = {}) {
   const cameraId = shot.camera_id || '';
   const camera = (scene?.cameras || []).find(item => [item.id, item.camera_id].filter(Boolean).includes(cameraId));
   const characterIds = Array.isArray(shot.character_ids) ? shot.character_ids : [];
-  const lookId = String(shot.look_id || '');
+  const lookId = String(shot.look_id || Object.values(shot.look_bindings || {})[0] || '');
   const lookOwner = (assets.people || []).map(item => item.profile || {}).find(profile => (
     (profile.look_profiles || []).some(look => String(look.id || '') === lookId)
   ));
   const look = (lookOwner?.look_profiles || []).find(item => String(item.id || '') === lookId);
   return [
-    sceneId ? { id: sceneId, label: `场景：${scene?.name || shot.scene_name || '已绑定场景'}` } : null,
+    shot.source_beat_id ? { id: shot.source_beat_id, label: `剧情：${shot.source_beat_id}` } : null,
+    sceneId ? { id: sceneId, label: `场景：${scene?.name || shot.scene_name || '已绑定场景'} · r${Number(shot.scene_revision || scene?.revision || 1)}` } : null,
     cameraId ? { id: cameraId, label: `机位：${camera?.label || camera?.role || '已绑定机位'}` } : null,
     lookId ? { id: lookId, label: `造型：${lookOwner?.displayName || lookOwner?.name || '人物'} · ${look?.name || '未知造型'}` } : null,
     ...characterIds.map(id => {
       const subject = subjects.find(entry => [entry.item.id, entry.item.asset_id, entry.item.subject_id].filter(Boolean).includes(id));
-      return { id, label: `${subject?.label || '主体'}：${subject?.item?.name || subject?.item?.role || '已绑定主体'}` };
+      return { id, label: `${subject?.label || '主体'}：${subject?.item?.name || subject?.item?.role || '已绑定主体'} · r${Number(subject?.item?.revision || 0)}` };
     }),
+    shot.sound_profile_id ? { id: shot.sound_profile_id, label: `声音档案：${shot.sound_profile_id}` } : null,
   ].filter(Boolean);
 }
 
@@ -98,7 +100,7 @@ function shotRow(shot = {}, index = 0, bundle = {}) {
   return `<div class="shot-row storyboard-complete-row" data-storyboard-shot="${shotIndex}">
     <b>SH${String(shotIndex).padStart(2, '0')}</b>
     <span class="shot-duration">${Number(shot.duration || shot.duration_sec || 3) || 3}s</span>
-    <span class="shot-copy"><b>${escapeHtml(shot.title || `镜头 ${shotIndex}`)}</b><small>${escapeHtml(shot.visual || shot.visual_description || shot.action || '')}</small></span>
+    <span class="shot-copy"><b>${escapeHtml(shot.title || `镜头 ${shotIndex}`)}</b><small>${escapeHtml(shot.visual || shot.visual_description || shot.action || '')}</small><span class="shot-binding-chips">${bindings.map(item => `<em data-shot-binding-chip title="${escapeHtml(item.id)}">${escapeHtml(item.label)}</em>`).join('')}</span></span>
     <span class="shot-production-cell">${productionCell(shotSize, '待设计')}</span>
     <span class="shot-production-cell">${productionCell(shot.lighting_mood || shot.light_atmosphere || shot.lighting, '随场景光线')}</span>
     <span>${escapeHtml(shot.voiceover || shot.narration || '—')}</span>
@@ -131,7 +133,6 @@ function sketchCard(shot, sketch = {}, index = 0, gate = {}, bundle = {}) {
           <div class="sketch-actions" role="group" aria-label="镜头 ${shotIndex} 分镜图操作">
             <button class="btn ${sketch.image_url ? '' : 'primary'}" type="button" data-generate-sketch ${disabled}>${sketch.image_url ? '重新生成' : '生成分镜图'}</button>
             <button class="btn" type="button" data-upload-sketch ${disabled}>上传分镜图</button>
-            <button class="btn quiet" type="button" data-skip-sketch ${disabled}>跳过本镜</button>
             <button class="btn primary sketch-confirm-action" type="button" data-confirm-sketch ${disabled}>确认构图</button>
           </div>
         </div>
@@ -185,7 +186,7 @@ export async function mount(host, context) {
   const sketches = Array.isArray(bundle?.storyboard?.images) ? bundle.storyboard.images : [];
   const sketchByShot = new Map(sketches.map(item => [Number(item.shot_index), item]));
   const generatedSketchCount = shots.filter((shot, index) => sketchByShot.get(Number(shot.shot_index || shot.index || index + 1))?.image_url).length;
-  const resolvedSketchCount = shots.filter((shot, index) => ['confirmed', 'skipped'].includes(sketchByShot.get(Number(shot.shot_index || shot.index || index + 1))?.status)).length;
+  const resolvedSketchCount = shots.filter((shot, index) => sketchByShot.get(Number(shot.shot_index || shot.index || index + 1))?.status === 'confirmed').length;
   const missingSketchCount = Math.max(0, shots.length - generatedSketchCount);
   const regenerateAllSketches = missingSketchCount === 0 && generatedSketchCount > 0;
   const sketchBatchTargetCount = regenerateAllSketches ? shots.length : missingSketchCount;
@@ -215,17 +216,17 @@ export async function mount(host, context) {
   const guideMessage = isReferenceDraft
     ? '这里仅显示参考视频提取的逐镜草稿。可逐镜打开编辑，确认剧情、动作和时长；机位、景别和运镜在镜头设计中继续优化。'
     : (completedHistoryMessage || (storyboardFailed
-      ? `分镜合同生成失败：${bundle.project.error}。可重新点击“生成分镜”，不会重复生成流向线稿或场景图片。`
+      ? `分镜合同生成失败：${bundle.project.error}。可重新点击“生成分镜”，不会改写剧情流向合同或场景图片。`
       : (!shots.length
         ? (storyboardActive
-          ? '系统正在根据已确认流向线稿整理人物、场景、景别、机位、运镜和时长；完成后会继续生成分镜图。'
-          : '点击“生成分镜”后，系统建立人物场景分镜合同，再使用所选模型生成分镜图。')
+          ? '系统正在根据已确认剧情流向整理人物、场景、景别、机位、运镜和时长；完成后可生成黑白分镜图。'
+          : '点击“生成分镜”后先建立 Shot List；检查人物、造型、场景和版本绑定后，再使用所选模型生成黑白分镜图。')
         : (sketchGate.ready
-          ? '分镜图可生成、上传或跳过；确认后人物场景构图约束会进入镜头设计。'
+          ? '分镜图可生成或上传；全部确认后，黑白构图会作为必需参考进入彩色关键帧。'
           : `人物场景分镜需要修正：${gateReason}`))));
   host.innerHTML = `
     <section class="view-head">
-      <div><h1>人物场景分镜</h1><p>消费已确认的剧情流向线稿，逐镜绑定人物、场景、动作、景别、机位和运镜，再生成分镜画面。</p>${isReferenceDraft ? '<span class="status-tag is-neutral">参考视频逐镜草稿 · 待优化</span>' : ''}</div>
+      <div><h1>人物场景分镜</h1><p>消费已确认的剧情流向合同，先形成 Shot List，再用固定人物和固定场景生成黑白分镜画面。</p>${isReferenceDraft ? '<span class="status-tag is-neutral">参考视频逐镜草稿 · 待优化</span>' : ''}</div>
       <div class="view-actions">${shots.length ? (isReferenceDraft
         ? '<button class="btn primary" type="button" data-save-reference-storyboard>保存参考分镜草稿</button>'
         : (completedHistorical && !sketchGate.ready
@@ -244,7 +245,7 @@ export async function mount(host, context) {
         ${visibleShots.map((shot, index) => shotRow(shot, pageStart + index, bundle)).join('')}
       </div></div>${!isReferenceDraft ? '<div class="storyboard-secondary-action"><button class="btn quiet" type="button" data-regenerate-storyboard>重新整理镜头结构</button></div>' : ''}${pageNav}` : `<div class="card">${emptyState({
         title: storyboardActive ? '正在整理镜头结构' : '镜头结构尚未建立',
-        body: storyboardActive ? '系统正在把已确认流向线稿转换为人物、场景、景别、机位、运镜和时长合同，进度显示在页面顶部。' : '请点击上方“生成分镜”开始建立逐镜合同。',
+        body: storyboardActive ? '系统正在把已确认剧情流向合同转换为人物、场景、景别、机位、运镜和时长合同，进度显示在页面顶部。' : '请点击上方“生成分镜”开始建立逐镜合同。',
       })}</div>`}
     </section>
     <section data-board-panel="sketches" ${defaultPanel === 'sketches' ? '' : 'hidden'}>
@@ -491,12 +492,6 @@ export async function mount(host, context) {
       } catch (error) {
         toast(error.message, 'danger');
       }
-    });
-    card.querySelector('[data-skip-sketch]').addEventListener('click', async () => {
-      try {
-        await saveSketch(card, { status: 'skipped' });
-        toast(`镜头 ${shotIndex} 已跳过分镜图。`, 'success');
-      } catch (error) { toast(error.message, 'danger'); }
     });
     card.querySelector('[data-confirm-sketch]').addEventListener('click', async event => {
       const button = event.currentTarget;

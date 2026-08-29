@@ -21,9 +21,9 @@ const VIEW_META = {
   plot: ['2', '剧情与对白'],
   assets: ['3', '人物资产'],
   scene: ['4', '场景世界'],
-  flow: ['5', '流向线稿'],
+  flow: ['5', '剧情流向确认'],
   storyboard: ['6', '人物场景分镜'],
-  final: ['7', '镜头与合成'],
+  final: ['7', '声音、视频与合成'],
   workflow: ['⌘', '工作流画布'],
 };
 const VIEW_MODULES = {
@@ -31,9 +31,9 @@ const VIEW_MODULES = {
   assets: () => import('./views/assetCenterView.js?v=20260829-production-v279d'),
   scene: () => import('./views/sceneWorldPage.js?v=20260829-production-v279d'),
   plot: () => import('./views/plotRoomView.js?v=20260829-production-v279d'),
-  flow: () => import('./views/storyFlowSketchView.js?v=20260829-production-v279d'),
-  storyboard: () => import('./views/storyboardView.js?v=20260829-production-v279d'),
-  final: () => import('./views/finalView.js?v=20260829-production-v279d'),
+  flow: () => import('./views/storyFlowSketchView.js?v=20260829-production-v280'),
+  storyboard: () => import('./views/storyboardView.js?v=20260829-production-v280'),
+  final: () => import('./views/finalView.js?v=20260829-production-v280'),
   workflow: () => import('./views/workflowView.js?v=20260829-production-v279d'),
 };
 const VIEW_SECTIONS = Object.freeze({
