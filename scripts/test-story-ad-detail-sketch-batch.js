@@ -117,7 +117,7 @@ function verifyStaticContract() {
   assert.match(storyboardView, /生成人物场景分镜图/);
   assert.match(storyboardView, /elapsedTimeTag/);
   assert.doesNotMatch(storyboardView, /生成分镜线稿图/);
-  assert.match(storyService, /storyFlowSketchGate\.assertReady\(taskId\)/);
+  assert.match(storyService, /storyboardGenerationPreflight\.assertReady\(taskId/);
   assert.match(routes, /LEGACY_STORYBOARD_SKETCH_ROUTE_DISABLED/);
   assert.match(routes, /storyboard-images/);
   assert.match(routes, /flow-sketches/);
