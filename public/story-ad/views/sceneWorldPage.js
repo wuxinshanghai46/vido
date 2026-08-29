@@ -1,12 +1,12 @@
-import { bindSceneWorldWorkspace } from './sceneWorldView.js?v=20260829-production-v260b';
-import { setButtonBusy, toast } from '../components/ui.js?v=20260829-production-v260b';
-import { bindScenePlanUpdate, scenePlanBlockedView } from './scenePlanStatus.js?v=20260829-production-v260b';
-import { renderSceneProductionCard, scenePromptPreviewMarkup, scenePromptPreviewState, startInitialScenePlan } from './scenePromptPreview.js?v=20260829-production-v260b';
-import { bindMediaLightbox } from './mediaLightbox.js?v=20260829-production-v260b';
-import { buildSceneBatchActionPlan } from './sceneBatchActionPlan.js?v=20260829-production-v260b';
-import { bindGenerationModelPicker, loadGenerationModelPicker } from './generationModelPicker.js?v=20260829-production-v260b';
-import { sceneBatchProgressMarkup } from './sceneBatchProgressView.js?v=20260829-production-v260b';
-import { normalizeSceneDossier } from './sceneDossierCard.js?v=20260829-production-v260b';
+import { bindSceneWorldWorkspace } from './sceneWorldView.js?v=20260829-production-v260c';
+import { setButtonBusy, toast } from '../components/ui.js?v=20260829-production-v260c';
+import { bindScenePlanUpdate, scenePlanBlockedView } from './scenePlanStatus.js?v=20260829-production-v260c';
+import { renderSceneProductionCard, scenePromptPreviewMarkup, scenePromptPreviewState, startInitialScenePlan } from './scenePromptPreview.js?v=20260829-production-v260c';
+import { bindMediaLightbox } from './mediaLightbox.js?v=20260829-production-v260c';
+import { buildSceneBatchActionPlan } from './sceneBatchActionPlan.js?v=20260829-production-v260c';
+import { bindGenerationModelPicker, loadGenerationModelPicker } from './generationModelPicker.js?v=20260829-production-v260c';
+import { sceneBatchProgressMarkup } from './sceneBatchProgressView.js?v=20260829-production-v260c';
+import { normalizeSceneDossier } from './sceneDossierCard.js?v=20260829-production-v260c';
 
 export async function mount(host, context) {
   const { bundle, store } = context;
@@ -61,7 +61,7 @@ export async function mount(host, context) {
 
   bindScenePlanUpdate(host, context);
   bindMediaLightbox(host);
-  const cleanupSceneCards = (await import('./sceneCardInteractions.js?v=20260829-production-v260b')).bindSceneCards(host, context);
+  const cleanupSceneCards = (await import('./sceneCardInteractions.js?v=20260829-production-v260c')).bindSceneCards(host, context);
   if (preview.autoInitialize) startInitialScenePlan(bundle, store);
   if (scenes.length && (workflow.generated_count || 0) > 0) bindSceneWorldWorkspace(host, bundle, store);
   host.querySelector('[data-confirm-scenes]')?.addEventListener('click', async event => {

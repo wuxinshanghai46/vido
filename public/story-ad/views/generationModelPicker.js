@@ -1,5 +1,5 @@
-import { request } from '../api.js?v=20260829-production-v260b';
-import { escapeHtml } from '../components/ui.js?v=20260829-production-v260b';
+import { request } from '../api.js?v=20260829-production-v260c';
+import { escapeHtml } from '../components/ui.js?v=20260829-production-v260c';
 
 const P = { deyunai: 'DY', apismile: 'AS', 'webang-maas': 'WB', smscrw: 'SZ' };
 const M = {
