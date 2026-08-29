@@ -1,4 +1,4 @@
-import { elapsedTimeTag, escapeHtml } from '../components/ui.js?v=20260829-production-v266';
+import { elapsedTimeTag, escapeHtml } from '../components/ui.js?v=20260829-production-v267';
 
 const count = value => Math.max(0, Math.floor(Number(value) || 0));
 
