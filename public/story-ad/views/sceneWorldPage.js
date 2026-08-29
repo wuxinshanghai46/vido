@@ -1,11 +1,11 @@
-import { bindSceneWorldWorkspace } from './sceneWorldView.js?v=20260829-production-v267';
-import { setButtonBusy, toast } from '../components/ui.js?v=20260829-production-v267';
-import { bindScenePlanUpdate, scenePlanBlockedView } from './scenePlanStatus.js?v=20260829-production-v267';
-import { renderSceneProductionCard, scenePromptPreviewMarkup, scenePromptPreviewState, startInitialScenePlan } from './scenePromptPreview.js?v=20260829-production-v267';
-import { bindMediaLightbox } from './mediaLightbox.js?v=20260829-production-v267';
-import { buildSceneBatchActionPlan } from './sceneBatchActionPlan.js?v=20260829-production-v267';
-import { bindGenerationModelPicker, loadGenerationModelPicker } from './generationModelPicker.js?v=20260829-production-v267';
-import { normalizeSceneDossier } from './sceneDossierCard.js?v=20260829-production-v267';
+import { bindSceneWorldWorkspace } from './sceneWorldView.js?v=20260829-production-v268';
+import { setButtonBusy, toast } from '../components/ui.js?v=20260829-production-v268';
+import { bindScenePlanUpdate, scenePlanBlockedView } from './scenePlanStatus.js?v=20260829-production-v268';
+import { renderSceneProductionCard, scenePromptPreviewMarkup, scenePromptPreviewState, startInitialScenePlan } from './scenePromptPreview.js?v=20260829-production-v268';
+import { bindMediaLightbox } from './mediaLightbox.js?v=20260829-production-v268';
+import { buildSceneBatchActionPlan } from './sceneBatchActionPlan.js?v=20260829-production-v268';
+import { bindGenerationModelPicker, loadGenerationModelPicker } from './generationModelPicker.js?v=20260829-production-v268';
+import { normalizeSceneDossier } from './sceneDossierCard.js?v=20260829-production-v268';
 
 export async function mount(host, context) {
   const { bundle, store } = context;
@@ -60,7 +60,7 @@ export async function mount(host, context) {
 
   bindScenePlanUpdate(host, context);
   bindMediaLightbox(host);
-  const cleanupSceneCards = (await import('./sceneCardInteractions.js?v=20260829-production-v267')).bindSceneCards(host, context);
+  const cleanupSceneCards = (await import('./sceneCardInteractions.js?v=20260829-production-v268')).bindSceneCards(host, context);
   if (preview.autoInitialize) startInitialScenePlan(bundle, store);
   if (scenes.length && (workflow.generated_count || 0) > 0) bindSceneWorldWorkspace(host, bundle, store);
   host.querySelector('[data-confirm-scenes]')?.addEventListener('click', async event => {
