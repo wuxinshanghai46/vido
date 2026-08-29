@@ -120,7 +120,8 @@ function verifyUiContract() {
   const page = read('public/story-ad/views/sceneWorldPage.js');
   assert.match(page, /使用当前图片继续/);
   assert.match(page, /重新审核场景/);
-  assert.match(page, /acceptCurrentScenes/);
+  const interactions = read('public/story-ad/views/sceneCardInteractions.js');
+  assert.match(interactions, /acceptCurrentScenes/);
   const qa = read('public/story-ad/views/sceneQaPublicState.js');
   assert.match(qa, /不代表图片不合格/);
   const card = read('public/story-ad/views/sceneDossierCard.js');

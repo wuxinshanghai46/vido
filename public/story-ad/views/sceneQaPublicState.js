@@ -1,3 +1,5 @@
+import { setButtonBusy, toast } from '../components/ui.js?v=20260829-production-v276c';
+
 const QA_SERVICE_FAILURE = /视觉模型全部失败|VISION_QA|PROVIDER_RESPONSE_INVALID|RATE_LIMIT|(?:smscrw|webang-maas|zhipu|deyunai)[/]/i;
 
 function text(value = '') { return String(value || '').trim(); }
@@ -58,4 +60,20 @@ export function sceneQaFailureDetails(item = {}) {
   const reasons = [...failed.flatMap(row => list(row.reasons)), ...list(item.repair_plan?.reasons), ...list(item.qa?.reasons)]
     .map(publicSceneQaReason).filter(Boolean);
   return { labels: [...new Set(failed.map(row => text(row.label)).filter(Boolean))], reasons: [...new Set(reasons)].slice(0, 6) };
+}
+
+export function bindSceneConfirmAction(host, context) {
+  host.querySelector('[data-confirm-scenes]')?.addEventListener('click', async event => {
+    const button = event.currentTarget;
+    setButtonBusy(button, true, '正在确认…');
+    try {
+      await context.store.updateRequest({ scene_setup_confirmed: true }, { skipRefresh: true });
+      const refreshed = await context.store.refreshSections('summary,assets,story,shots');
+      if (refreshed?.navigation?.steps?.storyboard?.enabled === false) throw new Error(refreshed.navigation.steps.storyboard.blocker || '线稿与分镜步骤尚未解锁');
+      context.navigate(`/story-ad/projects/${encodeURIComponent(context.bundle.project.id)}?view=storyboard`);
+    } catch (error) {
+      toast(error.message || '确认场景失败', 'error');
+      setButtonBusy(button, false);
+    }
+  });
 }

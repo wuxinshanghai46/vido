@@ -564,16 +564,6 @@ export function createProjectStore() {
     return data;
   }
 
-  async function acceptCurrentScenes() {
-    const taskId = state.bundle?.project?.id;
-    if (!taskId) throw new Error('请先创建项目。');
-    const data = await request(`/api/new-story-ad/tasks/${encodeURIComponent(taskId)}/scene-acceptance`, {
-      method: 'POST', body: {}, timeoutMs: 30000,
-    });
-    const bundle = await refreshSections('summary,assets,story,shots');
-    return { ...data, bundle };
-  }
-
   return {
     state,
     subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
@@ -602,10 +592,9 @@ export function createProjectStore() {
     videoPreflight,
     startVideo,
     cancelGeneration,
-    acceptCurrentScenes,
+    acceptCurrentScenes: async () => (await import('./sceneAcceptanceStore.js?v=20260829-production-v276d')).acceptCurrentScenes({ state, request, refreshSections }),
     clearProject,
     syncProgressPolling,
     stopProgressPolling,
     stopReferencePolling,
-  };
-}
+  }; }

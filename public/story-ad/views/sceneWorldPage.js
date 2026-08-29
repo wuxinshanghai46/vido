@@ -1,11 +1,11 @@
 import { bindSceneWorldWorkspace } from './sceneWorldView.js?v=20260829-production-v276c';
-import { setButtonBusy, toast } from '../components/ui.js?v=20260829-production-v276c';
 import { bindScenePlanUpdate, scenePlanBlockedView } from './scenePlanStatus.js?v=20260829-production-v276c';
 import { renderSceneProductionCard, scenePromptPreviewMarkup, scenePromptPreviewState, startInitialScenePlan } from './scenePromptPreview.js?v=20260829-production-v276c';
 import { bindMediaLightbox } from './mediaLightbox.js?v=20260829-production-v276c';
 import { buildSceneBatchActionPlan } from './sceneBatchActionPlan.js?v=20260829-production-v276c';
 import { bindGenerationModelPicker, loadGenerationModelPicker } from './generationModelPicker.js?v=20260829-production-v276c';
 import { normalizeSceneDossier } from './sceneDossierCard.js?v=20260829-production-v276c';
+import { bindSceneConfirmAction } from './sceneQaPublicState.js?v=20260829-production-v276d';
 
 export function latestSceneTargetProgress(progress = {}, sceneId = '', generationId = '') {
   const rows = Object.values(progress).filter(item => String(item?.stage || '') === 'scene_asset'
@@ -67,35 +67,11 @@ export async function mount(host, context) {
 
   bindScenePlanUpdate(host, context);
   bindMediaLightbox(host);
-  const cleanupSceneCards = (await import('./sceneCardInteractions.js?v=20260829-production-v276c')).bindSceneCards(host, context);
+  const sceneInteractions = await import('./sceneCardInteractions.js?v=20260829-production-v276d');
+  const cleanupSceneCards = sceneInteractions.bindSceneCards(host, context);
+  sceneInteractions.bindSceneCompletionActions(host, context);
+  bindSceneConfirmAction(host, context);
   if (preview.autoInitialize) startInitialScenePlan(bundle, store);
   if (scenes.length && (workflow.generated_count || 0) > 0) bindSceneWorldWorkspace(host, bundle, store);
-  host.querySelector('[data-confirm-scenes]')?.addEventListener('click', async event => {
-    const button = event.currentTarget;
-    setButtonBusy(button, true, '正在确认…');
-    try {
-      await store.updateRequest({ scene_setup_confirmed: true }, { skipRefresh: true });
-      const refreshed = await store.refreshSections('summary,assets,story,shots');
-      if (refreshed?.navigation?.steps?.storyboard?.enabled === false) throw new Error(refreshed.navigation.steps.storyboard.blocker || '线稿与分镜步骤尚未解锁');
-      context.navigate(`/story-ad/projects/${encodeURIComponent(bundle.project.id)}?view=storyboard`);
-    } catch (error) {
-      toast(error.message || '确认场景失败', 'error');
-      setButtonBusy(button, false);
-    }
-  });
-  host.querySelector('[data-accept-current-scenes]')?.addEventListener('click', async event => {
-    const button = event.currentTarget;
-    setButtonBusy(button, true, '正在继续…');
-    try {
-      const result = await store.acceptCurrentScenes();
-      if (Number(result?.model_call_count || 0) !== 0) throw new Error('当前图片接受操作不应产生模型调用');
-      const refreshed = result.bundle;
-      if (refreshed?.navigation?.steps?.storyboard?.enabled === false) throw new Error(refreshed.navigation.steps.storyboard.blocker || '线稿与分镜步骤尚未解锁');
-      context.navigate(`/story-ad/projects/${encodeURIComponent(bundle.project.id)}?view=storyboard`);
-    } catch (error) {
-      toast(error.message || '无法使用当前图片继续', 'error');
-      setButtonBusy(button, false);
-    }
-  });
   return cleanupSceneCards;
 }
