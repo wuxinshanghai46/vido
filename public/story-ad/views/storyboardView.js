@@ -36,16 +36,7 @@ export function friendlyBindings(bundle = {}, shot = {}) {
 const SHOT_SIZE_LABELS = Object.freeze({ extreme_wide: '大远景', wide: '全景', full: '全身景', medium: '中景', medium_close: '中近景', close_up: '特写', extreme_close_up: '大特写', macro: '微距' });
 const CAMERA_LABELS = Object.freeze({ static: '固定机位', push: '推镜', pull: '拉镜', pan: '摇镜', tilt: '俯仰摇镜', tracking: '跟拍', orbit: '环绕', handheld: '手持' });
 
-function pendingSketchKey(taskId = '') { return `story-ad-pending-sketch:${taskId}`; }
-function readPendingSketch(taskId = '') {
-  try { return JSON.parse(sessionStorage.getItem(pendingSketchKey(taskId)) || 'null'); } catch { return null; }
-}
-function savePendingSketch(taskId = '', value = null) {
-  try {
-    if (value) sessionStorage.setItem(pendingSketchKey(taskId), JSON.stringify(value));
-    else sessionStorage.removeItem(pendingSketchKey(taskId));
-  } catch {}
-}
+const pendingSketches = new Map();
 
 function productionCell(value, fallback = '—') {
   const text = Array.isArray(value) ? value.filter(Boolean).join('、') : String(value || '').trim();
@@ -214,7 +205,7 @@ export async function mount(host, context) {
   const sketchBatchActive = ['queued', 'running'].includes(String(sketchBatch?.status || ''));
   const storyboardActive = bundle?.project?.active_stage === 'storyboard' && !!bundle?.project?.active_generation_id;
   const storyboardFailed = !shots.length && !storyboardActive && bundle?.project?.stage === 'storyboard' && !!bundle?.project?.error;
-  if (storyboardFailed) savePendingSketch(bundle.project.id, null);
+  if (storyboardFailed) pendingSketches.delete(bundle.project.id);
   const defaultPanel = shots.length && (sketchGate.ready || sketches.length) ? 'sketches' : 'shots';
   const mainSketchAction = shots.length
     ? (missingSketchCount
@@ -230,7 +221,7 @@ export async function mount(host, context) {
           ? '系统正在根据已确认剧情整理景别、机位、运镜和时长；完成后会继续生成分镜线稿图。'
           : '点击“生成分镜线稿图”后，系统先在后台整理镜头结构，再使用所选模型生成线稿。')
         : (sketchGate.ready
-          ? '线稿可逐镜生成、上传或跳过；确认后构图约束会进入镜头设计。'
+          ? '线稿可生成、上传或跳过；确认后构图约束会进入镜头设计。'
           : `镜头结构需要修正：${gateReason}`))));
   host.innerHTML = `
     <section class="view-head">
@@ -294,8 +285,8 @@ export async function mount(host, context) {
   host.querySelector('[data-prepare-storyboard-sketch]')?.addEventListener('click', async event => {
     const model = selectedSketchModel();
     if (!model) return toast('请先选择本次线稿生成模型。', 'danger');
-    savePendingSketch(bundle.project.id, { image_model: model, client_request_id: globalThis.crypto?.randomUUID?.() || `${Date.now()}`, created_at: new Date().toISOString() });
-    if (!await generateStoryboard(event.currentTarget)) savePendingSketch(bundle.project.id, null);
+    pendingSketches.set(bundle.project.id, { image_model: model, client_request_id: globalThis.crypto?.randomUUID?.() || `${Date.now()}` });
+    if (!await generateStoryboard(event.currentTarget)) pendingSketches.delete(bundle.project.id);
   });
   host.querySelector('[data-regenerate-storyboard]')?.addEventListener('click', async event => {
     await generateStoryboard(event.currentTarget);
@@ -342,7 +333,7 @@ export async function mount(host, context) {
     batchFinalizing = true;
     if (sketchBatchPollTimer) clearTimeout(sketchBatchPollTimer);
     renderSketchBatch(progress);
-    savePendingSketch(bundle.project.id, null);
+    pendingSketches.delete(bundle.project.id);
     const failed = progress?.status === 'failed';
     toast(failed ? progress.message : `线稿已完成 ${progress?.completed || 0}/${progress?.requested || 0}，结果显示在下方镜头卡片中。`, failed ? 'danger' : 'success');
     await context.refreshShell();
@@ -372,12 +363,12 @@ export async function mount(host, context) {
         body: { confirmed: true, regenerate_all: regenerateAll, image_model: options.imageModel || selectedSketchModel(), client_request_id: options.clientRequestId || globalThis.crypto?.randomUUID?.() || `${Date.now()}` },
         timeoutMs: 45 * 60 * 1000,
       });
-      savePendingSketch(bundle.project.id, null);
+      pendingSketches.delete(bundle.project.id);
       await finishSketchBatch(data.progress || {
         status: 'succeeded', requested: data.requested, completed: data.completed,
       });
     } catch (error) {
-      if (error.code !== 'SKETCH_BATCH_IN_PROGRESS') savePendingSketch(bundle.project.id, null);
+      if (error.code !== 'SKETCH_BATCH_IN_PROGRESS') pendingSketches.delete(bundle.project.id);
       toast(error.code === 'SKETCH_BATCH_IN_PROGRESS' ? '已连接正在执行的线稿批次。' : error.message, error.code === 'SKETCH_BATCH_IN_PROGRESS' ? 'warning' : 'danger');
       sketchBatchPollTimer = setTimeout(pollSketchBatch, 100);
     } finally {
@@ -385,7 +376,7 @@ export async function mount(host, context) {
     }
   };
   batchButton?.addEventListener('click', event => startSketchBatch(event.currentTarget));
-  const pendingSketch = readPendingSketch(bundle.project.id);
+  const pendingSketch = pendingSketches.get(bundle.project.id);
   if (pendingSketch && shots.length && sketchGate.ready && !sketchBatchActive && missingSketchCount > 0 && batchButton) {
     window.setTimeout(() => startSketchBatch(batchButton, {
       imageModel: pendingSketch.image_model,

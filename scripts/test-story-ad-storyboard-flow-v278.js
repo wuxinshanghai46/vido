@@ -114,7 +114,7 @@ function verifyUserFacingFlow() {
   assert.match(view, /剧情内容已在上一步确定/);
   assert.match(view, /生成分镜线稿图/);
   assert.match(view, /系统先在后台整理镜头结构，再使用所选模型生成线稿/);
-  assert.match(view, /savePendingSketch/);
+  assert.match(view, /pendingSketches/);
   assert.match(view, /startSketchBatch\(batchButton/,
     '一次明确的线稿生成操作必须在镜头结构完成后续接线稿图片生成');
   assert.doesNotMatch(view, />生成文字分镜</);
@@ -123,7 +123,7 @@ function verifyUserFacingFlow() {
   assert.match(view, /data-board-tab="sketches"[^>]*>分镜线稿/);
   assert.match(view, /defaultPanel = shots\.length[\s\S]+\? 'sketches' : 'shots'/,
     '已有镜头结构时默认应展示用户真正要处理的分镜线稿');
-  assert.match(view, /if \(!await generateStoryboard\([^\n]+savePendingSketch\(bundle\.project\.id, null\)/,
+  assert.match(view, /if \(!await generateStoryboard\([^\n]+pendingSketches\.delete\(bundle\.project\.id\)/,
     '镜头结构提交失败后不得遗留自动付费线稿意图');
 }
 
