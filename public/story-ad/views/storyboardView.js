@@ -1,7 +1,7 @@
-import { request } from '../api.js?v=20260829-production-v283';
-import { elapsedTimeTag, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260829-production-v283';
-import { bindMediaLightbox } from './mediaLightbox.js?v=20260829-production-v283';
-import { bindGenerationModelPicker, loadGenerationModelPicker } from './generationModelPicker.js?v=20260829-production-v283';
+import { request } from '../api.js?v=20260830-production-v284';
+import { elapsedTimeTag, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260830-production-v284';
+import { bindMediaLightbox } from './mediaLightbox.js?v=20260830-production-v284';
+import { bindGenerationModelPicker, loadGenerationModelPicker } from './generationModelPicker.js?v=20260830-production-v284';
 
 export function friendlyBindings(bundle = {}, shot = {}) {
   const assets = bundle.assets || {};
@@ -182,7 +182,7 @@ function checkpointPreview(shots = [], total = 0) {
 
 export async function mount(host, context) {
   if (context.route?.params?.get('stage') === 'shot') {
-    const shotDesigner = await import('./shotDesignerView.js?v=20260829-production-v283');
+    const shotDesigner = await import('./shotDesignerView.js?v=20260830-production-v284');
     return shotDesigner.mount(host, context);
   }
   const { bundle, store } = context;
