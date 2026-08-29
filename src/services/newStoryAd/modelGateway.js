@@ -17,6 +17,7 @@ const MANAGED_RECOVERY_FALLBACK_STAGES = new Set([
   REFERENCE_SYNTHESIS_STAGE,
   'new_story_ad.assist',
   'new_story_ad.person_plan_character',
+  'new_story_ad.story_flow_planning',
   'new_story_ad.brief_dialogue',
   'new_story_ad.story_facts',
   'new_story_ad.story_facts_compact_retry',
@@ -46,6 +47,7 @@ const STAGE_FALLBACKS = {
   'new_story_ad.asset_plan_scene_coverage_recovery': FALLBACKS,
   'new_story_ad.scene_config': FALLBACKS,
   'new_story_ad.blueprint': FALLBACKS,
+  'new_story_ad.story_flow_planning': FALLBACKS,
   'new_story_ad.storyboard_table': FALLBACKS,
   'new_story_ad.storyboard_rewrite': FALLBACKS,
   'new_story_ad.qa': FALLBACKS,
@@ -1194,6 +1196,24 @@ function mockName(seed = '', idx = 0) {
 function mockResponse(stage, userPrompt = '') {
   const primaryName = mockName(userPrompt || stage, 0);
   const supportName = mockName(userPrompt || stage, 1);
+  if (stage === 'new_story_ad.story_flow_planning') {
+    let payload = {};
+    try { payload = JSON.parse(String(userPrompt || '{}')); } catch {}
+    const people = Array.isArray(payload.people) ? payload.people : [];
+    const scenes = Array.isArray(payload.scenes) ? payload.scenes : [];
+    const beats = Array.isArray(payload.beats) ? payload.beats : [];
+    return JSON.stringify({ units: beats.map(beat => {
+      const text = [beat.title, beat.plot, beat.action, beat.spoken_line].filter(Boolean).join(' ');
+      const scene = scenes.find(item => item.name && text.includes(item.name)) || scenes[0] || {};
+      const matchedPeople = people.filter(item => item.name && text.includes(item.name));
+      return {
+        beat_id: beat.beat_id,
+        scene_id: scene.scene_id || '',
+        character_ids: (matchedPeople.length ? matchedPeople : (people.length === 1 ? people : []))
+          .map(item => item.character_id).filter(Boolean),
+      };
+    }) });
+  }
   if (/blueprint/.test(stage)) {
     return JSON.stringify({
       story_title: '任务专属剧情广告蓝图',

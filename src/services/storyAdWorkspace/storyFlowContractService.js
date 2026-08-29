@@ -61,6 +61,10 @@ function personAuthority(person = {}, index = 0) {
     person_revision: Math.max(0, Number(person.person_revision || person.revision || 0) || 0),
     look_ids: list(person.look_profiles).map((look, lookIndex) => stableId(look.id || look.look_id, `look_${index + 1}_${lookIndex + 1}`)),
     voice_id: stableId(person.voice_id || person.voiceId || person.tts_voice_id || person.voice_assignment?.voice_id),
+    description: clean([
+      person.description, person.bio, person.identity, person.appearance,
+      person.wardrobe, person.role_description,
+    ].filter(Boolean).join('；'), 1200),
     identity_reference_ids: list(person.identity_reference_ids).map(value => stableId(value)).filter(Boolean),
   };
 }
@@ -74,6 +78,10 @@ function sceneAuthority(scene = {}, index = 0) {
   return {
     scene_id: stableId(scene.scene_id || scene.space_id || scene.id),
     name: clean(scene.name || scene.scene_name || scene.title || `场景 ${index + 1}`, 120),
+    description: clean([
+      scene.description, scene.prompt, scene.scene_prompt, contract.description,
+      contract.spatial_summary, contract.layout, contract.materials, contract.lighting,
+    ].flat().filter(Boolean).join('；'), 1800),
     scene_revision: Math.max(1, Number(scene.scene_revision || scene.revision || contract.revision || 1) || 1),
     view_ids: views.map(view => view.view_id),
     sound_profile_id: stableId(scene.sound_profile_id || scene.sound_profile?.id || contract.sound_profile_id || `sound_profile_${stableId(scene.scene_id || scene.space_id || scene.id)}`),
@@ -203,11 +211,19 @@ function draft(taskId) {
   };
 }
 
-function validateUnits(base, supplied = []) {
+function validateUnits(base, supplied = [], options = {}) {
   const incoming = new Map(list(supplied).map(unit => [stableId(unit.beat_id), unit]));
   const personIds = new Set(base.people.map(person => person.character_id));
   const sceneIds = new Set(base.scenes.map(scene => scene.scene_id));
   const errors = [];
+  if (options.requireExact === true) {
+    const expectedIds = new Set(base.units.map(unit => unit.beat_id));
+    const suppliedIds = list(supplied).map(unit => stableId(unit.beat_id)).filter(Boolean);
+    const duplicateIds = suppliedIds.filter((id, index) => suppliedIds.indexOf(id) !== index);
+    duplicateIds.forEach(id => errors.push(`剧情节点 ${id} 被重复绑定`));
+    suppliedIds.filter(id => !expectedIds.has(id)).forEach(id => errors.push(`返回了不存在的剧情节点 ${id}`));
+    base.units.filter(unit => !incoming.has(unit.beat_id)).forEach(unit => errors.push(`${unit.title} 缺少人物与场景绑定`));
+  }
   const units = base.units.map(unit => {
     const source = incoming.get(unit.beat_id) || unit;
     const characterIds = [...new Set(list(source.character_ids).map(value => stableId(value)).filter(Boolean))];
@@ -237,27 +253,29 @@ function validateUnits(base, supplied = []) {
   return units;
 }
 
-function confirm(taskId, supplied = [], actor = {}) {
+function persistConfirmation(taskId, supplied = [], actor = {}, options = {}) {
   const base = draft(taskId);
-  const units = validateUnits(base, supplied);
+  const units = validateUnits(base, supplied, { requireExact: options.requireExact === true });
   const previous = storage.getOutput(taskId, OUTPUT_KIND) || {};
   const nextFingerprint = storage.canonicalFingerprint({
     blueprint_fingerprint: base.blueprint_fingerprint,
     authority_fingerprint: base.authority_fingerprint,
     units: units.map(unit => ({ beat_id: unit.beat_id, character_ids: unit.character_ids, look_bindings: unit.look_bindings, voice_bindings: unit.voice_bindings, scene_id: unit.scene_id })),
   });
-  const changed = previous.contract_fingerprint !== nextFingerprint || previous.status !== 'confirmed';
+  const status = options.status === 'system_confirmed' ? 'system_confirmed' : 'confirmed';
+  const changed = previous.contract_fingerprint !== nextFingerprint || previous.status !== status;
   const timestamp = now();
   const contract = {
     ...base,
     units,
-    status: 'confirmed',
+    status,
     contract_fingerprint: nextFingerprint,
-    model_call_count: 0,
+    model_call_count: Math.max(0, Number(options.model_call_count || 0) || 0),
+    planning_model: clean(options.planning_model, 180),
     created_at: previous.created_at || timestamp,
     updated_at: timestamp,
     confirmed_at: timestamp,
-    confirmed_by: clean(actor.id || actor.user_id || actor.email || 'user', 120),
+    confirmed_by: clean(actor.id || actor.user_id || actor.email || (status === 'system_confirmed' ? 'system_ai' : 'user'), 120),
   };
   const task = storage.getTask(taskId) || {};
   if (changed && !previous.contract_fingerprint) {
@@ -276,7 +294,20 @@ function confirm(taskId, supplied = [], actor = {}) {
     snapshot_id: task.current_snapshot_id || `story-flow:${taskId}`,
   });
   if (changed) storage.deleteOutputs(taskId, DOWNSTREAM_KINDS);
-  return { contract, gate: inspect(taskId), model_call_count: 0, downstream_invalidated: changed };
+  return { contract, gate: inspect(taskId), model_call_count: contract.model_call_count, downstream_invalidated: changed };
+}
+
+function confirm(taskId, supplied = [], actor = {}) {
+  return persistConfirmation(taskId, supplied, actor);
+}
+
+function confirmSystem(taskId, supplied = [], modelMeta = {}) {
+  return persistConfirmation(taskId, supplied, { id: 'system_ai' }, {
+    status: 'system_confirmed',
+    requireExact: true,
+    model_call_count: 1,
+    planning_model: modelMeta.used_model || '',
+  });
 }
 
 function inspect(taskId) {
@@ -292,7 +323,7 @@ function inspect(taskId) {
     && stored.authority_fingerprint === base.authority_fingerprint;
   const complete = list(stored.units).length === base.units.length
     && list(stored.units).every(unit => !base.scenes.length || stableId(unit.scene_id));
-  const ready = fresh && complete && stored.status === 'confirmed';
+  const ready = fresh && complete && ['confirmed', 'system_confirmed'].includes(stored.status);
   return {
     ready,
     total: base.units.length,
@@ -302,7 +333,7 @@ function inspect(taskId) {
     contract_fingerprint: clean(stored.contract_fingerprint, 220),
     reason: ready
       ? '剧情流向及人物、场景绑定已确认，可以生成正式人物场景分镜。'
-      : (fresh && stored.status === 'draft' ? '请确认剧情流向及每个节点的人物、场景绑定。' : '剧情或人物场景资产已变化，请重新确认剧情流向绑定。'),
+      : (fresh && stored.status === 'draft' ? '系统尚未完成剧情节点的人物与场景绑定。' : '剧情或人物场景资产已变化，系统需要重新绑定后再生成分镜。'),
   };
 }
 
@@ -315,5 +346,5 @@ function assertReady(taskId) {
 }
 
 module.exports = {
-  CONTRACT_VERSION, DOWNSTREAM_KINDS, OUTPUT_KIND, assertReady, authoritySnapshot, confirm, draft, inspect,
+  CONTRACT_VERSION, DOWNSTREAM_KINDS, OUTPUT_KIND, assertReady, authoritySnapshot, confirm, confirmSystem, draft, inspect, validateUnits,
 };

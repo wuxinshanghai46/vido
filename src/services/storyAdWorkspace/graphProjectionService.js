@@ -361,15 +361,15 @@ function projectGraph(bundle = {}) {
       id: `story-flow:${clean(unit.beat_id, 120) || beatIndex}`,
       type: 'story_flow',
       group: 'story_flow',
-      title: unit.title || `剧情流向 ${beatIndex}`,
+      title: unit.title || `系统绑定 ${beatIndex}`,
       subtitle: unit.action || unit.plot || '剧情事件与状态衔接',
       status: flowContract.status || 'draft',
-      target: `/story-ad/projects/${encodeURIComponent(projectId)}?view=flow`,
+      target: `/story-ad/projects/${encodeURIComponent(projectId)}?view=storyboard`,
       detail: {
         beat_id: clean(unit.beat_id, 120), beat_index: beatIndex,
         state_before: detailText(unit.state_before, 600), action: detailText(unit.action || unit.plot, 800), state_after: detailText(unit.state_after, 600),
         bindings: { character_ids: uniqueText(unit.character_ids, 40, 120), scene_id: clean(unit.scene_id, 120) },
-        model_call_count: 0,
+        model_call_count: Math.max(0, Number(flowContract.model_call_count || 0) || 0),
       },
     });
     flowIds.push(flowId);
@@ -540,7 +540,7 @@ function projectGraph(bundle = {}) {
     ['story', '剧情'],
     ['assets', '身份资产'],
     ['director', '导演台与运动设计'],
-    ['story_flow', '剧情流向确认'],
+    ['story_flow', '系统人物场景绑定（自动）'],
     ['shots', '人物场景分镜'],
     ['media', '生成结果'],
     ['final', '成片'],

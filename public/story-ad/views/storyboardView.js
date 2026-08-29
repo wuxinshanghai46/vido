@@ -216,17 +216,17 @@ export async function mount(host, context) {
   const guideMessage = isReferenceDraft
     ? '这里仅显示参考视频提取的逐镜草稿。可逐镜打开编辑，确认剧情、动作和时长；机位、景别和运镜在镜头设计中继续优化。'
     : (completedHistoryMessage || (storyboardFailed
-      ? `分镜合同生成失败：${bundle.project.error}。可重新点击“生成分镜”，不会改写剧情流向合同或场景图片。`
+      ? `分镜生成失败：${bundle.project.error}。可重新点击“生成分镜”；系统会先重新核对人物与场景绑定，不会改写前四步内容或场景图片。`
       : (!shots.length
         ? (storyboardActive
-          ? '系统正在根据已确认剧情流向整理人物、场景、景别、机位、运镜和时长；完成后可生成黑白分镜图。'
-          : '点击“生成分镜”后先建立 Shot List；检查人物、造型、场景和版本绑定后，再使用所选模型生成黑白分镜图。')
+          ? '系统正在自动绑定固定人物与固定场景，并整理景别、机位、运镜和时长；通过后会继续生成黑白分镜图。'
+          : '点击“生成分镜”后，系统会先自动完成剧情节点与固定人物、固定场景的绑定校验，再建立 Shot List 并继续生成黑白分镜图。')
         : (sketchGate.ready
           ? '分镜图可生成或上传；全部确认后，黑白构图会作为必需参考进入彩色关键帧。'
           : `人物场景分镜需要修正：${gateReason}`))));
   host.innerHTML = `
     <section class="view-head">
-      <div><h1>人物场景分镜</h1><p>消费已确认的剧情流向合同，先形成 Shot List，再用固定人物和固定场景生成黑白分镜画面。</p>${isReferenceDraft ? '<span class="status-tag is-neutral">参考视频逐镜草稿 · 待优化</span>' : ''}</div>
+      <div><h1>人物场景分镜</h1><p>系统自动核对剧情流向并绑定前四步已确认的人物与场景，再生成 Shot List 和黑白分镜画面。</p>${isReferenceDraft ? '<span class="status-tag is-neutral">参考视频逐镜草稿 · 待优化</span>' : ''}</div>
       <div class="view-actions">${shots.length ? (isReferenceDraft
         ? '<button class="btn primary" type="button" data-save-reference-storyboard>保存参考分镜草稿</button>'
         : (completedHistorical && !sketchGate.ready
@@ -245,7 +245,7 @@ export async function mount(host, context) {
         ${visibleShots.map((shot, index) => shotRow(shot, pageStart + index, bundle)).join('')}
       </div></div>${!isReferenceDraft ? '<div class="storyboard-secondary-action"><button class="btn quiet" type="button" data-regenerate-storyboard>重新整理镜头结构</button></div>' : ''}${pageNav}` : `<div class="card">${emptyState({
         title: storyboardActive ? '正在整理镜头结构' : '镜头结构尚未建立',
-        body: storyboardActive ? '系统正在把已确认剧情流向合同转换为人物、场景、景别、机位、运镜和时长合同，进度显示在页面顶部。' : '请点击上方“生成分镜”开始建立逐镜合同。',
+        body: storyboardActive ? '系统正在自动绑定固定人物与固定场景，并转换为景别、机位、运镜和时长合同，进度显示在页面顶部。' : '请点击上方“生成分镜”开始自动绑定并建立逐镜合同。',
       })}</div>`}
     </section>
     <section data-board-panel="sketches" ${defaultPanel === 'sketches' ? '' : 'hidden'}>

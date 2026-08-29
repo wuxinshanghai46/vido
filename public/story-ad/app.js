@@ -15,15 +15,14 @@ await assertCurrentRelease().then(() => startReleaseHeartbeat()).catch(error => 
 
 const app = document.querySelector('#storyAdApp');
 const store = createProjectStore();
-const VIEW_ORDER = ['brief', 'plot', 'assets', 'scene', 'flow', 'storyboard', 'final', 'workflow'];
+const VIEW_ORDER = ['brief', 'plot', 'assets', 'scene', 'storyboard', 'final', 'workflow'];
 const VIEW_META = {
   brief: ['1', '对话立项'],
   plot: ['2', '剧情与对白'],
   assets: ['3', '人物资产'],
   scene: ['4', '场景世界'],
-  flow: ['5', '剧情流向确认'],
-  storyboard: ['6', '人物场景分镜'],
-  final: ['7', '声音、视频与合成'],
+  storyboard: ['5', '人物场景分镜'],
+  final: ['6', '声音、视频与合成'],
   workflow: ['⌘', '工作流画布'],
 };
 const VIEW_MODULES = {
@@ -31,17 +30,15 @@ const VIEW_MODULES = {
   assets: () => import('./views/assetCenterView.js?v=20260829-production-v280a'),
   scene: () => import('./views/sceneWorldPage.js?v=20260829-production-v280a'),
   plot: () => import('./views/plotRoomView.js?v=20260829-production-v280a'),
-  flow: () => import('./views/storyFlowSketchView.js?v=20260829-production-v280a'),
-  storyboard: () => import('./views/storyboardView.js?v=20260829-production-v280a'),
-  final: () => import('./views/finalView.js?v=20260829-production-v280a'),
-  workflow: () => import('./views/workflowView.js?v=20260829-production-v280a'),
+  storyboard: () => import('./views/storyboardView.js?v=20260829-production-v281'),
+  final: () => import('./views/finalView.js?v=20260829-production-v281'),
+  workflow: () => import('./views/workflowView.js?v=20260829-production-v281'),
 };
 const VIEW_SECTIONS = Object.freeze({
   brief: 'summary,reference',
   assets: 'summary,assets',
   scene: 'summary,assets,shots',
   plot: 'summary,story',
-  flow: 'summary,assets,story,shots',
   storyboard: 'summary,assets,story,shots',
   final: 'summary,shots,media',
   workflow: 'summary,reference,assets,story,shots,media,graph',
@@ -71,7 +68,8 @@ function platformTopbar({ project = null, saving = false, isNew = false } = {}) 
 function currentRoute() {
   const match = location.pathname.match(/^\/story-ad\/projects\/([^/]+)$/);
   const params = new URLSearchParams(location.search);
-  const view = VIEW_ORDER.includes(params.get('view')) ? params.get('view') : 'brief';
+  const requestedView = params.get('view') === 'flow' ? 'storyboard' : params.get('view');
+  const view = VIEW_ORDER.includes(requestedView) ? requestedView : 'brief';
   return {
     page: match ? 'project' : 'center',
     taskId: match ? decodeURIComponent(match[1]) : '',
@@ -196,7 +194,6 @@ function projectNavigation(bundle, active) {
   const countFor = view => ({
     assets: counts.subject_assets ?? counts.assets,
     scene: counts.scenes,
-    flow: counts.flow_sketches,
     storyboard: counts.shots,
     shot: counts.keyframes,
     final: counts.clips,
@@ -314,6 +311,11 @@ async function renderRoute() {
   renderProjectShell(route);
   await mountView(route);
   store.syncProgressPolling();
+  if (!route.isNew) {
+    const prefetch = () => store.prefetchBundle(route.taskId, 'all').catch(() => {});
+    if ('requestIdleCallback' in window) window.requestIdleCallback(prefetch, { timeout: 1200 });
+    else window.setTimeout(prefetch, 160);
+  }
 }
 
 function showFatal(error) {

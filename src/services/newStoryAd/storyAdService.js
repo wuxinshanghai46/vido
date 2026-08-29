@@ -6,6 +6,7 @@ const { buildContext, contextPrompt, cleanText, normalizeCharacters, assertConte
 const sceneExperienceAssist = require('./sceneExperienceAssistService'), assistKnowledgePolicy = require('./assistKnowledgePolicyService'), blueprintLifecycle = require('./blueprintLifecycleService');
 const { generateStoryboardTable, rewriteStoryboard } = require('./storyboardTableService');
 const storyboardCoverageLifecycle = require('./storyboardCoverageLifecycleService'), storyboardGenerationPreflight = require('./storyboardGenerationPreflightService'), storyboardImageConfirmationGate = require('../storyAdWorkspace/storyboardImageConfirmationGateService');
+const storyFlowPlanning = require('../storyAdWorkspace/storyFlowPlanningService');
 const { reviewStoryboard } = require('./qualityReviewService'), storyboardContinuityGate = require('./storyboardContinuityGateService');
 const { buildKeyframeContracts } = require('./keyframeContractService'), knowledgePolicyRuntime = require('./knowledgePolicyRuntimeService');
 const { withContinuityContracts } = require('./continuityService');
@@ -868,7 +869,9 @@ async function generateScriptPackageStage(taskId, options = {}) {
 }
 
 async function generateStoryboardStage(taskId, options = {}) {
-  const { task, ctx, story_flow_contract: storyFlowContract } = storyboardGenerationPreflight.assertReady(taskId, { sceneVerificationOptions });
+  storyboardGenerationPreflight.assertUpstreamReady(taskId, { sceneVerificationOptions });
+  await storyFlowPlanning.ensure(taskId, options);
+  const { task, ctx, scene_assets: sceneAssets, story_flow_contract: storyFlowContract } = storyboardGenerationPreflight.assertReady(taskId, { sceneVerificationOptions });
   let blueprint = storage.getOutput(taskId, 'blueprint');
   if (!blueprint) blueprint = await generateBlueprintStage(taskId);
   if (!blueprint.fingerprint) {

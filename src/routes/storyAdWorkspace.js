@@ -5,7 +5,6 @@ const projectBundles = require('../services/storyAdWorkspace/projectBundleServic
 const graphProjection = require('../services/storyAdWorkspace/graphProjectionService');
 const graphLayouts = require('../services/storyAdWorkspace/graphLayoutService');
 const storyboardSketches = require('../services/storyAdWorkspace/storyboardSketchService');
-const storyFlowSketches = require('../services/storyAdWorkspace/storyFlowContractService');
 const sceneWorlds = require('../services/storyAdWorkspace/sceneWorldService');
 const directorScenes = require('../services/storyAdWorkspace/directorSceneService');
 const referenceUnderstandingConfirmations = require('../services/storyAdWorkspace/referenceUnderstandingConfirmationService');
@@ -382,23 +381,20 @@ router.post('/projects/:taskId/materials', asyncRoute(async (req, res) => {
   res.json({ success: true, task_id: req.params.taskId, ...updated });
 }));
 
-router.get('/projects/:taskId/story-flow', asyncRoute(async (req, res) => {
+const rejectLegacyUserStoryFlowRoute = asyncRoute(async (req) => {
   projectForRequest(req);
-  res.json({ success: true, task_id: req.params.taskId, contract: storyFlowSketches.draft(req.params.taskId), gate: storyFlowSketches.inspect(req.params.taskId) });
-}));
-
-router.post('/projects/:taskId/story-flow/confirm', asyncRoute(async (req, res) => {
-  projectForRequest(req);
-  res.json({ success: true, task_id: req.params.taskId, ...storyFlowSketches.confirm(
-    req.params.taskId,
-    req.body?.units || [],
-    currentUser(req),
-  ) });
-}));
+  const error = new Error('用户确认剧情流向的旧入口已禁用。人物与场景绑定现在由系统在生成分镜时自动完成。');
+  error.code = 'LEGACY_USER_STORY_FLOW_ROUTE_DISABLED';
+  error.status = 410;
+  error.retryable = false;
+  throw error;
+});
+router.all('/projects/:taskId/story-flow', rejectLegacyUserStoryFlowRoute);
+router.all('/projects/:taskId/story-flow/*', rejectLegacyUserStoryFlowRoute);
 
 const rejectLegacyFlowSketchRoute = asyncRoute(async (req) => {
   projectForRequest(req);
-  const error = new Error('旧剧情流向图片生成入口已禁用。第 5 步现在只做零费用的剧情、人物和场景绑定确认。');
+  const error = new Error('旧剧情流向图片生成入口已禁用。系统会在人物场景分镜内部自动完成绑定，不生成独立流向图片。');
   error.code = 'LEGACY_STORY_FLOW_SKETCH_ROUTE_DISABLED';
   error.status = 410;
   error.retryable = false;
@@ -409,7 +405,7 @@ router.all('/projects/:taskId/flow-sketches/*', rejectLegacyFlowSketchRoute);
 
 const rejectLegacySketchRoute = asyncRoute(async (req) => {
   projectForRequest(req);
-  const error = new Error('旧“线稿与分镜”合并入口已禁用，请刷新页面后分别使用“剧情流向确认”和“人物场景分镜”。');
+  const error = new Error('旧“线稿与分镜”合并入口已禁用，请刷新页面后使用“人物场景分镜”。');
   error.code = 'LEGACY_STORYBOARD_SKETCH_ROUTE_DISABLED';
   error.status = 410;
   error.retryable = false;

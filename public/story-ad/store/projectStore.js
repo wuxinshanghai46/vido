@@ -2,7 +2,7 @@ import { request, uploadAsset, uploadReferenceVideo } from '../api.js?v=20260829
 import { beginReferenceReplacement, referenceSyncInterrupted, replacementCurrent, removeProjectReference, restoreReferenceReplacement } from './referenceReplacementState.js?v=20260829-production-v280a';
 import { cancelReferenceAnalysisRequest, retryReferenceAnalysisRequest, retryReferenceImportRequest } from './referenceRetryStore.js?v=20260829-production-v280a';
 import { loadProjectList } from './projectListStore.js?v=20260829-production-v280a';
-import { loadProjectBundle, refreshProjectBundle } from './projectBundleStore.js?v=20260829-production-v280a';
+import { loadProjectBundle, prefetchProjectBundle, refreshProjectBundle } from './projectBundleStore.js?v=20260829-production-v281';
 import { beginStageSubmissionState } from './stageSubmissionState.js?v=20260829-production-v280a';
 export function createProjectStore() {
   const state = {
@@ -53,6 +53,9 @@ export function createProjectStore() {
     hydrateReferenceFailure();
     return bundle;
   }
+  async function prefetchBundle(taskId, sections = 'all') {
+    return prefetchProjectBundle({ request, set, state, taskId, sections });
+  }
   const mediaStore = () => import('./mediaCatalogStore.js?v=20260829-production-v280a'), loadMediaPage = async options => (await mediaStore()).loadMediaPage({ request, state }, options);
   const loadMoreMedia = async (kind = 'keyframes', limit = 24) => (await mediaStore()).loadMoreMedia({ request, state, set }, kind, limit);
 
@@ -66,6 +69,7 @@ export function createProjectStore() {
     const task = data.task && typeof data.task === 'object' ? data.task : {};
     const context = data.context && typeof data.context === 'object' ? data.context : null;
     const contentRevision = Math.max(1, Number(data.content_revision || task.content_revision || current.revisions?.content || 1) || 1);
+    const contentRevisionChanged = contentRevision !== (Number(current.revisions?.content || 0) || 0);
     const clientEditSeq = Math.max(0, Number(data.acknowledged_client_edit_seq || task.latest_client_edit_seq || current.revisions?.client_edit_seq || 0) || 0);
     const next = {
       ...current,
@@ -113,7 +117,7 @@ export function createProjectStore() {
       source: 'saved_storyboard',
     };
     if (task.active_generation_id) next.generation = { ...(current.generation || {}), progress: task.generation_progress || null };
-    set({ bundle: next });
+    set({ bundle: next, ...(contentRevisionChanged ? { bundleSections: ['summary'] } : {}) });
     return next;
   }
   async function updateRequest(patch, options = {}) {
@@ -571,6 +575,7 @@ export function createProjectStore() {
     createProject,
     deleteProject,
     loadBundle,
+    prefetchBundle,
     loadMediaPage,
     loadMoreMedia,
     refreshSections,
