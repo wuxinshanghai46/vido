@@ -19,6 +19,8 @@ function failureCategories(contract = {}) {
 
 function project(contract = {}) {
   const verificationState = clean(contract.verification?.state || contract.verification?.status, 80).toLowerCase();
+  const failures = failureCategories(contract);
+  const failureLabels = { timeout: '审核接口超时', invalid_response: '返回格式不完整', rate_limited: '请求频率受限', no_valid_result: '没有取得有效审核结论' };
   return {
     full_space_lock: contract.full_space_lock === true ? true : (contract.full_space_lock === false ? false : null),
     space_lock_status: clean(contract.space_lock_status, 80),
@@ -27,7 +29,8 @@ function project(contract = {}) {
     checked_at: clean(contract.verification?.checked_at || contract.verification?.updated_at, 80),
     error_code: clean(contract.qa_error_code, 120),
     error: clean(contract.qa_error, 300),
-    failure_categories: failureCategories(contract),
+    failure_categories: failures,
+    failure_summary: failures.map(value => failureLabels[value]).filter(Boolean).join('、'),
     missing_fields: list(contract.qa_missing_fields).slice(0, 12).map(field => clean(field, 160)),
     requirement_pass: contract.requirement_qa?.pass,
     cross_view_pass: contract.cross_view_qa?.pass,

@@ -1,35 +1,22 @@
 import { request } from '../api.js?v=20260829-production-v260b';
 import { escapeHtml } from '../components/ui.js?v=20260829-production-v260b';
 
-const PROVIDER_INITIALS = Object.freeze({
-  deyunai: 'DY',
-  apismile: 'AS',
-  'webang-maas': 'WB',
-  smscrw: 'SZ',
-});
+const P = { deyunai: 'DY', apismile: 'AS', 'webang-maas': 'WB', smscrw: 'SZ' };
+const M = {
+  'gemini-2.5-flash-image': 'Nano Banana', 'nano-banana': 'Nano Banana', 'nano-banana-pro': 'Nano Banana Pro',
+  'gpt-image-2': 'GPT Image 2',
+};
 
 export function generationProviderInitials(model = {}) {
-  const providerId = String(model.provider_id || String(model.route || '').split('/')[0] || '').trim().toLowerCase();
-  return PROVIDER_INITIALS[providerId]
-    || providerId.split(/[^a-z0-9]+/i).filter(Boolean).map(part => part[0]).join('').slice(0, 3).toUpperCase()
-    || 'AI';
+  const id = String(model.provider_id || model.route || '').split('/')[0].toLowerCase();
+  return P[id] || id.slice(0, 2).toUpperCase() || 'AI';
 }
 
 export function generationModelDisplayName(model = {}) {
-  const modelId = String(model.model_id || String(model.route || '').split('/').slice(1).join('/') || '').trim().toLowerCase();
-  if (/nano[-_ ]?banana[-_ ]?pro/.test(modelId)) return 'Nano Banana Pro';
-  if (/nano[-_ ]?banana/.test(modelId) || modelId === 'gemini-2.5-flash-image') return 'Nano Banana';
-  if (/^gpt[-_ ]?image[-_ ]?2$/.test(modelId)) return 'GPT Image 2';
-  if (/^gpt[-_ ]?image[-_ ]?1$/.test(modelId)) return 'GPT Image 1';
-  if (/^qwen[-_ ]?image[-_ ]?edit/.test(modelId)) return 'Qwen Image Edit';
-  if (/^qwen[-_ ]?image/.test(modelId)) return 'Qwen Image';
-  const source = String(model.model_name || model.model_id || 'Image').trim();
-  return source
-    .replace(/\s*[·|｜].*$/u, '')
-    .replace(/\s*[（(][^）)]*(?:平台|聚合|兼容|海外|alias|别名|Deyun|ApiSmile|SMSCRW|MaaS|OpenAI)[^）)]*[）)]/giu, '')
-    .replace(/\?{2,}/g, '')
-    .replace(/\s+/g, ' ')
-    .trim() || 'Image';
+  const id = String(model.model_id || String(model.route || '').split('/')[1] || '').toLowerCase();
+  return M[id]
+    || String(model.model_name || model.model_id || 'Image').replace(/\s*[·|｜（(].*$/u, '').replace(/\?+/g, '').trim()
+    || 'Image';
 }
 
 function storageKey(taskId, stage) {

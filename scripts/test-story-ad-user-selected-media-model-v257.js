@@ -51,6 +51,7 @@ async function main() {
     storage,
     sceneAssets: {
       normalizeSceneAssets: rows => rows,
+      currentSceneAssets: () => outputs.scene_assets,
       buildSceneRepairPlan: () => ({ action: 'generate' }),
       generateSceneAsset: async () => {
         paidCalls += 1;
