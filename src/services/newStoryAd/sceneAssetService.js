@@ -1072,9 +1072,7 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
   if (atlasMode) {
     if (!atlasResult) {
       updateSceneGenerationProgress(taskId, {
-        mode: progressMode,
-        phase: 'generation',
-        sceneId,
+        mode: progressMode, phase: 'generation', sceneId,
         viewKeys: progressViewKeys,
         viewKey: 'master',
         viewStatus: 'running',
@@ -1112,9 +1110,7 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
         atlasBundle.views.forEach(view => {
           sceneCheckpoint.markSucceeded(checkpoint, view.key, view, generationBudget);
           updateSceneGenerationProgress(taskId, {
-            mode: progressMode,
-            phase: 'generation',
-            sceneId,
+            mode: progressMode, phase: 'generation', sceneId,
             viewKeys: progressViewKeys,
             viewKey: view.key,
             viewStatus: 'succeeded',
@@ -1399,9 +1395,7 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
     knowledgePolicyQaBlock: knowledgeRuntime.qaBlock(knowledgePolicy),
   };
   updateSceneGenerationProgress(taskId, {
-    mode: progressMode,
-    phase: 'verification',
-    sceneId,
+    mode: progressMode, phase: 'verification', sceneId,
     viewKeys: progressViewKeys,
   });
   let sceneContract = null;
@@ -1632,9 +1626,7 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
         : '场景参考已保存，但需求符合度、跨视图一致性或空间覆盖度尚未全部通过',
     });
     updateSceneGenerationProgress(taskId, {
-      mode: progressMode,
-      phase: 'verification',
-      sceneId,
+      mode: progressMode, phase: 'verification', sceneId,
       viewKeys: progressViewKeys,
       verificationState: sceneContract.verification?.state || sceneContract.status || '',
     });
@@ -1642,9 +1634,7 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
   }
   if (runOptions.deferPublish !== true) sceneCheckpoint.markPublished(checkpoint, asset);
   updateSceneGenerationProgress(taskId, {
-    mode: progressMode,
-    phase: 'complete',
-    sceneId,
+    mode: progressMode, phase: 'complete', sceneId,
     viewKeys: progressViewKeys,
     verificationState: sceneContract.verification?.state || sceneContract.status || '',
   });
