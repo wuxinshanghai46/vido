@@ -35,11 +35,28 @@ function publicErrorCode(code = '', message = '') {
 
 function publicProgress(progress = null, clean = normalize) {
   if (!progress || typeof progress !== 'object') return null;
+  const batchSceneIds = Array.isArray(progress.batch_scene_ids)
+    ? [...new Set(progress.batch_scene_ids.map(item => clean(item, 120)).filter(Boolean))].slice(0, 30)
+    : [];
   return {
     status: clean(progress.status, 40), stage: publicStage(progress.stage),
+    mode: clean(progress.mode, 40),
     completed: Math.max(0, Number(progress.completed || 0) || 0), total: Math.max(0, Number(progress.total || 0) || 0),
     processed: Math.max(0, Number(progress.processed || 0) || 0), failed: Math.max(0, Number(progress.failed || 0) || 0),
     percent: Math.max(0, Math.min(100, Number(progress.percent ?? progress.progress ?? 0) || 0)), phase: clean(progress.phase, 80),
+    target_total: Math.max(0, Number(progress.target_total || 0) || 0),
+    succeeded: Math.max(0, Number(progress.succeeded || 0) || 0),
+    image_target_total: Math.max(0, Number(progress.image_target_total || 0) || 0),
+    image_processed: Math.max(0, Number(progress.image_processed || 0) || 0),
+    image_succeeded: Math.max(0, Number(progress.image_succeeded || 0) || 0),
+    image_failed: Math.max(0, Number(progress.image_failed || 0) || 0),
+    image_percent: Math.max(0, Math.min(100, Number(progress.image_percent || 0) || 0)),
+    current_scene_id: clean(progress.current_scene_id, 120),
+    current_scene_name: clean(progress.current_scene_name, 160),
+    current_action: clean(progress.current_action, 80),
+    current_view_key: clean(progress.current_view_key, 80),
+    current_view_label: clean(progress.current_view_label, 120),
+    batch_scene_ids: batchSceneIds,
     message: publicFailureMessage(progress.message, clean), started_at: clean(progress.started_at, 80),
     updated_at: clean(progress.updated_at, 80), finished_at: clean(progress.finished_at, 80),
   };

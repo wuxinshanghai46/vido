@@ -685,7 +685,7 @@ function baseVisualArtifact(view = {}, role = 'master', lineage = {}) {
 
 function publishBaseSceneAsset({
   taskId, target, body, ctx, existing, previous, master, atlas, revision,
-  checkpoint, requested, prompt, knowledgePolicy, viewStrategy,
+  checkpoint, requested, prompt, knowledgePolicy, viewStrategy, repairMode = false,
 } = {}) {
   const masterArtifact = baseVisualArtifact(master, 'master', { scene_id: target.scene_id, scene_revision: revision });
   const atlasArtifact = baseVisualArtifact(atlas, 'atlas', { scene_id: target.scene_id, scene_revision: revision });
@@ -715,7 +715,11 @@ function publishBaseSceneAsset({
     && cleanText(previous?.layout_summary || '', 1000) === cleanText(body.layout_summary || body.layoutSummary || target.scene_spec?.layoutText || space.description || '', 1000);
   const sameAuthority = !!currentCoreFingerprint
     && (previousCoreFingerprint === currentCoreFingerprint || legacyAuthorityMatches);
-  if (previous && previous.partial_checkpoint !== true && sameAuthority) {
+  // A targeted repair already resolved its source from the current scene
+  // authority. Keep every previously saved view while the candidate is being
+  // generated, including a 4/5 partial package. Replacing it with the reusable
+  // master alone makes one failed repair shrink the canonical asset to 1/5.
+  if (previous && (repairMode || (previous.partial_checkpoint !== true && sameAuthority))) {
     return { core, asset: previous, preserved_previous: true };
   }
   const masterView = normalizeSceneView({
@@ -798,7 +802,10 @@ function finishWithBaseScene({ taskId, target, basePublication, checkpoint, erro
     ...(Array.isArray(error?.failed_view_keys) ? error.failed_view_keys : []),
     ...SCENE_GENERATION_ORDER.filter(key => key !== 'master' && !completed.includes(key)),
   ])];
-  if (index >= 0 && stored[index].partial_checkpoint === true) {
+  // Merge newly completed checkpoint views into any existing repair source.
+  // Failed/rejected keys have no successful checkpoint URL and therefore keep
+  // their previous saved asset instead of deleting already paid images.
+  if (index >= 0) {
     stored[index] = normalizeSceneAsset({
       ...sceneCheckpointProjection.mergeSuccessfulCheckpointViews(stored[index], checkpoint),
       partial_checkpoint: true,
@@ -1181,6 +1188,7 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
     prompt,
     knowledgePolicy,
     viewStrategy: viewAcquisition.selected,
+    repairMode,
   });
   let layout = selectedView('layout');
   let layoutAcquisition = checkpoint.layout_acquisition || previous?.view_acquisition?.layout_preflight || null;

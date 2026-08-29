@@ -587,6 +587,45 @@ async function main() {
   const calls = [];
   const originalGenerateImage = mediaAdapter.generateImage;
   const originalAnalyze = sceneSpace.analyzeSceneViews;
+  const partialTaskId = 'scene-repair-partial-preservation-test';
+  const partialSceneId = 'scene-repair-partial-preservation';
+  storage.createTask({ id: partialTaskId, title: 'preserve partial scene during repair', request: context });
+  storage.saveOutput(partialTaskId, 'context', context);
+  storage.saveOutput(partialTaskId, 'scene_config', {
+    scene_mode: 'single', spaces: [{ id: partialSceneId, name: 'partial repair scene', scene_spec: sceneSpec }],
+  });
+  currentScenePrompt(partialTaskId, partialSceneId);
+  storage.saveOutput(partialTaskId, 'scene_assets', [{
+    id: partialSceneId, scene_id: partialSceneId, space_id: partialSceneId,
+    generation_contract_version: 7, scene_revision: 4, name: 'partial repair scene',
+    image_url: urls.master,
+    view_images: ['master', 'reverse', 'interaction', 'detail'].map(key => ({ key, url: urls[key], image_url: urls[key] })),
+    layout_summary: sceneSpec.layoutText, material_summary: sceneSpec.materialLightText,
+    interaction_summary: sceneSpec.interactionText, negative: sceneSpec.negativeText,
+    surface_topology: sceneSpec.surfaceTopology, partial_checkpoint: true,
+    completed_view_keys: ['master', 'reverse', 'interaction', 'detail'], failed_view_keys: ['layout'],
+    repair_plan: { version: 6, action: 'regenerate_failed_views', view_keys: ['layout'], count: 1 },
+  }]);
+  mediaAdapter.generateImage = async options => {
+    if (options.taskId === partialTaskId) {
+      const error = new Error('selected image route failed before submission');
+      error.code = 'SELECTED_MODEL_FAILED';
+      error.billingState = 'not_billed';
+      error.providerSubmissionState = 'submission_rejected';
+      throw error;
+    }
+    const url = /_detail_/.test(options.filename || '') ? '/new-detail.png' : '/new-reverse.png';
+    return { url, image_url: url, provider_used: 'mock/repair' };
+  };
+  const stoppedPartialRepair = await sceneAssets.repairSceneAsset(partialTaskId, partialSceneId, {
+    scene_spec: sceneSpec, aspect_ratio: '16:9', image_model: 'mock/selected', single_attempt: true,
+  });
+  assert.equal(stoppedPartialRepair.enhancement_pending, true);
+  assert.equal(stoppedPartialRepair.preserved_previous, true);
+  const preservedPartial = storage.getOutput(partialTaskId, 'scene_assets')[0];
+  assert.equal(preservedPartial.view_images.length, 4, 'one failed repair must not shrink a saved 4/5 scene to the master image');
+  assert.deepEqual(preservedPartial.view_images.map(view => view.key), ['master', 'reverse', 'interaction', 'detail']);
+
   mediaAdapter.generateImage = async options => {
     calls.push(options);
     const url = /_detail_/.test(options.filename || '') ? '/new-detail.png' : '/new-reverse.png';
@@ -713,6 +752,7 @@ async function main() {
       malformed_json_code: 'VISION_QA_SCHEMA_INVALID',
       truncated_optional_json_salvaged: true,
       preserved_revision_after_qa_failure: unavailableResult.scene_asset.scene_revision,
+      partial_views_after_failed_repair: preservedPartial.view_images.length,
       evidence_unavailable_image_calls: callsBeforeEvidenceFailure - calls.length,
       diagnose_pass_image_calls: calls.length - callsBeforeFix,
     }, null, 2));

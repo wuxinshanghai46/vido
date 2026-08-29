@@ -16,6 +16,7 @@ const sceneBatchFactory = require('../src/services/newStoryAd/sceneBatchOrchestr
 const targetProgress = require('../src/services/newStoryAd/targetGenerationProgressService');
 const cancellation = require('../src/services/newStoryAd/cancellationContext');
 const qaProjection = require('../src/services/storyAdWorkspace/sceneQaProjectionService');
+const publicFailure = require('../src/services/newStoryAd/publicFailureProjectionService');
 
 const taskId = 'scene-current-authority-v260';
 const sceneId = 'scene-showroom';
@@ -87,8 +88,20 @@ const progressSandbox = {
 vm.runInNewContext(progressSource, progressSandbox, { filename: progressPath });
 assert.match(progressSandbox.module.exports.sceneBatchProgressMarkup({
   mode: 'scene_batch', status: 'running', image_target_total: 1, image_processed: 0,
-  started_at: '2026-08-29T00:00:00.000Z', current_scene_name: '现代高端家居展示厅',
-}), /已耗时 1分31秒/);
+  started_at: '2026-08-29T00:00:00.000Z', current_scene_name: '现代高端家居展示厅', current_view_label: '俯视布局',
+}), /现代高端家居展示厅 · 俯视布局.*已耗时 1分31秒/);
+
+const publicBatchProgress = publicFailure.publicProgress({
+  mode: 'scene_batch', status: 'running', stage: 'scene_asset', phase: 'generation',
+  image_target_total: 4, image_processed: 1, image_succeeded: 1, image_failed: 0, image_percent: 25,
+  current_scene_id: sceneId, current_scene_name: '现代高端家居展示厅',
+  current_view_key: 'reverse', current_view_label: '反向/侧向', batch_scene_ids: [sceneId],
+});
+assert.equal(publicBatchProgress.mode, 'scene_batch', '公开项目投影不得截断批生成模式');
+assert.equal(publicBatchProgress.image_target_total, 4, '公开项目投影必须保留真实 Image 总数');
+assert.equal(publicBatchProgress.image_processed, 1, '公开项目投影必须保留已处理 Image 数');
+assert.equal(publicBatchProgress.current_view_label, '反向/侧向');
+assert.deepEqual(publicBatchProgress.batch_scene_ids, [sceneId]);
 
 const publicQa = qaProjection.project({
   qa_unavailable: true, qa_error_code: 'VISION_QA_UNAVAILABLE',
@@ -108,6 +121,7 @@ console.log(JSON.stringify({
   repair_view_keys: plan.actions[0].repair_plan_version ? current[0].repair_plan.view_keys : [],
   compact_model_labels: true,
   elapsed_visible: true,
+  public_batch_progress_preserved: true,
   qa_failure_categories: publicQa.failure_categories,
   provider_image_calls: 0,
 }));

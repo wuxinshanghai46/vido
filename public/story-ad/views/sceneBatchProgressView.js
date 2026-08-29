@@ -14,8 +14,10 @@ export function sceneBatchProgressMarkup(progress = {}) {
   const state = stopped ? '已停止' : (phase === 'verification' ? '审核中' : '生成中');
   const active = !stopped && !progress.finished_at;
   const elapsed = elapsedTimeTag({ startedAt: progress.started_at, finishedAt: progress.finished_at, active });
+  const position = [progress.current_scene_name, progress.current_view_label]
+    .map(value => String(value || '').trim()).filter(Boolean).map(escapeHtml).join(' · ');
   return `<div class="scene-batch-live-progress" role="status" aria-live="polite" data-scene-batch-progress>
-    <b>Image</b><span>${processed}/${total || 0} · ${percent}% · ${escapeHtml(state)}${elapsed ? ` · ${elapsed}` : ''}</span>
+    <b>Image</b><span>${processed}/${total || 0} · ${percent}%${position ? ` · ${position}` : ''} · ${escapeHtml(state)}${elapsed ? ` · ${elapsed}` : ''}</span>
     <i aria-hidden="true"><b style="width:${percent}%"></b></i>
   </div>`;
 }
