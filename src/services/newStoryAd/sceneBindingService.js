@@ -1,5 +1,6 @@
 const { cleanText, normalizeSceneSpec } = require('./contextBuilder');
 const sceneLineage = require('./sceneLineageContractService');
+const sceneVisualAcceptance = require('./sceneVisualAcceptanceService');
 
 // 这四个键只用于现有“五视图空间锁”的向后兼容，不再作为业务镜位白名单。
 const VIEW_KEYS = ['master', 'reverse', 'interaction', 'detail'];
@@ -260,8 +261,13 @@ function sceneVerificationState(asset = {}) {
   return contract.status === 'verified' ? 'partial' : (cleanText(contract.status || 'unverified', 40) || 'unverified');
 }
 
-function assertVerifiedSceneAssets(sceneAssets = []) {
+function assertVerifiedSceneAssets(sceneAssets = [], options = {}) {
   const assets = Array.isArray(sceneAssets) ? sceneAssets : [];
+  const acceptance = options && typeof options === 'object' ? options.acceptance : null;
+  if (acceptance) {
+    const acceptanceState = sceneVisualAcceptance.inspect(assets, acceptance);
+    if (acceptanceState.accepted) return true;
+  }
   const invalid = assets.map((asset, index) => ({
     scene_id: normalizeSceneId(asset, index),
     status: sceneVerificationState(asset),
@@ -485,7 +491,7 @@ function resolveSceneMode(requestedMode = 'auto', scenePlan = {}) {
   return normalizeScenePlan(scenePlan).scene_mode === 'multi' ? 'multi' : 'auto';
 }
 
-function assertSceneModeAssets(sceneMode = 'auto', sceneAssets = [], requiredSpaces = []) {
+function assertSceneModeAssets(sceneMode = 'auto', sceneAssets = [], requiredSpaces = [], options = {}) {
   const mode = cleanText(sceneMode || 'auto', 20).toLowerCase();
   const assets = Array.isArray(sceneAssets) ? sceneAssets : [];
   const requiredCount = mode === 'multi'
@@ -507,7 +513,7 @@ function assertSceneModeAssets(sceneMode = 'auto', sceneAssets = [], requiredSpa
     error.retryable = false;
     throw error;
   }
-  if (assets.length) assertVerifiedSceneAssets(assets);
+  if (assets.length) assertVerifiedSceneAssets(assets, options);
   return true;
 }
 

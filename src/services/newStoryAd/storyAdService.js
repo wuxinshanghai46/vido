@@ -47,6 +47,7 @@ const productionPromptCompiler = require('./productionPromptCompilerService'), p
 const blueprintCharacterProjection = require('./blueprintCharacterProjectionService');
 const { normalizeAssistedStoryBeat } = storyBeatAssist, visualRealismPolicy = require('./visualRealismPolicyService'), sceneAssetLifecycle = require('./sceneAssetService');
 const sceneCheckpointProjection = require('./sceneCheckpointProjectionService');
+const sceneVisualAcceptance = require('./sceneVisualAcceptanceService');
 const stageProgress = require('./stageProgressService'), taskProgressSave = require('./taskProgressSaveService');
 const mediaResultProjection = require('./mediaResultProjectionService'), paidExecutionPolicy = require('./paidVideoExecutionPolicyService');
 const { compactPublicTaskBundle } = require('./taskBundleProjection'), temporalEvidenceLifecycle = require('./temporalEvidenceLifecycleService'), videoCore = require('../videoGenerationCore');
@@ -68,6 +69,9 @@ function storyAdV3RuntimePolicy(env = process.env) {
   const enabled = !['0', 'false', 'off', 'disabled'].includes(String(env.NEW_STORY_AD_V3_ENABLED ?? '1').trim().toLowerCase());
   const paidVideoEnabled = enabled && !['0', 'false', 'off', 'disabled'].includes(String(env.NEW_STORY_AD_V3_PAID_VIDEO_ENABLED ?? '1').trim().toLowerCase());
   return { version: videoCore.planner.PLAN_VERSION, enabled, paid_video_enabled: paidVideoEnabled };
+}
+function sceneVerificationOptions(taskId) {
+  return { acceptance: storage.getOutput(taskId, sceneVisualAcceptance.OUTPUT_KIND) || null };
 }
 function withAssetContracts(ctx = {}) {
   const next = { ...ctx };
@@ -484,7 +488,7 @@ function prepareGeneration(taskId, body = {}, user = {}) {
     }
     const scenePlan = normalizeScenePlan(storedScenePlan || {});
     const sceneAssets = storage.getOutput(taskId, 'scene_assets') || ctx.scene_assets || [];
-    assertSceneModeAssets(resolveSceneMode(ctx.scene_mode, scenePlan), sceneAssets, scenePlan.spaces);
+    assertSceneModeAssets(resolveSceneMode(ctx.scene_mode, scenePlan), sceneAssets, scenePlan.spaces, sceneVerificationOptions(taskId));
   }
   const snapshot = storage.saveSnapshot(taskId, {
     content_revision: currentRevision,
@@ -838,7 +842,7 @@ async function generateScriptPackageStage(taskId, options = {}) {
   const ctx = assertContextConsistent(storage.getOutput(taskId, 'context') || task.request || {});
   const scenePlan = normalizeScenePlan(storage.getOutput(taskId, 'scene_config') || {});
   const sceneAssets = storage.getOutput(taskId, 'scene_assets') || ctx.scene_assets || [];
-  assertSceneModeAssets(resolveSceneMode(ctx.scene_mode, scenePlan), sceneAssets, scenePlan.spaces);
+  assertSceneModeAssets(resolveSceneMode(ctx.scene_mode, scenePlan), sceneAssets, scenePlan.spaces, sceneVerificationOptions(taskId));
   const blueprint = await runTextStageWithRecovery(
     taskId,
     'blueprint',
@@ -870,7 +874,7 @@ async function generateStoryboardStage(taskId, options = {}) {
   contentSkill.assertSelected(ctx);
   const sceneAssets = storage.getOutput(taskId, 'scene_assets') || ctx.scene_assets || [];
   const scenePlan = normalizeScenePlan(storage.getOutput(taskId, 'scene_config') || {});
-  assertSceneModeAssets(resolveSceneMode(ctx.scene_mode, scenePlan), sceneAssets, scenePlan.spaces);
+  assertSceneModeAssets(resolveSceneMode(ctx.scene_mode, scenePlan), sceneAssets, scenePlan.spaces, sceneVerificationOptions(taskId));
   let blueprint = storage.getOutput(taskId, 'blueprint');
   if (!blueprint) blueprint = await generateBlueprintStage(taskId);
   if (!blueprint.fingerprint) {
@@ -1416,7 +1420,7 @@ async function generateKeyframesStage(taskId, options = {}) {
   const baseCtx = storage.getOutput(taskId, 'context') || task.request || {};
   const sceneAssets = storage.getOutput(taskId, 'scene_assets') || baseCtx.scene_assets || [];
   const ctx = { ...baseCtx, scene_assets: Array.isArray(sceneAssets) ? sceneAssets : [], production_graph: storage.getOutput(taskId, 'production_graph_v1') || null, knowledge_policy_snapshot: knowledgePolicyRuntime.pinTaskPolicy(storage, taskId) };
-  assertVerifiedSceneAssets(ctx.scene_assets);
+  assertVerifiedSceneAssets(ctx.scene_assets, sceneVerificationOptions(taskId));
   personIdentity.assertVerifiedPerson(ctx);
   productIdentity.assertVerifiedProduct(ctx);
   let shots = storage.getOutput(taskId, 'storyboard_table');
@@ -2111,8 +2115,8 @@ async function ensureContractsForMedia(taskId, ctx, shots) {
   const contractCtx = { ...ctx, scene_assets: Array.isArray(sceneAssets) ? sceneAssets : [] };
   return keyframeContractFreshness.inspect(taskId, { ctx: contractCtx, shots }).contracts;
 }
-function assertVideoInputsReady({ ctx = {}, shots = [], keyframes = [], contracts = [] } = {}) {
-  assertVerifiedSceneAssets(ctx.scene_assets || []);
+function assertVideoInputsReady({ ctx = {}, shots = [], keyframes = [], contracts = [], sceneAcceptance = null } = {}) {
+  assertVerifiedSceneAssets(ctx.scene_assets || [], { acceptance: sceneAcceptance });
   const personContract = personIdentity.assertVerifiedPerson(ctx);
   productIdentity.assertVerifiedProduct(ctx);
   const failures = [...storyboardContinuityGate.reviewContinuity({ shots, contracts }).issues];
@@ -2209,7 +2213,7 @@ async function generateTtsStage(taskId, options = {}) {
   const keyframes = Array.isArray(storage.getOutput(taskId, 'keyframes')) ? storage.getOutput(taskId, 'keyframes') : [];
   // “合成广告”会先执行 TTS。必须在产生配音费用之前执行与视频阶段
   // 相同的审核门禁，避免未通过的关键帧仍然消耗一次配音调用。
-  videoSubmissionGate.validateBeforeProvider({ storage, taskId, validate: () => assertVideoInputsReady({ ctx, shots, keyframes, contracts }) });
+  videoSubmissionGate.validateBeforeProvider({ storage, taskId, validate: () => assertVideoInputsReady({ ctx, shots, keyframes, contracts, sceneAcceptance: sceneVerificationOptions(taskId).acceptance }) });
   const existingTtsAudio = storage.getOutput(taskId, 'tts_audio') || {};
   const voiceId = resolveTtsVoiceId(options, ctx, existingTtsAudio);
   const voiceAssignments = voicePlan.resolveVoiceAssignments(options, ctx, existingTtsAudio, voiceId);
@@ -2362,7 +2366,7 @@ function buildVideoPreflightPlan(taskId, options = {}) {
   }
   const runtimePolicy = storyAdV3RuntimePolicy();
   plan.runtime_policy = runtimePolicy;
-  videoSubmissionGate.addInputBlocker(plan, () => assertVideoInputsReady({ ctx: contractCtx, shots, keyframes, contracts }));
+  videoSubmissionGate.addInputBlocker(plan, () => assertVideoInputsReady({ ctx: contractCtx, shots, keyframes, contracts, sceneAcceptance: sceneVerificationOptions(taskId).acceptance }));
   if (plan.paid_unit_count > 0 && !runtimePolicy.paid_video_enabled) {
     plan.blockers.push({
       code: 'VIDEO_V3_PAID_DISABLED',
@@ -2430,7 +2434,7 @@ async function generateVideoStage(taskId, options = {}) { options = paidExecutio
   const shots = await ensureStoryboardForMedia(taskId);
   const contracts = await ensureContractsForMedia(taskId, ctx, shots);
   const keyframes = Array.isArray(storage.getOutput(taskId, 'keyframes')) ? storage.getOutput(taskId, 'keyframes') : [];
-  videoSubmissionGate.validateBeforeProvider({ storage, taskId, validate: () => assertVideoInputsReady({ ctx, shots, keyframes, contracts }) });
+  videoSubmissionGate.validateBeforeProvider({ storage, taskId, validate: () => assertVideoInputsReady({ ctx, shots, keyframes, contracts, sceneAcceptance: sceneVerificationOptions(taskId).acceptance }) });
   // 视频供应商调用必须经过不可绕过的方案与人民币费用确认。
   const preflightPlan = assertVideoPreflightConfirmation(taskId, options);
   const generationMode = preflightPlan.mode;

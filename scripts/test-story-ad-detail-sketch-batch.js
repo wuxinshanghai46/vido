@@ -132,12 +132,12 @@ async function main() {
   assert.match(css, /\.media-lightbox figure>img\{[^}]*object-fit:contain/, '灯箱主图必须完整显示原始画幅');
 
   const view = read('public/story-ad/views/storyboardView.js');
-  assert.match(view, /批量重生成文字分镜/);
-  assert.match(view, /批量生成全部缺失线稿/);
-  assert.match(view, /批量重生成全部线稿/);
+  assert.match(view, /重新整理镜头结构/);
+  assert.match(view, /生成分镜线稿图/);
+  assert.match(view, /重新生成分镜线稿图/);
   assert.match(view, /regenerate_all: regenerateAll/);
   assert.doesNotMatch(view, /<span>线稿<\/span><span>剧情与动作/);
-  assert.match(view, /下一步：线稿分镜/);
+  assert.match(view, /分镜线稿图/);
   assert.match(view, /sketches\/generate-batch/);
   assert.match(view, /结果显示在下方镜头卡片中/);
   assert.match(view, /data-board-tab=\"sketches\"/);
