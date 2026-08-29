@@ -9,12 +9,14 @@ const topology = require('./newStoryAd/narrativeTopologyCompilerService');
 const ROOT = path.resolve(__dirname, '../..');
 const RELEASE_PATH = path.join(ROOT, 'config', 'story-ad-release.json');
 const RUNTIME_MANIFEST_PATH = path.join(ROOT, 'config', 'story-ad-runtime-manifest.json');
-const COMPATIBLE_CONTRACT_TRANSITIONS = new Set([
-  // V8 removes the user-facing story-flow confirmation step, but it does not
-  // change the persisted person/scene authority contract. Existing V7 Active
-  // Plans may therefore be promoted lazily after all semantic envelope fields
-  // and the exact input fingerprint have passed their normal checks.
-  'story-scene-platform-v7->story-scene-platform-v8',
+const COMPATIBLE_CONTRACT_EDGES = new Map([
+  // V7 separates user-facing flow/sketch stages; V8 moves that binding inside
+  // storyboard generation. Neither transition changes the persisted
+  // person/scene Active Plan contract. A task may skip one or more releases,
+  // so compatibility must be proven across every adjacent edge instead of
+  // relying on the immediately previous production version.
+  ['story-scene-platform-v6', new Set(['story-scene-platform-v7'])],
+  ['story-scene-platform-v7', new Set(['story-scene-platform-v8'])],
 ]);
 
 function readJson(file, fallback = {}) {
@@ -84,7 +86,21 @@ function envelope(extra = {}) {
 }
 
 function compatibleContractTransition(fromVersion = '', toVersion = '') {
-  return COMPATIBLE_CONTRACT_TRANSITIONS.has(`${String(fromVersion || '').trim()}->${String(toVersion || '').trim()}`);
+  const from = String(fromVersion || '').trim();
+  const to = String(toVersion || '').trim();
+  if (!from || !to || from === to) return false;
+  const pending = [from];
+  const visited = new Set();
+  while (pending.length) {
+    const current = pending.shift();
+    if (visited.has(current)) continue;
+    visited.add(current);
+    for (const next of COMPATIBLE_CONTRACT_EDGES.get(current) || []) {
+      if (next === to) return true;
+      if (!visited.has(next)) pending.push(next);
+    }
+  }
+  return false;
 }
 
 module.exports = { identity, envelope, sha, canonical, compatibleContractTransition };

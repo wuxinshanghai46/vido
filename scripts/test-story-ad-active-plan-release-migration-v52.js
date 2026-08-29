@@ -199,12 +199,22 @@ assert.equal(publication.eligibility(v7SystemBindingFixture.taskId, { fingerprin
 assert.equal(publication.activeRecord(v7SystemBindingFixture.taskId).plan.release_envelope.contract_version, 'story-scene-platform-v8');
 assert.equal(modelCalls(v7SystemBindingFixture.taskId), v7CallsBefore, 'lazy authority promotion must not call a model');
 
-const v6IncompatibleFixture = createFixture({
-  id: 'v6-system-binding-incompatible', oldBundle: 'v6-system-binding-bundle', castCount: 2, propCount: 0, sceneCount: 4,
+const v6TransitiveFixture = createFixture({
+  id: 'v6-system-binding-transitive', oldBundle: 'v6-system-binding-bundle', castCount: 2, propCount: 0, sceneCount: 4,
   fingerprintContract: publication.FINGERPRINT_CONTRACT, contractVersion: 'story-scene-platform-v6',
 });
+const v6CallsBefore = modelCalls(v6TransitiveFixture.taskId);
+const v6Permit = generationPermit.issue(v6TransitiveFixture.taskId, 'storyboard', { idempotencyKey: 'v283-v6-storyboard' });
+assert.equal(v6Permit.stage, 'storyboard');
+assert.equal(publication.activeRecord(v6TransitiveFixture.taskId).plan.release_envelope.contract_version, 'story-scene-platform-v8');
+assert.equal(modelCalls(v6TransitiveFixture.taskId), v6CallsBefore, 'V6→V7→V8 authority promotion must stay model-free');
+
+const v5IncompatibleFixture = createFixture({
+  id: 'v5-system-binding-incompatible', oldBundle: 'v5-system-binding-bundle', castCount: 2, propCount: 0, sceneCount: 4,
+  fingerprintContract: publication.FINGERPRINT_CONTRACT, contractVersion: 'story-scene-platform-v5',
+});
 assert.throws(
-  () => generationPermit.issue(v6IncompatibleFixture.taskId, 'storyboard', { idempotencyKey: 'v282-v6-reject' }),
+  () => generationPermit.issue(v5IncompatibleFixture.taskId, 'storyboard', { idempotencyKey: 'v283-v5-reject' }),
   error => error.code === 'GENERATION_ACTIVE_PLAN_REQUIRED',
   'unregistered contract transitions must remain blocked before model execution',
 );
@@ -617,4 +627,4 @@ assert.equal(idempotent.status, 0, idempotent.stderr);
 assert.equal(JSON.parse(idempotent.stdout).idempotent, true);
 assert.notEqual(cli(['--apply']).status, 0);
 
-console.log(JSON.stringify({ passed: true, production_shape_fixtures: fixtures.length, incompatible_cases: incompatibleCases.length, v7_to_v8_exact_plan_promoted: true, unregistered_transition_blocked: true, owned_scene_release_migration: true, unrelated_generation_blocked: true, lazy_permit_release_migration: true, model_calls_added: 0, cli_dry_run: true, cli_apply_explicit_task: true }));
+console.log(JSON.stringify({ passed: true, production_shape_fixtures: fixtures.length, incompatible_cases: incompatibleCases.length, v7_to_v8_exact_plan_promoted: true, v6_to_v8_transitive_plan_promoted: true, unregistered_transition_blocked: true, owned_scene_release_migration: true, unrelated_generation_blocked: true, lazy_permit_release_migration: true, model_calls_added: 0, cli_dry_run: true, cli_apply_explicit_task: true }));
