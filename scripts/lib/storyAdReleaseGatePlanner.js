@@ -63,6 +63,7 @@ const DOMAIN_RULES = [
       /^scripts\/test-(?:new-)?story-ad-(?:blueprint|storyboard|detail-sketch)/i,
       /^src\/services\/newStoryAd\/(?:productionBoardContractService|qualityReviewService|storyAdService|storyBeatAssistService|ttsAdapter)\.js$/i,
       /^src\/services\/newStoryAd\/(?:productionPromptCompilerService|soundJourneyService)\.js$/i,
+      /^src\/services\/storyAdWorkspace\/(?:storyboardSketch|storyboardSketchGate)Service\.js$/i,
       /^scripts\/test-story-ad-(?:production-prompt-application|audio-realization)/i,
       /^scripts\/test-story-ad-production-board-v158\.js$/i,
       /^scripts\/test-story-ad-production-editor-v166\.js$/i,
