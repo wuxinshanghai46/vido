@@ -5,6 +5,7 @@ const assert = require('assert/strict');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const { pathToFileURL } = require('url');
 const root = path.resolve(__dirname, '..');
 const read = file => fs.readFileSync(path.join(root, file), 'utf8');
 process.env.OUTPUT_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'vido-seven-step-v279-'));
@@ -100,6 +101,11 @@ async function verifySevenStepContract() {
   assert.equal(nav.steps.final.enabled, false);
 }
 
+async function verifyFlowViewModuleContract() {
+  const module = await import(pathToFileURL(path.join(root, 'public/story-ad/views/storyFlowSketchView.js')).href);
+  assert.equal(typeof module.mount, 'function', '流向线稿按需模块必须提供工作区统一 mount 接口');
+}
+
 function verifyStaticContract() {
   const app = read('public/story-ad/app.js');
   const flowView = read('public/story-ad/views/storyFlowSketchView.js');
@@ -113,6 +119,10 @@ function verifyStaticContract() {
   assert.match(flowView, /剧情流向线稿/);
   assert.match(flowView, /确认全部流向线稿/);
   assert.match(flowView, /elapsedTimeTag/);
+  assert.match(flowView, /export async function mount\(host, context\)/,
+    '流向线稿按需模块必须导出工作区装载器要求的 mount 接口');
+  assert.doesNotMatch(flowView, /export async function render\(host, context\)/,
+    '流向线稿页面不得使用装载器无法识别的 render 导出');
   assert.match(storyboardView, /消费已确认的剧情流向线稿/);
   assert.match(storyboardView, /生成人物场景分镜图/);
   assert.match(storyboardView, /elapsedTimeTag/);
@@ -127,4 +137,6 @@ function verifyStaticContract() {
 }
 
 verifyStaticContract();
-verifySevenStepContract().then(() => console.log(JSON.stringify({ passed: true, checks: 33, workflow_steps: 7, flow_and_storyboard_split: true, flow_parallel: true, incremental_progress: true, elapsed_time_visible: true, storyboard_parallel: true, legacy_route_disabled: true, model_calls: 0 }))).catch(error => { console.error(error); process.exitCode = 1; });
+Promise.all([verifySevenStepContract(), verifyFlowViewModuleContract()])
+  .then(() => console.log(JSON.stringify({ passed: true, checks: 35, workflow_steps: 7, flow_and_storyboard_split: true, flow_view_mount_contract: true, flow_parallel: true, incremental_progress: true, elapsed_time_visible: true, storyboard_parallel: true, legacy_route_disabled: true, model_calls: 0 })))
+  .catch(error => { console.error(error); process.exitCode = 1; });

@@ -24,7 +24,7 @@ function flowCard(beat = {}, sketch = {}, index = 0) {
   </article>`;
 }
 
-export async function render(host, context) {
+export async function mount(host, context) {
   const { bundle, store } = context;
   const beats = Array.isArray(bundle?.story?.blueprint?.beats) ? bundle.story.blueprint.beats : [];
   const flow = bundle?.story_flow || { sketches: [], batch: null, gate: { ready: false, confirmed: 0, total: beats.length } };
