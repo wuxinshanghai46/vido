@@ -5,8 +5,7 @@ const modelGateway = require('./modelGateway'), jsonRepair = require('./jsonRepa
 const { buildContext, contextPrompt, cleanText, normalizeCharacters, assertContextConsistent, taskTitle } = require('./contextBuilder');
 const sceneExperienceAssist = require('./sceneExperienceAssistService'), assistKnowledgePolicy = require('./assistKnowledgePolicyService'), blueprintLifecycle = require('./blueprintLifecycleService');
 const { generateStoryboardTable, rewriteStoryboard } = require('./storyboardTableService');
-const storyboardCoverageLifecycle = require('./storyboardCoverageLifecycleService'), storyboardGenerationPreflight = require('./storyboardGenerationPreflightService'), storyboardImageConfirmationGate = require('../storyAdWorkspace/storyboardImageConfirmationGateService');
-const storyFlowPlanning = require('../storyAdWorkspace/storyFlowPlanningService');
+const storyboardCoverageLifecycle = require('./storyboardCoverageLifecycleService'), storyboardGenerationPreflight = require('./storyboardGenerationPreflightService'), storyboardImageConfirmationGate = require('../storyAdWorkspace/storyboardImageConfirmationGateService'), storyFlowPlanning = require('../storyAdWorkspace/storyFlowPlanningService');
 const { reviewStoryboard } = require('./qualityReviewService'), storyboardContinuityGate = require('./storyboardContinuityGateService');
 const { buildKeyframeContracts } = require('./keyframeContractService'), knowledgePolicyRuntime = require('./knowledgePolicyRuntimeService');
 const { withContinuityContracts } = require('./continuityService');
@@ -869,8 +868,7 @@ async function generateScriptPackageStage(taskId, options = {}) {
 }
 
 async function generateStoryboardStage(taskId, options = {}) {
-  storyboardGenerationPreflight.assertUpstreamReady(taskId, { sceneVerificationOptions });
-  await storyFlowPlanning.ensure(taskId, options);
+  storyboardGenerationPreflight.assertUpstreamReady(taskId, { sceneVerificationOptions }); await storyFlowPlanning.ensure(taskId, options);
   const { task, ctx, scene_assets: sceneAssets, story_flow_contract: storyFlowContract } = storyboardGenerationPreflight.assertReady(taskId, { sceneVerificationOptions });
   let blueprint = storage.getOutput(taskId, 'blueprint');
   if (!blueprint) blueprint = await generateBlueprintStage(taskId);
