@@ -1,6 +1,6 @@
-import { escapeHtml, toast } from '../components/ui.js?v=20260829-production-v261';
-import { normalizeSceneDossier, renderSceneCoverCard, sceneNeedsGeneration } from './sceneDossierCard.js?v=20260829-production-v261';
-import { sceneGenerationSettingsMarkup } from './sceneDossierCardSettings.js?v=20260829-production-v261';
+import { escapeHtml, toast } from '../components/ui.js?v=20260829-production-v262';
+import { normalizeSceneDossier, renderSceneCoverCard, sceneNeedsGeneration } from './sceneDossierCard.js?v=20260829-production-v262';
+import { sceneGenerationSettingsMarkup } from './sceneDossierCardSettings.js?v=20260829-production-v262';
 
 const submitted = new Set();
 
