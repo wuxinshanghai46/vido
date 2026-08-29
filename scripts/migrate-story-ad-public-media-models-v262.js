@@ -24,18 +24,44 @@ function desiredModels(current = []) {
   return [...primary, ...rest];
 }
 
+function mergedStageSource(stage, current = [], pipelineService = pipeline) {
+  const defaults = typeof pipelineService.getStageDefaults === 'function'
+    ? pipelineService.getStageDefaults(stage) : [];
+  const seen = new Set(current.map(key));
+  return [...current, ...defaults.filter(model => !seen.has(key(model)))];
+}
+
 function migrate({ apply = false, pipelineService = pipeline } = {}) {
   const reports = STAGES.map(stage => {
     const before = pipelineService.getStageConfig(stage);
-    const desired = desiredModels(before);
+    const desired = desiredModels(mergedStageSource(stage, before, pipelineService));
     const changed = JSON.stringify(before) !== JSON.stringify(desired);
-    const result = apply && changed ? pipelineService.setStageConfig(stage, desired) : { models: desired, rejected: [] };
-    if (apply && result.rejected?.length) throw new Error(`${stage} 模型配置迁移存在拒绝项`);
-    return { stage, changed, before: before.map(key), after: result.models.map(key) };
+    return { stage, changed, before: before.map(key), after: desired.map(key), desired };
   });
-  return { schema_version: 1, mode: apply ? 'apply' : 'dry-run', changed: reports.some(row => row.changed), reports, model_calls: 0, paid_calls: 0 };
+  const changed = reports.some(row => row.changed);
+  if (apply && changed) {
+    const rejected = reports.flatMap(report => PRIMARY.map(model => ({
+      stage: report.stage,
+      model: key(model),
+      validation: pipelineService.validateStageModel(report.stage, model),
+    }))).filter(item => item.validation?.ok !== true);
+    if (rejected.length) {
+      const error = new Error(`目标 Seedance 路线校验失败：${rejected.map(item => `${item.stage}:${item.model}:${item.validation?.reason}`).join(', ')}`);
+      error.code = 'PUBLIC_MEDIA_MODEL_MIGRATION_VALIDATION_FAILED';
+      error.rejected = rejected;
+      throw error;
+    }
+    const config = pipelineService.loadConfig();
+    const next = { ...config, stages: { ...(config.stages || {}) } };
+    reports.forEach(report => { next.stages[report.stage] = report.desired; });
+    pipelineService.saveConfig(next);
+  }
+  return {
+    schema_version: 2, mode: apply ? 'apply' : 'dry-run', changed,
+    reports: reports.map(({ desired, ...report }) => report), model_calls: 0, paid_calls: 0,
+  };
 }
 
 if (require.main === module) console.log(JSON.stringify(migrate({ apply: process.argv.includes('--apply') })));
 
-module.exports = { PRIMARY, STAGES, desiredModels, key, migrate };
+module.exports = { PRIMARY, STAGES, desiredModels, key, mergedStageSource, migrate };

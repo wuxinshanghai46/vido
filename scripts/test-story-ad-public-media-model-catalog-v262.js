@@ -84,6 +84,34 @@ assert.deepEqual(migrated.slice(0, 3).map(migration.key), [
 ]);
 assert.deepEqual(migration.desiredModels(migrated), migrated);
 
+let savedConfig = null;
+const stageRows = {
+  'new_story_ad.video': [
+    { provider_id: 'smscrw', model_id: 'doubao-seedance-2-0-260128', priority: 1, enabled: true },
+    { provider_id: 'deyunai', model_id: 'doubao-seedance-2-0-fast-260128', priority: 2, enabled: true },
+  ],
+  'new_story_ad.sound_generation': [
+    { provider_id: 'smscrw', model_id: 'doubao-seedance-2-0-260128', priority: 1, enabled: true },
+  ],
+};
+const migrationReport = migration.migrate({ apply: true, pipelineService: {
+  getStageConfig: stage => stageRows[stage],
+  getStageDefaults: () => [{ provider_id: 'volcengine', model_id: 'doubao-seedance-2-0-260128', enabled: false }],
+  validateStageModel: () => ({ ok: true, reason: 'runnable' }),
+  loadConfig: () => ({ stages: { untouched: [{ provider_id: 'x', model_id: 'y' }] } }),
+  saveConfig: config => { savedConfig = config; },
+} });
+assert.equal(migrationReport.schema_version, 2);
+assert(savedConfig?.stages?.untouched);
+assert(savedConfig.stages['new_story_ad.video'].some(model => migration.key(model) === 'volcengine/doubao-seedance-2-0-260128'));
+assert.throws(() => migration.migrate({ apply: true, pipelineService: {
+  getStageConfig: stage => stageRows[stage],
+  getStageDefaults: () => [],
+  validateStageModel: () => ({ ok: false, reason: 'provider_auth_missing' }),
+  loadConfig: () => { throw new Error('validation must happen before load'); },
+  saveConfig: () => { throw new Error('validation must happen before save'); },
+} }), error => error.code === 'PUBLIC_MEDIA_MODEL_MIGRATION_VALIDATION_FAILED');
+
 const picker = fs.readFileSync(path.join(__dirname, '..', 'public/story-ad/views/generationModelPicker.js'), 'utf8');
 assert(picker.includes('model.provider_code'));
 assert(picker.includes('catalog.default_selection'));
@@ -92,5 +120,5 @@ assert(!picker.includes('generationProviderInitials'));
 console.log(JSON.stringify({
   passed: true, image_stages: IMAGE_STAGES.length, image_choices: IMAGE_LABELS,
   default_image: 'Image · SZ', video_choices: VIDEO_LABELS, default_video: 'Seedance · DY',
-  raw_provider_routes_rejected: true, migration_idempotent: true, provider_calls: 0,
+  raw_provider_routes_rejected: true, migration_idempotent: true, migration_atomic: true, provider_calls: 0,
 }));
