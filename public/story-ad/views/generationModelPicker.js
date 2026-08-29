@@ -1,5 +1,5 @@
-import { request } from '../api.js?v=20260829-production-v260';
-import { escapeHtml } from '../components/ui.js?v=20260829-production-v260';
+import { request } from '../api.js?v=20260829-production-v260b';
+import { escapeHtml } from '../components/ui.js?v=20260829-production-v260b';
 
 const PROVIDER_INITIALS = Object.freeze({
   deyunai: 'DY',
