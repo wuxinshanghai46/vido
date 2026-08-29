@@ -1,6 +1,6 @@
-import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260829-production-v279d';
-import { bindMoreMedia, moreMediaButton } from './finalMediaPagination.js?v=20260829-production-v279d';
-import { bindGenerationModelPicker, loadGenerationModelPicker } from './generationModelPicker.js?v=20260829-production-v279d';
+import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260829-production-v280';
+import { bindMoreMedia, moreMediaButton } from './finalMediaPagination.js?v=20260829-production-v280';
+import { bindGenerationModelPicker, loadGenerationModelPicker } from './generationModelPicker.js?v=20260829-production-v280';
 import { request } from '../api.js?v=20260829-production-v280';
 import { bindSoundDesign, soundDesignMarkup } from './finalSoundDesignView.js?v=20260829-production-v280';
 
