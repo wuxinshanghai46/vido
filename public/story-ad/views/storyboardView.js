@@ -1,7 +1,7 @@
-import { request } from '../api.js?v=20260829-production-v281c';
-import { elapsedTimeTag, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260829-production-v281c';
-import { bindMediaLightbox } from './mediaLightbox.js?v=20260829-production-v281c';
-import { bindGenerationModelPicker, loadGenerationModelPicker } from './generationModelPicker.js?v=20260829-production-v281c';
+import { request } from '../api.js?v=20260829-production-v282';
+import { elapsedTimeTag, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260829-production-v282';
+import { bindMediaLightbox } from './mediaLightbox.js?v=20260829-production-v282';
+import { bindGenerationModelPicker, loadGenerationModelPicker } from './generationModelPicker.js?v=20260829-production-v282';
 
 export function friendlyBindings(bundle = {}, shot = {}) {
   const assets = bundle.assets || {};
@@ -170,7 +170,7 @@ function sketchGateReason(gate = {}, fallback = '镜头结构核对通过后才�
 
 export async function mount(host, context) {
   if (context.route?.params?.get('stage') === 'shot') {
-    const shotDesigner = await import('./shotDesignerView.js?v=20260829-production-v281c');
+    const shotDesigner = await import('./shotDesignerView.js?v=20260829-production-v282');
     return shotDesigner.mount(host, context);
   }
   const { bundle, store } = context;
