@@ -75,7 +75,7 @@ async function main() {
   assert(projectStore.includes('beginStageSubmissionState({ state, set }')
     && stageSubmissionState.includes('active_generation_id: optimisticGenerationId')
     && stageSubmissionState.includes('target_generation_progress: targetProgress')
-    && stageSubmissionState.includes('client_optimistic: true'), '客户端提交阶段必须同步创建每个目标可见的0%进度状态');
+    && batchFixHandler.includes('target_progress: targetProgress'), '客户端提交阶段必须同步创建每个目标可见的0%进度状态');
   assert.match(workspaceCss, /\.project-progress-head strong \{[^}]*font-size: 14px/);
   assert(responsive.includes('@media(max-width:900px)') && responsive.includes('@media(max-width:700px)'));
   assert(responsive.includes('.scene-card-controls') && responsive.includes('grid-template-columns:repeat(2,minmax(0,1fr))'));

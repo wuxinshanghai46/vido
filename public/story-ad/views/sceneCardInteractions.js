@@ -60,24 +60,30 @@ export function bindSceneCards(host, context) {
         if (!confirmation.accepted) { setButtonBusy(batchButton, false); return; }
         await authorizeBillingReviews({ bundle: context.bundle, lane: 'scenes', reviewBatch: confirmation.reviewBatch });
       }
-      const optimisticActions = plan.ready.map(item => ({
-        scene_id: item.sceneId,
-        action: String(item.scene?.repair_plan?.action || (item.action.kind === 'generate' ? 'generate' : 'repair')),
-        image_total: item.action.billable === false ? 0 : Math.max(1, Number(item.scene?.repair_plan?.count || 5) || 5),
-      }));
-      const actions = plan.ready.map(({ scene, sceneId }) => {
+      const actions = plan.ready.map(({ scene, sceneId, action }) => {
         const card = cardFor(sceneId);
         return {
           scene_id: sceneId,
           name: scene.name,
+          action: String(scene?.repair_plan?.action || (action.kind === 'generate' ? 'generate' : 'repair')),
+          image_total: action.billable === false ? 0 : Math.max(1, Number(scene?.repair_plan?.count || 5) || 5),
           prompt_version_id: card?.dataset.promptVersionId || scene.prompt_state?.prompt_version_id || '',
           quality: card?.querySelector('[data-scene-quality]')?.value || 'standard',
           resolution: card?.querySelector('[data-scene-resolution]')?.value || '2K',
           aspect_ratio: context.bundle?.brief?.output_ratio || context.bundle?.project?.request?.output_ratio || '16:9',
         };
       });
+      const startedAt = new Date().toISOString();
+      const targetProgress = Object.fromEntries(actions.map(action => {
+        const imageTotal = Math.max(0, Number(action.image_total || 0) || 0);
+        return [`scene_asset:${action.scene_id}`, {
+          status: 'queued', phase: action.action === 'reverify' ? 'verification' : 'generation',
+          target_total: Math.max(1, imageTotal || 1), processed: 0,
+          image_target_total: imageTotal, started_at: startedAt,
+        }];
+      }));
       context.store.beginStageSubmission?.('scene_asset', plan.count, `正在提交 ${plan.count} 个场景的并行处理任务。`, {
-        mode: 'scene_batch', batch_scene_ids: plan.ready.map(item => item.sceneId), batch_actions: optimisticActions,
+        mode: 'scene_batch', batch_actions: actions, target_progress: targetProgress,
       });
       setButtonBusy(batchButton, true, '正在提交…');
       await context.refreshCurrentView();

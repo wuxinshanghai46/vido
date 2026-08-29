@@ -20,18 +20,24 @@ async function verifyOptimisticSceneLanes() {
   const sandbox = { Date, Set };
   vm.runInNewContext(`${executable('public/story-ad/store/stageSubmissionState.js')}\nglobalThis.__begin=beginStageSubmissionState;`, sandbox);
   sandbox.__begin({ state, set: patch => { next = patch; } }, 'scene_asset', 2, '提交中', {
-    mode: 'scene_batch', batch_scene_ids: ['scene-a', 'scene-b'],
+    mode: 'scene_batch',
     batch_actions: [
       { scene_id: 'scene-a', action: 'reverify', image_total: 0 },
       { scene_id: 'scene-b', action: 'generate', image_total: 5 },
     ],
+    target_progress: {
+      'scene_asset:scene-a': { status: 'queued', phase: 'verification', image_target_total: 0 },
+      'scene_asset:scene-b': { status: 'queued', phase: 'generation', image_target_total: 5 },
+    },
   });
   const project = next.bundle.project;
   assert.match(project.active_generation_id, /^client-submitting:/);
   assert.equal(project.target_generation_progress['scene_asset:scene-a'].phase, 'verification');
   assert.equal(project.target_generation_progress['scene_asset:scene-a'].image_target_total, 0);
   assert.equal(project.target_generation_progress['scene_asset:scene-b'].image_target_total, 5);
-  assert.equal(project.active_target_generations['scene_asset:scene-b'].status, 'queued');
+  assert.equal(project.target_generation_progress['scene_asset:scene-b'].status, 'queued');
+  const interaction = read('public/story-ad/views/sceneCardInteractions.js');
+  assert(interaction.includes('target_progress: targetProgress'), '场景按需模块必须为每个并行场景建立即时进度');
 }
 
 async function verifyFreshGenerationClock() {
