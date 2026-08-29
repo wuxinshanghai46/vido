@@ -1,7 +1,7 @@
-import { request } from '../api.js?v=20260829-production-v278';
-import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260829-production-v278';
-import { bindMediaLightbox } from './mediaLightbox.js?v=20260829-production-v278';
-import { bindGenerationModelPicker, loadGenerationModelPicker } from './generationModelPicker.js?v=20260829-production-v278';
+import { request } from '../api.js?v=20260829-production-v278b';
+import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260829-production-v278b';
+import { bindMediaLightbox } from './mediaLightbox.js?v=20260829-production-v278b';
+import { bindGenerationModelPicker, loadGenerationModelPicker } from './generationModelPicker.js?v=20260829-production-v278b';
 
 export function friendlyBindings(bundle = {}, shot = {}) {
   const assets = bundle.assets || {};
@@ -169,7 +169,7 @@ function sketchGateReason(gate = {}, fallback = '镜头结构核对通过后才�
 
 export async function mount(host, context) {
   if (context.route?.params?.get('stage') === 'shot') {
-    const shotDesigner = await import('./shotDesignerView.js?v=20260829-production-v278');
+    const shotDesigner = await import('./shotDesignerView.js?v=20260829-production-v278b');
     return shotDesigner.mount(host, context);
   }
   const { bundle, store } = context;
