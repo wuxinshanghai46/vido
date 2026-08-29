@@ -945,9 +945,7 @@ async function generateStoryboardStage(taskId, options = {}) {
   let review = await reviewStoryboard(stageCtx, shots, { taskId });
   storage.saveReview(taskId, 'storyboard.initial', review);
   for (let attempt = 1; attempt <= 2; attempt += 1) {
-    // 软性优化建议不能再触发第二轮付费模型并阻断已经完整的镜头合同。
-    // 只有会造成主体漂移、结构断裂等硬问题才按命中的镜头局部重写；
-    // 景别措辞、氛围或可继续细化的建议随合同发布，供后续图片提示词使用。
+    // 只有硬问题才定向重写；软建议随合同发布，禁止成为串行付费门禁。
     const issues = storyboardReviewPolicy.blockingRewriteIssues(review);
     if (!shots.length || !issues.length) break;
     shots = await rewriteStoryboard(stageCtx, blueprint, shots, issues, { taskId });
