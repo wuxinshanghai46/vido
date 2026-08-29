@@ -10,8 +10,12 @@ const productionLimits = require('./productionLimitsService');
 const storyBeatShotCoverage = require('./storyBeatShotCoverageService');
 const actionSemantics = require('./actionSemanticsService');
 const transitionPerformance = require('./transitionPerformanceContractService');
+const generationConcurrency = require('./generationConcurrencyService');
 
 const { ensureChineseOutput } = require('./outputLanguageService');
+
+const STORYBOARD_CHUNK_CONCURRENCY = Math.max(1, Math.min(4,
+  Number(process.env.NEW_STORY_AD_STORYBOARD_CHUNK_CONCURRENCY) || 3));
 
 function clampText(value = '', max = 260) {
   const text = String(value || '').replace(/\s+/g, ' ').trim();
@@ -570,9 +574,9 @@ async function generateStoryboardTable(ctx, blueprint, { taskId = '', resumeShot
 
   if (all.length) await checkpoint('resumed');
 
-  for (const chunk of beatChunks) {
+  const generateChunk = async chunk => {
     const systemPrompt = [
-      'You are the storyboard table writer for New Story Ad. Return a JSON array only.',
+      'You are the storyboard table writer for New Story Ad. Return one JSON object with a shots array only.',
       'All user-visible text values must be natural Simplified Chinese, including shot title, role, purpose, visuals, actions, voiceover/dialogue, character names/actions, material notes, scene descriptions and transition/continuity explanations. JSON keys and technical enum values stay unchanged. Brand/product/API/UI names may remain in their original spelling.',
       'Do not force fixed segments, fixed template, or fixed shot count. Shots must follow the user story content.',
       'Each supplied narrative coverage unit must produce one corresponding shot. One source story beat may intentionally have multiple coverage units; preserve coverage_id and advance only that unit.',
@@ -625,7 +629,7 @@ ${sceneBindingPrompt(ctx.scene_assets || [])}
 
 Current beats: ${JSON.stringify(chunk)}
 
-Return JSON array for current beats only. Fields:
+    Return one JSON object for current beats only: {"shots":[...]}. Each shots item uses these fields:
 {
   "index": 1,
   "title": "shot title",
@@ -712,26 +716,58 @@ Return JSON array for current beats only. Fields:
       systemPrompt,
       userPrompt,
       maxTokens: 8000,
+      structuredOutput: { mode: 'json_object', name: 'storyboard_chunk' },
+      validateText: async (_text, validation = {}) => {
+        const rows = Array.isArray(validation.parsed_json?.shots) ? validation.parsed_json.shots : [];
+        if (rows.length === chunk.length) return true;
+        const error = new Error(`当前镜头批次需要 ${chunk.length} 项，模型实际返回 ${rows.length} 项`);
+        error.code = 'STORYBOARD_CHUNK_COUNT_INVALID';
+        error.details = [{ message: `shots 数量必须为 ${chunk.length}，实际为 ${rows.length}` }];
+        throw error;
+      },
     });
 
-    const parsed = await jsonRepair.parseOrRepair({
-      raw: result.text,
-      expected: 'array',
-      modelGateway,
-      taskId,
-      stage: 'new_story_ad.json_repair',
-    });
+    const parsed = Array.isArray(result.parsed_json?.shots)
+      ? result.parsed_json.shots
+      : await jsonRepair.parseOrRepair({
+        raw: result.text,
+        expected: 'array',
+        modelGateway,
+        taskId,
+        stage: 'new_story_ad.json_repair',
+      });
 
     const language = await ensureChineseOutput({ payload: parsed, kind: 'storyboard', taskId, context: ctx });
-    all.push(...alignShotsToBeats(language.payload, chunk));
-    meta.push({
-      used_model: result.used_model,
-      fallback_used: result.fallback_used,
-      failed_models: result.failed_models,
-      language_repaired: language.repaired,
-      language_model: language.model_meta?.used_model || '',
-    });
-    await checkpoint('chunk_done');
+    return {
+      shots: alignShotsToBeats(language.payload, chunk),
+      model_meta: {
+        used_model: result.used_model,
+        fallback_used: result.fallback_used,
+        failed_models: result.failed_models,
+        language_repaired: language.repaired,
+        language_model: language.model_meta?.used_model || '',
+      },
+    };
+  };
+
+  try {
+    await generationConcurrency.map(
+      `storyboard-table:${taskId || 'anonymous'}`,
+      beatChunks,
+      STORYBOARD_CHUNK_CONCURRENCY,
+      async chunk => {
+        const generated = await generateChunk(chunk);
+        all.push(...generated.shots);
+        meta.push(generated.model_meta);
+        await checkpoint('chunk_done');
+        return generated;
+      },
+    );
+  } catch (error) {
+    error.partial_results_saved = all.length > 0;
+    error.partial_completed = all.length;
+    error.partial_total = beats.length;
+    throw error;
   }
 
   const missingIndexes = missingBeatIndexes(beats, all);

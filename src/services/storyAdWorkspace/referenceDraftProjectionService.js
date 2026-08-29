@@ -159,7 +159,15 @@ function storySection(context = {}, outputs = {}) {
 
 function storyboardSection(context = {}, outputs = {}, raw = {}) {
   const savedShots = list(outputs.storyboard_table).slice(0, 200);
-  const referenceDraft = savedShots.length ? [] : referenceStoryboardDraft(context);
+  const checkpoint = outputs.storyboard_checkpoint && typeof outputs.storyboard_checkpoint === 'object'
+    ? outputs.storyboard_checkpoint
+    : null;
+  const partialShots = !savedShots.length && raw.storyboard_status?.checkpoint_available === true
+    ? list(checkpoint?.shots).slice(0, 200)
+    : [];
+  // A persisted generation checkpoint is real current-task work. Never hide it
+  // behind an older reference-video draft when the formal table is not ready.
+  const referenceDraft = savedShots.length || partialShots.length ? [] : referenceStoryboardDraft(context);
   return {
     shots: savedShots.length ? savedShots : referenceDraft,
     reference_draft: referenceDraft,
@@ -169,6 +177,13 @@ function storyboardSection(context = {}, outputs = {}, raw = {}) {
       ? outputs.storyboard_image_batch
       : null,
     status: raw.storyboard_status || null,
+    partial_shots: partialShots,
+    checkpoint: partialShots.length ? {
+      completed: partialShots.length,
+      total: Math.max(partialShots.length, Number(checkpoint?.expected_total || raw.storyboard_status?.checkpoint_total || 0)),
+      phase: checkpoint?.phase || '',
+      updated_at: checkpoint?.updated_at || '',
+    } : null,
     continuity: list(outputs.continuity_contracts || outputs.keyframe_contracts).slice(0, 200),
   };
 }

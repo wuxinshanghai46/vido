@@ -3,11 +3,14 @@ const storyAd = require('../newStoryAd');
 const mediaAdapterDefault = require('../newStoryAd/mediaAdapter');
 const sketchGate = require('./storyboardSketchGateService');
 const knowledgePolicyRuntime = require('../newStoryAd/knowledgePolicyRuntimeService');
+const generationConcurrency = require('../newStoryAd/generationConcurrencyService');
 const { v4: uuidv4 } = require('uuid');
 
 const ALLOWED_STATUSES = new Set(['draft', 'confirmed', 'skipped']);
 const activeSketchBatches = new Set();
 const SKETCH_BATCH_OUTPUT = 'storyboard_image_batch';
+const SKETCH_BATCH_CONCURRENCY = Math.max(1, Math.min(4,
+  Number(process.env.NEW_STORY_AD_STORYBOARD_IMAGE_CONCURRENCY) || 2));
 
 function batchProgress(taskId) {
   const value = storage.getOutput(taskId, SKETCH_BATCH_OUTPUT);
@@ -384,16 +387,22 @@ async function generateSketchBatch(taskId, options = {}, dependencies = {}) {
   activeSketchBatches.add(taskId);
   const batchId = clean(options.client_request_id || uuidv4(), 120);
   const startedAt = new Date().toISOString();
-  let completed = 0;
+  let processed = 0;
+  let succeeded = 0;
   saveBatchProgress(taskId, {
     id: batchId,
     status: 'running',
     requested: targets.length,
     completed: 0,
+    processed: 0,
+    succeeded: 0,
     skipped_existing: shots.length - targets.length,
     target_indexes: targets,
     completed_indexes: [],
     current_index: targets[0] || 0,
+    active_indexes: [],
+    configured_concurrency: SKETCH_BATCH_CONCURRENCY,
+    effective_concurrency: Math.min(SKETCH_BATCH_CONCURRENCY, targets.length),
     started_at: startedAt,
     finished_at: '',
     error: '',
@@ -402,53 +411,73 @@ async function generateSketchBatch(taskId, options = {}, dependencies = {}) {
   });
   try {
     const completedIndexes = [];
-    const results = await Promise.allSettled(targets.map(async shotIndex => {
-      const result = await generateSketch(taskId, shotIndex, {
-        confirmed: true,
-        batch_owner: taskId,
-        client_request_id: `${batchId}:${shotIndex}`,
-        image_model: options.image_model || options.imageModel,
-      }, dependencies);
-      completed += 1;
-      completedIndexes.push(shotIndex);
-      saveBatchProgress(taskId, {
-        status: 'running',
-        completed,
-        completed_indexes: [...completedIndexes].sort((a, b) => a - b),
-        current_index: 0,
-        message: `人物场景分镜图并行生成中，已完成 ${completed}/${targets.length}。`,
-      });
-      return result;
-    }));
+    const activeIndexes = new Set();
+    const results = await Promise.allSettled(targets.map(shotIndex => generationConcurrency.schedule(
+      `storyboard-images:${taskId}`,
+      SKETCH_BATCH_CONCURRENCY,
+      async () => {
+        activeIndexes.add(shotIndex);
+        saveBatchProgress(taskId, {
+          status: 'running', processed, completed: processed, succeeded,
+          active_indexes: [...activeIndexes].sort((a, b) => a - b),
+          current_index: Math.min(...activeIndexes),
+          message: `正在并行生成第 ${[...activeIndexes].sort((a, b) => a - b).join('、')} 镜，已处理 ${processed}/${targets.length}。`,
+        });
+        try {
+          const result = await generateSketch(taskId, shotIndex, {
+            confirmed: true,
+            batch_owner: taskId,
+            client_request_id: `${batchId}:${shotIndex}`,
+            image_model: options.image_model || options.imageModel,
+          }, dependencies);
+          succeeded += 1;
+          completedIndexes.push(shotIndex);
+          return result;
+        } finally {
+          processed += 1;
+          activeIndexes.delete(shotIndex);
+          saveBatchProgress(taskId, {
+            status: 'running', processed, completed: processed, succeeded,
+            completed_indexes: [...completedIndexes].sort((a, b) => a - b),
+            active_indexes: [...activeIndexes].sort((a, b) => a - b),
+            current_index: activeIndexes.size ? Math.min(...activeIndexes) : 0,
+            message: activeIndexes.size
+              ? `正在并行生成第 ${[...activeIndexes].sort((a, b) => a - b).join('、')} 镜，已处理 ${processed}/${targets.length}。`
+              : `已处理 ${processed}/${targets.length}，成功 ${succeeded}。`,
+          });
+        }
+      },
+    )));
     const failedIndexes = results.map((result, index) => result.status === 'rejected' ? targets[index] : 0).filter(Boolean);
     if (failedIndexes.length) {
       const firstFailure = results.find(result => result.status === 'rejected')?.reason || new Error('分镜图批次存在失败项');
-      firstFailure.details = { ...(firstFailure.details || {}), requested: targets.length, completed, remaining: failedIndexes.length, failed_indexes: failedIndexes };
+      firstFailure.details = { ...(firstFailure.details || {}), requested: targets.length, processed, completed: succeeded, remaining: failedIndexes.length, failed_indexes: failedIndexes };
       saveBatchProgress(taskId, {
-        status: 'failed', completed, completed_indexes: [...completedIndexes].sort((a, b) => a - b), failed_indexes: failedIndexes,
-        current_index: 0, finished_at: new Date().toISOString(), error: clean(firstFailure.message, 600),
+        status: 'failed', processed, completed: processed, succeeded, completed_indexes: [...completedIndexes].sort((a, b) => a - b), failed_indexes: failedIndexes,
+        active_indexes: [], current_index: 0, finished_at: new Date().toISOString(), error: clean(firstFailure.message, 600),
         error_code: clean(firstFailure.code || 'STORYBOARD_IMAGE_BATCH_FAILED', 100),
-        message: `人物场景分镜图完成 ${completed}/${targets.length}，失败 ${failedIndexes.length}；重试只补失败镜头。`,
+        message: `人物场景分镜图已处理 ${processed}/${targets.length}，成功 ${succeeded}、失败 ${failedIndexes.length}；重试只补失败镜头。`,
       });
       throw firstFailure;
     }
     saveBatchProgress(taskId, {
-      status: 'succeeded', completed, completed_indexes: [...completedIndexes].sort((a, b) => a - b), current_index: 0,
-      finished_at: new Date().toISOString(), message: `人物场景分镜图批量生成完成，共完成 ${completed}/${targets.length}。`,
+      status: 'succeeded', processed, completed: processed, succeeded, completed_indexes: [...completedIndexes].sort((a, b) => a - b), active_indexes: [], current_index: 0,
+      finished_at: new Date().toISOString(), message: `人物场景分镜图并行生成完成，共成功 ${succeeded}/${targets.length}。`,
     });
     return {
       sketches: storage.getOutput(taskId, 'storyboard_images') || [],
       requested: targets.length,
-      completed,
+      completed: succeeded,
+      processed,
       skipped_existing: shots.length - targets.length,
       progress: batchProgress(taskId),
     };
   } catch (error) {
-    error.details = { ...(error.details || {}), requested: targets.length, completed, remaining: Math.max(0, targets.length - completed) };
+    error.details = { ...(error.details || {}), requested: targets.length, processed, completed: succeeded, remaining: Math.max(0, targets.length - processed) };
     if (batchProgress(taskId)?.status !== 'failed') saveBatchProgress(taskId, {
-      status: 'failed', completed, finished_at: new Date().toISOString(), error: clean(error.message, 600),
+      status: 'failed', processed, completed: processed, succeeded, active_indexes: [], finished_at: new Date().toISOString(), error: clean(error.message, 600),
       error_code: clean(error.code || 'STORYBOARD_IMAGE_BATCH_FAILED', 100),
-      message: `分镜图批次已停止；已完成 ${completed}/${targets.length}，重试只补缺失项。`,
+      message: `分镜图批次已停止；已处理 ${processed}/${targets.length}、成功 ${succeeded}，重试只补缺失项。`,
     });
     throw error;
   } finally {
@@ -472,7 +501,7 @@ function getSketchBatch(taskId) {
       finished_at: new Date().toISOString(),
       error: '分镜图批次进程已中断。已完成图片已经保留，重新提交只会补生成缺失镜头。',
       error_code: 'SKETCH_BATCH_INTERRUPTED',
-      message: `分镜图批次已中断；已完成 ${Number(progress.completed || 0)}/${Number(progress.requested || 0)}，可以重新提交补齐。`,
+      message: `分镜图批次已中断；已处理 ${Number(progress.processed ?? progress.completed ?? 0)}/${Number(progress.requested || 0)}、成功 ${Number(progress.succeeded ?? progress.completed ?? 0)}，可以重新提交补齐。`,
     });
   }
   return {

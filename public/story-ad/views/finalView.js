@@ -89,7 +89,7 @@ export async function mount(host, context) {
       <summary class="card-head"><div><h2>关键帧</h2><p>已加载 ${keyframes.length}/${keyframeTotal} · 默认收起，点击展开</p></div><span class="details-chevron" aria-hidden="true">⌄</span></summary>
       <div class="card-body">${keyframes.length ? `<div class="generation-grid">${keyframes.map((item, index) => mediaCard(item, index, '关键帧')).join('')}</div>${moreMediaButton(mediaCatalog.keyframes, 'keyframes', '继续加载关键帧')}` : emptyState({
         title: '还没有关键帧',
-        body: shots.length ? '确认镜头设计后，按当前分镜生成关键帧。' : '先完成文字分镜和镜头设计。',
+        body: shots.length ? '确认镜头设计后，按当前分镜生成关键帧。' : '先完成镜头结构和镜头设计。',
         action: shots.length ? '生成关键帧' : '返回分镜台',
         actionId: shots.length ? 'generate-keyframes' : 'back-storyboard',
       })}</div>

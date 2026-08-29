@@ -196,9 +196,9 @@ export async function mount(host, context) {
   const shots = Array.isArray(bundle?.storyboard?.shots) ? bundle.storyboard.shots : [];
   const isReferenceDraft = bundle?.storyboard?.source === 'reference_analysis_projection';
   if (!shots.length) {
-    host.innerHTML = `<section class="view-head"><div><h1>镜头设计</h1><p>逐镜设置必须建立在真实文字分镜上。</p></div></section><section class="card">${emptyState({
+    host.innerHTML = `<section class="view-head"><div><h1>镜头设计</h1><p>逐镜设置必须建立在真实镜头结构合同上。</p></div></section><section class="card">${emptyState({
       title: '还没有可设计的镜头',
-      body: '先在分镜台生成并确认文字分镜。',
+      body: '先在分镜台生成并确认镜头结构。',
       action: '返回分镜台',
       actionId: 'back-storyboard',
     })}</section>`;

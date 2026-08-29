@@ -18,6 +18,7 @@ const MANAGED_RECOVERY_FALLBACK_STAGES = new Set([
   'new_story_ad.assist',
   'new_story_ad.person_plan_character',
   'new_story_ad.story_flow_planning',
+  'new_story_ad.storyboard_table',
   'new_story_ad.brief_dialogue',
   'new_story_ad.story_facts',
   'new_story_ad.story_facts_compact_retry',
@@ -134,14 +135,18 @@ function rateLimitDomainHealthKey(model = {}) {
 
 const VISION_FAILURE_DOMAIN_PARALLELISM = Math.max(1, Math.min(6,
   Number(process.env.NEW_STORY_AD_VISION_FAILURE_DOMAIN_PARALLELISM) || 2));
+const STORYBOARD_TEXT_FAILURE_DOMAIN_PARALLELISM = Math.max(1, Math.min(4,
+  Number(process.env.NEW_STORY_AD_STORYBOARD_TEXT_FAILURE_DOMAIN_PARALLELISM) || 3));
 const failureDomainSubmissionStates = new Map();
 
 async function acquireFailureDomainSubmission(model = {}) {
   const key = rateLimitDomainHealthKey(model);
   const stage = String(model._stageId || model.stage || '');
-  const parallelism = ['new_story_ad.scene_vision', 'new_story_ad.scene_camera_qa'].includes(stage)
-    ? VISION_FAILURE_DOMAIN_PARALLELISM
-    : 1;
+  const parallelism = stage === 'new_story_ad.storyboard_table'
+    ? STORYBOARD_TEXT_FAILURE_DOMAIN_PARALLELISM
+    : (['new_story_ad.scene_vision', 'new_story_ad.scene_camera_qa'].includes(stage)
+      ? VISION_FAILURE_DOMAIN_PARALLELISM
+      : 1);
   const state = failureDomainSubmissionStates.get(key) || { active: 0, waiters: [] };
   failureDomainSubmissionStates.set(key, state);
   if (state.active >= parallelism) {
@@ -1225,6 +1230,24 @@ function mockResponse(stage, userPrompt = '') {
         { beat_index: 3, role: '结果证明', plot: '处理结果被看见', spoken_line: '变化已经清楚呈现出来。', visual_proof: '结果变化明确' },
       ],
     });
+  }
+  if (stage === 'new_story_ad.storyboard_table') {
+    const marker = String(userPrompt || '').indexOf('Current beats:');
+    const beatJson = marker >= 0 ? jsonRepair.extractBalanced(String(userPrompt).slice(marker), '[', ']') : '';
+    let currentBeats = [];
+    try { currentBeats = JSON.parse(beatJson || '[]'); } catch {}
+    return JSON.stringify({ shots: currentBeats.map((beat, offset) => ({
+      index: Number(beat?.beat_index || beat?.index || offset + 1) || offset + 1,
+      title: beat?.title || `镜头 ${offset + 1}`,
+      role: beat?.role || '剧情推进',
+      duration: 4,
+      visual: beat?.plot || beat?.visual_proof || '当前任务场景中的剧情动作清晰可见。',
+      action: beat?.action || `${primaryName}完成当前剧情节点要求的可见动作。`,
+      voiceover: beat?.spoken_line || '剧情继续向下一节点推进。',
+      dialogue_lines: [{ speaker: primaryName, line: beat?.spoken_line || '继续完成当前动作。' }],
+      purpose: beat?.purpose || beat?.role || '剧情推进',
+      characters: [{ name: primaryName, action: beat?.action || '完成当前剧情动作' }],
+    })) });
   }
   if (/qa/.test(stage)) {
     return JSON.stringify({ pass: true, blocking_issues: [], rewrite_issues: [], warnings: [], scores: { commercial: 0.86, shootability: 0.88, character_consistency: 0.9 } });

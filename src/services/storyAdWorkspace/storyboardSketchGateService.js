@@ -25,9 +25,9 @@ function inspect(taskId, dependencies = {}) {
     || review?.passed === false
     || blocking.length > 0
     || rewrites.length > 0;
-  if (explicitFailure) issues.push(...blocking, ...rewrites, task.error || progress.message || '文字分镜审核未通过');
-  if (!Array.isArray(shots) || !shots.length) issues.push('还没有可用的文字分镜');
-  if (meta.status && meta.status !== 'ready') issues.push(`文字分镜状态为 ${clean(meta.status, 40)}`);
+  if (explicitFailure) issues.push(...blocking, ...rewrites, task.error || progress.message || '镜头结构整理未通过');
+  if (!Array.isArray(shots) || !shots.length) issues.push('还没有可用的镜头结构合同');
+  if (meta.status && meta.status !== 'ready') issues.push(`镜头结构状态为 ${clean(meta.status, 40)}`);
   if (shots.length && contracts.length !== shots.length) issues.push(`关键帧合同不完整（${contracts.length}/${shots.length}）`);
   if (!flow.ready) issues.unshift(flow.reason);
   const ready = flow.ready

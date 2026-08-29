@@ -70,9 +70,10 @@
 .side-metric b { color: var(--text); font-size: 15px; }
 .workspace-main { min-width: 0; }
 .project-progress-host:empty { display: none; }
-.project-progress-host { position: sticky; top: 64px; z-index: 18; padding: 10px 30px 0; background: color-mix(in srgb, var(--bg) 92%, transparent); backdrop-filter: blur(10px); }
+.project-progress-host { position: sticky; top: 64px; z-index: 18; padding: 8px 20px 0; background: color-mix(in srgb, var(--bg) 92%, transparent); backdrop-filter: blur(10px); }
 .project-generation-progress { display: grid; gap: 9px; padding: 12px 14px; border: 1px solid color-mix(in srgb, var(--mint) 50%, var(--line)); border-radius: 12px; background: var(--surface); box-shadow: var(--shadow); }
 .project-generation-progress.is-terminal { gap:5px;padding:9px 12px;border-color: color-mix(in srgb, var(--danger) 55%, var(--line)); background: color-mix(in srgb, var(--danger) 7%, var(--surface)); }.project-progress-details{min-width:0;border-top:1px solid color-mix(in srgb,var(--danger) 26%,var(--line))}.project-progress-details>summary{width:max-content;max-width:100%;padding-top:7px;color:var(--muted);cursor:pointer;font-size:10px;font-weight:800}.project-progress-details[open]>summary{margin-bottom:8px}.project-progress-details .generation-lanes{margin-bottom:8px}
+.project-progress-terminal-message { margin: 2px 0 0; color: var(--muted); font-size: 11px; line-height: 1.5; }
 .project-progress-head, .project-progress-foot { display: flex; align-items: center; gap: 12px; }
 .project-progress-head > div { display: flex; min-width: 0; flex-wrap: wrap; gap: 6px 12px; align-items: baseline; }
 .project-progress-head span { color: var(--mint); font-weight: 800; }
@@ -363,7 +364,7 @@
 .storyboard-stage-bar > div { display: grid; gap: 5px; min-width: 0; flex: 1; }
 .storyboard-stage-bar span { color: var(--muted); font-size: 11px; }
 .storyboard-stage-bar > .storyboard-stage-actions { display: flex; align-items: center; justify-content: flex-end; gap: 10px; flex: 0 0 auto; }
-.storyboard-primary-actions { display: flex; align-items: center; justify-content: flex-end; gap: 10px; margin: 12px 0 14px; }
+.storyboard-primary-actions { display: flex; align-items: center; justify-content: flex-end; gap: 10px; margin: 8px 0 10px; }
 @media (max-width: 760px) { .storyboard-primary-actions { align-items: stretch; flex-direction: column; } .storyboard-primary-actions .btn { width: 100%; } }
 .sketch-batch-progress { display: grid; gap: 8px; margin: -2px 0 14px; padding: 12px 14px; border: 1px solid color-mix(in srgb, var(--mint) 45%, var(--line)); border-radius: 12px; background: var(--surface); }
 .sketch-batch-progress.is-failed { border-color: color-mix(in srgb, var(--danger) 55%, var(--line)); }
@@ -371,6 +372,14 @@
 .sketch-batch-progress-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .sketch-batch-progress small { color: var(--muted); line-height: 1.55; }
 .sketch-batch-progress .error-text { color: var(--danger); }
+.storyboard-empty-card .empty-state { min-height: 112px; padding-block: 16px; }
+.storyboard-checkpoint-preview { display: grid; gap: 12px; padding: 14px 16px; border: 1px solid color-mix(in srgb, var(--warning) 48%, var(--line)); border-radius: 12px; background: color-mix(in srgb, var(--warning) 6%, var(--surface)); }
+.storyboard-checkpoint-preview > div { display: grid; gap: 4px; }
+.storyboard-checkpoint-preview > div span { color: var(--muted); font-size: 11px; }
+.storyboard-checkpoint-preview ol { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 7px; margin: 0; padding: 0; list-style: none; }
+.storyboard-checkpoint-preview li { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 8px 10px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); }
+.storyboard-checkpoint-preview li strong { color: var(--mint); font-size: 10px; }
+.storyboard-checkpoint-preview li span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
 .shot-row > * { min-width: 0; }
 .shot-row.header { min-height: 44px; color: var(--muted); font-size: 12px; background: var(--surface-2); }
 .shot-row:last-child { border-bottom: 0; }

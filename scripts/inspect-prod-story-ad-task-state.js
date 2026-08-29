@@ -18,6 +18,8 @@ const remoteScript = String.raw`
   const shots = storage.getOutput(taskId, 'storyboard_table') || [];
   const flowSketches = storage.getOutput(taskId, 'story_flow_sketches') || [];
   const storyboardImages = storage.getOutput(taskId, 'storyboard_images') || [];
+  const storyboardCheckpoint = storage.getOutput(taskId, 'storyboard_checkpoint') || null;
+  const storyboardImageBatch = storage.getOutput(taskId, 'storyboard_image_batch') || null;
   const sceneAssets = storage.getOutput(taskId, 'scene_assets') || [];
   const review = storage.getOutput(taskId, 'quality_review') || {};
   const context = storage.getOutput(taskId, 'context') || task.request || {};
@@ -78,7 +80,15 @@ const remoteScript = String.raw`
       has_image: Boolean(item.image_url),
       updated_at: item.updated_at || '',
     })),
-    recent_model_calls: calls.slice(-12).map(call => ({
+    storyboard_checkpoint: storyboardCheckpoint ? {
+      phase: storyboardCheckpoint.phase || '',
+      completed_count: storyboardCheckpoint.completed_count || 0,
+      completed_indexes: storyboardCheckpoint.completed_indexes || [],
+      shot_count: Array.isArray(storyboardCheckpoint.shots) ? storyboardCheckpoint.shots.length : 0,
+      updated_at: storyboardCheckpoint.updated_at || '',
+    } : null,
+    storyboard_image_batch: storyboardImageBatch,
+    recent_model_calls: calls.filter(call => String(call.stage || '').includes('storyboard') || String(call.stage || '').includes('story_flow') || String(call.stage || '').includes('json_repair')).slice(0, 30).map(call => ({
       stage: call.stage || '',
       provider_id: call.provider_id || '',
       model_id: call.model_id || '',

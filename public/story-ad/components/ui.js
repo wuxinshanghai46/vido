@@ -81,7 +81,7 @@ const GENERATION_STAGE_LABELS = {
   scene_asset: '场景视图',
   scene_qa: '场景审核',
   blueprint: '剧情蓝图',
-  storyboard: '文字分镜',
+  storyboard: '镜头结构',
   keyframes: '关键帧',
   video: '视频片段',
   media: '视频片段',
@@ -91,7 +91,7 @@ const GENERATION_STAGE_LABELS = {
 };
 
 const GENERATION_UNIT_LABELS = {
-  person_plan: '个人物', subject_assets: '项资产', production_assets: '个制作单元', visual_assets: '个本批目标', person_provider_sync: '个人物', product_asset: '项商品', prop_asset: '项道具', scene_asset: '张场景图', scene_qa: '个场景', blueprint: '个步骤', storyboard: '个分镜',
+  person_plan: '个人物', subject_assets: '项资产', production_assets: '个制作单元', visual_assets: '个本批目标', person_provider_sync: '个人物', product_asset: '项商品', prop_asset: '项道具', scene_asset: '张场景图', scene_qa: '个场景', blueprint: '个步骤', storyboard: '个镜头合同',
   keyframes: '张关键帧', video: '个视频片段', media: '个视频片段', tts: '段配音', compose: '个步骤', full: '个步骤',
 };
 
@@ -206,9 +206,16 @@ export function generationProgressView(bundle = {}) {
   const finishedAt = String(progress.finished_at || '');
   const failureCode = String(progress.error_code || project.error_code || '').toUpperCase();
   const failureText = String(progress.message || project.error || '');
+  const storyboardCheckpoint = stage === 'storyboard' && bundle.storyboard?.status?.checkpoint_available === true
+    ? {
+      completed: Math.max(0, Number(bundle.storyboard.status.checkpoint_completed || 0)),
+      total: Math.max(1, Number(bundle.storyboard.status.checkpoint_total || progress.total || 1)),
+    }
+    : null;
   const billingUnknown = checkpointRecovery?.retryBlocked === true || progress.billing_state === 'unknown' || /billing(?:_| )state[^\n]*unknown|计费状态[^\n]*未知/i.test(failureText);
   let failureTitle = stage === 'scene_config' ? `${stageLabel}更新失败` : `${stageLabel}生成失败`;
   if (failureCode === 'BLUEPRINT_POLISH_QUALITY_FAILED') failureTitle = '脚本初稿需要调整';
+  else if (stage === 'storyboard' && /JSON_PARSE|PROVIDER_RESPONSE_INVALID|MODEL_JSON/.test(failureCode)) failureTitle = '镜头结构整理中断（返回格式不完整）';
   else if (failureCode === 'PROVIDER_CONTENT_AUDIT') failureTitle = `${stageLabel}内容审核未通过`;
   else if (progress.phase === 'review_failed' || /(?:QUALITY|QA|REVIEW).*FAILED/.test(failureCode)) failureTitle = `${stageLabel}质量审核未通过`;
   else if (billingUnknown) failureTitle = `${stageLabel}生成中断（计费待核对）`;
@@ -216,6 +223,7 @@ export function generationProgressView(bundle = {}) {
   let liveText = '';
   if (failed && stage === 'scene_config') liveText = '资产已保留，请更新方案';
   else if (failed && failureCode === 'BLUEPRINT_POLISH_QUALITY_FAILED') liveText = '脚本初稿已保存，可从当前初稿继续检查';
+  else if (failed && storyboardCheckpoint) liveText = `已保存 ${storyboardCheckpoint.completed}/${storyboardCheckpoint.total} 个镜头合同；重试只补缺失镜头，分镜图片尚未开始`;
   else if (failed) liveText = checkpointRecovery
     ? `已保留 ${checkpointRecovery.completed}/${checkpointRecovery.total} 项人物图片；${billingUnknown ? '核对计费前不会重复调用' : '仅处理缺失项'}`
     : (billingUnknown ? '已保留成功资产，核对计费前不会重复调用' : '已保留成功资产，可从缺失项继续');
@@ -227,7 +235,9 @@ export function generationProgressView(bundle = {}) {
   return {
     active, failed, stage, stageLabel, unitLabel, total, completed: processed, processed, succeededCount, failedCount, percent, liveText, failureTitle,
     lanes: progress.lanes && typeof progress.lanes === 'object' ? progress.lanes : null,
-    message: failureCode === 'BLUEPRINT_POLISH_QUALITY_FAILED'
+    message: stage === 'storyboard' && /JSON_PARSE|PROVIDER_RESPONSE_INVALID|MODEL_JSON/.test(failureCode)
+      ? `模型返回的镜头结构格式不完整；已保存 ${storyboardCheckpoint?.completed || processed}/${storyboardCheckpoint?.total || total} 个有效镜头，未调用分镜图片模型。`
+      : failureCode === 'BLUEPRINT_POLISH_QUALITY_FAILED'
       ? blueprintQualityFailureMessage(failureText)
       : failed && stage === 'scene_config'
       ? '方案更新失败，资产已保留。'
@@ -268,7 +278,7 @@ export function generationProgressPanel(bundle = {}, currentView = '') {
       : '';
     return `<section class="project-generation-progress is-failed is-terminal" role="alert">
       <div class="project-progress-head"><div><b>${escapeHtml(view.failureTitle)}</b><span>${escapeHtml(view.liveText)}</span>${terminalCounts}</div><span class="status-tag is-danger">已停止</span></div>
-      ${retained}
+      ${view.message ? `<p class="project-progress-terminal-message">${escapeHtml(view.message)}</p>` : ''}${retained}
     </section>`;
   }
   const outcomeCounts = view.failedCount > 0 ? ` · 成功 ${view.succeededCount}，失败 ${view.failedCount}` : '';
