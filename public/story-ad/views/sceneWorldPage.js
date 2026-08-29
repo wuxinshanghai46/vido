@@ -5,7 +5,6 @@ import { renderSceneProductionCard, scenePromptPreviewMarkup, scenePromptPreview
 import { bindMediaLightbox } from './mediaLightbox.js?v=20260829-production-v267';
 import { buildSceneBatchActionPlan } from './sceneBatchActionPlan.js?v=20260829-production-v267';
 import { bindGenerationModelPicker, loadGenerationModelPicker } from './generationModelPicker.js?v=20260829-production-v267';
-import { sceneBatchProgressMarkup } from './sceneBatchProgressView.js?v=20260829-production-v267';
 import { normalizeSceneDossier } from './sceneDossierCard.js?v=20260829-production-v267';
 
 export async function mount(host, context) {
@@ -23,19 +22,19 @@ export async function mount(host, context) {
   const batchTarget = activeTargets.find(item => String(item?.stage || '') === 'scene_asset'
     && String(item?.target_id || item?.scope_id || '') === 'scene-batch');
   const batchActive = Boolean(batchTarget || (generationActive && String(generationProgress.mode || '') === 'scene_batch'));
-  const batchSceneIds = new Set(Array.isArray(generationProgress.batch_scene_ids) ? generationProgress.batch_scene_ids.map(String) : []);
   const sceneIsActive = sceneId => activeTargets.some(item => {
     const status = String(item?.status || '').toLowerCase();
     return ['scene_asset', 'scene_qa'].includes(String(item?.stage || ''))
       && String(item?.target_id || item?.scope_id || '') === String(sceneId)
       && (!status || ['queued', 'running', 'processing', 'verifying'].includes(status));
-  }) || (batchActive && (!batchSceneIds.size || batchSceneIds.has(String(sceneId))));
+  }) || ['queued', 'running', 'processing', 'verifying'].includes(String(
+    targetProgress[`scene_asset:${sceneId}`]?.status || targetProgress[`scene_qa:${sceneId}`]?.status || '',
+  ).toLowerCase());
   const targetProgress = bundle?.project?.target_generation_progress && typeof bundle.project.target_generation_progress === 'object'
     ? bundle.project.target_generation_progress : {};
   const sceneActiveTarget = sceneId => activeTargets.find(item => ['scene_asset', 'scene_qa'].includes(String(item?.stage || ''))
     && String(item?.target_id || item?.scope_id || '') === String(sceneId));
   const sceneProgress = sceneId => {
-    if (batchActive && (!batchSceneIds.size || batchSceneIds.has(String(sceneId)))) return generationProgress;
     const activeTarget = sceneActiveTarget(sceneId);
     const activeKey = activeTarget ? `${activeTarget.stage}:${sceneId}` : '';
     return (activeKey ? targetProgress[activeKey] : null)
@@ -55,7 +54,7 @@ export async function mount(host, context) {
   host.innerHTML = `<section class="view-head scene-view-head"><div><h1>场景</h1><p>默认查看场景画面，需要时可切换到提示词核对。</p></div><div class="scene-view-actions"><span>${scenes.length ? '' : '预计 '}${preview.displayedCount} 个场景</span>${canConfirm ? '<button class="btn primary compact" data-confirm-scenes>确认场景，进入线稿</button>' : ''}</div></section>
     ${scenePlanReady || persistedScenePlanReady ? '' : scenePlanBlockedView(sceneEligibility, generationActive, { automatic: preview.autoInitialize || generationActive })}
     ${!scenePlanReady && !persistedScenePlanReady ? scenePromptPreviewMarkup(preview, (scene, index) => renderSceneProductionCard(scene, index, { provisional: true })) : ''}
-    ${persistedScenePlanReady ? `<section class="scene-production"><header><div><h2>场景提示词与画面</h2><p>提示词修改后自动保存；已有或生成中的画面默认展示，需要时可切回提示词。</p></div><div class="scene-view-actions"><span>Image ${imageSummary[0]}/${imageSummary[1]}</span>${sceneActionPlan.count ? `${modelPicker.html}<button class="btn primary compact" data-run-scene-actions>继续完成场景（${sceneActionPlan.count}）</button>` : ''}</div></header>${batchActive ? sceneBatchProgressMarkup(generationProgress) : ''}<div class="scene-production-grid">${scenes.map((scene, index) => { const sceneId = scene.id || scene.scene_id; return renderSceneProductionCard(scene, index, { generationActive: sceneIsActive(sceneId), batchManaged: unifiedActionManaged, progress: sceneProgress(sceneId) }); }).join('')}</div></section>` : ''}`;
+    ${persistedScenePlanReady ? `<section class="scene-production"><header><div><h2>场景提示词与画面</h2><p>提示词修改后自动保存；已有或生成中的画面默认展示，需要时可切回提示词。</p></div><div class="scene-view-actions"><span>Image ${imageSummary[0]}/${imageSummary[1]}</span>${sceneActionPlan.count ? `${modelPicker.html}<button class="btn primary compact" data-run-scene-actions>继续完成场景（${sceneActionPlan.count}）</button>` : ''}</div></header><div class="scene-production-grid">${scenes.map((scene, index) => { const sceneId = scene.id || scene.scene_id; return renderSceneProductionCard(scene, index, { generationActive: sceneIsActive(sceneId), batchManaged: unifiedActionManaged, progress: sceneProgress(sceneId) }); }).join('')}</div></section>` : ''}`;
 
   context.selectedSceneImageModel = bindGenerationModelPicker(host, modelPicker);
 

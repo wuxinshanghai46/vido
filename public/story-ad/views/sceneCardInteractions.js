@@ -60,7 +60,7 @@ export function bindSceneCards(host, context) {
         if (!confirmation.accepted) { setButtonBusy(batchButton, false); return; }
         await authorizeBillingReviews({ bundle: context.bundle, lane: 'scenes', reviewBatch: confirmation.reviewBatch });
       }
-      context.store.beginStageSubmission?.('scene_asset', plan.count, `正在提交 ${plan.count} 个场景的连续处理任务。`, {
+      context.store.beginStageSubmission?.('scene_asset', plan.count, `正在提交 ${plan.count} 个场景的并行处理任务。`, {
         mode: 'scene_batch', batch_scene_ids: plan.ready.map(item => item.sceneId),
       });
       setButtonBusy(batchButton, true, '正在提交…');
@@ -82,11 +82,11 @@ export function bindSceneCards(host, context) {
         image_model: imageModel,
         request_key: `scene-batch:${context.bundle?.revisions?.content || 1}:${actions.map(item => `${item.scene_id}:${item.prompt_version_id}`).join('|')}`,
       });
-      if (result.accepted === false) throw new Error(result.message || '场景连续处理任务未被接受');
-      toast(`已开始依次处理 ${plan.count} 个场景`, 'success');
+      if (result.accepted === false) throw new Error(result.message || '场景并行处理任务未被接受');
+      toast(`已开始并行处理 ${plan.count} 个场景`, 'success');
       await context.refreshShell();
     } catch (error) {
-      toast(error.message || '场景连续处理任务没有提交成功', 'error');
+      toast(error.message || '场景并行处理任务没有提交成功', 'error');
       setButtonBusy(batchButton, false);
     }
   });

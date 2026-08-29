@@ -16,15 +16,18 @@ function maps(task = {}) {
 function aggregate(task = {}, stage = '') {
   const state = maps(task);
   const selectedStage = String(stage || task.active_stage || task.generation_progress?.stage || '');
-  const rows = Object.entries(state.progress)
+  const stageRows = Object.entries(state.progress)
     .filter(([targetKey, row]) => String(row?.stage || targetKey.split(':')[0]) === selectedStage)
     .map(([targetKey, row]) => ({ target_key: targetKey, ...row }));
+  const batchRow = [...stageRows].reverse().find(row => String(row.mode || '') === 'scene_batch') || null;
+  const concreteSceneRows = stageRows.filter(row => row.target_key !== 'scene_asset:scene-batch');
+  const rows = batchRow && concreteSceneRows.length ? concreteSceneRows : stageRows;
   if (!rows.length) return task.generation_progress || null;
   const activeKeys = new Set(Object.keys(state.active));
   const activeRows = rows.filter(row => activeKeys.has(row.target_key));
   const relevant = activeRows.length
     ? rows
-    : rows.filter(row => ['done', 'succeeded', 'failed', 'cancelled'].includes(String(row.status || '').toLowerCase()));
+    : rows.filter(row => ['done', 'completed', 'succeeded', 'failed', 'cancelled'].includes(String(row.status || '').toLowerCase()));
   const source = relevant.length ? relevant : rows;
   const total = source.reduce((sum, row) => sum + Math.max(0, Number(row.target_total || row.total || 0) || 0), 0);
   const processed = source.reduce((sum, row) => sum + Math.max(0, Number(row.processed || row.completed || 0) || 0), 0);
@@ -42,7 +45,6 @@ function aggregate(task = {}, stage = '') {
   const allCompleted = source.length > 0 && source.every(row => String(row.status || '').toLowerCase() === 'completed');
   const directLaneRunning = !activeRows.length && source.some(row => ['queued', 'running', 'verifying']
     .includes(String(row.status || '').toLowerCase()));
-  const batchRow = [...source].reverse().find(row => String(row.mode || '') === 'scene_batch') || null;
   const running = activeRows.length > 0 || directLaneRunning;
   const status = running
     ? (source.length === 1 && String(source[0].status || '').toLowerCase() === 'verifying' ? 'verifying' : 'running')

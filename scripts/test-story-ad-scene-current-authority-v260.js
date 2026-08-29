@@ -75,33 +75,21 @@ const optionTemplate = pickerSource.slice(pickerSource.indexOf('<option value=')
 assert(!optionTemplate.includes('provider_name'), '模型下拉不得再显示供应商全称');
 assert(optionTemplate.includes('generationModelOptionLabel'), '图片和视频下拉必须显示产品名与供应商缩写');
 
-const progressPath = path.join(root, 'public/story-ad/views/sceneBatchProgressView.js');
-let progressSource = fs.readFileSync(progressPath, 'utf8')
-  .replace(/^import .*$/gm, '')
-  .replace('export function sceneBatchProgressMarkup', 'function sceneBatchProgressMarkup');
-progressSource += '\nmodule.exports = { sceneBatchProgressMarkup };';
-const progressSandbox = {
-  module: { exports: {} }, exports: {},
-  escapeHtml: value => String(value),
-  elapsedTimeTag: ({ active }) => active ? '<em>已耗时 1分31秒</em>' : '<em>本次耗时 1分31秒</em>',
-};
-vm.runInNewContext(progressSource, progressSandbox, { filename: progressPath });
-assert.match(progressSandbox.module.exports.sceneBatchProgressMarkup({
-  mode: 'scene_batch', status: 'running', image_target_total: 1, image_processed: 0,
-  started_at: '2026-08-29T00:00:00.000Z', current_scene_name: '现代高端家居展示厅', current_view_label: '俯视布局',
-}), /现代高端家居展示厅 · 俯视布局.*已耗时 1分31秒/);
+const progressSource = fs.readFileSync(path.join(root, 'public/story-ad/views/scenePromptPreview.js'), 'utf8');
+assert.match(progressSource, /current_view_label \|\| '准备中'/, '每张场景卡必须显示自己的当前视角');
+assert.match(progressSource, /elapsedTimeTag\(\{ startedAt: progress\?\.started_at/, '每张场景卡必须显示自己的耗时');
+assert.match(progressSource, /const progressMarkup = options\.generationActive \?/, '批量运行时不得隐藏单场景进度条');
 
 const publicBatchProgress = publicFailure.publicProgress({
-  mode: 'scene_batch', status: 'running', stage: 'scene_asset', phase: 'generation',
+  mode: 'scene_action', status: 'running', stage: 'scene_asset', phase: 'generation',
   image_target_total: 4, image_processed: 1, image_succeeded: 1, image_failed: 0, image_percent: 25,
   current_scene_id: sceneId, current_scene_name: '现代高端家居展示厅',
-  current_view_key: 'reverse', current_view_label: '反向/侧向', batch_scene_ids: [sceneId],
+  current_view_key: 'reverse', current_view_label: '反向/侧向',
 });
-assert.equal(publicBatchProgress.mode, 'scene_batch', '公开项目投影不得截断批生成模式');
+assert.equal(publicBatchProgress.mode, 'scene_action', '公开项目投影不得截断独立场景生成模式');
 assert.equal(publicBatchProgress.image_target_total, 4, '公开项目投影必须保留真实 Image 总数');
 assert.equal(publicBatchProgress.image_processed, 1, '公开项目投影必须保留已处理 Image 数');
 assert.equal(publicBatchProgress.current_view_label, '反向/侧向');
-assert.deepEqual(publicBatchProgress.batch_scene_ids, [sceneId]);
 
 const publicQa = qaProjection.project({
   qa_unavailable: true, qa_error_code: 'VISION_QA_UNAVAILABLE',
@@ -121,7 +109,7 @@ console.log(JSON.stringify({
   repair_view_keys: plan.actions[0].repair_plan_version ? current[0].repair_plan.view_keys : [],
   compact_model_labels: true,
   elapsed_visible: true,
-  public_batch_progress_preserved: true,
+  public_scene_progress_preserved: true,
   qa_failure_categories: publicQa.failure_categories,
   provider_image_calls: 0,
 }));

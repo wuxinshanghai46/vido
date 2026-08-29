@@ -91,9 +91,10 @@ async function main() {
   });
   assert(plan.actions.every(action => action.image_model === chosen.image_model && action.single_attempt === true));
   const batch = await orchestration.execute(task.id, plan, { generationId: 'generation-v257' });
-  assert.strictEqual(paidCalls, 1, 'first paid failure must stop the remaining scene queue');
+  assert.strictEqual(paidCalls, 2, 'independent scenes must be submitted concurrently with the same explicit user selection');
   assert.strictEqual(batch.status, 'failed');
-  assert.strictEqual(batch.results.length, 1);
+  assert.strictEqual(batch.results.length, 2);
+  assert(batch.results.every(item => item.status === 'failed' && item.error_code === 'SELECTED_MODEL_FAILED'));
 
   const routeSource = source('src/routes/newStoryAd.js');
   for (const stage of ['person_sheet', 'product_asset', 'scene_asset', 'scene_panorama', 'keyframe', 'video']) {
@@ -113,8 +114,8 @@ async function main() {
     video_models: videoCatalog.models.length,
     public_selection: publicSelection,
     selected_scene_model: chosen.image_model,
-    paid_calls_after_first_failure: paidCalls,
-    remaining_scene_calls: 0,
+    independent_scene_calls: paidCalls,
+    automatic_model_switches: 0,
   }));
 }
 

@@ -7,6 +7,10 @@ function text(value = '', max = 160) {
   return String(value ?? '').trim().slice(0, max);
 }
 
+function sceneLaneKey(sceneId = '') {
+  return `scene_asset:${String(sceneId || '')}`;
+}
+
 function create(deps = {}) {
   const {
     storage,
@@ -122,43 +126,65 @@ function create(deps = {}) {
     return progress;
   }
 
+  function writeSceneProgress(taskId, generationId, action = {}, state = {}) {
+    const task = storage.getTask(taskId) || {};
+    const laneKey = sceneLaneKey(action.scene_id);
+    const previous = task.target_generation_progress?.[laneKey] || {};
+    const now = new Date().toISOString();
+    const targetTotal = Math.max(1, Number(previous.target_total || action.image_total || 1) || 1);
+    const status = text(state.status || previous.status || 'queued', 40);
+    const terminal = ['completed', 'failed', 'cancelled'].includes(status);
+    const progress = {
+      ...previous,
+      schema_version: 2,
+      stage: 'scene_asset',
+      mode: 'scene_action',
+      scene_id: action.scene_id,
+      scene_name: action.name,
+      current_action: action.action,
+      generation_id: generationId,
+      status,
+      phase: text(state.phase || previous.phase || (action.action === 'reverify' ? 'verification' : 'generation'), 40),
+      target_total: targetTotal,
+      processed: Math.max(0, Math.min(targetTotal, Number(state.processed ?? previous.processed ?? 0) || 0)),
+      succeeded: Math.max(0, Number(state.succeeded ?? previous.succeeded ?? 0) || 0),
+      failed: Math.max(0, Number(state.failed ?? previous.failed ?? 0) || 0),
+      image_target_total: Math.max(0, Number(action.image_total || previous.image_target_total || 0) || 0),
+      ...(state.image_processed !== undefined ? { image_processed: Math.max(0, Number(state.image_processed) || 0) } : {}),
+      ...(state.image_succeeded !== undefined ? { image_succeeded: Math.max(0, Number(state.image_succeeded) || 0) } : {}),
+      ...(state.image_failed !== undefined ? { image_failed: Math.max(0, Number(state.image_failed) || 0) } : {}),
+      message: text(state.message || previous.message || '', 500),
+      started_at: previous.started_at || state.started_at || now,
+      updated_at: now,
+      ...(terminal ? { finished_at: now } : {}),
+    };
+    const patch = targetProgress.upsert(task, {
+      stage: 'scene_asset', scopeId: action.scene_id, sceneId: action.scene_id,
+      generationId, status, progress,
+    });
+    storage.updateTask(taskId, patch);
+    return progress;
+  }
+
   async function execute(taskId, batchPlan, job = {}) {
     const generationId = text(job.generationId, 120);
     const sceneIds = batchPlan.actions.map(item => item.scene_id);
     const startedAt = new Date().toISOString();
-    const results = [];
-    let succeeded = 0;
-    let failed = 0;
     const imageTotal = batchPlan.actions.reduce((sum, item) => sum + Math.max(0, Number(item.image_total || 0) || 0), 0);
-    let imageProcessed = 0;
-    let imageSucceeded = 0;
-    let imageFailed = 0;
-    const syncImageProgress = () => {
-      const live = storage.getTask(taskId)?.generation_progress || {};
-      imageProcessed = Math.max(imageProcessed, Number(live.image_processed || 0) || 0);
-      imageSucceeded = Math.max(imageSucceeded, Number(live.image_succeeded || 0) || 0);
-      imageFailed = Math.max(imageFailed, Number(live.image_failed || 0) || 0);
-    };
     writeProgress(taskId, generationId, {
       total: batchPlan.actions.length, scene_ids: sceneIds, started_at: startedAt,
       image_target_total: imageTotal, image_processed: 0, image_succeeded: 0, image_failed: 0,
-      message: `正在依次处理 ${batchPlan.actions.length} 个场景`,
+      message: `正在并行处理 ${batchPlan.actions.length} 个场景`,
     });
+    batchPlan.actions.forEach(action => writeSceneProgress(taskId, generationId, action, {
+      status: 'queued', phase: action.action === 'reverify' ? 'verification' : 'generation',
+      message: `“${action.name || action.scene_id}”等待开始`, started_at: startedAt,
+    }));
 
-    for (let index = 0; index < batchPlan.actions.length; index += 1) {
+    const runAction = async action => {
       cancellation.throwIfCancelled(taskId);
-      const action = batchPlan.actions[index];
-      const imageBaseProcessed = imageProcessed;
-      const imageBaseSucceeded = imageSucceeded;
-      const imageBaseFailed = imageFailed;
-      writeProgress(taskId, generationId, {
-        total: batchPlan.actions.length, scene_ids: sceneIds, started_at: startedAt,
-        processed: index, succeeded, failed,
-        image_target_total: imageTotal, image_processed: imageProcessed,
-        image_succeeded: imageSucceeded, image_failed: imageFailed,
-        image_base_processed: imageBaseProcessed, image_base_succeeded: imageBaseSucceeded, image_base_failed: imageBaseFailed,
-        current_scene_id: action.scene_id, current_scene_name: action.name,
-        current_action: action.action,
+      writeSceneProgress(taskId, generationId, action, {
+        status: action.action === 'reverify' ? 'verifying' : 'running',
         phase: action.action === 'reverify' ? 'verification' : 'generation',
         message: action.action === 'reverify'
           ? `正在重新审核“${action.name || action.scene_id}”，图片调用 0`
@@ -207,26 +233,34 @@ function create(deps = {}) {
           error.provider_image_call_count = Number(result?.provider_image_call_count || 0) || 0;
           throw error;
         }
-        syncImageProgress();
-        const expectedProcessed = imageBaseProcessed + Number(action.image_total || 0);
-        if (action.image_total > 0 && imageProcessed < expectedProcessed) {
-          const missingProgress = expectedProcessed - imageProcessed;
-          imageProcessed += missingProgress;
-          imageSucceeded += missingProgress;
-        }
-        succeeded += 1;
-        results.push({ scene_id: action.scene_id, action: action.action, status: 'succeeded', provider_image_call_count: Number(result?.provider_image_call_count || 0) || 0 });
+        const currentLane = storage.getTask(taskId)?.target_generation_progress?.[sceneLaneKey(action.scene_id)] || {};
+        const targetTotal = Math.max(1, Number(currentLane.target_total || action.image_total || 1) || 1);
+        writeSceneProgress(taskId, generationId, action, {
+          status: 'completed', phase: 'complete', processed: targetTotal, succeeded: targetTotal, failed: 0,
+          message: `“${action.name || action.scene_id}”已完成`,
+        });
+        return { scene_id: action.scene_id, action: action.action, status: 'succeeded', provider_image_call_count: Number(result?.provider_image_call_count || 0) || 0 };
       } catch (error) {
-        if (['USER_CANCELLED', 'STAGE_DEADLINE_EXCEEDED'].includes(String(error?.code || ''))) throw error;
-        failed += 1;
-        syncImageProgress();
-        const incompleteImageCount = Math.min(Number(action.image_total || 0), Math.max(0, Number(error?.incomplete_image_count || 0) || 0));
-        if (incompleteImageCount > 0) {
-          imageProcessed = Math.max(imageProcessed, imageBaseProcessed + incompleteImageCount);
-          imageSucceeded = Math.max(imageBaseSucceeded, imageSucceeded - incompleteImageCount);
-          imageFailed = Math.max(imageFailed, imageBaseFailed + incompleteImageCount);
+        if (['USER_CANCELLED', 'STAGE_DEADLINE_EXCEEDED'].includes(String(error?.code || ''))) {
+          writeSceneProgress(taskId, generationId, action, {
+            status: 'cancelled', phase: 'stopped', message: `“${action.name || action.scene_id}”已停止`,
+          });
+          throw error;
         }
-        results.push({
+        const lane = storage.getTask(taskId)?.target_generation_progress?.[sceneLaneKey(action.scene_id)] || {};
+        const incompleteImageCount = Math.min(Number(action.image_total || 0), Math.max(0, Number(error?.incomplete_image_count || 0) || 0));
+        writeSceneProgress(taskId, generationId, action, {
+          status: 'failed', phase: 'stopped',
+          processed: Number(lane.processed || 0), succeeded: Number(lane.succeeded || 0),
+          failed: Math.max(1, Number(lane.failed || 0) || 0),
+          ...(incompleteImageCount ? {
+            image_processed: Math.max(Number(lane.image_processed || 0), incompleteImageCount),
+            image_succeeded: Number(lane.image_succeeded || 0),
+            image_failed: Math.max(Number(lane.image_failed || 0), incompleteImageCount),
+          } : {}),
+          message: `“${action.name || action.scene_id}”未完成；其他场景继续独立处理`,
+        });
+        return {
           scene_id: action.scene_id,
           action: action.action,
           status: 'failed',
@@ -234,38 +268,36 @@ function create(deps = {}) {
           error: text(error?.message || '当前场景没有完成', 300),
           retryable: error?.retryable === true,
           provider_image_call_count: Number(error?.provider_image_call_count || 0) || 0,
-        });
-        writeProgress(taskId, generationId, {
-          total: batchPlan.actions.length, scene_ids: sceneIds, started_at: startedAt,
-          processed: index + 1, succeeded, failed,
-          image_target_total: imageTotal, image_processed: imageProcessed,
-          image_succeeded: imageSucceeded, image_failed: imageFailed,
-          current_scene_id: action.scene_id, current_scene_name: action.name,
-          current_action: action.action, status: 'failed', phase: 'stopped',
-          message: `“${action.name || action.scene_id}”未完成，已停止本批次，后续场景没有提交模型`,
-        });
-        break;
+        };
       }
-      writeProgress(taskId, generationId, {
-        total: batchPlan.actions.length, scene_ids: sceneIds, started_at: startedAt,
-        processed: index + 1, succeeded, failed,
-        image_target_total: imageTotal, image_processed: imageProcessed,
-        image_succeeded: imageSucceeded, image_failed: imageFailed,
-        image_base_processed: imageProcessed, image_base_succeeded: imageSucceeded, image_base_failed: imageFailed,
-        current_scene_id: index + 1 < batchPlan.actions.length ? batchPlan.actions[index + 1].scene_id : '',
-        current_scene_name: index + 1 < batchPlan.actions.length ? batchPlan.actions[index + 1].name : '',
-        current_action: index + 1 < batchPlan.actions.length ? batchPlan.actions[index + 1].action : '',
-        status: index + 1 >= batchPlan.actions.length ? 'completed' : 'running',
-        phase: index + 1 >= batchPlan.actions.length ? 'complete' : 'generation',
-        message: index + 1 >= batchPlan.actions.length
-          ? `场景处理完成：成功 ${succeeded}，未完成 ${failed}`
-          : `已处理 ${index + 1}/${batchPlan.actions.length} 个场景`,
-      });
-    }
+    };
+    const settled = await Promise.allSettled(batchPlan.actions.map(runAction));
+    const interrupted = settled.find(item => item.status === 'rejected');
+    if (interrupted) throw interrupted.reason;
+    const results = settled.map(item => item.value);
+    const succeeded = results.filter(item => item.status === 'succeeded').length;
+    const failed = results.filter(item => item.status === 'failed').length;
+    const lanes = storage.getTask(taskId)?.target_generation_progress || {};
+    const imageProgress = batchPlan.actions.reduce((totals, action) => {
+      const lane = lanes[sceneLaneKey(action.scene_id)] || {};
+      const imageLaneTotal = Math.max(0, Number(lane.image_target_total ?? action.image_total ?? 0) || 0);
+      totals.processed += Math.min(imageLaneTotal, Math.max(0, Number(lane.image_processed ?? lane.processed ?? 0) || 0));
+      totals.succeeded += Math.min(imageLaneTotal, Math.max(0, Number(lane.image_succeeded ?? lane.succeeded ?? 0) || 0));
+      totals.failed += Math.min(imageLaneTotal, Math.max(0, Number(lane.image_failed ?? lane.failed ?? 0) || 0));
+      return totals;
+    }, { processed: 0, succeeded: 0, failed: 0 });
+    writeProgress(taskId, generationId, {
+      total: batchPlan.actions.length, scene_ids: sceneIds, started_at: startedAt,
+      processed: batchPlan.actions.length, succeeded, failed,
+      image_target_total: imageTotal, image_processed: imageProgress.processed,
+      image_succeeded: imageProgress.succeeded, image_failed: imageProgress.failed,
+      status: failed ? 'failed' : 'completed', phase: 'complete',
+      message: `场景并行处理完成：成功 ${succeeded}，未完成 ${failed}`,
+    });
     const summary = {
       schema_version: 1,
       generation_id: generationId,
-      status: failed ? (succeeded ? 'partial_stopped' : 'failed') : 'succeeded',
+      status: failed ? (succeeded ? 'partial' : 'failed') : 'succeeded',
       total: batchPlan.actions.length,
       succeeded,
       failed,
@@ -277,7 +309,7 @@ function create(deps = {}) {
     return summary;
   }
 
-  return { DEFAULT_SCOPE_ID, execute, plan, writeProgress };
+  return { DEFAULT_SCOPE_ID, execute, plan, writeProgress, writeSceneProgress };
 }
 
 module.exports = { DEFAULT_SCOPE_ID, create };

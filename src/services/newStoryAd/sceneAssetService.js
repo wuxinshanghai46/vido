@@ -29,8 +29,6 @@ const sceneViewCompleteness = require('./sceneViewCompletenessService');
 const sceneRepairPlans = require('./sceneRepairPlanService');
 const sceneAssetFiles = require('./sceneAssetFileIntegrityService');
 const targetProgress = require('./targetGenerationProgressService');
-const sceneBatchLiveProgress = require('./sceneBatchLiveProgressService').create({ storage, targetProgress,
-  normalizeViewKeys: value => normalizeRepairViewKeys(value), viewLabel: value => sceneViewLabel(value) });
 const { buildSceneSheetPrompt, buildLayoutAcquisitionPrompt, legacyScenePromptFingerprintText, localizeSceneViews, relinkContractViews, localizeSceneAssets, buildDerivedViewPrompt, buildSceneAuditSafePrompt } = sceneVisualPrompts;
 
 const SCENE_VIEW_KEYS = ['master', 'reverse', 'interaction', 'detail'];
@@ -253,11 +251,6 @@ function updateSceneGenerationProgress(taskId, update = {}) {
   const executionGenerationId = cleanText(update.generationId || cancellation.current()?.generationId || '', 100);
   const activeTargets = task.active_target_generations && typeof task.active_target_generations === 'object'
     ? task.active_target_generations : {};
-  const activeSceneBatch = activeTargets['scene_asset:scene-batch'];
-  if (activeSceneBatch
-    && String(activeSceneBatch.generation_id || '') === executionGenerationId) {
-    return sceneBatchLiveProgress.update(taskId, task, executionGenerationId, update);
-  }
   const activeTargetEntry = Object.entries(activeTargets).find(([, value]) => String(value?.generation_id || '') === executionGenerationId);
   const sceneLanes = Object.entries(task.target_generation_progress || {})
     .filter(([key]) => key.startsWith('scene_asset:'));
@@ -270,7 +263,7 @@ function updateSceneGenerationProgress(taskId, update = {}) {
     120,
   );
   const laneKey = targetProgress.key('scene_asset', inferredSceneId);
-  const previous = generationLane?.[1] || task.target_generation_progress?.[laneKey]
+  const previous = task.target_generation_progress?.[laneKey] || generationLane?.[1]
     || (task.generation_progress?.stage === 'scene_asset' ? task.generation_progress : {});
   const keys = normalizeRepairViewKeys(update.viewKeys?.length ? update.viewKeys : previous.view_keys);
   const initialStates = Array.isArray(update.initialViewStates) ? update.initialViewStates : [];
@@ -1081,6 +1074,7 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
       updateSceneGenerationProgress(taskId, {
         mode: progressMode,
         phase: 'generation',
+        sceneId,
         viewKeys: progressViewKeys,
         viewKey: 'master',
         viewStatus: 'running',
@@ -1102,7 +1096,7 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
           buildSceneAuditSafePrompt({ ctx, body: promptBody, viewKey: 'master' }),
           { repairFeedback, visualMedium },
         ).slice(0, 2500),
-      }, { mode: progressMode, viewKeys: progressViewKeys }, generationBudget, checkpoint);
+      }, { mode: progressMode, sceneId, viewKeys: progressViewKeys }, generationBudget, checkpoint);
     }
     const reusablePerspectiveViews = sceneAtlas.ATLAS_VIEW_KEYS
       .map(key => selectedView(key))
@@ -1120,6 +1114,7 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
           updateSceneGenerationProgress(taskId, {
             mode: progressMode,
             phase: 'generation',
+            sceneId,
             viewKeys: progressViewKeys,
             viewKey: view.key,
             viewStatus: 'succeeded',
@@ -1162,7 +1157,7 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
       requireReferences: materialReferences.length > 0,
       inputFidelity: materialReferences.length > 0 ? 'low' : undefined,
       auditSafePrompt: buildSceneAuditSafePrompt({ ctx, body: promptBody, viewKey: 'master', knowledgePolicy }),
-    }, { mode: progressMode, viewKeys: progressViewKeys }, generationBudget, checkpoint)
+    }, { mode: progressMode, sceneId, viewKeys: progressViewKeys }, generationBudget, checkpoint)
     : selectedView('master');
   cancellation.throwIfCancelled(taskId);
   const viewImages = [normalizeSceneView({
@@ -1221,7 +1216,7 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
           requireReferences: true,
           inputFidelity: 'low',
           auditSafePrompt: buildSceneAuditSafePrompt({ ctx, body: promptBody, viewKey: 'layout', knowledgePolicy }),
-        }, { mode: progressMode, viewKeys: progressViewKeys }, generationBudget, checkpoint);
+        }, { mode: progressMode, sceneId, viewKeys: progressViewKeys }, generationBudget, checkpoint);
       } catch (error) {
         const billingUnknown = ['unknown', 'submitted_unknown']
           .includes(String(error?.billingState || error?.billing_state || '').toLowerCase());
@@ -1336,7 +1331,7 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
       // keeps high fidelity because only crop/scale should change.
       inputFidelity: detailView ? 'high' : 'low',
       auditSafePrompt: buildSceneAuditSafePrompt({ ctx, body: promptBody, viewKey: key, knowledgePolicy }),
-    }, { mode: progressMode, viewKeys: progressViewKeys }, generationBudget, checkpoint);
+    }, { mode: progressMode, sceneId, viewKeys: progressViewKeys }, generationBudget, checkpoint);
     if (exactSceneViewDuplicate(generated, detailView ? [master] : [master, layout])) {
       const duplicateError = new Error(`${sceneViewLabel(key)}与其参考视图文件完全相同，没有形成独立机位或景别`);
       duplicateError.code = 'SCENE_VIEW_EXACT_DUPLICATE';
@@ -1406,6 +1401,7 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
   updateSceneGenerationProgress(taskId, {
     mode: progressMode,
     phase: 'verification',
+    sceneId,
     viewKeys: progressViewKeys,
   });
   let sceneContract = null;
@@ -1638,6 +1634,7 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
     updateSceneGenerationProgress(taskId, {
       mode: progressMode,
       phase: 'verification',
+      sceneId,
       viewKeys: progressViewKeys,
       verificationState: sceneContract.verification?.state || sceneContract.status || '',
     });
@@ -1647,6 +1644,7 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
   updateSceneGenerationProgress(taskId, {
     mode: progressMode,
     phase: 'complete',
+    sceneId,
     viewKeys: progressViewKeys,
     verificationState: sceneContract.verification?.state || sceneContract.status || '',
   });

@@ -34,7 +34,7 @@ const sceneAssets = {
     activeCalls += 1;
     peakCalls = Math.max(peakCalls, activeCalls);
     callOrder.push(`generate:${body.scene_id}`);
-    await new Promise(resolve => setTimeout(resolve, 20));
+    await new Promise(resolve => setTimeout(resolve, 30));
     activeCalls -= 1;
     return { provider_image_call_count: 0, scene_asset: { scene_id: body.scene_id, repair_plan: { action: 'none' } } };
   },
@@ -44,7 +44,7 @@ const sceneAssets = {
     activeCalls += 1;
     peakCalls = Math.max(peakCalls, activeCalls);
     callOrder.push(`reverify:${sceneId}`);
-    await new Promise(resolve => setTimeout(resolve, 10));
+    await new Promise(resolve => setTimeout(resolve, 30));
     activeCalls -= 1;
     return {
       scene_asset: {
@@ -106,18 +106,20 @@ async function main() {
     execute: job => orchestrator.execute(taskId, plan, job),
   });
   assert.equal(queued.accepted, true);
+  await waitFor(() => peakCalls === 2, '两个场景必须同时进入独立运行通道');
+  const runningTask = storage.getTask(taskId);
+  assert.equal(runningTask.target_generation_progress['scene_asset:scene-generate'].status, 'running');
+  assert.equal(runningTask.target_generation_progress['scene_asset:scene-review'].status, 'verifying');
   await waitFor(() => !storage.getTask(taskId)?.active_generation_id, '场景批处理必须可靠进入终态');
 
   const task = storage.getTask(taskId);
   assert.equal(task.status, 'done');
   assert.equal(task.generation_progress.mode, 'scene_batch');
-  assert.equal(task.generation_progress.target_total, 2);
-  assert.equal(task.generation_progress.processed, 2);
-  assert.equal(task.generation_progress.succeeded, 1);
-  assert.equal(task.generation_progress.failed, 1);
-  assert.equal(task.generation_progress.percent, 100);
-  assert.equal(peakCalls, 1, '批处理内部不得并发争抢任务状态');
+  assert.equal(task.generation_progress.target_total, 6, '聚合进度只统计两个独立场景通道，不得重复计入协调通道');
+  assert.equal(peakCalls, 2, '不同场景必须独立并行执行');
   assert.deepEqual(callOrder, ['generate:scene-generate', 'reverify:scene-review']);
+  assert.equal(task.target_generation_progress['scene_asset:scene-generate'].status, 'completed');
+  assert.equal(task.target_generation_progress['scene_asset:scene-review'].status, 'failed');
 
   const incompleteTaskId = 'scene-batch-v255-incomplete-task';
   const incompleteCalls = [];
@@ -151,10 +153,10 @@ async function main() {
     { scene_id: 'scene-never-started', prompt_version_id: 'prompt-never' },
   ] });
   const incompleteResult = await incompleteOrchestrator.execute(incompleteTaskId, incompletePlan, { generationId: 'generation-incomplete' });
-  assert.equal(incompleteResult.status, 'failed');
-  assert.deepEqual(incompleteCalls, ['fix:scene-incomplete'], '当前场景仍有失败 Image 时必须停止后续场景');
+  assert.equal(incompleteResult.status, 'partial');
+  assert.deepEqual(incompleteCalls, ['fix:scene-incomplete', 'generate:scene-never-started'], '当前场景失败不得阻止其他独立场景并行提交');
   assert.equal(incompleteResult.results[0].error_code, 'SCENE_ASSET_INCOMPLETE');
-  const incompleteProgress = storage.getTask(incompleteTaskId).generation_progress;
+  const incompleteProgress = storage.getTask(incompleteTaskId).target_generation_progress['scene_asset:scene-incomplete'];
   assert.equal(incompleteProgress.status, 'failed');
   assert.equal(incompleteProgress.image_processed, 1);
   assert.equal(incompleteProgress.image_succeeded, 0);
@@ -172,7 +174,9 @@ async function main() {
   const client = fs.readFileSync(path.join(root, 'public/story-ad/views/sceneCardInteractions.js'), 'utf8');
   const batchHandler = client.slice(client.indexOf("host.querySelector('[data-run-scene-actions]')"));
   assert.equal((batchHandler.match(/runStage\('scene-actions'/g) || []).length, 1, '一个按钮只能提交一个服务器任务');
-  assert(!batchHandler.includes('Promise.allSettled'), '统一按钮不得再次拆成并发场景请求');
+  assert(!batchHandler.includes('Promise.allSettled'), '浏览器只提交一次；并发必须由服务器统一调度');
+  const orchestrationSource = fs.readFileSync(path.join(root, 'src/services/newStoryAd/sceneBatchOrchestrationService.js'), 'utf8');
+  assert(orchestrationSource.includes('Promise.allSettled(batchPlan.actions.map(runAction))'), '服务器必须并行调度各场景独立通道');
   const actionPlan = fs.readFileSync(path.join(root, 'public/story-ad/views/sceneBatchActionPlan.js'), 'utf8');
   assert(actionPlan.includes("=== 'scene-batch'") && actionPlan.includes('if (batchActive)'), '批任务排队后必须立即隐藏重复提交入口');
   const route = fs.readFileSync(path.join(root, 'src/routes/newStoryAd/sceneBatchRoutes.js'), 'utf8');
@@ -187,7 +191,7 @@ async function main() {
     succeeded: 1,
     failed: 1,
     peak_concurrency: peakCalls,
-    incomplete_scene_stopped_later_calls: true,
+    failed_scene_isolated: true,
     provider_image_calls: 0,
   }));
 }
