@@ -20,6 +20,7 @@ const sceneGenerationPolicy = require('./sceneGenerationPolicyService'), knowled
 const sceneSpecProjection = require('./sceneSpecProjectionService');
 const sceneLayerContract = require('./sceneLayerContractService');
 const sceneCheckpointProjection = require('./sceneCheckpointProjectionService');
+const sceneCurrentAuthority = require('./sceneCurrentAuthorityService');
 const sceneFailureDiagnostics = require('./sceneFailureDiagnosticsService');
 const worldSetting = require('./worldSettingContractService');
 const sceneVisualPrompts = require('./sceneVisualPromptService');
@@ -551,39 +552,14 @@ function normalizeSceneAssets(input = []) {
   return raw.map(normalizeSceneAsset).filter(Boolean);
 }
 
-function currentSceneProjectionRows(outputs = [], sceneAssetsInvalidation = null) {
-  const rows = Array.isArray(outputs) ? outputs : [];
-  if (!sceneAssetsInvalidation) return rows;
-  const invalidatedAt = Date.parse(sceneAssetsInvalidation.invalidated_at || '');
-  return rows.filter(row => {
-    const kind = String(row?.kind || '');
-    if (kind === 'scene_assets') return false;
-    if (!kind.startsWith('scene_asset_checkpoint:')) return true;
-    const checkpointTime = Date.parse(row.updated_at || row.payload?.updated_at || row.created_at || '');
-    return Number.isFinite(invalidatedAt) && Number.isFinite(checkpointTime) && checkpointTime > invalidatedAt;
+function currentSceneAssetsFromBundle(bundle = {}, modelCalls = []) {
+  return sceneCurrentAuthority.currentSceneAssetsFromBundle(bundle, modelCalls, {
+    normalizeSceneAssets, projectSceneAssets: sceneCheckpointProjection.projectSceneAssets,
   });
 }
 
-function currentSceneAssetsFromBundle(bundle = {}, modelCalls = []) {
-  const outputs = Array.isArray(bundle.outputs) ? bundle.outputs : [];
-  const invalidated = bundle.manifest?.invalidated || {};
-  const hasCurrentSceneConfig = outputs.some(row => String(row?.kind || '') === 'scene_config')
-    && !Object.prototype.hasOwnProperty.call(invalidated, 'scene_config');
-  if (!hasCurrentSceneConfig) return [];
-  const sceneAssetsInvalidation = Object.prototype.hasOwnProperty.call(invalidated, 'scene_assets')
-    ? invalidated.scene_assets
-    : null;
-  return normalizeSceneAssets(sceneCheckpointProjection.projectSceneAssets(
-    currentSceneProjectionRows(outputs, sceneAssetsInvalidation),
-    modelCalls,
-  ));
-}
-
 function currentSceneAssets(taskId) {
-  return currentSceneAssetsFromBundle(
-    storage.getTaskBundle(taskId, { diagnostics: false }),
-    storage.listModelCalls(taskId),
-  );
+  return currentSceneAssetsFromBundle(storage.getTaskBundle(taskId, { diagnostics: false }), storage.listModelCalls(taskId));
 }
 
 function normalizeRepairViewKeys(input = []) {
@@ -1836,4 +1812,4 @@ const fixSceneAsset = sceneAssetFix.create({
   buildSceneRepairPlan, reverifySceneAsset, generateSceneAsset, repairSceneAsset,
 });
 
-module.exports = { SCENE_VIEW_KEYS, REQUIRED_SCENE_VIEW_KEYS, SCENE_GENERATION_ORDER, SCENE_IMAGE_STAGE_BY_VIEW, SCENE_IMAGE_MAX_ATTEMPTS, SCENE_IMAGE_EXTRA_ATTEMPTS, SCENE_GENERATION_CONTRACT_VERSION, sceneViewLabel, sceneImageStage, sceneViewContentHash, exactSceneViewDuplicate, assertCompleteUpgradeSceneSpec, assertSceneRightsPreflight, sceneMaterialReferenceImages, authoritativeSceneGenerationBody, buildSceneSheetPrompt, sceneStructuredContract: sceneStructuredContract.compile, sceneDescriptionForSpec: sceneSpecProjection.sceneDescriptionForSpec, buildLayoutAcquisitionPrompt, legacyScenePromptFingerprintText, buildDerivedViewPrompt, buildSceneAuditSafePrompt, sceneFailureDiagnostics: sceneFailureDiagnostics.project, sceneVisionThumbnailUrl, needsLayoutView, sceneRequest, buildSceneRepairPlan, sceneGenerationUpgradeRequired, normalizeSceneAssets, currentSceneProjectionRows, currentSceneAssetsFromBundle, currentSceneAssets, localizeSceneViews, localizeSceneAssets, saveSceneAssetsToTask, generateSceneAsset, repairSceneAsset, reverifySceneAsset, fixSceneAsset, _resetSceneImageCircuit: resetSceneImageCircuit };
+module.exports = { SCENE_VIEW_KEYS, REQUIRED_SCENE_VIEW_KEYS, SCENE_GENERATION_ORDER, SCENE_IMAGE_STAGE_BY_VIEW, SCENE_IMAGE_MAX_ATTEMPTS, SCENE_IMAGE_EXTRA_ATTEMPTS, SCENE_GENERATION_CONTRACT_VERSION, sceneViewLabel, sceneImageStage, sceneViewContentHash, exactSceneViewDuplicate, assertCompleteUpgradeSceneSpec, assertSceneRightsPreflight, sceneMaterialReferenceImages, authoritativeSceneGenerationBody, buildSceneSheetPrompt, sceneStructuredContract: sceneStructuredContract.compile, sceneDescriptionForSpec: sceneSpecProjection.sceneDescriptionForSpec, buildLayoutAcquisitionPrompt, legacyScenePromptFingerprintText, buildDerivedViewPrompt, buildSceneAuditSafePrompt, sceneFailureDiagnostics: sceneFailureDiagnostics.project, sceneVisionThumbnailUrl, needsLayoutView, sceneRequest, buildSceneRepairPlan, sceneGenerationUpgradeRequired, normalizeSceneAssets, currentSceneAssetsFromBundle, currentSceneAssets, localizeSceneViews, localizeSceneAssets, saveSceneAssetsToTask, generateSceneAsset, repairSceneAsset, reverifySceneAsset, fixSceneAsset, _resetSceneImageCircuit: resetSceneImageCircuit };
