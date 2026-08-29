@@ -84,6 +84,7 @@ async function generateBeat(taskId, beatIndex, options = {}, dependencies = {}) 
   const prompt = [
     '影视剧情流向线稿，黑白铅笔草图，少量灰度块，画面简洁清楚。',
     '本图只表达剧情整体流向中的当前事件：人物目标、动作变化、因果结果以及与前后事件的衔接。',
+    '一张图只画当前节点的一个连续动作构图；禁止四格漫画、九宫格、拼贴、多画面分屏或在单图中重复人物。',
     '不要设计最终景别、镜头焦段、精确机位或成片级材质；这些属于下一步人物场景分镜。',
     '不要出现文字、字幕、镜号、水印、品牌标识或彩色成片效果。',
     `故事：${clean((storage.getOutput(taskId, 'blueprint') || {}).logline || '', 600)}`,

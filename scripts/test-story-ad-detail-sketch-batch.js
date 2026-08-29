@@ -110,6 +110,7 @@ function verifyStaticContract() {
   const app = read('public/story-ad/app.js');
   const flowView = read('public/story-ad/views/storyFlowSketchView.js');
   const storyboardView = read('public/story-ad/views/storyboardView.js');
+  const workspaceCss = read('public/story-ad/workspace.css');
   const routes = read('src/routes/storyAdWorkspace.js');
   const storyService = read('src/services/newStoryAd/storyAdService.js');
   assert.match(app, /\['brief', 'plot', 'assets', 'scene', 'flow', 'storyboard', 'final', 'workflow'\]/);
@@ -119,6 +120,12 @@ function verifyStaticContract() {
   assert.match(flowView, /剧情流向线稿/);
   assert.match(flowView, /确认全部流向线稿/);
   assert.match(flowView, /elapsedTimeTag/);
+  assert.match(flowView, /一节点一张图/);
+  assert.match(flowView, /data-flow-jump/);
+  assert.match(flowView, /scrollIntoView/);
+  assert.match(workspaceCss, /\.flow-sketch-head h1\{[^}]*font-size:22px/);
+  assert.match(workspaceCss, /\.flow-sequence-rail\{/);
+  assert.match(workspaceCss, /\.flow-sketch-card:hover\{/);
   assert.match(flowView, /export async function mount\(host, context\)/,
     '流向线稿按需模块必须导出工作区装载器要求的 mount 接口');
   assert.doesNotMatch(flowView, /export async function render\(host, context\)/,
@@ -131,6 +138,7 @@ function verifyStaticContract() {
   assert.match(routes, /LEGACY_STORYBOARD_SKETCH_ROUTE_DISABLED/);
   assert.match(routes, /storyboard-images/);
   assert.match(routes, /flow-sketches/);
+  assert.match(read('src/services/storyAdWorkspace/storyFlowSketchService.js'), /禁止四格漫画、九宫格、拼贴、多画面分屏/);
   assert(pipeline.NEW_STORY_AD_IMAGE_STAGE_IDS.has('new_story_ad.story_flow_sketch'));
   assert(pipeline.NEW_STORY_AD_IMAGE_STAGE_IDS.has('new_story_ad.storyboard_image'));
   assert(!pipeline.NEW_STORY_AD_IMAGE_STAGE_IDS.has('new_story_ad.storyboard_sketch'));
@@ -138,5 +146,5 @@ function verifyStaticContract() {
 
 verifyStaticContract();
 Promise.all([verifySevenStepContract(), verifyFlowViewModuleContract()])
-  .then(() => console.log(JSON.stringify({ passed: true, checks: 35, workflow_steps: 7, flow_and_storyboard_split: true, flow_view_mount_contract: true, flow_parallel: true, incremental_progress: true, elapsed_time_visible: true, storyboard_parallel: true, legacy_route_disabled: true, model_calls: 0 })))
+  .then(() => console.log(JSON.stringify({ passed: true, checks: 42, workflow_steps: 7, flow_and_storyboard_split: true, one_beat_one_image: true, compact_flow_ui: true, flow_sequence_interaction: true, flow_view_mount_contract: true, flow_parallel: true, incremental_progress: true, elapsed_time_visible: true, storyboard_parallel: true, legacy_route_disabled: true, model_calls: 0 })))
   .catch(error => { console.error(error); process.exitCode = 1; });

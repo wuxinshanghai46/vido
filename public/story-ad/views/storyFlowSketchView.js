@@ -18,10 +18,18 @@ function progressMarkup(progress = null) {
 
 function flowCard(beat = {}, sketch = {}, index = 0) {
   const beatIndex = Number(beat.beat_index || beat.index || index + 1) || index + 1;
-  return `<article class="card sketch-card sketch-tile">
+  return `<article class="card sketch-card sketch-tile flow-sketch-card" id="flow-beat-${beatIndex}" tabindex="-1">
     <div class="sketch-tile-media">${mediaPreview(sketch, { label: `剧情节点 ${beatIndex} · ${beat.title || ''}`, width: 960, symbol: '流向线稿', zoomable: true, zoomGroup: 'story-flow-sketches' })}<span class="sketch-shot-number">B${String(beatIndex).padStart(2, '0')}</span></div>
-    <div class="sketch-tile-copy"><div><h2>${escapeHtml(beat.title || `剧情节点 ${beatIndex}`)}</h2><p>${escapeHtml(beat.plot || beat.visual || beat.story_visual || beat.action || '')}</p></div><span class="status-tag is-${sketch.status === 'confirmed' ? 'success' : 'neutral'}">${sketch.status === 'confirmed' ? '已确认' : (sketch.image_url ? '待整体确认' : '待生成')}</span></div>
+    <div class="sketch-tile-copy"><div><small>第 ${beatIndex} 个剧情节点</small><h2>${escapeHtml(beat.title || `剧情节点 ${beatIndex}`)}</h2><p>${escapeHtml(beat.plot || beat.visual || beat.story_visual || beat.action || '')}</p></div><span class="status-tag is-${sketch.status === 'confirmed' ? 'success' : 'neutral'}">${sketch.status === 'confirmed' ? '已确认' : (sketch.image_url ? '待整体确认' : '待生成')}</span></div>
   </article>`;
+}
+
+function sequenceRail(beats = [], sketches = []) {
+  const generated = new Set(sketches.filter(item => item.image_url).map(item => Number(item.beat_index)));
+  return `<nav class="flow-sequence-rail" aria-label="剧情流向节点">${beats.map((beat, index) => {
+    const beatIndex = Number(beat.beat_index || beat.index || index + 1) || index + 1;
+    return `<button type="button" class="flow-sequence-node ${generated.has(beatIndex) ? 'is-generated' : ''}" data-flow-jump="${beatIndex}" title="${escapeHtml(beat.title || `剧情节点 ${beatIndex}`)}"><b>${String(beatIndex).padStart(2, '0')}</b><span>${escapeHtml(beat.title || `节点 ${beatIndex}`)}</span></button>`;
+  }).join('')}</nav>`;
 }
 
 export async function mount(host, context) {
@@ -35,7 +43,7 @@ export async function mount(host, context) {
   const active = ['queued', 'running'].includes(String(flow.batch?.status || ''));
   const picker = await loadGenerationModelPicker(bundle.project.id, 'new_story_ad.story_flow_sketch', { label: '线稿模型' });
   host.innerHTML = `<section class="workspace-page storyboard-page flow-sketch-page">
-    <div class="page-heading storyboard-heading"><div><h1>剧情流向线稿</h1><p>这里只确认整段剧情的事件顺序、动作因果、节奏和前后衔接；不在此设计人物场景分镜的景别、机位和镜头参数。</p></div>
+    <div class="page-heading storyboard-heading flow-sketch-head"><div><h1>剧情流向线稿</h1><p>整项任务共 ${beats.length} 个剧情节点，每个节点生成 1 张单画面草图；${beats.length} 张依次组成完整剧情流向。</p></div>
       <div class="storyboard-heading-actions">${picker.html}
         ${flow.gate?.ready
           ? `<button class="btn primary" type="button" data-open-storyboard>进入人物场景分镜</button>`
@@ -44,7 +52,8 @@ export async function mount(host, context) {
             : `<button class="btn primary" type="button" data-generate-flow ${active ? 'disabled' : ''}>${active ? '正在生成…' : `生成流向线稿（${Math.max(0, beats.length - generated)}）`}</button>`)}
       </div></div>
     <div data-flow-progress>${progressMarkup(flow.batch)}</div>
-    <div class="guide">流程已独立：流向线稿全部确认后，系统才会解锁下一步人物、场景、动作与机位分镜。</div>
+    <div class="guide flow-sketch-guide"><b>一节点一张图</b><span>不是四格或九宫格。这里只看事件顺序、动作因果和前后衔接；全部确认后再进入人物、场景、动作与机位分镜。</span></div>
+    ${beats.length ? sequenceRail(beats, sketches) : ''}
     ${beats.length ? `<div class="storyboard-sketch-grid">${beats.map((beat, index) => flowCard(beat, byBeat.get(Number(beat.beat_index || beat.index || index + 1)) || {}, index)).join('')}</div>` : `<div class="card">${emptyState({ title: '还没有剧情节点', body: '请先返回剧情与对白，生成并确认完整剧情。' })}</div>`}
   </section>`;
 
@@ -99,6 +108,15 @@ export async function mount(host, context) {
     }
   });
   host.querySelector('[data-open-storyboard]')?.addEventListener('click', () => context.navigate(`/story-ad/projects/${encodeURIComponent(bundle.project.id)}?view=storyboard`));
+  host.querySelectorAll('[data-flow-jump]').forEach(button => button.addEventListener('click', () => {
+    const card = host.querySelector(`#flow-beat-${button.dataset.flowJump}`);
+    if (!card) return;
+    host.querySelectorAll('.flow-sketch-card.is-focused').forEach(item => item.classList.remove('is-focused'));
+    card.classList.add('is-focused');
+    card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    card.focus({ preventScroll: true });
+    globalThis.setTimeout(() => card.classList.remove('is-focused'), 1400);
+  }));
   if (active) void poll();
   return () => { disposed = true; stopPolling(); };
 }
