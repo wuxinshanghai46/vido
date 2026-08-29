@@ -1,5 +1,5 @@
-import { request } from '../api.js?v=20260829-production-v281b';
-import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260829-production-v281b';
+import { request } from '../api.js?v=20260829-production-v281c';
+import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260829-production-v281c';
 
 export function soundDesignMarkup(soundDesign = {}) {
   const assets = new Map((soundDesign.assets || []).map(item => [item.asset_id, item]));
