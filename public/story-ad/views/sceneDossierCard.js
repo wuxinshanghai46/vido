@@ -1,6 +1,6 @@
-import { escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260829-production-v276d';
-import { sceneRuntimeFailureMarkup } from './sceneRuntimeFailureView.js?v=20260829-production-v276d';
-import { publicSceneQaReason, sceneQaFailureDetails, sceneQaPublicState, sceneQaRows } from './sceneQaPublicState.js?v=20260829-production-v276d';
+import { escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260829-production-v276e';
+import { sceneRuntimeFailureMarkup } from './sceneRuntimeFailureView.js?v=20260829-production-v276e';
+import { publicSceneQaReason, sceneQaFailureDetails, sceneQaPublicState, sceneQaRows } from './sceneQaPublicState.js?v=20260829-production-v276e';
 
 export function assetCardMedia(item = {}, group = '') {
   if (group === 'scenes') return renderSceneCoverCard(item);
@@ -167,7 +167,7 @@ export function bindSceneDossierCard(scope, item = {}) {
   button.addEventListener('click', async () => {
     try {
       setButtonBusy(button, true, '正在本地合成…', { elapsed: true });
-      const exporter = await import('./sceneDossierExport.js?v=20260829-production-v276d');
+      const exporter = await import('./sceneDossierExport.js?v=20260829-production-v276e');
       const result = await exporter.exportSceneDossierPng(item);
       const palette = scope.querySelector('[data-scene-dossier-palette]');
       if (palette && result.palette?.length) palette.innerHTML = result.palette.map(color => `<i style="--scene-swatch:${escapeHtml(color)}" title="${escapeHtml(color)}"></i>`).join('');
