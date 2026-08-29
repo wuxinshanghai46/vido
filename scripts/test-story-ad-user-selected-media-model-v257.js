@@ -16,13 +16,19 @@ async function main() {
   const videoCatalog = selection.catalog('new_story_ad.video');
   assert.strictEqual(sceneCatalog.selection_required, true);
   assert.strictEqual(sceneCatalog.fallback_after_failure, false);
-  assert.deepStrictEqual(sceneCatalog.models.map(model => model.public_name), ['Image', 'Nano Banana']);
+  assert.deepStrictEqual(sceneCatalog.models.map(model => `${model.public_name} · ${model.provider_code}`), [
+    'Image · SZ', 'Image · WB', 'Image · DY',
+    'Nano Banana · SZ', 'Nano Banana · WB', 'Nano Banana · DY',
+  ]);
+  assert.strictEqual(sceneCatalog.default_selection, 'image-sz');
+  assert.strictEqual(videoCatalog.default_selection, 'seedance-dy');
   assert(sceneCatalog.models.every(model => !model.provider_id && !model.model_id && !model.provider_name));
   assert(sceneCatalog.models.some(model => model.available), 'scene catalog must expose a configured model');
   assert(videoCatalog.models.some(model => model.available), 'video catalog must expose a configured model');
 
   const publicSelection = sceneCatalog.models.find(model => model.available).route;
   const chosen = selection.applySelection('new_story_ad.scene_asset', { image_model: publicSelection });
+  assert.strictEqual(publicSelection, 'image-sz');
   assert.strictEqual(chosen.image_model, 'smscrw/gpt-image-2');
   assert.strictEqual(chosen.single_attempt, true);
   assert.strictEqual(chosen.max_scene_retries, 0);

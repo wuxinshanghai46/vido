@@ -531,11 +531,12 @@ const STAGE_DEFAULTS = {
   'new_story_ad.keyframe': NEW_STORY_AD_IMAGE_DEFAULTS,
   'new_story_ad.storyboard_sketch': NEW_STORY_AD_IMAGE_DEFAULTS,
   'new_story_ad.video': [
-    { provider_id: 'smscrw', model_id: 'doubao-seedance-2-0-260128', priority: 1, enabled: true },
-    { provider_id: 'deyunai', model_id: 'doubao-seedance-2-0-260128', priority: 2, enabled: true },
-    { provider_id: 'deyunai', model_id: 'doubao-seedance-2-0-fast-260128', priority: 3, enabled: true },
-    { provider_id: 'topview', model_id: 'topview-image2video-pro', priority: 4, enabled: false },
-    { provider_id: 'volcengine', model_id: 'doubao-seedance-2-0-260128', priority: 5, enabled: false },
+    { provider_id: 'deyunai', model_id: 'doubao-seedance-2-0-260128', priority: 1, enabled: true },
+    { provider_id: 'smscrw', model_id: 'doubao-seedance-2-0-260128', priority: 2, enabled: true },
+    { provider_id: 'webang-seedance', model_id: 'doubao-seedance-2-0-260128', priority: 3, enabled: true },
+    { provider_id: 'deyunai', model_id: 'doubao-seedance-2-0-fast-260128', priority: 4, enabled: true },
+    { provider_id: 'topview', model_id: 'topview-image2video-pro', priority: 5, enabled: false },
+    { provider_id: 'volcengine', model_id: 'doubao-seedance-2-0-260128', priority: 6, enabled: false },
   ],
   'new_story_ad.tts': [
     { provider_id: 'aliyun-tts', model_id: 'cosyvoice-v3.5-plus', priority: 1, enabled: true },
@@ -549,10 +550,11 @@ const STAGE_DEFAULTS = {
     { provider_id: 'volcengine', model_id: 'jimeng_realman_avatar_picture_omni_v15', priority: 5, enabled: true },
   ],
   'new_story_ad.sound_generation': [
-    { provider_id: 'smscrw', model_id: 'doubao-seedance-2-0-260128', priority: 1, enabled: true },
-    { provider_id: 'deyunai', model_id: 'doubao-seedance-2-0-260128', priority: 2, enabled: true },
-    { provider_id: 'deyunai', model_id: 'doubao-seedance-2-0-fast-260128', priority: 3, enabled: true },
-    { provider_id: 'volcengine', model_id: 'doubao-seedance-2-0-260128', priority: 4, enabled: false },
+    { provider_id: 'deyunai', model_id: 'doubao-seedance-2-0-260128', priority: 1, enabled: true },
+    { provider_id: 'smscrw', model_id: 'doubao-seedance-2-0-260128', priority: 2, enabled: true },
+    { provider_id: 'webang-seedance', model_id: 'doubao-seedance-2-0-260128', priority: 3, enabled: true },
+    { provider_id: 'deyunai', model_id: 'doubao-seedance-2-0-fast-260128', priority: 4, enabled: true },
+    { provider_id: 'volcengine', model_id: 'doubao-seedance-2-0-260128', priority: 5, enabled: false },
   ],
   // 网剧
   'drama.script':        [{ provider_id: 'deepseek', model_id: 'deepseek-chat', priority: 1, enabled: true }],

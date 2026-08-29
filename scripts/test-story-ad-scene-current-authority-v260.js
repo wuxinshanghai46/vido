@@ -62,15 +62,17 @@ const pickerPath = path.join(root, 'public/story-ad/views/generationModelPicker.
 let pickerSource = fs.readFileSync(pickerPath, 'utf8')
   .replace(/^import .*$/gm, '')
   .replace(/export\s+(async\s+)?function\s+/g, (_match, asyncKeyword = '') => `${asyncKeyword}function `);
-pickerSource += '\nmodule.exports = { generationModelDisplayName };';
+pickerSource += '\nmodule.exports = { generationModelDisplayName, generationModelOptionLabel };';
 const pickerSandbox = { module: { exports: {} }, exports: {} };
 vm.runInNewContext(pickerSource, pickerSandbox, { filename: pickerPath });
 const labels = pickerSandbox.module.exports;
 assert.equal(labels.generationModelDisplayName({ public_name: 'Nano Banana' }), 'Nano Banana');
 assert.equal(labels.generationModelDisplayName({ public_name: 'Image' }), 'Image');
+assert.equal(labels.generationModelOptionLabel({ public_name: 'Image', provider_code: 'SZ' }), 'Image · SZ');
+assert.equal(labels.generationModelOptionLabel({ public_name: 'Nano Banana', provider_code: 'WB' }), 'Nano Banana · WB');
 const optionTemplate = pickerSource.slice(pickerSource.indexOf('<option value='), pickerSource.indexOf("</select>"));
 assert(!optionTemplate.includes('provider_name'), '模型下拉不得再显示供应商全称');
-assert(optionTemplate.includes("catalog.media_type === 'video'"), '图片下拉不得显示供应商缩写');
+assert(optionTemplate.includes('generationModelOptionLabel'), '图片和视频下拉必须显示产品名与供应商缩写');
 
 const progressPath = path.join(root, 'public/story-ad/views/sceneBatchProgressView.js');
 let progressSource = fs.readFileSync(progressPath, 'utf8')

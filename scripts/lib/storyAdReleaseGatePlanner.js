@@ -21,7 +21,7 @@ const GATES = Object.freeze({
     label: '发布完整性、传输、闭包与黄金合同',
   },
   workspace_ui: {
-    command: 'node scripts/test-story-ad-dialogue-cast-blueprint-v151.js && node scripts/test-story-ad-workspace-v6-ui-regressions.js && node scripts/test-story-ad-scene-qa-actions-v238.js && node scripts/test-story-ad-scene-batch-orchestration-v255.js && node scripts/test-story-ad-scene-batch-image-progress-v258.js && node scripts/test-story-ad-scene-qa-layout-v252.js && node scripts/test-story-ad-page-load-lifecycle-v253.js && node scripts/test-story-ad-dialogue-intake-v100.js && node scripts/test-story-ad-brief-modal-auto-blueprint-v103.js && node scripts/test-story-ad-lightweight-bundle-v100.js && node scripts/check-story-ad-workspace-v6-boundaries.js',
+    command: 'node scripts/test-story-ad-dialogue-cast-blueprint-v151.js && node scripts/test-story-ad-workspace-v6-ui-regressions.js && node scripts/test-story-ad-public-media-model-catalog-v262.js && node scripts/test-story-ad-scene-qa-actions-v238.js && node scripts/test-story-ad-scene-batch-orchestration-v255.js && node scripts/test-story-ad-scene-batch-image-progress-v258.js && node scripts/test-story-ad-scene-qa-layout-v252.js && node scripts/test-story-ad-page-load-lifecycle-v253.js && node scripts/test-story-ad-dialogue-intake-v100.js && node scripts/test-story-ad-brief-modal-auto-blueprint-v103.js && node scripts/test-story-ad-lightweight-bundle-v100.js && node scripts/check-story-ad-workspace-v6-boundaries.js',
     label: '工作台 UI、对话立项、首屏轻量投影与模块边界',
   },
   story_content: {
@@ -97,6 +97,7 @@ const DOMAIN_RULES = [
       /^scripts\/test-story-ad-production-graph-/i,
       /^scripts\/(?:test-authorized-voice-pack-library|test-voice-pack-auto-enrollment|test-pipeline-capability-audit|audit-story-ad-model-management)\.js$/i,
       /^scripts\/(?:migrate|audit)-new-story-ad-systemic/,
+      /^scripts\/(?:migrate|test)-story-ad-public-media-model/i,
       /^src\/services\/newStoryAd\/scenePromptConfirmationService\.js$/i,
       /^scripts\/(?:helpers\/current-scene-prompt-fixture|test-story-ad-(?:legacy-scene-config-route|scene-prompt-confirmation)-v231)\.js$/i,
       /^scripts\/test-story-ad-v67-candidate-structure-gate\.js$/i,

@@ -1,16 +1,15 @@
 import { request } from '../api.js?v=20260829-production-v261';
 import { escapeHtml } from '../components/ui.js?v=20260829-production-v261';
 
-const P = { deyunai: 'DY', apismile: 'AS', 'webang-maas': 'WB', smscrw: 'SZ' };
-export function generationProviderInitials(model = {}) {
-  const id = String(model.provider_id || model.route || '').split('/')[0].toLowerCase();
-  return P[id] || id.slice(0, 2).toUpperCase() || 'AI';
-}
-
 export function generationModelDisplayName(model = {}) {
   return String(model.public_name || model.model_name || model.model_id || 'Image')
     .replace(/\s*[·|｜（(].*$/u, '').replace(/\?+/g, '').trim()
     || 'Image';
+}
+
+export function generationModelOptionLabel(model = {}) {
+  const provider = String(model.provider_code || '').trim().toUpperCase();
+  return `${generationModelDisplayName(model)}${provider ? ` · ${provider}` : ''}`;
 }
 
 function storageKey(taskId, stage) {
@@ -22,7 +21,8 @@ export async function loadGenerationModelPicker(taskId, stage, options = {}) {
   const models = Array.isArray(catalog.models) ? catalog.models : [];
   const remembered = localStorage.getItem(storageKey(taskId, stage)) || '';
   const selected = models.find(model => model.route === remembered && model.available)?.route
-    || models.find(model => model.available)?.route || '';
+    || models.find(model => model.route === catalog.default_selection && model.available)?.route || '';
+  const available = models.some(model => model.available);
   const label = options.label || (catalog.media_type === 'video' ? '视频模型' : '图片模型');
   return {
     taskId,
@@ -31,8 +31,8 @@ export async function loadGenerationModelPicker(taskId, stage, options = {}) {
     selected,
     html: `<label class="generation-model-picker" data-generation-model-picker="${escapeHtml(stage)}">
       <span>${escapeHtml(label)}</span>
-      <select aria-label="${escapeHtml(label)}" ${selected ? '' : 'disabled'}>
-        ${models.length ? models.map(model => `<option value="${escapeHtml(model.route)}" ${model.route === selected ? 'selected' : ''} ${model.available ? '' : 'disabled'}>${escapeHtml(generationModelDisplayName(model))}${catalog.media_type === 'video' ? ` · ${escapeHtml(generationProviderInitials(model))}` : ''}${model.available ? '' : '（暂不可用）'}</option>`).join('') : '<option value="">暂无可用模型</option>'}
+      <select aria-label="${escapeHtml(label)}" ${available ? '' : 'disabled'}>
+        ${!selected && available ? '<option value="" selected>请选择</option>' : ''}${models.length ? models.map(model => `<option value="${escapeHtml(model.route)}" ${model.route === selected ? 'selected' : ''} ${model.available ? '' : 'disabled'}>${escapeHtml(generationModelOptionLabel(model))}${model.available ? '' : '（暂不可用）'}</option>`).join('') : '<option value="">暂无可用模型</option>'}
       </select>
     </label>`,
   };
