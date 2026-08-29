@@ -1,5 +1,7 @@
 'use strict';
 
+const sceneVisualAcceptance = require('../newStoryAd/sceneVisualAcceptanceService');
+
 function list(value) { return Array.isArray(value) ? value.filter(Boolean) : []; }
 function clean(value = '', max = 12000) { return String(value || '').trim().slice(0, max); }
 
@@ -27,6 +29,10 @@ function projectBundleState(scenes = [], context = {}, outputs = {}) {
   const planned = list(scenes).filter(scene => scene.planned !== false && scene.reference_only !== true);
   const generated = planned.filter(scene => Boolean(scene.image_url || scene.layout?.image_url || scene.view_images?.some(view => view?.image_url)));
   const locked = planned.filter(scene => scene.qa?.full_space_lock === true);
+  const acceptanceState = sceneVisualAcceptance.inspect(
+    outputs.scene_assets || context.scene_assets || [],
+    outputs[sceneVisualAcceptance.OUTPUT_KIND],
+  );
   const blueprintBeats = list(outputs.blueprint?.beats);
   const previewByScene = new Map();
   blueprintBeats.forEach((beat, index) => {
@@ -60,7 +66,11 @@ function projectBundleState(scenes = [], context = {}, outputs = {}) {
       initialization_required: planned.length === 0 && previewScenes.length > 0 && context.asset_setup_confirmed === true,
       preview_scenes: planned.length ? [] : previewScenes,
       visuals_complete: planned.length > 0 && locked.length === planned.length,
-      confirmed: context.scene_setup_confirmed === true,
+      visuals_accepted: acceptanceState.accepted,
+      can_accept_current: acceptanceState.all_views_complete && locked.length !== planned.length,
+      acceptance_mode: acceptanceState.accepted ? 'explicit_user_acceptance' : '',
+      confirmed: context.scene_setup_confirmed === true
+        && (locked.length === planned.length || acceptanceState.accepted),
     },
   };
 }

@@ -3,7 +3,7 @@ import { beginReferenceReplacement, referenceSyncInterrupted, replacementCurrent
 import { cancelReferenceAnalysisRequest, retryReferenceAnalysisRequest, retryReferenceImportRequest } from './referenceRetryStore.js?v=20260829-production-v275';
 import { loadProjectList } from './projectListStore.js?v=20260829-production-v275';
 import { loadProjectBundle, refreshProjectBundle } from './projectBundleStore.js?v=20260829-production-v275';
-import { beginStageSubmissionState } from './stageSubmissionState.js?v=20260829-production-v275';
+import { beginStageSubmissionState } from './stageSubmissionState.js?v=20260829-production-v276';
 export function createProjectStore() {
   const state = {
     projects: [],
@@ -564,6 +564,16 @@ export function createProjectStore() {
     return data;
   }
 
+  async function acceptCurrentScenes() {
+    const taskId = state.bundle?.project?.id;
+    if (!taskId) throw new Error('请先创建项目。');
+    const data = await request(`/api/new-story-ad/tasks/${encodeURIComponent(taskId)}/scene-acceptance`, {
+      method: 'POST', body: {}, timeoutMs: 30000,
+    });
+    const bundle = await refreshSections('summary,assets,story,shots');
+    return { ...data, bundle };
+  }
+
   return {
     state,
     subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
@@ -592,6 +602,7 @@ export function createProjectStore() {
     videoPreflight,
     startVideo,
     cancelGeneration,
+    acceptCurrentScenes,
     clearProject,
     syncProgressPolling,
     stopProgressPolling,

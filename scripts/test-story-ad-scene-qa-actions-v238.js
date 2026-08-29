@@ -249,7 +249,8 @@ async function main() {
   assert.doesNotMatch(interactions, /runStage\(/);
   assert.doesNotMatch(interactions, /data-reverify-scene|data-repair-scene/);
   const worldPage = read('public/story-ad/views/sceneWorldPage.js');
-  assert.match(worldPage, /data-run-scene-actions>继续完成场景（\$\{sceneActionPlan\.count\}）/);
+  assert.match(worldPage, /data-run-scene-actions>\$\{onlyReverify \? '重新审核场景' : '继续完成场景'\}（\$\{sceneActionPlan\.count\}）/,
+    '统一按钮必须区分零图片调用的重新审核与实际补图');
   assert.doesNotMatch(worldPage, /data-generate-all-scenes|data-review-all-scenes|data-fix-all-scenes/);
   const cardInteractions = read('public/story-ad/views/sceneCardInteractions.js');
   assert.match(cardInteractions, /data-run-scene-actions/);

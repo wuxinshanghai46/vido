@@ -1,11 +1,12 @@
 'use strict';
 
 const sceneBatchFactory = require('../../services/newStoryAd/sceneBatchOrchestrationService');
+const sceneVisualAcceptanceFactory = require('../../services/newStoryAd/sceneVisualAcceptanceService');
 
 function registerSceneBatchRoutes(router, deps = {}) {
   const {
     asyncRoute, taskForReq, queueTaskStage, storage,
-    sceneAssetService, scenePromptConfirmation, targetProgress, cancellation, mediaModelSelection,
+    sceneAssetService, scenePromptConfirmation, targetProgress, cancellation, mediaModelSelection, userFromReq,
   } = deps;
   const orchestration = sceneBatchFactory.create({
     storage,
@@ -14,6 +15,13 @@ function registerSceneBatchRoutes(router, deps = {}) {
     targetProgress,
     cancellation,
   });
+  const sceneVisualAcceptance = sceneVisualAcceptanceFactory.create({ storage });
+
+  router.post('/tasks/:id/scene-acceptance', asyncRoute(async (req, res) => {
+    taskForReq(req);
+    const acceptance = sceneVisualAcceptance.acceptCurrent(req.params.id, userFromReq?.(req) || {});
+    return res.json({ success: true, acceptance, model_call_count: 0 });
+  }));
 
   router.post('/tasks/:id/scene-actions', asyncRoute(async (req, res) => {
     taskForReq(req);

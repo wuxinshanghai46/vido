@@ -1592,7 +1592,7 @@ router.post('/tasks/:id/scene-assets', asyncRoute(async (req, res) => {
       scene_name: body.name || body.scene_name || body.sceneName || '',
     },
   });
-})); registerPropRoutes(router, { asyncRoute, taskForReq, queueTaskStage, propAssetService, mediaModelSelection }); registerSceneBatchRoutes(router, { asyncRoute, taskForReq, queueTaskStage, storage, sceneAssetService, scenePromptConfirmation, targetProgress: require('../services/newStoryAd/targetGenerationProgressService'), cancellation, mediaModelSelection });
+})); registerPropRoutes(router, { asyncRoute, taskForReq, queueTaskStage, propAssetService, mediaModelSelection }); registerSceneBatchRoutes(router, { asyncRoute, taskForReq, queueTaskStage, storage, sceneAssetService, scenePromptConfirmation, targetProgress: require('../services/newStoryAd/targetGenerationProgressService'), cancellation, mediaModelSelection, userFromReq });
 
 router.get('/tasks/:id/scene-assets/:sceneId/panorama/plan', asyncRoute(async (req, res) => {
   taskForReq(req);

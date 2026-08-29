@@ -1,4 +1,4 @@
-import { createProjectStore } from './store/projectStore.js?v=20260829-production-v275';
+import { createProjectStore } from './store/projectStore.js?v=20260829-production-v276';
 import { bindHoverVideoPreviews, escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, syncInlineGenerationProgress, toast } from './components/ui.js?v=20260829-production-v275';
 import { assertCurrentRelease, startReleaseHeartbeat } from './api.js?v=20260829-production-v275';
 import { confirmDialog } from './components/dialog.js?v=20260829-production-v275';
@@ -28,7 +28,7 @@ const VIEW_META = {
 const VIEW_MODULES = {
   brief: () => import('./views/briefView.js?v=20260829-production-v275'),
   assets: () => import('./views/assetCenterView.js?v=20260829-production-v275'),
-  scene: () => import('./views/sceneWorldPage.js?v=20260829-production-v275'),
+  scene: () => import('./views/sceneWorldPage.js?v=20260829-production-v276'),
   plot: () => import('./views/plotRoomView.js?v=20260829-production-v275'),
   storyboard: () => import('./views/storyboardView.js?v=20260829-production-v275'),
   final: () => import('./views/finalView.js?v=20260829-production-v275'),

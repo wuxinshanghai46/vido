@@ -1,5 +1,7 @@
 'use strict';
 
+const sceneVisualAcceptance = require('../newStoryAd/sceneVisualAcceptanceService');
+
 /**
  * Derive the sequential workspace state from persisted outputs only. A view is
  * enabled by completion of its immediate upstream step; UI routes consume the
@@ -32,7 +34,10 @@ function build({ task = {}, context = {}, outputs = {}, counts = {}, clean, list
   const finalReady = Boolean(outputs.final_video?.video_url || outputs.final_video?.videoUrl);
   const assetSetupComplete = context.asset_setup_confirmed === true
     || storyboardReady || keyframesReady || clipsReady || finalReady;
-  const sceneSetupComplete = context.scene_setup_confirmed === true
+  const sceneRows = list(outputs.scene_assets || context.scene_assets);
+  const sceneQaComplete = sceneRows.length > 0 && sceneRows.every(scene => scene?.qa?.full_space_lock === true);
+  const sceneAcceptance = sceneVisualAcceptance.inspect(sceneRows, outputs[sceneVisualAcceptance.OUTPUT_KIND]);
+  const sceneSetupComplete = (context.scene_setup_confirmed === true && (sceneQaComplete || sceneAcceptance.accepted))
     || storyboardReady || keyframesReady || clipsReady || finalReady;
   const shotDesignComplete = context.shot_design_confirmed === true || keyframesReady || clipsReady || finalReady;
   const step = (enabled, completed, blocker, nextView) => ({

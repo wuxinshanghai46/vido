@@ -1,11 +1,11 @@
 import { bindSceneWorldWorkspace } from './sceneWorldView.js?v=20260829-production-v275';
 import { setButtonBusy, toast } from '../components/ui.js?v=20260829-production-v275';
 import { bindScenePlanUpdate, scenePlanBlockedView } from './scenePlanStatus.js?v=20260829-production-v275';
-import { renderSceneProductionCard, scenePromptPreviewMarkup, scenePromptPreviewState, startInitialScenePlan } from './scenePromptPreview.js?v=20260829-production-v275';
+import { renderSceneProductionCard, scenePromptPreviewMarkup, scenePromptPreviewState, startInitialScenePlan } from './scenePromptPreview.js?v=20260829-production-v276';
 import { bindMediaLightbox } from './mediaLightbox.js?v=20260829-production-v275';
 import { buildSceneBatchActionPlan } from './sceneBatchActionPlan.js?v=20260829-production-v275';
 import { bindGenerationModelPicker, loadGenerationModelPicker } from './generationModelPicker.js?v=20260829-production-v275';
-import { normalizeSceneDossier } from './sceneDossierCard.js?v=20260829-production-v275';
+import { normalizeSceneDossier } from './sceneDossierCard.js?v=20260829-production-v276';
 
 export function latestSceneTargetProgress(progress = {}, sceneId = '', generationId = '') {
   const rows = Object.values(progress).filter(item => String(item?.stage || '') === 'scene_asset'
@@ -53,13 +53,15 @@ export async function mount(host, context) {
     .reduce((sum, dossier) => [sum[0] + dossier.completed, sum[1] + dossier.total], [0, 0]);
   const unifiedActionManaged = batchActive || sceneActionPlan.count > 0;
   const modelPicker = await loadGenerationModelPicker(bundle.project.id, 'new_story_ad.scene_asset', { label: 'Image' });
-  const canConfirm = workflow.visuals_complete === true && scenes.length > 0
+  const canConfirm = workflow.visuals_complete === true && scenes.length > 0;
+  const canAcceptCurrent = workflow.can_accept_current === true && !generationActive;
+  const onlyReverify = sceneActionPlan.count > 0 && sceneActionPlan.ready.every(item => item.action?.billable === false);
   const preview = scenePromptPreviewState(bundle, scenePlanReady || persistedScenePlanReady, generationActive);
 
-  host.innerHTML = `<section class="view-head scene-view-head"><div><h1>场景</h1><p>默认查看场景画面，需要时可切换到提示词核对。</p></div>${canConfirm ? '<div class="scene-view-actions"><button class="btn primary compact" data-confirm-scenes>确认场景，进入线稿</button></div>' : ''}</section>
+  host.innerHTML = `<section class="view-head scene-view-head"><div><h1>场景</h1><p>默认查看场景画面，需要时可切换到提示词核对。</p></div>${canConfirm ? '<div class="scene-view-actions"><button class="btn primary compact" data-confirm-scenes>确认场景，进入线稿</button></div>' : (canAcceptCurrent ? '<div class="scene-view-actions"><button class="btn primary compact" data-accept-current-scenes>使用当前图片继续</button></div>' : '')}</section>
     ${scenePlanReady || persistedScenePlanReady ? '' : scenePlanBlockedView(sceneEligibility, generationActive, { automatic: preview.autoInitialize || generationActive })}
     ${!scenePlanReady && !persistedScenePlanReady ? scenePromptPreviewMarkup(preview, (scene, index) => renderSceneProductionCard(scene, index, { provisional: true })) : ''}
-    ${persistedScenePlanReady ? `<section class="scene-production"><header><div><h2>场景提示词与画面</h2><p>提示词修改后自动保存；已有或生成中的画面默认展示，需要时可切回提示词。</p></div><div class="scene-view-actions"><span>Image ${imageSummary[0]}/${imageSummary[1]}</span>${sceneActionPlan.count ? `${modelPicker.html}<button class="btn primary compact" data-run-scene-actions>继续完成场景（${sceneActionPlan.count}）</button>` : ''}</div></header><div class="scene-production-grid">${scenes.map((scene, index) => { const sceneId = scene.id || scene.scene_id; return renderSceneProductionCard(scene, index, { generationActive: sceneIsActive(sceneId), batchManaged: unifiedActionManaged, progress: sceneProgress(sceneId) }); }).join('')}</div></section>` : ''}`;
+    ${persistedScenePlanReady ? `<section class="scene-production"><header><div><h2>场景提示词与画面</h2><p>提示词修改后自动保存；已有或生成中的画面默认展示，需要时可切回提示词。</p></div><div class="scene-view-actions"><span>Image ${imageSummary[0]}/${imageSummary[1]}</span>${sceneActionPlan.count ? `${modelPicker.html}<button class="btn primary compact" data-run-scene-actions>${onlyReverify ? '重新审核场景' : '继续完成场景'}（${sceneActionPlan.count}）</button>` : ''}</div></header><div class="scene-production-grid">${scenes.map((scene, index) => { const sceneId = scene.id || scene.scene_id; return renderSceneProductionCard(scene, index, { generationActive: sceneIsActive(sceneId), batchManaged: unifiedActionManaged, progress: sceneProgress(sceneId) }); }).join('')}</div></section>` : ''}`;
 
   context.selectedSceneImageModel = bindGenerationModelPicker(host, modelPicker);
 
@@ -78,6 +80,20 @@ export async function mount(host, context) {
       context.navigate(`/story-ad/projects/${encodeURIComponent(bundle.project.id)}?view=storyboard`);
     } catch (error) {
       toast(error.message || '确认场景失败', 'error');
+      setButtonBusy(button, false);
+    }
+  });
+  host.querySelector('[data-accept-current-scenes]')?.addEventListener('click', async event => {
+    const button = event.currentTarget;
+    setButtonBusy(button, true, '正在继续…');
+    try {
+      const result = await store.acceptCurrentScenes();
+      if (Number(result?.model_call_count || 0) !== 0) throw new Error('当前图片接受操作不应产生模型调用');
+      const refreshed = result.bundle;
+      if (refreshed?.navigation?.steps?.storyboard?.enabled === false) throw new Error(refreshed.navigation.steps.storyboard.blocker || '线稿与分镜步骤尚未解锁');
+      context.navigate(`/story-ad/projects/${encodeURIComponent(bundle.project.id)}?view=storyboard`);
+    } catch (error) {
+      toast(error.message || '无法使用当前图片继续', 'error');
       setButtonBusy(button, false);
     }
   });

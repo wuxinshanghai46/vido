@@ -13,9 +13,21 @@ export function beginStageSubmissionState({ state, set }, stage = 'full', total 
     started_at: now,
     ...(details && typeof details === 'object' ? details : {}),
   };
+  const optimisticTargets = Object.fromEntries(Object.entries(details?.target_progress || {}).map(([key, value]) => {
+    const [targetStage, ...scopeParts] = String(key).split(':');
+    const scopeId = scopeParts.join(':');
+    return [key, {
+      ...(value || {}),
+      stage: value?.stage || targetStage || stage,
+      scene_id: value?.scene_id || (targetStage === 'scene_asset' ? scopeId : ''),
+      scope_id: value?.scope_id || scopeId,
+      generation_id: value?.generation_id || optimisticGenerationId,
+      updated_at: value?.updated_at || now,
+    }];
+  }));
   const targetProgress = {
     ...(state.bundle.project.target_generation_progress || {}),
-    ...(details?.target_progress || {}),
+    ...optimisticTargets,
   };
   set({
     bundle: {
