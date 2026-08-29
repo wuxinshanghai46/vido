@@ -62,16 +62,15 @@ const pickerPath = path.join(root, 'public/story-ad/views/generationModelPicker.
 let pickerSource = fs.readFileSync(pickerPath, 'utf8')
   .replace(/^import .*$/gm, '')
   .replace(/export\s+(async\s+)?function\s+/g, (_match, asyncKeyword = '') => `${asyncKeyword}function `);
-pickerSource += '\nmodule.exports = { generationProviderInitials, generationModelDisplayName };';
+pickerSource += '\nmodule.exports = { generationModelDisplayName };';
 const pickerSandbox = { module: { exports: {} }, exports: {} };
 vm.runInNewContext(pickerSource, pickerSandbox, { filename: pickerPath });
 const labels = pickerSandbox.module.exports;
-assert.equal(labels.generationModelDisplayName({ model_id: 'gemini-2.5-flash-image' }), 'Nano Banana');
-assert.equal(labels.generationModelDisplayName({ model_id: 'gpt-image-2' }), 'GPT Image 2');
-assert.equal(labels.generationProviderInitials({ provider_id: 'deyunai' }), 'DY');
-assert.equal(labels.generationProviderInitials({ provider_id: 'webang-maas' }), 'WB');
+assert.equal(labels.generationModelDisplayName({ public_name: 'Nano Banana' }), 'Nano Banana');
+assert.equal(labels.generationModelDisplayName({ public_name: 'Image' }), 'Image');
 const optionTemplate = pickerSource.slice(pickerSource.indexOf('<option value='), pickerSource.indexOf("</select>"));
 assert(!optionTemplate.includes('provider_name'), '模型下拉不得再显示供应商全称');
+assert(optionTemplate.includes("catalog.media_type === 'video'"), '图片下拉不得显示供应商缩写');
 
 const progressPath = path.join(root, 'public/story-ad/views/sceneBatchProgressView.js');
 let progressSource = fs.readFileSync(progressPath, 'utf8')

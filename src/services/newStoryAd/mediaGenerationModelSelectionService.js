@@ -17,6 +17,11 @@ const ALLOWED_STAGES = new Set([
   'new_story_ad.video',
 ]);
 
+const PUBLIC_IMAGE_CHOICES = Object.freeze([
+  Object.freeze({ id: 'image', public_name: 'Image', execution_route: 'smscrw/gpt-image-2' }),
+  Object.freeze({ id: 'nano-banana', public_name: 'Nano Banana', execution_route: 'deyunai/gemini-2.5-flash-image' }),
+]);
+
 function clean(value = '', max = 180) {
   return String(value ?? '').trim().slice(0, max);
 }
@@ -66,11 +71,31 @@ function rows(stageId = '') {
     || a.model_name.localeCompare(b.model_name, 'zh-CN'));
 }
 
+function publicImageRows(source = []) {
+  const byRoute = new Map(source.map(model => [model.route, model]));
+  return PUBLIC_IMAGE_CHOICES.map(choice => {
+    const configured = byRoute.get(choice.execution_route);
+    return {
+      route: choice.id,
+      public_name: choice.public_name,
+      media_type: 'image',
+      available: configured?.available === true,
+      retry_after_ms: Math.max(0, Number(configured?.retry_after_ms || 0) || 0),
+    };
+  });
+}
+
+function selectableRows(stageId = '') {
+  const normalized = stage(stageId);
+  const configured = rows(normalized);
+  return normalized === 'new_story_ad.video' ? configured : publicImageRows(configured);
+}
+
 function catalog(stageId = '') {
   const normalized = stage(stageId);
-  const models = rows(normalized);
+  const models = selectableRows(normalized);
   return {
-    schema_version: 1,
+    schema_version: 2,
     stage: normalized,
     media_type: normalized === 'new_story_ad.video' ? 'video' : 'image',
     selection_required: true,
@@ -94,14 +119,14 @@ function selectionFrom(body = {}, stageId = '') {
 function requireSelection(stageId = '', body = {}) {
   const normalized = stage(stageId);
   const selected = selectionFrom(body, normalized);
-  if (!selected || !selected.includes('/')) {
+  if (!selected || (normalized === 'new_story_ad.video' && !selected.includes('/'))) {
     const error = new Error(`请先选择本次${normalized === 'new_story_ad.video' ? '视频' : '图片'}生成模型。`);
     error.code = 'MEDIA_GENERATION_MODEL_SELECTION_REQUIRED';
     error.status = 422;
     error.retryable = false;
     throw error;
   }
-  const models = rows(normalized);
+  const models = selectableRows(normalized);
   const matched = models.find(model => model.route === selected);
   if (!matched) {
     const error = new Error('所选模型不在当前已配置的生成模型列表中，请重新选择。');
@@ -111,14 +136,17 @@ function requireSelection(stageId = '', body = {}) {
     throw error;
   }
   if (!matched.available) {
-    const error = new Error(`所选模型 ${matched.model_name} 当前不可用，请选择其他模型后重新提交。`);
+    const error = new Error(`所选模型 ${matched.public_name || matched.model_name} 当前不可用，请选择其他模型后重新提交。`);
     error.code = 'MEDIA_GENERATION_MODEL_SELECTED_UNAVAILABLE';
     error.status = 409;
     error.retryable = true;
     error.retryAfterMs = matched.retry_after_ms;
     throw error;
   }
-  return matched;
+  if (normalized === 'new_story_ad.video') return matched;
+  const choice = PUBLIC_IMAGE_CHOICES.find(item => item.id === selected);
+  const configured = rows(normalized).find(model => model.route === choice.execution_route);
+  return { ...configured, selection_id: selected, public_name: matched.public_name };
 }
 
 function applySelection(stageId = '', body = {}) {
@@ -128,4 +156,7 @@ function applySelection(stageId = '', body = {}) {
     : { ...body, image_model: selected.route, single_attempt: true, max_scene_retries: 0 };
 }
 
-module.exports = { ALLOWED_STAGES, applySelection, catalog, requireSelection, route, rows, selectionFrom, stage };
+module.exports = {
+  ALLOWED_STAGES, PUBLIC_IMAGE_CHOICES, applySelection, catalog, publicImageRows,
+  requireSelection, route, rows, selectableRows, selectionFrom, stage,
+};

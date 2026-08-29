@@ -16,12 +16,14 @@ async function main() {
   const videoCatalog = selection.catalog('new_story_ad.video');
   assert.strictEqual(sceneCatalog.selection_required, true);
   assert.strictEqual(sceneCatalog.fallback_after_failure, false);
+  assert.deepStrictEqual(sceneCatalog.models.map(model => model.public_name), ['Image', 'Nano Banana']);
+  assert(sceneCatalog.models.every(model => !model.provider_id && !model.model_id && !model.provider_name));
   assert(sceneCatalog.models.some(model => model.available), 'scene catalog must expose a configured model');
   assert(videoCatalog.models.some(model => model.available), 'video catalog must expose a configured model');
 
-  const sceneRoute = sceneCatalog.models.find(model => model.available).route;
-  const chosen = selection.applySelection('new_story_ad.scene_asset', { image_model: sceneRoute });
-  assert.strictEqual(chosen.image_model, sceneRoute);
+  const publicSelection = sceneCatalog.models.find(model => model.available).route;
+  const chosen = selection.applySelection('new_story_ad.scene_asset', { image_model: publicSelection });
+  assert.strictEqual(chosen.image_model, 'smscrw/gpt-image-2');
   assert.strictEqual(chosen.single_attempt, true);
   assert.strictEqual(chosen.max_scene_retries, 0);
   assert.throws(() => selection.applySelection('new_story_ad.scene_asset', {}), error => (
@@ -29,6 +31,9 @@ async function main() {
   ));
   assert.throws(() => selection.catalog('new_story_ad.qa'), error => (
     error.code === 'MEDIA_GENERATION_MODEL_STAGE_INVALID'
+  ));
+  assert.throws(() => selection.applySelection('new_story_ad.scene_asset', { image_model: 'deyunai/seedream-3.0' }), error => (
+    error.code === 'MEDIA_GENERATION_MODEL_SELECTION_INVALID'
   ));
 
   const exact = mediaAdapter.selectImageCandidates('new_story_ad.scene_asset', 'p2/m2', [
@@ -67,10 +72,10 @@ async function main() {
     cancellation: { throwIfCancelled: () => {} },
   });
   const plan = orchestration.plan(task.id, {
-    image_model: sceneRoute,
+    image_model: chosen.image_model,
     actions: [{ scene_id: 'scene-1' }, { scene_id: 'scene-2' }],
   });
-  assert(plan.actions.every(action => action.image_model === sceneRoute && action.single_attempt === true));
+  assert(plan.actions.every(action => action.image_model === chosen.image_model && action.single_attempt === true));
   const batch = await orchestration.execute(task.id, plan, { generationId: 'generation-v257' });
   assert.strictEqual(paidCalls, 1, 'first paid failure must stop the remaining scene queue');
   assert.strictEqual(batch.status, 'failed');
@@ -92,7 +97,8 @@ async function main() {
     passed: true,
     scene_models: sceneCatalog.models.length,
     video_models: videoCatalog.models.length,
-    selected_scene_model: sceneRoute,
+    public_selection: publicSelection,
+    selected_scene_model: chosen.image_model,
     paid_calls_after_first_failure: paidCalls,
     remaining_scene_calls: 0,
   }));

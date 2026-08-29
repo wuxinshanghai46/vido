@@ -2,20 +2,14 @@ import { request } from '../api.js?v=20260829-production-v260d';
 import { escapeHtml } from '../components/ui.js?v=20260829-production-v260d';
 
 const P = { deyunai: 'DY', apismile: 'AS', 'webang-maas': 'WB', smscrw: 'SZ' };
-const M = {
-  'gemini-2.5-flash-image': 'Nano Banana', 'nano-banana': 'Nano Banana', 'nano-banana-pro': 'Nano Banana Pro',
-  'gpt-image-2': 'GPT Image 2',
-};
-
 export function generationProviderInitials(model = {}) {
   const id = String(model.provider_id || model.route || '').split('/')[0].toLowerCase();
   return P[id] || id.slice(0, 2).toUpperCase() || 'AI';
 }
 
 export function generationModelDisplayName(model = {}) {
-  const id = String(model.model_id || String(model.route || '').split('/')[1] || '').toLowerCase();
-  return M[id]
-    || String(model.model_name || model.model_id || 'Image').replace(/\s*[·|｜（(].*$/u, '').replace(/\?+/g, '').trim()
+  return String(model.public_name || model.model_name || model.model_id || 'Image')
+    .replace(/\s*[·|｜（(].*$/u, '').replace(/\?+/g, '').trim()
     || 'Image';
 }
 
@@ -38,7 +32,7 @@ export async function loadGenerationModelPicker(taskId, stage, options = {}) {
     html: `<label class="generation-model-picker" data-generation-model-picker="${escapeHtml(stage)}">
       <span>${escapeHtml(label)}</span>
       <select aria-label="${escapeHtml(label)}" ${selected ? '' : 'disabled'}>
-        ${models.length ? models.map(model => `<option value="${escapeHtml(model.route)}" ${model.route === selected ? 'selected' : ''} ${model.available ? '' : 'disabled'}>${escapeHtml(generationModelDisplayName(model))} · ${escapeHtml(generationProviderInitials(model))}${model.available ? '' : '（暂不可用）'}</option>`).join('') : '<option value="">暂无可用模型</option>'}
+        ${models.length ? models.map(model => `<option value="${escapeHtml(model.route)}" ${model.route === selected ? 'selected' : ''} ${model.available ? '' : 'disabled'}>${escapeHtml(generationModelDisplayName(model))}${catalog.media_type === 'video' ? ` · ${escapeHtml(generationProviderInitials(model))}` : ''}${model.available ? '' : '（暂不可用）'}</option>`).join('') : '<option value="">暂无可用模型</option>'}
       </select>
     </label>`,
   };
