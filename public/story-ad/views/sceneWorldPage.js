@@ -7,6 +7,19 @@ import { buildSceneBatchActionPlan } from './sceneBatchActionPlan.js?v=20260829-
 import { bindGenerationModelPicker, loadGenerationModelPicker } from './generationModelPicker.js?v=20260829-production-v273c';
 import { normalizeSceneDossier } from './sceneDossierCard.js?v=20260829-production-v273c';
 
+export function latestSceneTargetProgress(targetProgress = {}, sceneId = '', activeGenerationId = '') {
+  const candidates = Object.values(targetProgress).filter(item => ['scene_asset', 'scene_qa'].includes(String(item?.stage || ''))
+    && String(item?.scene_id || item?.scope_id || '') === String(sceneId));
+  const active = candidates.filter(item => activeGenerationId
+    && String(item?.generation_id || '') === String(activeGenerationId));
+  const pool = active.length ? active : candidates;
+  return pool.sort((left, right) => {
+    const rightTime = Date.parse(right?.updated_at || right?.started_at || right?.finished_at || '') || 0;
+    const leftTime = Date.parse(left?.updated_at || left?.started_at || left?.finished_at || '') || 0;
+    return rightTime - leftTime;
+  })[0] || null;
+}
+
 export async function mount(host, context) {
   const { bundle, store } = context;
   const eligibility = bundle?.navigation?.asset_plan_eligibility || {};
@@ -38,10 +51,8 @@ export async function mount(host, context) {
     const activeTarget = sceneActiveTarget(sceneId);
     const activeKey = activeTarget ? `${activeTarget.stage}:${sceneId}` : '';
     return (activeKey ? targetProgress[activeKey] : null)
-    || targetProgress[`scene_qa:${sceneId}`]
-    || targetProgress[`scene_asset:${sceneId}`]
-    || Object.values(targetProgress).find(item => String(item?.scene_id || item?.scope_id || '') === String(sceneId))
-    || null;
+      || latestSceneTargetProgress(targetProgress, sceneId, bundle?.project?.active_generation_id)
+      || null;
   };
   const sceneActionPlan = buildSceneBatchActionPlan(scenes, activeTargets);
   const imageSummary = scenes.map(normalizeSceneDossier)

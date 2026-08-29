@@ -38,22 +38,20 @@ const sceneAssets = {
     activeCalls -= 1;
     return { provider_image_call_count: 0, scene_asset: { scene_id: body.scene_id, repair_plan: { action: 'none' } } };
   },
-  async fixSceneAsset() { throw new Error('fixture must not use repair for an absent scene'); },
-  async reverifySceneAsset(id, sceneId) {
+  async fixSceneAsset(id, sceneId) {
     assert.equal(id, taskId);
     activeCalls += 1;
     peakCalls = Math.max(peakCalls, activeCalls);
-    callOrder.push(`reverify:${sceneId}`);
+    callOrder.push(`fix:${sceneId}`);
     await new Promise(resolve => setTimeout(resolve, 30));
     activeCalls -= 1;
-    return {
-      scene_asset: {
-        scene_id: sceneId,
-        repair_plan: { action: 'reverify' },
-        scene_contract: { qa_error: 'fixture qa unavailable' },
-      },
-    };
+    const error = new Error('fixture qa unavailable');
+    error.code = 'SCENE_QA_EVIDENCE_UNAVAILABLE';
+    error.retryable = true;
+    error.provider_image_call_count = 0;
+    throw error;
   },
+  async reverifySceneAsset() { throw new Error('batch must use the unified diagnose-and-repair entry'); },
 };
 
 const promptAuthority = {
@@ -117,7 +115,7 @@ async function main() {
   assert.equal(task.generation_progress.mode, 'scene_batch');
   assert.equal(task.generation_progress.target_total, 6, '聚合进度只统计两个独立场景通道，不得重复计入协调通道');
   assert.equal(peakCalls, 2, '不同场景必须独立并行执行');
-  assert.deepEqual(callOrder, ['generate:scene-generate', 'reverify:scene-review']);
+  assert.deepEqual(callOrder, ['generate:scene-generate', 'fix:scene-review']);
   assert.equal(task.target_generation_progress['scene_asset:scene-generate'].status, 'completed');
   assert.equal(task.target_generation_progress['scene_asset:scene-review'].status, 'failed');
 

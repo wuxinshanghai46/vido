@@ -195,31 +195,25 @@ function create(deps = {}) {
       });
       try {
         let result;
+        const payload = {
+          scene_id: action.scene_id,
+          space_id: action.scene_id,
+          name: action.name,
+          prompt_version_id: action.prompt_version_id,
+          quality: action.quality,
+          resolution: action.resolution,
+          aspect_ratio: action.aspect_ratio,
+          image_model: action.image_model,
+          single_attempt: true,
+          generation_id: generationId,
+        };
         if (action.action === 'reverify') {
-          result = await sceneAssets.reverifySceneAsset(taskId, action.scene_id);
-          const nextPlan = result.scene_asset?.repair_plan
-            || sceneAssets.buildSceneRepairPlan(result.scene_asset || {});
-          if (String(nextPlan.action || '') === 'reverify') {
-            const error = new Error(result.scene_asset?.scene_contract?.qa_error || '审核服务暂时没有完成，图片已保留');
-            error.code = 'SCENE_QA_EVIDENCE_UNAVAILABLE';
-            error.retryable = true;
-            throw error;
-          }
+          result = await sceneAssets.fixSceneAsset(taskId, action.scene_id, payload, {
+            generationId, automaticRepair: true, maxRepairCycles: 1,
+          });
         } else {
           const latestAssets = sceneAssets.currentSceneAssets(taskId);
           const current = latestAssets.find(item => String(item.scene_id || item.id || '') === action.scene_id);
-          const payload = {
-            scene_id: action.scene_id,
-            space_id: action.scene_id,
-            name: action.name,
-            prompt_version_id: action.prompt_version_id,
-            quality: action.quality,
-            resolution: action.resolution,
-            aspect_ratio: action.aspect_ratio,
-            image_model: action.image_model,
-            single_attempt: true,
-            generation_id: generationId,
-          };
           result = current
             ? await sceneAssets.fixSceneAsset(taskId, action.scene_id, payload, { generationId })
             : await sceneAssets.generateSceneAsset(taskId, payload, { generationId });

@@ -46,6 +46,30 @@ function safeJson(raw = '') {
   throw error;
 }
 
+function mergeQaCompletion(base, completion) {
+  if (Array.isArray(base) || Array.isArray(completion)) {
+    const left = Array.isArray(base) ? base : [];
+    const right = Array.isArray(completion) ? completion : [];
+    const keyed = [...left, ...right].every(item => item && typeof item === 'object'
+      && cleanText(item.view_id || item.key || item.code || '', 80));
+    if (!keyed) return right.length ? right : left;
+    const merged = new Map();
+    [...left, ...right].forEach(item => {
+      const key = cleanText(item.view_id || item.key || item.code || '', 80);
+      merged.set(key, mergeQaCompletion(merged.get(key) || {}, item));
+    });
+    return [...merged.values()];
+  }
+  if (base && typeof base === 'object' && completion && typeof completion === 'object') {
+    const output = { ...base };
+    Object.entries(completion).forEach(([key, value]) => {
+      output[key] = mergeQaCompletion(output[key], value);
+    });
+    return output;
+  }
+  return completion === undefined || completion === null || completion === '' ? base : completion;
+}
+
 function stableId(prefix, value, index) {
   const normalized = cleanText(value, 80).toLowerCase()
     .replace(/[^a-z0-9\u4e00-\u9fff]+/g, '_')
@@ -903,31 +927,18 @@ async function analyzeSceneViews(options = {}) {
     lacksRealismEvidence(candidate) ? 'photographic_realism_qa.visible_evidence' : '',
     lacksIssueEvidence(candidate) ? 'view_issues.visible_evidence' : '',
   ].filter(Boolean);
-  const validateSceneQaText = text => {
-    const candidate = safeJson(text);
-    const missingFields = sceneQaMissingFields(candidate);
-    if (!missingFields.length) return true;
-    const error = new Error(`场景五图 QA 缺少：${missingFields.join('、')}`);
-    error.code = 'VISION_QA_SCHEMA_INVALID';
-    error.retryable = true;
-    error.missing_fields = missingFields;
-    error.partial_scene_qa = candidate;
-    throw error;
-  };
-  request.validateText = validateSceneQaText;
   result = await modelGateway.generateVision(request);
   parsed = safeJson(result.text);
-  if (!hasRequiredScores(parsed, sceneScoreFields)
-    || !hasRequiredScores(parsed, requirementScoreFields)
-    || !hasRequiredScores(parsed.photographic_realism_qa || {}, photographicRealismScoreFields)
-    || !hasRequiredScores(parsed, spatialCoverageScoreFields)
-    || lacksIssueEvidence(parsed)
-    || lacksRealismEvidence(parsed)) {
-    result = await modelGateway.generateVision({
+  const missingSceneFields = sceneQaMissingFields(parsed);
+  if (missingSceneFields.length) {
+    const completion = await modelGateway.generateVision({
       ...request,
-      userPrompt: request.userPrompt + '\nYour previous response omitted required scene-gate scores, realism evidence or exact per-view issue evidence. Return only the exact scene QA schema and view_issues; camera evidence belongs to a separate call.',
+      userPrompt: request.userPrompt
+        + `\nThe first inspection returned this valid partial JSON: ${JSON.stringify(parsed)}`
+        + `\nComplete only these missing requirements: ${missingSceneFields.join(', ')}. Return a compact JSON patch keyed by the original schema. Preserve the observed decision and do not invent a different scene review.`,
     });
-    parsed = safeJson(result.text);
+    parsed = mergeQaCompletion(parsed, safeJson(completion.text));
+    result = completion;
   }
   if (!hasRequiredScores(parsed, sceneScoreFields)
     || !hasRequiredScores(parsed, requirementScoreFields)
@@ -980,32 +991,18 @@ async function analyzeSceneViews(options = {}) {
       ? 'camera_design_qa.required_scores' : '',
     lacksCameraEvidence(candidate) ? 'cameras[master,reverse,interaction,detail].structured_evidence' : '',
   ].filter(Boolean);
-  cameraRequest.validateText = text => {
-    const candidate = safeJson(text);
-    const missingFields = cameraQaMissingFields(candidate);
-    if (!missingFields.length) return true;
-    const error = new Error(`逐机位 QA 缺少：${missingFields.join('、')}`);
-    error.code = 'CAMERA_QA_SCHEMA_INVALID';
-    error.retryable = true;
-    error.missing_fields = missingFields;
-    error.details = missingFields.map(field => ({
-      code: 'CAMERA_QA_FIELD_MISSING',
-      title: field,
-      message: `逐机位 QA 缺少 ${field}`,
-      status: 'missing',
-    }));
-    error.partial_camera_qa = candidate;
-    throw error;
-  };
   let cameraResult = await modelGateway.generateVision(cameraRequest);
   let cameraParsed = safeJson(cameraResult.text);
-  if (!hasRequiredScores(cameraParsed.camera_design_qa || {}, cameraDesignScoreFields)
-    || lacksCameraEvidence(cameraParsed)) {
-    cameraResult = await modelGateway.generateVision({
+  const missingCameraFields = cameraQaMissingFields(cameraParsed);
+  if (missingCameraFields.length) {
+    const completion = await modelGateway.generateVision({
       ...cameraRequest,
-      userPrompt: cameraRequest.userPrompt + '\nYour previous response omitted required camera scores or per-camera structured evidence. Return the exact camera_design_qa plus four complete cameras, with no scene QA duplication.',
+      userPrompt: cameraRequest.userPrompt
+        + `\nThe first inspection returned this valid partial JSON: ${JSON.stringify(cameraParsed)}`
+        + `\nComplete only these missing requirements: ${missingCameraFields.join(', ')}. Return a compact JSON patch. Preserve every complete camera record and add only missing evidence or scores.`,
     });
-    cameraParsed = safeJson(cameraResult.text);
+    cameraParsed = mergeQaCompletion(cameraParsed, safeJson(completion.text));
+    cameraResult = completion;
   }
   if (!hasRequiredScores(cameraParsed.camera_design_qa || {}, cameraDesignScoreFields)
     || lacksCameraEvidence(cameraParsed)) {
@@ -1387,6 +1384,7 @@ module.exports = {
   VIEW_KEYS,
   REFERENCE_VIEW_KEYS,
   VIEW_ISSUE_CODES,
+  mergeQaCompletion,
   analyzeSceneViews,
   buildUnverifiedContract,
   normalizeContract,
