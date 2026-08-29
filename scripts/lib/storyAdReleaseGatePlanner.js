@@ -61,6 +61,7 @@ const DOMAIN_RULES = [
     patterns: [
       /^src\/services\/newStoryAd\/(?:blueprint|storyboard)/i,
       /^scripts\/test-(?:new-)?story-ad-(?:blueprint|storyboard|detail-sketch)/i,
+      /^scripts\/test-story-ad-direct-storyboard/i,
       /^src\/services\/newStoryAd\/(?:productionBoardContractService|qualityReviewService|storyAdService|storyBeatAssistService|ttsAdapter)\.js$/i,
       /^src\/services\/newStoryAd\/(?:productionPromptCompilerService|soundJourneyService)\.js$/i,
       /^src\/services\/storyAdWorkspace\/(?:storyboardSketch|storyboardSketchGate)Service\.js$/i,
@@ -176,6 +177,10 @@ function scopedDomainFromPatch(file = '', patch = '') {
   if (normalized === 'src/routes/newStoryAd.js'
     && hunks.every(hunk => /reference-video-analyses|referenceVideoAnalyses|extendedAnalysisConfirmed|preflightFingerprint/i.test(hunk))) {
     return 'reference';
+  }
+  if (normalized === 'src/routes/newStoryAd.js'
+    && hunks.every(hunk => /tasks\/:id\/storyboard|generate_images|generateSketchBatch|STORYBOARD_IMAGE_CONFIRMATION_REQUIRED/i.test(hunk))) {
+    return 'story_content';
   }
   if (normalized === 'src/services/pipelineModelService.js'
     && hunks.every(hunk => /reference_video|reference video|reference-video/i.test(hunk))) {
