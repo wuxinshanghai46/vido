@@ -110,6 +110,7 @@ const BASE_FILES = [
   'scripts/repair-new-story-ad-person-looks.js',
   'scripts/repair-story-ad-reference-authority.js',
   'scripts/migrate-story-ad-active-plan-release.js',
+  'scripts/migrate-story-ad-public-media-models-v262.js',
   'scripts/lib/storyAdReleaseFiles.js',
   'scripts/run-with-pm2-env.js',
 ];
