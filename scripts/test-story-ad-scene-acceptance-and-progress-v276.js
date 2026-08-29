@@ -120,7 +120,7 @@ function verifyUiContract() {
   assert.match(page, /重新审核场景/);
   assert.match(page, /acceptCurrentScenes/);
   const qa = read('public/story-ad/views/sceneQaPublicState.js');
-  assert.match(qa, /这不代表图片已被判定不合格/);
+  assert.match(qa, /不代表图片不合格/);
   const card = read('public/story-ad/views/sceneDossierCard.js');
   assert.match(card, /qaPublic\.message/);
   const route = read('src/routes/newStoryAd/sceneBatchRoutes.js');

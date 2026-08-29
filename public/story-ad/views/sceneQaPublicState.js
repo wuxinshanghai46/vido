@@ -30,7 +30,7 @@ export function sceneQaPublicState(item = {}) {
       : '审核服务未返回结论，图片已保留');
   if (serviceUnavailable) return {
     kind: 'service_unavailable', title: unavailableTitle,
-    message: `${text(item.qa?.failure_summary) || '审核服务没有取得可定位到具体图片的完整证据'}。这不代表图片已被判定不合格；可重新审核，或使用当前图片继续。`,
+    message: `${text(item.qa?.failure_summary) || '未定位到具体图片'}，不代表图片不合格；可重新审核或使用当前图片继续。`,
   };
   if (action === 'reverify') return {
     kind: 'evidence_pending', title: 'QA 尚未定位到具体图片',
