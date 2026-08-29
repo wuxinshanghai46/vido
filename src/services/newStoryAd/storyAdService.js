@@ -5,6 +5,7 @@ const modelGateway = require('./modelGateway'), jsonRepair = require('./jsonRepa
 const { buildContext, contextPrompt, cleanText, normalizeCharacters, assertContextConsistent, taskTitle } = require('./contextBuilder');
 const sceneExperienceAssist = require('./sceneExperienceAssistService'), assistKnowledgePolicy = require('./assistKnowledgePolicyService'), blueprintLifecycle = require('./blueprintLifecycleService');
 const { generateStoryboardTable, rewriteStoryboard } = require('./storyboardTableService');
+const storyboardReviewPolicy = require('./storyboardReviewPolicyService');
 const storyboardCoverageLifecycle = require('./storyboardCoverageLifecycleService'), storyboardGenerationPreflight = require('./storyboardGenerationPreflightService'), storyboardImageConfirmationGate = require('../storyAdWorkspace/storyboardImageConfirmationGateService'), storyFlowPlanning = require('../storyAdWorkspace/storyFlowPlanningService');
 const { reviewStoryboard } = require('./qualityReviewService'), storyboardContinuityGate = require('./storyboardContinuityGateService');
 const { buildKeyframeContracts } = require('./keyframeContractService'), knowledgePolicyRuntime = require('./knowledgePolicyRuntimeService');
@@ -944,10 +945,10 @@ async function generateStoryboardStage(taskId, options = {}) {
   let review = await reviewStoryboard(stageCtx, shots, { taskId });
   storage.saveReview(taskId, 'storyboard.initial', review);
   for (let attempt = 1; attempt <= 2; attempt += 1) {
-    const issues = [
-      ...(review.blocking_issues || []),
-      ...(review.rewrite_issues || []),
-    ];
+    // 软性优化建议不能再触发第二轮付费模型并阻断已经完整的镜头合同。
+    // 只有会造成主体漂移、结构断裂等硬问题才按命中的镜头局部重写；
+    // 景别措辞、氛围或可继续细化的建议随合同发布，供后续图片提示词使用。
+    const issues = storyboardReviewPolicy.blockingRewriteIssues(review);
     if (!shots.length || !issues.length) break;
     shots = await rewriteStoryboard(stageCtx, blueprint, shots, issues, { taskId });
     await saveCheckpoint({ phase: `rewrite_${attempt}_reviewing`, shots, completed_indexes: shots.map(shot => Number(shot.index || 0)), expected_total: shots.length });
@@ -957,6 +958,7 @@ async function generateStoryboardStage(taskId, options = {}) {
     review = nextReview;
     if (!review.blocking_issues.length && !review.rewrite_issues.length) break;
   }
+  review = storyboardReviewPolicy.publishableReview(review);
   if (review.blocking_issues.length) {
     const failedCompiled = temporalEvidenceLifecycle.compileForTask({ storage, taskId, ctx: stageCtx, blueprint, shots }); shots = contentDomainArtifacts.tagShots(ctx, failedCompiled.shots);
     storage.saveOutput(taskId, 'storyboard_table', shots);

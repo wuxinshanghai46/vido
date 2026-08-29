@@ -365,6 +365,12 @@
 .storyboard-stage-bar span { color: var(--muted); font-size: 11px; }
 .storyboard-stage-bar > .storyboard-stage-actions { display: flex; align-items: center; justify-content: flex-end; gap: 10px; flex: 0 0 auto; }
 .storyboard-primary-actions { display: flex; align-items: center; justify-content: flex-end; gap: 10px; margin: 8px 0 10px; }
+.storyboard-view-head { margin-bottom: 10px; }
+.storyboard-view-head h1 { font-size: 22px; line-height: 1.25; }
+.storyboard-view-head p { margin-top: 5px; font-size: 12px; line-height: 1.5; }
+.storyboard-primary-actions .btn,.storyboard-primary-actions .select { min-height: 34px; font-size: 12px; }
+.storyboard-tabs .tab { padding: 8px 12px; font-size: 12px; }
+.storyboard-view-head + .guide { margin-bottom: 10px; padding: 9px 12px; font-size: 11px; line-height: 1.45; }
 @media (max-width: 760px) { .storyboard-primary-actions { align-items: stretch; flex-direction: column; } .storyboard-primary-actions .btn { width: 100%; } }
 .sketch-batch-progress { display: grid; gap: 8px; margin: -2px 0 14px; padding: 12px 14px; border: 1px solid color-mix(in srgb, var(--mint) 45%, var(--line)); border-radius: 12px; background: var(--surface); }
 .sketch-batch-progress.is-failed { border-color: color-mix(in srgb, var(--danger) 55%, var(--line)); }

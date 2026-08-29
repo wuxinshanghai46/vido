@@ -1855,11 +1855,30 @@ router.post('/tasks/:id/script-package', asyncRoute(async (req, res) => {
 }));
 
 router.post('/tasks/:id/storyboard', asyncRoute(async (req, res) => {
+  const body = req.body?.generate_images === true
+    ? mediaModelSelection.applySelection('new_story_ad.storyboard_image', req.body || {})
+    : (req.body || {});
   return queueTaskStage(
     req,
     res,
     'storyboard',
-    job => service.generateStoryboardStage(req.params.id, { generation_id: job.generationId }),
+    async job => {
+      const storyboard = await service.generateStoryboardStage(req.params.id, { generation_id: job.generationId });
+      if (body.generate_images !== true) return { storyboard };
+      if (body.confirmed !== true) {
+        const error = new Error('生成分镜图前需要确认本次图片调用');
+        error.status = 400;
+        error.code = 'STORYBOARD_IMAGE_CONFIRMATION_REQUIRED';
+        throw error;
+      }
+      // 延迟加载以避免新剧情广告服务与工作区投影模块初始化时形成循环依赖。
+      const storyboardSketches = require('../services/storyAdWorkspace/storyboardSketchService');
+      const images = await storyboardSketches.generateSketchBatch(req.params.id, {
+        ...body,
+        generation_id: job.generationId,
+      });
+      return { storyboard, images };
+    },
     { deadlineMs: task => service.longFormStageBudgetMs(task.id, 'storyboard') },
   );
 }));

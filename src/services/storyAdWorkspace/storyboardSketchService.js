@@ -193,7 +193,8 @@ async function generateSketch(taskId, shotIndex, options = {}, dependencies = {}
     error.code = 'TASK_NOT_FOUND';
     throw error;
   }
-  if (task.active_generation_id) {
+  const ownerGenerationId = clean(options.generation_id || options.generationId, 160);
+  if (task.active_generation_id && ownerGenerationId !== clean(task.active_generation_id, 160)) {
     const error = new Error('当前生成正在执行，不能同时生成人物场景分镜');
     error.status = 409;
     error.code = 'GENERATION_ACTIVE_EDIT_BLOCKED';
@@ -282,7 +283,7 @@ async function generateSketch(taskId, shotIndex, options = {}, dependencies = {}
   const prompt = [
     '商业影视人物场景分镜图，清晰呈现已确认人物、场景、动作、站位、景别、机位和运动方向。',
     '严格结合当前人物与场景参考资产，不得退化为只表达剧情流向的线稿。',
-    '不要加入文字、字幕、镜头编号、水印、品牌标识或彩色成片效果。',
+    '不要加入文字、字幕、镜头编号、水印或未授权品牌标识。使用与已确认人物和场景资产一致的综合色彩与光线，保持影视分镜预览质感，不添加无关的成片特效。',
     `镜头标题：${clean(shot.title || `镜头 ${numericIndex}`, 160)}`,
     `画面：${clean(shot.visual || shot.visual_description || '', 1200)}`,
     `动作：${clean(shot.action || '', 800)}`,
@@ -427,6 +428,7 @@ async function generateSketchBatch(taskId, options = {}, dependencies = {}) {
           const result = await generateSketch(taskId, shotIndex, {
             confirmed: true,
             batch_owner: taskId,
+            generation_id: options.generation_id || options.generationId,
             client_request_id: `${batchId}:${shotIndex}`,
             image_model: options.image_model || options.imageModel,
           }, dependencies);

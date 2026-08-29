@@ -180,22 +180,38 @@ export function generationProgressView(bundle = {}) {
   if (!active && !failed) return null;
   const stage = normalizeGenerationStage(progress.stage || project.active_stage || project.stage || 'full') || 'full';
   const checkpointRecovery = checkpointRecoveryView(bundle);
-  const total = checkpointRecovery?.total || Math.max(1, Math.floor(Number(progress.target_total || progress.total || 1) || 1));
-  const processed = checkpointRecovery?.completed ?? Math.floor(Math.max(0, Math.min(total, Number(progress.processed ?? progress.completed ?? 0) || 0)));
-  const failedCount = checkpointRecovery
+  const imageBatch = stage === 'storyboard' && bundle.storyboard?.image_batch && typeof bundle.storyboard.image_batch === 'object'
+    ? bundle.storyboard.image_batch
+    : null;
+  const imageBatchVisible = imageBatch && Number(imageBatch.requested || 0) > 0
+    && ['queued', 'running', 'failed', 'succeeded'].includes(String(imageBatch.status || ''));
+  let total = imageBatchVisible
+    ? Math.max(1, Number(imageBatch.requested || 0))
+    : (checkpointRecovery?.total || Math.max(1, Math.floor(Number(progress.target_total || progress.total || 1) || 1)));
+  let processed = imageBatchVisible
+    ? Math.max(0, Math.min(total, Number(imageBatch.processed ?? imageBatch.completed ?? 0) || 0))
+    : (checkpointRecovery?.completed ?? Math.floor(Math.max(0, Math.min(total, Number(progress.processed ?? progress.completed ?? 0) || 0))));
+  const failedCount = imageBatchVisible
+    ? Math.max(0, processed - Number(imageBatch.succeeded ?? imageBatch.completed ?? 0))
+    : checkpointRecovery
     ? Math.max(0, checkpointRecovery.total - checkpointRecovery.completed)
     : Math.floor(Math.max(0, Math.min(processed, Number(progress.failed ?? progress.qa_failed ?? progress.units_failed ?? 0) || 0)));
-  const succeededCount = checkpointRecovery?.completed
+  const succeededCount = imageBatchVisible
+    ? Math.max(0, Math.min(processed, Number(imageBatch.succeeded ?? imageBatch.completed ?? 0) || 0))
+    : checkpointRecovery?.completed
     ?? Math.floor(Math.max(0, Math.min(processed, Number.isFinite(Number(progress.succeeded))
       ? Number(progress.succeeded)
       : processed - failedCount)));
-  const percent = checkpointRecovery
+  const percent = imageBatchVisible
+    ? Math.round((processed / total) * 100)
+    : checkpointRecovery
     ? Math.round((processed / total) * 100)
     : Math.max(0, Math.min(100, Number.isFinite(Number(progress.percent))
       ? Math.round(Number(progress.percent))
       : Math.round((processed / total) * 100)));
-  const activeIndexes = Array.isArray(progress.active_indexes)
-    ? progress.active_indexes.map(value => Math.round(Number(value) || 0)).filter(value => value > 0).slice(0, 8)
+  const activeIndexesSource = imageBatchVisible ? imageBatch.active_indexes : progress.active_indexes;
+  const activeIndexes = Array.isArray(activeIndexesSource)
+    ? activeIndexesSource.map(value => Math.round(Number(value) || 0)).filter(value => value > 0).slice(0, 8)
     : [];
   const currentIndex = Math.max(0, Math.round(Number(progress.current_index) || 0));
   const stageLabel = GENERATION_STAGE_LABELS[stage] || '当前任务';
@@ -223,13 +239,15 @@ export function generationProgressView(bundle = {}) {
   let liveText = '';
   if (failed && stage === 'scene_config') liveText = '资产已保留，请更新方案';
   else if (failed && failureCode === 'BLUEPRINT_POLISH_QUALITY_FAILED') liveText = '脚本初稿已保存，可从当前初稿继续检查';
-  else if (failed && storyboardCheckpoint) liveText = `已保存 ${storyboardCheckpoint.completed}/${storyboardCheckpoint.total} 个镜头合同；重试只补缺失镜头，分镜图片尚未开始`;
+  else if (failed && imageBatchVisible) liveText = `已保留 ${Number(imageBatch.succeeded || 0)}/${total} 张分镜画面；重试只补失败镜头`;
+  else if (failed && storyboardCheckpoint) liveText = `已保存 ${storyboardCheckpoint.completed}/${storyboardCheckpoint.total} 个后台镜头合同；重试只补缺失项`;
   else if (failed) liveText = checkpointRecovery
     ? `已保留 ${checkpointRecovery.completed}/${checkpointRecovery.total} 项人物图片；${billingUnknown ? '核对计费前不会重复调用' : '仅处理缺失项'}`
     : (billingUnknown ? '已保留成功资产，核对计费前不会重复调用' : '已保留成功资产，可从缺失项继续');
   else if (activeIndexes.length) liveText = ['person_plan', 'subject_assets', 'person_sheet', 'person_dossier'].includes(stage)
     ? `正在并行处理第 ${activeIndexes.join('、')} 个人物`
     : `正在生成第 ${activeIndexes.join('、')} 镜`;
+  else if (imageBatchVisible && String(imageBatch.status || '') === 'running') liveText = `正在并行生成分镜画面，已完成 ${processed}/${total}`;
   else if (currentIndex && ['storyboard', 'keyframes', 'video', 'media'].includes(stage)) liveText = `正在生成第 ${currentIndex} 镜`;
   else liveText = progress.phase ? String(progress.phase).replaceAll('_', ' ') : '正在处理';
   return {

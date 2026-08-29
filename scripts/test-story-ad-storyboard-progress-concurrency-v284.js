@@ -177,7 +177,7 @@ function testUiContract() {
   const view = fs.readFileSync(path.join(__dirname, '../public/story-ad/views/storyboardView.js'), 'utf8');
   const ui = fs.readFileSync(path.join(__dirname, '../public/story-ad/components/ui.js'), 'utf8');
   const css = fs.readFileSync(path.join(__dirname, '../public/story-ad/workspace.css'), 'utf8');
-  assert(view.indexOf("store.beginStageSubmission('storyboard'") < view.indexOf("store.runStage('storyboard')"), '点击后必须立即建立乐观进度');
+  assert(view.indexOf("store.beginStageSubmission('storyboard'") < view.indexOf("store.runStage('storyboard', options)"), '点击后必须立即建立乐观进度');
   assert.match(view, /partial_shots/);
   assert.match(view, /renderSketchResults/);
   assert.match(view, /active_indexes/);
