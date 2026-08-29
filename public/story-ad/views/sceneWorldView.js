@@ -1,7 +1,7 @@
-import { request } from '../api.js?v=20260829-production-v276e';
-import { escapeHtml, mediaPreview, toast } from '../components/ui.js?v=20260829-production-v276e';
-import { promptDialog } from '../components/dialog.js?v=20260829-production-v276e';
-import { list, worldById } from './sceneWorldData.js?v=20260829-production-v276e';
+import { request } from '../api.js?v=20260829-production-v277';
+import { escapeHtml, mediaPreview, toast } from '../components/ui.js?v=20260829-production-v277';
+import { promptDialog } from '../components/dialog.js?v=20260829-production-v277';
+import { list, worldById } from './sceneWorldData.js?v=20260829-production-v277';
 const CAPABILITY_LABELS = {
   supports_photo_views: '真实图片视角',
   supports_panorama: '360原地环视（3DoF）',
@@ -344,7 +344,7 @@ function initSceneWorldViewer({ overlay, bundle, world, authority }) {
     const requestToken = activation;
     activateModeButton(mode);
     currentNode = node;
-    const { mountSceneWorldLayoutViewer } = await import('./sceneWorldLayoutViewer.js?v=20260829-production-v276e');
+    const { mountSceneWorldLayoutViewer } = await import('./sceneWorldLayoutViewer.js?v=20260829-production-v277');
     if (requestToken !== activation) return;
     viewer = mountSceneWorldLayoutViewer({ host, bundle, world, authority, node, nodes, mode, previewUrl, photoStrip, onSelectPhoto: showPhoto });
     if (help) help.textContent = viewer.helpText;
@@ -357,7 +357,7 @@ function initSceneWorldViewer({ overlay, bundle, world, authority }) {
     host.innerHTML = '<div class="scene-world-canvas-loading">正在按需加载3DoF球形全景查看器…</div>';
     if (help) help.textContent = '3DoF原地环视：可改变观看方向与FOV，不支持摄像机前后左右位移';
     try {
-      const module = await import('./panoramaViewer.js?v=20260829-production-v276e');
+      const module = await import('./panoramaViewer.js?v=20260829-production-v277');
       if (requestToken !== activation) return;
       host.replaceChildren();
       viewer = module.mountPanoramaViewer({ host, source: node.image_url, label: node.name || world.name });
@@ -423,7 +423,7 @@ function initSceneWorldViewer({ overlay, bundle, world, authority }) {
 }
 
 async function openSceneWorldStudio(bundle, world) {
-  const authority = await import('./sceneWorldAuthorityPlan.js?v=20260829-production-v276e');
+  const authority = await import('./sceneWorldAuthorityPlan.js?v=20260829-production-v277');
   const realPhotoNodes = photoNodes(world);
   const hasRealPhotos = realPhotoNodes.length > 0;
   const overlay = document.createElement('div');
