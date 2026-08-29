@@ -73,9 +73,9 @@ const sandbox = {
 vm.runInNewContext(`${viewSource}\nglobalThis.__render=sceneBatchProgressMarkup;`, sandbox);
 const html = sandbox.__render(projected);
 assert.match(html, />Image</);
-assert.match(html, /4\/5 · 80% · 审核中/);
+assert.match(html, /4\/5 · 80% · 场景 A · 互动位 · 审核中/);
 const stoppedHtml = sandbox.__render({ ...projected, status: 'failed', phase: 'stopped' });
-assert.match(stoppedHtml, /4\/5 · 80% · 已停止/);
+assert.match(stoppedHtml, /4\/5 · 80% · 场景 A · 互动位 · 已停止/);
 
 const page = fs.readFileSync(path.join(root, 'public/story-ad/views/sceneWorldPage.js'), 'utf8');
 const card = fs.readFileSync(path.join(root, 'public/story-ad/views/scenePromptPreview.js'), 'utf8');
