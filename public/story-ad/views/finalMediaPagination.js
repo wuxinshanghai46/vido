@@ -1,4 +1,4 @@
-import { setButtonBusy, toast } from '../components/ui.js?v=20260829-production-v260c';
+import { setButtonBusy, toast } from '../components/ui.js?v=20260829-production-v260d';
 
 export function moreMediaButton(catalog = {}, kind = 'keyframes', label = '继续加载') {
   return catalog?.has_more
