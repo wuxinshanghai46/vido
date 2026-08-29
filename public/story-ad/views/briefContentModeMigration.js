@@ -1,4 +1,4 @@
-import { confirmDialog } from '../components/dialog.js?v=20260830-production-v284';
+import { confirmDialog } from '../components/dialog.js?v=20260830-production-v285';
 
 export async function confirmContentModeMigration(savedMode = '', nextMode = '') {
   if (!savedMode || savedMode === nextMode) return { cancelled: false, confirmed: false };
