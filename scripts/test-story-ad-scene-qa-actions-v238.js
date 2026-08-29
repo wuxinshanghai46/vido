@@ -146,7 +146,7 @@ async function testBatchBinding() {
     sandbox.__bind(host, { selectedSceneImageModel: () => 'mock/selected', bundle: { project: { id: 'task-batch' }, revisions: { content: 1 }, assets: { scenes } }, store: {
       beginStageSubmission() {},
       async runStage(pathname, body) { requests.push({ pathname, body }); return { accepted: true }; },
-    }, async refreshShell() {} });
+    }, async refreshShell() {}, async refreshCurrentView() {} });
     await batchButton.clickHandler({ currentTarget: batchButton });
     return { confirmationCalls, authorizationCalls, requests };
   }
@@ -189,7 +189,8 @@ async function main() {
   qaUnavailable.scene_card.qa_checks[0].reasons = qaUnavailable.qa.reasons;
   const unavailableHtml = dossier.renderSceneCoverCard(qaUnavailable);
   assert.match(unavailableHtml, /<div class="scene-cover-qa-notice" role="status">/);
-  assert.match(unavailableHtml, /审核暂不可用 · 图片已保留/);
+  assert.match(unavailableHtml, /审核结果不完整，图片已保留/);
+  assert.doesNotMatch(unavailableHtml, /QA 未通过/, '审核服务未取得结论时不得误写成内容 QA 未通过');
   assert.doesNotMatch(unavailableHtml, /这不是图片内容被判失败|稍后可重新审核|重新审核 0 次图片调用|<details|<summary/,
     '普通用户场景卡不得展示技术解释或可展开说明');
   assert.doesNotMatch(unavailableHtml, /scene-cover-qa-failure is-service-unavailable/,

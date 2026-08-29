@@ -26,9 +26,11 @@ assert.equal(plan(['public/story-ad/views/briefView.js']).profile, 'ui');
 assert.deepEqual(plan(['public/story-ad/views/briefView.js']).gates.map(row => row.id), ['workspace_ui', 'release_core']);
 const workspaceUiGate = plan(['public/story-ad/views/briefView.js']).gates.find(row => row.id === 'workspace_ui');
 assert.match(workspaceUiGate.command, /test-story-ad-scene-qa-actions-v238\.js/);
+assert.match(workspaceUiGate.command, /test-story-ad-scene-submit-feedback-v273\.js/);
 assert.match(workspaceUiGate.command, /test-story-ad-page-load-lifecycle-v253\.js/);
 assert.deepEqual(plan([
   'scripts/test-story-ad-generation-one-click-v237.js',
+  'scripts/test-story-ad-scene-submit-feedback-v273.js',
   'scripts/test-story-ad-page-load-lifecycle-v253.js',
   'scripts/test-story-ad-prompt-autosave-navigation-v232.js',
 ]).gates.map(row => row.id), ['workspace_ui', 'release_core'], '场景页交互与加载生命周期测试必须保持在家庭电脑 UI 影响域');

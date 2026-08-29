@@ -25,8 +25,9 @@ function aggregate(task = {}, stage = '') {
   if (!rows.length) return task.generation_progress || null;
   const activeKeys = new Set(Object.keys(state.active));
   const activeRows = rows.filter(row => activeKeys.has(row.target_key));
+  const activeGenerationIds = new Set(activeRows.map(row => String(row.generation_id || '')).filter(Boolean));
   const relevant = activeRows.length
-    ? rows
+    ? rows.filter(row => activeGenerationIds.has(String(row.generation_id || '')))
     : rows.filter(row => ['done', 'completed', 'succeeded', 'failed', 'cancelled'].includes(String(row.status || '').toLowerCase()));
   const source = relevant.length ? relevant : rows;
   const total = source.reduce((sum, row) => sum + Math.max(0, Number(row.target_total || row.total || 0) || 0), 0);
@@ -91,7 +92,11 @@ function upsert(task = {}, options = {}) {
     && !Object.keys(state.active).some(value => value.startsWith(`${stage}:`))) {
     Object.keys(state.progress).filter(value => value.startsWith(`${stage}:`)).forEach(value => delete state.progress[value]);
   }
-  const previous = state.progress[targetKey] || {};
+  const storedPrevious = state.progress[targetKey] || {};
+  const incomingGenerationId = String(options.generationId || options.generation_id || options.progress?.generation_id || '');
+  const previous = incomingGenerationId && incomingGenerationId !== String(storedPrevious.generation_id || '')
+    ? {}
+    : storedPrevious;
   const now = options.updatedAt || new Date().toISOString();
   state.progress[targetKey] = {
     ...previous,
@@ -99,11 +104,11 @@ function upsert(task = {}, options = {}) {
     stage,
     scope_id: scopeId,
     scene_id: options.sceneId || options.scene_id || previous.scene_id || scopeId,
-    generation_id: options.generationId || options.generation_id || previous.generation_id || '',
+    generation_id: incomingGenerationId || previous.generation_id || '',
     status: options.status || options.progress?.status || previous.status || 'queued',
-    started_at: previous.started_at || options.startedAt || options.started_at || now,
+    started_at: previous.started_at || options.startedAt || options.started_at || options.progress?.started_at || now,
     updated_at: now,
-    ...(['done', 'succeeded', 'failed', 'cancelled'].includes(String(options.status || '').toLowerCase())
+    ...(['done', 'completed', 'succeeded', 'failed', 'cancelled'].includes(String(options.status || '').toLowerCase())
       ? { finished_at: options.finishedAt || options.finished_at || now }
       : {}),
   };

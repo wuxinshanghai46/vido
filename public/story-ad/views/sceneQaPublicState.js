@@ -23,8 +23,13 @@ export function sceneQaPublicState(item = {}) {
   const serviceUnavailable = explicitUnavailable
     || (!explicitContentFailure && rawReasons.some(reason => QA_SERVICE_FAILURE.test(reason)));
   const action = text(item.repair_plan?.action);
+  const unavailableTitle = rawReasons.some(reason => /缺少|SCHEMA|PROVIDER_RESPONSE_INVALID/i.test(reason))
+    ? '审核结果不完整，图片已保留'
+    : (rawReasons.some(reason => /TIMEOUT|超时/i.test(reason))
+      ? '审核响应超时，图片已保留'
+      : '审核服务未返回结论，图片已保留');
   if (serviceUnavailable) return {
-    kind: 'service_unavailable', title: '审核暂不可用，图片已保留',
+    kind: 'service_unavailable', title: unavailableTitle,
     message: `${text(item.qa?.failure_summary) || '审核服务没有取得有效结论'}。图片已保留，本次不会重新生成图片。`,
   };
   if (action === 'reverify') return {

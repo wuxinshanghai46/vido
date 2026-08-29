@@ -39,7 +39,7 @@ export function bindSceneCards(host, context) {
       context.store.beginStageSubmission?.('scene_asset', 1, '正在提交场景生成任务。');
       await (await controllerFor(sceneId))?.flush();
       await submitScene(scene, button);
-      toast('任务已提交'); await context.refreshShell();
+      toast('任务已提交'); await context.refreshCurrentView();
     } catch (error) { toast(error.message || '生成场景失败', 'error'); setButtonBusy(button, false); }
   }));
   host.querySelector('[data-run-scene-actions]')?.addEventListener('click', async event => {
@@ -60,10 +60,11 @@ export function bindSceneCards(host, context) {
         if (!confirmation.accepted) { setButtonBusy(batchButton, false); return; }
         await authorizeBillingReviews({ bundle: context.bundle, lane: 'scenes', reviewBatch: confirmation.reviewBatch });
       }
-      context.store.beginStageSubmission?.('scene_asset', plan.count, `正在提交 ${plan.count} 个场景的并行处理任务。`, {
-        mode: 'scene_batch', batch_scene_ids: plan.ready.map(item => item.sceneId),
-      });
-      setButtonBusy(batchButton, true, '正在提交…');
+      const optimisticActions = plan.ready.map(item => ({
+        scene_id: item.sceneId,
+        action: String(item.scene?.repair_plan?.action || (item.action.kind === 'generate' ? 'generate' : 'repair')),
+        image_total: item.action.billable === false ? 0 : Math.max(1, Number(item.scene?.repair_plan?.count || 5) || 5),
+      }));
       const actions = plan.ready.map(({ scene, sceneId }) => {
         const card = cardFor(sceneId);
         return {
@@ -75,6 +76,11 @@ export function bindSceneCards(host, context) {
           aspect_ratio: context.bundle?.brief?.output_ratio || context.bundle?.project?.request?.output_ratio || '16:9',
         };
       });
+      context.store.beginStageSubmission?.('scene_asset', plan.count, `正在提交 ${plan.count} 个场景的并行处理任务。`, {
+        mode: 'scene_batch', batch_scene_ids: plan.ready.map(item => item.sceneId), batch_actions: optimisticActions,
+      });
+      setButtonBusy(batchButton, true, '正在提交…');
+      await context.refreshCurrentView();
       const imageModel = context.selectedSceneImageModel?.();
       if (!imageModel) throw new Error('请先选择本次场景生成模型');
       const result = await context.store.runStage('scene-actions', {
@@ -84,10 +90,14 @@ export function bindSceneCards(host, context) {
       });
       if (result.accepted === false) throw new Error(result.message || '场景并行处理任务未被接受');
       toast(`已开始并行处理 ${plan.count} 个场景`, 'success');
-      await context.refreshShell();
+      await context.refreshCurrentView();
     } catch (error) {
       toast(error.message || '场景并行处理任务没有提交成功', 'error');
       setButtonBusy(batchButton, false);
+      try {
+        await context.store.refreshSections?.('summary,assets');
+        await context.refreshCurrentView();
+      } catch {}
     }
   });
   return editorRuntime.destroy;

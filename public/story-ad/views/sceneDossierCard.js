@@ -123,15 +123,18 @@ export function renderSceneCoverCard(item = {}) {
   const master = dossier.views.master;
   const qaFailure = sceneQaFailureDetails(item);
   const qaPublic = sceneQaPublicState(item);
+  const publicStatus = qaPublic.kind === 'service_unavailable'
+    ? qaPublic.title.replace('，图片已保留', '')
+    : statusText(dossier.state, dossier.completed);
   return `<div class="scene-cover-board is-${dossier.state}" aria-label="${escapeHtml(item.name || '场景')}场景资产摘要">
     <div class="scene-cover-visual">${master?.image_url
       ? mediaPreview(master, { label: `${item.name || '场景'} · 主视总览`, width: 960, zoomWidth: 1600, symbol: '场景主视', zoomable: true, zoomGroup: `scene-cover-${item.id || 'current'}` })
       : '<div class="scene-dossier-missing" role="status"><span>待生成主视图</span></div>'}
-      <span class="scene-cover-state">${escapeHtml(statusText(dossier.state, dossier.completed))} · 视图 ${dossier.completed}/${dossier.total}</span>
+      <span class="scene-cover-state">${escapeHtml(publicStatus)} · 视图 ${dossier.completed}/${dossier.total}</span>
     </div>
     <div class="scene-cover-slots" aria-label="五类场景证据完整度">${SCENE_VIEW_ORDER.map(key => `<span class="is-${dossier.views[key]?.image_url ? 'complete' : dossier.viewStatuses[key]?.state || 'missing'}"><i aria-hidden="true"></i>${escapeHtml(SCENE_VIEW_LABELS[key])}</span>`).join('')}</div>
     ${sceneRuntimeFailureMarkup({ ...item, completed_view_keys: SCENE_VIEW_ORDER.filter(key => dossier.views[key]?.image_url) })}
-    ${qaPublic.kind === 'service_unavailable' ? '<div class="scene-cover-qa-notice" role="status"><i aria-hidden="true"></i><b>审核暂不可用 · 图片已保留</b></div>' : (dossier.state === 'conflict' ? `<div class="scene-cover-qa-failure" role="status"><b>${escapeHtml(qaPublic.title || `未通过：${qaFailure.labels.join('、') || '一致性 QA'}`)}</b>${qaFailure.reasons.length ? `<ul>${qaFailure.reasons.slice(0, 3).map(reason => `<li>${escapeHtml(reason)}</li>`).join('')}</ul>` : `<span>${escapeHtml(qaPublic.message || '尚无可定位的逐图证据；请先重新审核，取得证据后只修复对应图片。')}</span>`}</div>` : '')}
+    ${qaPublic.kind === 'service_unavailable' ? `<div class="scene-cover-qa-notice" role="status"><i aria-hidden="true"></i><b>${escapeHtml(qaPublic.title)}</b></div>` : (dossier.state === 'conflict' ? `<div class="scene-cover-qa-failure" role="status"><b>${escapeHtml(qaPublic.title || `未通过：${qaFailure.labels.join('、') || '一致性 QA'}`)}</b>${qaFailure.reasons.length ? `<ul>${qaFailure.reasons.slice(0, 3).map(reason => `<li>${escapeHtml(reason)}</li>`).join('')}</ul>` : `<span>${escapeHtml(qaPublic.message || '尚无可定位的逐图证据；请先重新审核，取得证据后只修复对应图片。')}</span>`}</div>` : '')}
   </div>`;
 }
 

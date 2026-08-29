@@ -129,7 +129,10 @@ function create(deps = {}) {
   function writeSceneProgress(taskId, generationId, action = {}, state = {}) {
     const task = storage.getTask(taskId) || {};
     const laneKey = sceneLaneKey(action.scene_id);
-    const previous = task.target_generation_progress?.[laneKey] || {};
+    const storedPrevious = task.target_generation_progress?.[laneKey] || {};
+    const previous = String(storedPrevious.generation_id || '') === String(generationId || '')
+      ? storedPrevious
+      : {};
     const now = new Date().toISOString();
     const targetTotal = Math.max(1, Number(previous.target_total || action.image_total || 1) || 1);
     const status = text(state.status || previous.status || 'queued', 40);

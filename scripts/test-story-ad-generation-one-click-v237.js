@@ -73,8 +73,9 @@ async function main() {
   assert.equal((batchFixHandler.match(/runStage\('scene-actions'/g) || []).length, 1, '统一场景按钮只能提交一个服务器批任务');
   assert(!batchFixHandler.includes('Promise.allSettled'), '统一场景按钮不得恢复旧版并发提交路径');
   assert(projectStore.includes('beginStageSubmissionState({ state, set }')
-    && stageSubmissionState.includes("active_generation_id: state.bundle.project.active_generation_id || 'client-submitting'")
-    && stageSubmissionState.includes('client_optimistic: true'), '客户端提交阶段必须同步创建可见的0%进度状态');
+    && stageSubmissionState.includes('active_generation_id: optimisticGenerationId')
+    && stageSubmissionState.includes('target_generation_progress: targetProgress')
+    && stageSubmissionState.includes('client_optimistic: true'), '客户端提交阶段必须同步创建每个目标可见的0%进度状态');
   assert.match(workspaceCss, /\.project-progress-head strong \{[^}]*font-size: 14px/);
   assert(responsive.includes('@media(max-width:900px)') && responsive.includes('@media(max-width:700px)'));
   assert(responsive.includes('.scene-card-controls') && responsive.includes('grid-template-columns:repeat(2,minmax(0,1fr))'));

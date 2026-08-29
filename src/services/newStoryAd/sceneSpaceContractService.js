@@ -783,9 +783,12 @@ async function analyzeSceneViews(options = {}) {
       + 'For a complete spatial lock, spatial_coverage_qa must fail if the near-vertical top-down layout reference is missing or role-invalid, reverse/side is not meaningfully different from master, interaction does not establish the action zone, or camera diversity is insufficient. '
       + 'A valid fifth layout view must use an 82-90 degree downward near-orthographic camera, fit the complete usable footprint and every scene boundary or task-defined edge inside one frame, make access points, fixed anchors, circulation and action-zone relations readable together, and remain the same location as the master. For enclosed spaces, the ceiling must be removed and walls may appear only as low cutaway perimeter boundaries. Reject any visible horizon, dominant vertical wall face, mild high-angle commercial shot, frontal elevation, close crop, missing perimeter or master reframe. '
       + 'The detail image does not count as reverse-space or layout coverage. Do not infer unseen space from visual consistency alone. Do not fail cross_view_qa merely because camera perspective changes. '
-      + 'Keep the complete JSON under 3600 characters. Put requirement_qa, photographic_realism_qa, cross_view_qa, spatial_coverage_qa and view_issues before optional details. Do not return camera_design_qa or cameras in this call. Use at most 3 concise reasons per gate, 6 view issues, 5 anchors, 3 zones, 8 geometry facts and 5 materials; keep each description under 80 characters.',
+      + 'Keep the complete JSON under 6000 characters. Put requirement_qa, photographic_realism_qa, cross_view_qa, spatial_coverage_qa and view_issues before optional details. Do not return camera_design_qa or cameras in this call. Use at most 3 concise reasons per gate, 6 view issues, 5 anchors, 3 zones, 8 geometry facts and 5 materials; keep each description under 80 characters.',
     imageUrls: views.map(view => view.url || view.image_url).filter(Boolean),
-    maxTokens: 3800,
+    maxTokens: 5600,
+    timeoutMs: 45000,
+    stageBudgetMs: 150000,
+    structuredOutput: { mode: 'json_object', name: 'scene_visual_qa' },
   };
   let result;
   let parsed;
@@ -966,8 +969,11 @@ async function analyzeSceneViews(options = {}) {
       + 'Return cameras as exactly four objects for master, reverse, interaction and detail. Each camera must contain view_id, label, role, framing, lens_class, height_class, orientation, estimated_azimuth_degrees, estimated_pitch_degrees, azimuth_delta_from_master_degrees for reverse, normalized_position [x,y], look_at [x,y], position_confidence, target_description, allowed_zone_ids, requirement_refs, visible_evidence, pass and mismatch_reasons. '
       + 'normalized_position and look_at are evidence-based estimates on the layout image in 0..1 coordinates. A passing camera requires role, framing, lens, height, direction, layout position and target, confidence >=0.6, visible evidence and at least one requirement_refs value from layout, material_light, interaction, style, negative or surface_topology. '
       + 'When material_reference_available is not true, do not fail solely because a proprietary, trade or unfamiliar finish name cannot be visually proven from memory. A smooth reflection or lighting gradient is not a seam by itself; only a coherent geometric edge, gap, groove, recess or sustained boundary is seam evidence. '
-      + 'Master must map layout; reverse must differ by at least 75 degrees from master; interaction must map interaction and at least one zone; detail must map material_light or surface_topology. Do not infer missing evidence. Keep JSON under 2600 characters.',
-    maxTokens: 2800,
+      + 'Master must map layout; reverse must differ by at least 75 degrees from master; interaction must map interaction and at least one zone; detail must map material_light or surface_topology. Do not infer missing evidence. Keep JSON under 5200 characters.',
+    maxTokens: 4800,
+    timeoutMs: 45000,
+    stageBudgetMs: 150000,
+    structuredOutput: { mode: 'json_object', name: 'scene_camera_qa' },
   };
   const cameraQaMissingFields = candidate => [
     !hasRequiredScores(candidate.camera_design_qa || {}, cameraDesignScoreFields)

@@ -130,22 +130,27 @@ function rateLimitDomainHealthKey(model = {}) {
   return `rate_limit_domain:${crypto.createHash('sha256').update(failureDomainKey(model)).digest('hex').slice(0, 32)}`;
 }
 
-const failureDomainSubmissionTails = new Map();
+const VISION_FAILURE_DOMAIN_PARALLELISM = Math.max(1, Math.min(6,
+  Number(process.env.NEW_STORY_AD_VISION_FAILURE_DOMAIN_PARALLELISM) || 2));
+const failureDomainSubmissionStates = new Map();
 
 async function acquireFailureDomainSubmission(model = {}) {
   const key = rateLimitDomainHealthKey(model);
-  const previous = failureDomainSubmissionTails.get(key) || Promise.resolve();
-  let openNext;
-  const gate = new Promise(resolve => { openNext = resolve; });
-  const tail = previous.catch(() => {}).then(() => gate);
-  failureDomainSubmissionTails.set(key, tail);
-  await previous.catch(() => {});
+  const state = failureDomainSubmissionStates.get(key) || { active: 0, waiters: [] };
+  failureDomainSubmissionStates.set(key, state);
+  if (state.active >= VISION_FAILURE_DOMAIN_PARALLELISM) {
+    await new Promise(resolve => state.waiters.push(resolve));
+  } else {
+    state.active += 1;
+  }
   let released = false;
   return () => {
     if (released) return;
     released = true;
-    openNext();
-    if (failureDomainSubmissionTails.get(key) === tail) failureDomainSubmissionTails.delete(key);
+    const next = state.waiters.shift();
+    if (next) next();
+    else state.active = Math.max(0, state.active - 1);
+    if (state.active === 0 && !state.waiters.length) failureDomainSubmissionStates.delete(key);
   };
 }
 
