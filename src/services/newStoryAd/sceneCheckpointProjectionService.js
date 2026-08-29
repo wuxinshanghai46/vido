@@ -187,22 +187,21 @@ function projectSceneAssets(outputRows = [], modelCalls = []) {
       if (!id) return;
       const existingIndex = assetIndexById.get(id);
       if (existingIndex !== undefined) {
-        if (preview.checkpoint_mode === 'repair') {
-          const viewByKey = new Map((Array.isArray(assets[existingIndex].view_images) ? assets[existingIndex].view_images : [])
-            .map(view => [text(view?.key, 40), view]).filter(([key]) => key));
-          preview.failed_view_keys.forEach(key => viewByKey.delete(text(key, 40)));
-          preview.view_images.forEach(view => viewByKey.set(text(view?.key, 40), view));
-          const mergedViews = VIEW_ORDER.map(key => viewByKey.get(key)).filter(Boolean);
-          assets[existingIndex] = {
-            ...assets[existingIndex],
-            ...preview,
-            image_url: viewByKey.get('master')?.image_url || assets[existingIndex].image_url || mergedViews[0]?.image_url || '',
-            view_images: mergedViews,
-            view_count: mergedViews.length,
-          };
-        } else {
-          assets[existingIndex] = { ...assets[existingIndex], ...preview };
-        }
+        const viewByKey = new Map((Array.isArray(assets[existingIndex].view_images) ? assets[existingIndex].view_images : [])
+          .map(view => [text(view?.key, 40), view]).filter(([key]) => key));
+        // A checkpoint is an attempt journal, not the asset authority. Keep
+        // every persisted success from the current content plan and overlay
+        // only the views that this attempt actually completed. A failed repair
+        // updates review state but never deletes the preserved paid image.
+        preview.view_images.forEach(view => viewByKey.set(text(view?.key, 40), view));
+        const mergedViews = VIEW_ORDER.map(key => viewByKey.get(key)).filter(Boolean);
+        assets[existingIndex] = {
+          ...assets[existingIndex],
+          ...preview,
+          image_url: viewByKey.get('master')?.image_url || assets[existingIndex].image_url || mergedViews[0]?.image_url || '',
+          view_images: mergedViews,
+          view_count: mergedViews.length,
+        };
         return;
       }
       assetIndexById.set(id, assets.length);

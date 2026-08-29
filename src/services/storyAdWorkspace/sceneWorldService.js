@@ -164,19 +164,19 @@ function normalizedPoint(value, fallback = []) {
   return [Math.max(0, Math.min(1, finite(row[0], 0.5))), Math.max(0, Math.min(1, finite(row[1], 0.5)))];
 }
 
-function cameraPose(camera = {}, index = 0, total = 1) {
+function cameraPose(camera = {}) {
   const point = normalizedPoint(camera.normalized_position || camera.position_on_layout);
-  const target = normalizedPoint(camera.look_at || camera.target_on_layout, [0.5, 0.5]);
-  const angle = (index / Math.max(1, total)) * Math.PI * 2;
+  const target = normalizedPoint(camera.look_at || camera.target_on_layout);
   const position = point.length
     ? [(point[0] - 0.5) * 12, 1.6, (point[1] - 0.5) * 8]
-    : [Math.cos(angle) * 4.8, 1.6, Math.sin(angle) * 3.8];
+    : [];
   const lookAt = target.length
     ? [(target[0] - 0.5) * 12, 1.2, (target[1] - 0.5) * 8]
-    : [0, 1.2, 0];
+    : [];
   return {
     position: position.map(value => Number(value.toFixed(3))),
     look_at: lookAt.map(value => Number(value.toFixed(3))),
+    planned: Boolean(position.length && lookAt.length),
     yaw: finite(camera.estimated_azimuth_degrees, finite(camera.yaw, 0)),
     pitch: finite(camera.estimated_pitch_degrees, finite(camera.pitch, -8)),
     roll: finite(camera.roll, 0),
@@ -218,7 +218,7 @@ function normalizeCameras(scene = {}) {
     framing: clean(camera.framing, 80),
     lens: clean(camera.lens || camera.lens_class, 80),
     movement: clean(camera.movement, 220),
-    pose: cameraPose(camera, index, rows.length),
+    pose: cameraPose(camera),
     image_url: clean(camera.image_url || camera.reference_image_url, 1000),
   }));
 }
@@ -241,7 +241,7 @@ function observationNodes(scene = {}, zones = [], cameras = []) {
       view_key: clean(view?.key || view?.view, 40),
       projection: clean(view?.projection || view?.source_role, 80),
       is_panorama: validPanorama(view, scene),
-      pose: camera?.pose || cameraPose({}, index, nodeCount),
+      pose: camera?.pose || cameraPose({}),
     };
   });
 }
@@ -451,6 +451,10 @@ function characterWorldMatrix(bundle = {}, worlds = [], options = {}) {
         appearance_order: Math.max(0, finite(explicit?.appearance_order, 0)),
         entry_direction: clean(explicit?.entry_direction, 80), exit_direction: clean(explicit?.exit_direction, 80),
         blocking: clean(explicit?.blocking || (interactionPlanMatch ? plannedInteraction : ''), 260),
+        blocking_position: normalizedPoint(explicit?.blocking_position || explicit?.position_on_layout || explicit?.position),
+        entry_point: normalizedPoint(explicit?.entry_point || explicit?.entry_position),
+        exit_point: normalizedPoint(explicit?.exit_point || explicit?.exit_position),
+        route_points: list(explicit?.route_points || explicit?.path_points).map(point => normalizedPoint(point)).filter(point => point.length),
         camera_id: clean(explicit?.camera_id || (interactionPlanMatch ? interactionCamera?.id : '') || world.cameras?.[0]?.id, 120),
         source: explicitPresence ? 'manual' : (matched.length ? shotSource
           : (interactionPlanMatch ? 'scene_plan_interaction'
@@ -541,7 +545,10 @@ function saveAssignments(taskId, assignments = [], options = {}) {
     error.current_world_revision = current;
     throw error;
   }
-  const normalized = list(assignments).slice(0, 500).map(item => ({
+  const existingByKey = new Map(list(stored.assignments).map(item => [`${clean(item.character_id, 120)}:${clean(item.world_id, 120)}`, item]));
+  const normalized = list(assignments).slice(0, 500).map(item => {
+    const previous = existingByKey.get(`${clean(item.character_id, 120)}:${clean(item.world_id, 120)}`) || {};
+    return ({
     character_id: clean(item.character_id, 120),
     world_id: clean(item.world_id, 120),
     presence: ['confirmed', 'excluded', 'unassigned'].includes(clean(item.presence, 30)) ? clean(item.presence, 30) : 'unassigned',
@@ -549,7 +556,12 @@ function saveAssignments(taskId, assignments = [], options = {}) {
     look_id: clean(item.look_id, 100), age_state_id: clean(item.age_state_id, 100), story_state_id: clean(item.story_state_id, 100),
     appearance_order: Math.max(0, finite(item.appearance_order, 0)), entry_direction: clean(item.entry_direction, 80), exit_direction: clean(item.exit_direction, 80),
     blocking: clean(item.blocking, 260), camera_id: clean(item.camera_id, 120),
-  })).filter(item => item.character_id && item.world_id);
+    blocking_position: normalizedPoint(item.blocking_position || item.position_on_layout || item.position || previous.blocking_position),
+    entry_point: normalizedPoint(item.entry_point || item.entry_position || previous.entry_point),
+    exit_point: normalizedPoint(item.exit_point || item.exit_position || previous.exit_point),
+    route_points: list(item.route_points || item.path_points || previous.route_points).map(point => normalizedPoint(point)).filter(point => point.length),
+  });
+  }).filter(item => item.character_id && item.world_id);
   const payload = {
     schema_version: SCENE_WORLD_SCHEMA_VERSION,
     worlds: stored.worlds || {},

@@ -7,6 +7,9 @@ export function normalizedLayoutPoint(input) {
   const x = Number(pair?.[0]); const y = Number(pair?.[1]);
   return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : null;
 }
+export function normalizedLayoutPath(input) {
+  return list(input).map(normalizedLayoutPoint).filter(Boolean);
+}
 export function sceneCameraRows(bundle = {}, world = {}) {
   const scene = list(bundle.assets?.scenes).find(row => String(row.id || row.scene_id || '') === String(world.id || '')) || {};
   const generated = list(scene.cameras); const planned = list(scene.camera_plan).length ? list(scene.camera_plan) : generated;
@@ -23,6 +26,22 @@ export function sceneCameraRows(bundle = {}, world = {}) {
       image_url: value(row, ['image_url', 'reference_image_url']) || '',
     };
   });
+}
+export function scenePeopleRows(bundle = {}, world = {}) {
+  return list(bundle.production_manifest?.character_world_matrix).map(row => {
+    const cell = list(row.cells).find(item => String(item.world_id || '') === String(world.id || ''));
+    if (!cell || !['confirmed', 'suggested'].includes(cell.presence)) return null;
+    return {
+      id: row.character_id || row.id || row.name,
+      name: row.name || '未命名人物',
+      presence: cell.presence,
+      position: normalizedLayoutPoint(value(cell, ['blocking_position', 'position_on_layout', 'position'])),
+      entryPoint: normalizedLayoutPoint(value(cell, ['entry_point', 'entry_position'])),
+      exitPoint: normalizedLayoutPoint(value(cell, ['exit_point', 'exit_position'])),
+      routePoints: normalizedLayoutPath(value(cell, ['route_points', 'path_points'])),
+      camera_id: cell.camera_id || '',
+    };
+  }).filter(Boolean);
 }
 const point = row => row ? `(${row.x.toFixed(2)}, ${row.y.toFixed(2)}) · 布局归一化坐标` : '未规划（不显示伪造点）';
 const field = (label, content) => `<div><dt>${label}</dt><dd>${esc(content || '未规划')}</dd></div>`;

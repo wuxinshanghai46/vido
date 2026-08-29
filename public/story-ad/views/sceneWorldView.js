@@ -301,8 +301,13 @@ function initSceneWorldViewer({ overlay, bundle, world, authority }) {
   const activateModeButton = mode => overlay.querySelectorAll('[data-world-mode]').forEach(button => button.classList.toggle('active', button.dataset.worldMode === mode));
   const previewUrl = (url, width) => window.VidoMediaDelivery?.previewUrl?.(url, width, 'webp') || url;
   const thumbUrl = url => previewUrl(url, 320);
+  const photoStrip = selected => `<div class="scene-world-photo-strip">${nodes.map((item, index) => `<button type="button" data-photo-node="${escapeHtml(item.id)}" class="${item.id === selected?.id ? 'active' : ''}" title="${escapeHtml(item.name || `视角 ${index + 1}`)}"><img src="${escapeHtml(thumbUrl(item.image_url))}" loading="lazy" decoding="async" alt=""><span>${escapeHtml(item.name || `视角 ${index + 1}`)}${item.is_panorama ? '<small>3DoF</small>' : ''}</span></button>`).join('')}</div>`;
+  const bindPhotoStrip = mode => host.querySelectorAll('[data-photo-node]').forEach(button => button.addEventListener('click', () => {
+    const selected = nodes.find(item => String(item.id) === String(button.dataset.photoNode));
+    if (selected) showPhoto(selected, mode);
+  }));
   const showPhoto = (node, mode = 'model') => {
-    if (!node?.image_url) return showNative('structure');
+    if (!node?.image_url) return showLayoutUnavailable(mode);
     if (node.is_panorama) return showPanorama(node);
     clearViewer();
     activateModeButton(mode);
@@ -311,20 +316,77 @@ function initSceneWorldViewer({ overlay, bundle, world, authority }) {
       <img alt="${escapeHtml(world.name)}真实场景视图" data-media-original="${escapeHtml(node.image_url)}">
       <div class="scene-world-photo-status"><b>${escapeHtml(node.name || '真实场景视图')}</b><small>${Math.max(1, nodes.indexOf(node) + 1)} / ${nodes.length} · 平面参考图</small></div>
       <div class="scene-world-photo-error" data-photo-error hidden>当前图片无法加载，请重试或检查场景资产。</div>
-    </div><div class="scene-world-photo-strip">${nodes.map((item, index) => `<button type="button" data-photo-node="${escapeHtml(item.id)}" class="${item.id === node.id ? 'active' : ''}" title="${escapeHtml(item.name || `视角 ${index + 1}`)}"><img src="${escapeHtml(thumbUrl(item.image_url))}" loading="lazy" decoding="async" alt=""><span>${escapeHtml(item.name || `视角 ${index + 1}`)}${item.is_panorama ? '<small>3DoF</small>' : ''}</span></button>`).join('')}</div></div>`;
+    </div>${photoStrip(node)}</div>`;
     const image = host.querySelector('.scene-world-photo-stage>img');
     const error = host.querySelector('[data-photo-error]');
     image.addEventListener('load', () => { image.hidden = false; error.hidden = true; }, { once: true });
     image.addEventListener('error', () => { image.hidden = true; error.hidden = false; }, { once: true });
     image.src = previewUrl(node.image_url, 960);
     window.VidoMediaDelivery?.processImage?.(image);
-    host.querySelectorAll('[data-photo-node]').forEach(button => button.addEventListener('click', () => showPhoto(nodes.find(item => String(item.id) === String(button.dataset.photoNode)), mode)));
+    bindPhotoStrip(mode);
     overlay.querySelectorAll('[data-focus-camera]').forEach(button => button.classList.toggle('active', String(button.dataset.focusCamera) === String(node.camera_id || '')));
     host.dataset.viewerEngine = mode === 'camera' ? 'scene-photo-camera' : 'real-photo';
     host.dataset.activePhotoNode = String(node.id || '');
     if (help) help.textContent = mode === 'camera'
       ? '机位实图在当前画布直接切换，不再打开第二个窗口；图片始终完整显示'
       : '场景实图完整显示 · 点击下方视角直接切换；不会另开大图窗口';
+  };
+  const showLayoutUnavailable = mode => {
+    clearViewer();
+    activateModeButton(mode);
+    host.dataset.viewerEngine = 'layout-image-missing';
+    host.innerHTML = '<div class="scene-world-mode-notice"><b>俯视布局图尚未进入当前场景</b><p>这里不会用抽象方块或推测坐标代替真实场景。已有场景图继续保留；补齐俯视布局图后，人物、机位和路线会叠加在同一张实图上。</p></div>';
+    if (help) help.textContent = '缺少俯视布局实图；未显示任何伪造空间结构';
+  };
+  const showLayout = (node, mode = 'structure') => {
+    if (!node?.image_url) return showLayoutUnavailable(mode);
+    clearViewer();
+    activateModeButton(mode);
+    currentNode = node;
+    const people = authority.scenePeopleRows(bundle, world);
+    const cameras = authority.sceneCameraRows(bundle, world);
+    const positionedPeople = people.filter(person => person.position);
+    const positionedCameras = cameras.filter(camera => camera.position);
+    const routeMarkup = positionedPeople.map(person => {
+      const points = [person.entryPoint, ...person.routePoints, person.position, person.exitPoint].filter(Boolean);
+      return points.length > 1 ? `<polyline class="scene-layout-route" points="${points.map(point => `${point.x * 100},${point.y * 100}`).join(' ')}"></polyline>` : '';
+    }).join('');
+    const cameraMarkup = positionedCameras.map((camera, index) => `${camera.lookAt ? `<line class="scene-layout-camera-ray" x1="${camera.position.x * 100}" y1="${camera.position.y * 100}" x2="${camera.lookAt.x * 100}" y2="${camera.lookAt.y * 100}"></line>` : ''}<g class="scene-layout-camera-marker" transform="translate(${camera.position.x * 100} ${camera.position.y * 100})"><circle r="3.1"></circle><text y="-5">C${index + 1}</text></g>`).join('');
+    const personMarkup = positionedPeople.map(person => `<g class="scene-layout-person-marker" transform="translate(${person.position.x * 100} ${person.position.y * 100})"><circle r="3.2"></circle><text y="-5">${escapeHtml(person.name)}</text></g>`).join('');
+    const pending = [
+      people.length && positionedPeople.length < people.length ? `${people.length - positionedPeople.length} 个人物站位/路线待规划` : '',
+      cameras.length && positionedCameras.length < cameras.length ? `${cameras.length - positionedCameras.length} 个机位坐标待规划` : '',
+    ].filter(Boolean);
+    host.innerHTML = `<div class="scene-world-photo-viewer"><div class="scene-world-photo-stage scene-world-layout-stage">
+      <img alt="${escapeHtml(world.name)}俯视布局实图" data-media-original="${escapeHtml(node.image_url)}">
+      <svg class="scene-world-layout-overlay" viewBox="0 0 100 100" preserveAspectRatio="none" aria-label="人物、机位与路线叠加层">${routeMarkup}${cameraMarkup}${personMarkup}</svg>
+      <div class="scene-world-photo-status"><b>${escapeHtml(node.name || '俯视布局')}</b><small>真实布局图 · 人物 ${positionedPeople.length}/${people.length} · 机位 ${positionedCameras.length}/${cameras.length}</small></div>
+      ${pending.length ? `<div class="scene-world-layout-pending">${escapeHtml(pending.join('；'))}（不显示伪造点）</div>` : ''}
+      <div class="scene-world-photo-error" data-photo-error hidden>当前布局图无法加载，请重试或检查场景资产。</div>
+    </div>${photoStrip(node)}</div>`;
+    const image = host.querySelector('.scene-world-photo-stage>img');
+    const stage = host.querySelector('.scene-world-layout-stage');
+    const overlayLayer = host.querySelector('.scene-world-layout-overlay');
+    const error = host.querySelector('[data-photo-error]');
+    const syncOverlay = () => {
+      if (!image.naturalWidth || !image.naturalHeight) return;
+      const stageRatio = stage.clientWidth / Math.max(1, stage.clientHeight);
+      const imageRatio = image.naturalWidth / image.naturalHeight;
+      const width = imageRatio > stageRatio ? stage.clientWidth : stage.clientHeight * imageRatio;
+      const height = imageRatio > stageRatio ? stage.clientWidth / imageRatio : stage.clientHeight;
+      Object.assign(overlayLayer.style, { width: `${width}px`, height: `${height}px`, left: `${(stage.clientWidth - width) / 2}px`, top: `${(stage.clientHeight - height) / 2}px` });
+    };
+    const resizeObserver = new ResizeObserver(syncOverlay);
+    resizeObserver.observe(stage);
+    viewer = { dispose: () => resizeObserver.disconnect() };
+    image.addEventListener('load', () => { image.hidden = false; error.hidden = true; syncOverlay(); }, { once: true });
+    image.addEventListener('error', () => { image.hidden = true; overlayLayer.hidden = true; error.hidden = false; }, { once: true });
+    image.src = previewUrl(node.image_url, 1200);
+    window.VidoMediaDelivery?.processImage?.(image);
+    bindPhotoStrip(mode);
+    host.dataset.viewerEngine = 'real-layout-overlay';
+    host.dataset.activePhotoNode = String(node.id || '');
+    if (help) help.textContent = pending.length ? `布局实图已显示；${pending.join('；')}` : '布局实图、人物站位、行动路线与机位坐标已统一显示';
   };
   const showPanorama = async node => {
     if (!node?.image_url) return;
@@ -374,8 +436,8 @@ function initSceneWorldViewer({ overlay, bundle, world, authority }) {
     activateModeButton(mode);
     if (mode === 'panorama') return panoramaNode ? showPanorama(panoramaNode) : showPhoto(primaryNode);
     if (mode === 'spatial') return showSpatialNotice();
-    if (mode === 'structure') return layoutNode ? showPhoto(layoutNode, 'structure') : showNative('structure');
-    if (mode === 'blocking') return interactionNode ? showPhoto(interactionNode, 'blocking') : showNative('blocking');
+    if (mode === 'structure') return showLayout(layoutNode, 'structure');
+    if (mode === 'blocking') return showLayout(layoutNode, 'blocking');
     if (mode === 'camera') return currentNode && !currentNode.is_panorama ? showPhoto(currentNode, 'camera') : (primaryNode ? showPhoto(primaryNode, 'camera') : showNative('camera'));
     return primaryNode ? showPhoto(primaryNode) : showInitialNotice();
   };
