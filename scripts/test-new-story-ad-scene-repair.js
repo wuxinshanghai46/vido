@@ -475,12 +475,18 @@ async function main() {
   }]);
   await assert.rejects(
     () => sceneAssets.reverifySceneAsset(upgradeTaskId, 'old-scene-upgrade'),
-    error => error.code === 'SCENE_FULL_REBUILD_REQUIRED',
+    error => {
+      assert.equal(error.code, 'SCENE_FULL_REBUILD_REQUIRED', `unexpected reverify error: ${error.code || 'NO_CODE'} ${error.message}`);
+      return true;
+    },
     'old generation contracts must not enter another verification loop',
   );
   await assert.rejects(
     () => sceneAssets.repairSceneAsset(upgradeTaskId, 'old-scene-upgrade'),
-    error => error.code === 'SCENE_FULL_REBUILD_REQUIRED',
+    error => {
+      assert.equal(error.code, 'SCENE_FULL_REBUILD_REQUIRED', `unexpected repair error: ${error.code || 'NO_CODE'} ${error.message}`);
+      return true;
+    },
     'old generation contracts must not enter targeted paid repair',
   );
 

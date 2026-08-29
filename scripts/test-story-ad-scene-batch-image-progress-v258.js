@@ -66,7 +66,10 @@ assert.equal(projected.image_percent, 80);
 
 const viewSource = fs.readFileSync(path.join(root, 'public/story-ad/views/sceneBatchProgressView.js'), 'utf8')
   .replace(/^import\s+.*?;\s*$/gm, '').replace(/\bexport\s+/g, '');
-const sandbox = { escapeHtml: value => String(value ?? '') };
+const sandbox = {
+  escapeHtml: value => String(value ?? ''),
+  elapsedTimeTag: ({ active }) => active ? '<em>已耗时 1秒</em>' : '<em>本次耗时 1秒</em>',
+};
 vm.runInNewContext(`${viewSource}\nglobalThis.__render=sceneBatchProgressMarkup;`, sandbox);
 const html = sandbox.__render(projected);
 assert.match(html, />Image</);

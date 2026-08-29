@@ -31,7 +31,7 @@ function create(deps = {}) {
     }
     const rows = Array.isArray(body.actions) ? body.actions : [];
     const seen = new Set();
-    const currentAssets = sceneAssets.normalizeSceneAssets(storage.getOutput(taskId, 'scene_assets') || []);
+    const currentAssets = sceneAssets.currentSceneAssets(taskId);
     const actions = rows.slice(0, 30).map(row => {
       const sceneId = text(row?.scene_id || row?.sceneId || row?.space_id || row?.spaceId, 120);
       if (!sceneId || seen.has(sceneId)) return null;
@@ -177,7 +177,7 @@ function create(deps = {}) {
             throw error;
           }
         } else {
-          const latestAssets = sceneAssets.normalizeSceneAssets(storage.getOutput(taskId, 'scene_assets') || []);
+          const latestAssets = sceneAssets.currentSceneAssets(taskId);
           const current = latestAssets.find(item => String(item.scene_id || item.id || '') === action.scene_id);
           const payload = {
             scene_id: action.scene_id,

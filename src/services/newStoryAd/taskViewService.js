@@ -115,10 +115,7 @@ function createTaskViewService(deps = {}) {
     // must never be promoted back into the current UI after the authoritative
     // scene plan or scene assets were invalidated.
     const projectedSceneAssets = hasCurrentSceneConfig
-      ? sceneCheckpointProjection.projectSceneAssets(
-        sceneProjectionRows(rawOutputs, sceneAssetsInvalidation),
-        storage.listModelCalls(taskId),
-      )
+      ? sceneAssetLifecycle.currentSceneAssetsFromBundle(rawBundle, storage.listModelCalls(taskId))
       : [];
     const videoShotStatuses = (rawBundle.outputs || [])
       .filter(row => String(row.kind || '').startsWith('video_shot_status_'))

@@ -106,6 +106,7 @@ function checkpointPreview(row = {}, sceneConfig = {}, diagnostics = new Map()) 
     view_images: views,
     view_count: views.length,
     generation_contract_version: Number(checkpoint.metadata?.generation_contract_version || 7) || 7,
+    checkpoint_mode: text(checkpoint.metadata?.mode, 40),
     partial_checkpoint: true,
     checkpoint_status: text(checkpoint.status, 40),
     checkpoint_error_code: text(
@@ -161,10 +162,13 @@ function projectSceneAssets(outputRows = [], modelCalls = []) {
   const plannedIds = new Set((Array.isArray(sceneConfig?.spaces) ? sceneConfig.spaces : [])
     .map(space => text(space?.id || space?.space_id || space?.scene_id, 120))
     .filter(Boolean));
+  const assetIdentifiers = asset => [asset?.space_id, asset?.scene_id, asset?.id]
+    .map(value => text(value, 120)).filter(Boolean);
+  const assetPlanId = asset => assetIdentifiers(asset).find(id => plannedIds.has(id))
+    || assetIdentifiers(asset)[0] || '';
   const belongsToCurrentPlan = asset => {
     if (!plannedIds.size) return true;
-    const id = text(asset?.space_id || asset?.scene_id || asset?.id, 120);
-    return !!id && plannedIds.has(id);
+    return assetIdentifiers(asset).some(id => plannedIds.has(id));
   };
   const persistedOutput = rows.find(row => row?.kind === 'scene_assets')?.payload;
   const persisted = Array.isArray(persistedOutput) ? persistedOutput : context.scene_assets;
@@ -172,18 +176,32 @@ function projectSceneAssets(outputRows = [], modelCalls = []) {
     ? persisted.filter(belongsToCurrentPlan).map(asset => ({ ...asset }))
     : [];
   const assetIndexById = new Map(assets
-    .map((asset, index) => [text(asset?.space_id || asset?.scene_id || asset?.id, 120), index])
+    .map((asset, index) => [assetPlanId(asset), index])
     .filter(([id]) => id));
   const diagnostics = diagnosticIndex(modelCalls);
   rows.filter(row => String(row?.kind || '').startsWith('scene_asset_checkpoint:'))
     .map(row => checkpointPreview(row, sceneConfig, diagnostics))
     .filter(preview => preview && belongsToCurrentPlan(preview))
     .forEach(preview => {
-      const id = text(preview.space_id || preview.scene_id || preview.id, 120);
+      const id = assetPlanId(preview);
       if (!id) return;
       const existingIndex = assetIndexById.get(id);
       if (existingIndex !== undefined) {
-        assets[existingIndex] = { ...assets[existingIndex], ...preview };
+        if (preview.checkpoint_mode === 'repair') {
+          const viewByKey = new Map((Array.isArray(assets[existingIndex].view_images) ? assets[existingIndex].view_images : [])
+            .map(view => [text(view?.key, 40), view]).filter(([key]) => key));
+          preview.view_images.forEach(view => viewByKey.set(text(view?.key, 40), view));
+          const mergedViews = VIEW_ORDER.map(key => viewByKey.get(key)).filter(Boolean);
+          assets[existingIndex] = {
+            ...assets[existingIndex],
+            ...preview,
+            image_url: viewByKey.get('master')?.image_url || assets[existingIndex].image_url || mergedViews[0]?.image_url || '',
+            view_images: mergedViews,
+            view_count: mergedViews.length,
+          };
+        } else {
+          assets[existingIndex] = { ...assets[existingIndex], ...preview };
+        }
         return;
       }
       assetIndexById.set(id, assets.length);

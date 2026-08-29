@@ -3,6 +3,17 @@ const QA_SERVICE_FAILURE = /视觉模型全部失败|VISION_QA|PROVIDER_RESPONSE
 function text(value = '') { return String(value || '').trim(); }
 function list(value) { return Array.isArray(value) ? value : []; }
 
+function unavailableCauseMessage(item = {}) {
+  const labels = {
+    timeout: '审核接口超时',
+    invalid_response: '返回格式不完整',
+    rate_limited: '请求频率受限',
+    no_valid_result: '没有取得有效审核结论',
+  };
+  const causes = [...new Set(list(item.qa?.failure_categories).map(value => labels[text(value)]).filter(Boolean))];
+  return causes.length ? `${causes.join('、')}。图片已保留，本次不会重新生成图片。` : '审核服务没有取得有效结论。图片已保留，本次不会重新生成图片。';
+}
+
 export function publicSceneQaReason(value = '') {
   const reason = text(value);
   if (!reason) return '';
@@ -24,8 +35,8 @@ export function sceneQaPublicState(item = {}) {
     || (!explicitContentFailure && rawReasons.some(reason => QA_SERVICE_FAILURE.test(reason)));
   const action = text(item.repair_plan?.action);
   if (serviceUnavailable) return {
-    kind: 'service_unavailable', title: 'QA 服务暂时不可用，图片已保留',
-    message: '这不是图片内容被判失败。稍后可重新审核，图片调用 0。',
+    kind: 'service_unavailable', title: '审核暂不可用，图片已保留',
+    message: unavailableCauseMessage(item),
   };
   if (action === 'reverify') return {
     kind: 'evidence_pending', title: 'QA 尚未定位到具体图片',

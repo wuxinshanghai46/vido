@@ -2,7 +2,7 @@
 
 function create(deps = {}) {
   const {
-    storage, scenePromptConfirmation, assertContextConsistent, normalizeSceneAssets,
+    storage, scenePromptConfirmation, assertContextConsistent, normalizeSceneAssets, currentSceneAssets,
     buildSceneRepairPlan, reverifySceneAsset, generateSceneAsset, repairSceneAsset,
   } = deps;
 
@@ -11,7 +11,7 @@ function create(deps = {}) {
     if (!task) throw new Error('没有找到对应项目。');
     scenePromptConfirmation.assertCurrentPrompt(taskId, sceneId, body);
     const context = assertContextConsistent(storage.getOutput(taskId, 'context') || task.request || {});
-    const currentAssets = normalizeSceneAssets(storage.getOutput(taskId, 'scene_assets') || context.scene_assets || []);
+    const currentAssets = currentSceneAssets(taskId);
     let current = currentAssets.find(item => String(item.scene_id || item.id) === String(sceneId || ''));
     if (!current) {
       const error = new Error('要修复的场景不存在');

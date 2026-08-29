@@ -27,6 +27,7 @@ const callOrder = [];
 const sceneAssets = {
   SCENE_GENERATION_ORDER: ['master', 'layout', 'reverse', 'interaction', 'detail'],
   normalizeSceneAssets(value) { return Array.isArray(value) ? value : []; },
+  currentSceneAssets(id) { return this.normalizeSceneAssets(storage.getOutput(id, 'scene_assets') || []); },
   buildSceneRepairPlan(value = {}) { return value.repair_plan || { action: 'none' }; },
   async generateSceneAsset(id, body) {
     assert.equal(id, taskId);
@@ -131,6 +132,7 @@ async function main() {
     sceneAssets: {
       SCENE_GENERATION_ORDER: sceneAssets.SCENE_GENERATION_ORDER,
       normalizeSceneAssets: sceneAssets.normalizeSceneAssets,
+      currentSceneAssets(id) { return sceneAssets.normalizeSceneAssets(storage.getOutput(id, 'scene_assets') || []); },
       buildSceneRepairPlan: sceneAssets.buildSceneRepairPlan,
       async fixSceneAsset(id, sceneId) {
         incompleteCalls.push(`fix:${sceneId}`);

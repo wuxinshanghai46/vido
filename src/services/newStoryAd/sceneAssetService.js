@@ -551,6 +551,41 @@ function normalizeSceneAssets(input = []) {
   return raw.map(normalizeSceneAsset).filter(Boolean);
 }
 
+function currentSceneProjectionRows(outputs = [], sceneAssetsInvalidation = null) {
+  const rows = Array.isArray(outputs) ? outputs : [];
+  if (!sceneAssetsInvalidation) return rows;
+  const invalidatedAt = Date.parse(sceneAssetsInvalidation.invalidated_at || '');
+  return rows.filter(row => {
+    const kind = String(row?.kind || '');
+    if (kind === 'scene_assets') return false;
+    if (!kind.startsWith('scene_asset_checkpoint:')) return true;
+    const checkpointTime = Date.parse(row.updated_at || row.payload?.updated_at || row.created_at || '');
+    return Number.isFinite(invalidatedAt) && Number.isFinite(checkpointTime) && checkpointTime > invalidatedAt;
+  });
+}
+
+function currentSceneAssetsFromBundle(bundle = {}, modelCalls = []) {
+  const outputs = Array.isArray(bundle.outputs) ? bundle.outputs : [];
+  const invalidated = bundle.manifest?.invalidated || {};
+  const hasCurrentSceneConfig = outputs.some(row => String(row?.kind || '') === 'scene_config')
+    && !Object.prototype.hasOwnProperty.call(invalidated, 'scene_config');
+  if (!hasCurrentSceneConfig) return [];
+  const sceneAssetsInvalidation = Object.prototype.hasOwnProperty.call(invalidated, 'scene_assets')
+    ? invalidated.scene_assets
+    : null;
+  return normalizeSceneAssets(sceneCheckpointProjection.projectSceneAssets(
+    currentSceneProjectionRows(outputs, sceneAssetsInvalidation),
+    modelCalls,
+  ));
+}
+
+function currentSceneAssets(taskId) {
+  return currentSceneAssetsFromBundle(
+    storage.getTaskBundle(taskId, { diagnostics: false }),
+    storage.listModelCalls(taskId),
+  );
+}
+
 function normalizeRepairViewKeys(input = []) {
   const source = Array.isArray(input) ? input : [];
   return SCENE_GENERATION_ORDER.filter(key => source.includes(key));
@@ -1648,7 +1683,7 @@ async function repairSceneAsset(taskId, sceneId, body = {}, runOptions = {}) {
   if (!task) throw new Error('没有找到对应项目。');
   scenePromptConfirmation.assertCurrentPrompt(taskId, sceneId, body);
   const ctx = assertContextConsistent(storage.getOutput(taskId, 'context') || task.request || {});
-  const assets = normalizeSceneAssets(storage.getOutput(taskId, 'scene_assets') || ctx.scene_assets || []);
+  const assets = currentSceneAssets(taskId);
   const asset = assets.find(item => String(item.scene_id || item.id) === String(sceneId || ''));
   if (!asset) {
     const error = new Error('要修复的场景不存在');
@@ -1693,6 +1728,7 @@ async function repairSceneAsset(taskId, sceneId, body = {}, runOptions = {}) {
       view_strategy: 'atlas_2x2',
     }, {
       ...runOptions,
+      existingSceneAssets: assets,
       repairFeedback: plan.reasons.join('；'),
       rebuildAtlas: true,
       rebuildSourceRevision: asset.scene_revision || 1,
@@ -1706,6 +1742,7 @@ async function repairSceneAsset(taskId, sceneId, body = {}, runOptions = {}) {
     lock_strength: asset.lock_strength,
   }, {
     ...runOptions,
+    existingSceneAssets: assets,
     repairViewKeys: plan.view_keys,
     repairFeedback: plan.reasons.join('；'),
   });
@@ -1715,7 +1752,7 @@ async function reverifySceneAsset(taskId, sceneId) {
   const task = storage.getTask(taskId);
   if (!task) throw new Error('没有找到对应项目。');
   const ctx = assertContextConsistent(storage.getOutput(taskId, 'context') || task.request || {});
-  const assets = normalizeSceneAssets(storage.getOutput(taskId, 'scene_assets') || ctx.scene_assets || []);
+  const assets = currentSceneAssets(taskId);
   const index = assets.findIndex(asset => String(asset.scene_id || asset.id) === String(sceneId || ''));
   if (index < 0) {
     const error = new Error('要重新验证的场景不存在');
@@ -1795,8 +1832,8 @@ async function reverifySceneAsset(taskId, sceneId) {
 }
 
 const fixSceneAsset = sceneAssetFix.create({
-  storage, scenePromptConfirmation, assertContextConsistent, normalizeSceneAssets,
+  storage, scenePromptConfirmation, assertContextConsistent, normalizeSceneAssets, currentSceneAssets,
   buildSceneRepairPlan, reverifySceneAsset, generateSceneAsset, repairSceneAsset,
 });
 
-module.exports = { SCENE_VIEW_KEYS, REQUIRED_SCENE_VIEW_KEYS, SCENE_GENERATION_ORDER, SCENE_IMAGE_STAGE_BY_VIEW, SCENE_IMAGE_MAX_ATTEMPTS, SCENE_IMAGE_EXTRA_ATTEMPTS, SCENE_GENERATION_CONTRACT_VERSION, sceneViewLabel, sceneImageStage, sceneViewContentHash, exactSceneViewDuplicate, assertCompleteUpgradeSceneSpec, assertSceneRightsPreflight, sceneMaterialReferenceImages, authoritativeSceneGenerationBody, buildSceneSheetPrompt, sceneStructuredContract: sceneStructuredContract.compile, sceneDescriptionForSpec: sceneSpecProjection.sceneDescriptionForSpec, buildLayoutAcquisitionPrompt, legacyScenePromptFingerprintText, buildDerivedViewPrompt, buildSceneAuditSafePrompt, sceneFailureDiagnostics: sceneFailureDiagnostics.project, sceneVisionThumbnailUrl, needsLayoutView, sceneRequest, buildSceneRepairPlan, sceneGenerationUpgradeRequired, normalizeSceneAssets, localizeSceneViews, localizeSceneAssets, saveSceneAssetsToTask, generateSceneAsset, repairSceneAsset, reverifySceneAsset, fixSceneAsset, _resetSceneImageCircuit: resetSceneImageCircuit };
+module.exports = { SCENE_VIEW_KEYS, REQUIRED_SCENE_VIEW_KEYS, SCENE_GENERATION_ORDER, SCENE_IMAGE_STAGE_BY_VIEW, SCENE_IMAGE_MAX_ATTEMPTS, SCENE_IMAGE_EXTRA_ATTEMPTS, SCENE_GENERATION_CONTRACT_VERSION, sceneViewLabel, sceneImageStage, sceneViewContentHash, exactSceneViewDuplicate, assertCompleteUpgradeSceneSpec, assertSceneRightsPreflight, sceneMaterialReferenceImages, authoritativeSceneGenerationBody, buildSceneSheetPrompt, sceneStructuredContract: sceneStructuredContract.compile, sceneDescriptionForSpec: sceneSpecProjection.sceneDescriptionForSpec, buildLayoutAcquisitionPrompt, legacyScenePromptFingerprintText, buildDerivedViewPrompt, buildSceneAuditSafePrompt, sceneFailureDiagnostics: sceneFailureDiagnostics.project, sceneVisionThumbnailUrl, needsLayoutView, sceneRequest, buildSceneRepairPlan, sceneGenerationUpgradeRequired, normalizeSceneAssets, currentSceneProjectionRows, currentSceneAssetsFromBundle, currentSceneAssets, localizeSceneViews, localizeSceneAssets, saveSceneAssetsToTask, generateSceneAsset, repairSceneAsset, reverifySceneAsset, fixSceneAsset, _resetSceneImageCircuit: resetSceneImageCircuit };
