@@ -1,4 +1,4 @@
-import { scenePendingAction } from './scenePromptPreview.js?v=20260829-production-v280';
+import { scenePendingAction } from './scenePromptPreview.js?v=20260829-production-v280a';
 
 function text(value = '') { return String(value || '').trim(); }
 

@@ -1,7 +1,7 @@
-import { createProjectStore } from './store/projectStore.js?v=20260829-production-v280';
-import { bindHoverVideoPreviews, escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, syncInlineGenerationProgress, toast } from './components/ui.js?v=20260829-production-v280';
-import { assertCurrentRelease, startReleaseHeartbeat } from './api.js?v=20260829-production-v280';
-import { confirmDialog } from './components/dialog.js?v=20260829-production-v280';
+import { createProjectStore } from './store/projectStore.js?v=20260829-production-v280a';
+import { bindHoverVideoPreviews, escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, syncInlineGenerationProgress, toast } from './components/ui.js?v=20260829-production-v280a';
+import { assertCurrentRelease, startReleaseHeartbeat } from './api.js?v=20260829-production-v280a';
+import { confirmDialog } from './components/dialog.js?v=20260829-production-v280a';
 
 await assertCurrentRelease().then(() => startReleaseHeartbeat()).catch(error => {
   if (error?.code === 'CLIENT_BUILD_EXPIRED') throw error;
@@ -27,14 +27,14 @@ const VIEW_META = {
   workflow: ['⌘', '工作流画布'],
 };
 const VIEW_MODULES = {
-  brief: () => import('./views/briefView.js?v=20260829-production-v280'),
-  assets: () => import('./views/assetCenterView.js?v=20260829-production-v280'),
-  scene: () => import('./views/sceneWorldPage.js?v=20260829-production-v280'),
-  plot: () => import('./views/plotRoomView.js?v=20260829-production-v280'),
-  flow: () => import('./views/storyFlowSketchView.js?v=20260829-production-v280'),
-  storyboard: () => import('./views/storyboardView.js?v=20260829-production-v280'),
-  final: () => import('./views/finalView.js?v=20260829-production-v280'),
-  workflow: () => import('./views/workflowView.js?v=20260829-production-v280'),
+  brief: () => import('./views/briefView.js?v=20260829-production-v280a'),
+  assets: () => import('./views/assetCenterView.js?v=20260829-production-v280a'),
+  scene: () => import('./views/sceneWorldPage.js?v=20260829-production-v280a'),
+  plot: () => import('./views/plotRoomView.js?v=20260829-production-v280a'),
+  flow: () => import('./views/storyFlowSketchView.js?v=20260829-production-v280a'),
+  storyboard: () => import('./views/storyboardView.js?v=20260829-production-v280a'),
+  final: () => import('./views/finalView.js?v=20260829-production-v280a'),
+  workflow: () => import('./views/workflowView.js?v=20260829-production-v280a'),
 };
 const VIEW_SECTIONS = Object.freeze({
   brief: 'summary,reference',
@@ -411,7 +411,7 @@ document.addEventListener('input', async ({ target }) => {
   else if (target.matches('[data-project-type-filter]')) centerQuery.taskType = target.value || 'all';
   else if (target.matches('[data-project-stage-filter]')) centerQuery.stage = target.value || 'all';
   else return;
-  const filters = await import('./projectCenterFilters.js?v=20260829-production-v280');
+  const filters = await import('./projectCenterFilters.js?v=20260829-production-v280a');
   centerVisibleIds = filters.matchingProjectIds(store.state.projects.map(project => ({
     id: project.id, title: project.title, type: project.content_mode, stage: statusView(project).label,
   })), centerQuery);
