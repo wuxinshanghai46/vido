@@ -58,10 +58,13 @@ export async function mount(host, context) {
   const onlyReverify = sceneActionPlan.count > 0 && sceneActionPlan.ready.every(item => item.action?.billable === false);
   const preview = scenePromptPreviewState(bundle, scenePlanReady || persistedScenePlanReady, generationActive);
 
-  host.innerHTML = `<section class="view-head scene-view-head"><div><h1>场景</h1><p>默认查看场景画面，需要时可切换到提示词核对。</p></div>${canConfirm ? '<div class="scene-view-actions"><button class="btn primary compact" data-confirm-scenes>确认场景，进入线稿</button></div>' : (canAcceptCurrent ? '<div class="scene-view-actions"><button class="btn primary compact" data-accept-current-scenes>使用当前图片继续</button></div>' : '')}</section>
+  const completionAction = canConfirm
+    ? '<button class="btn primary compact" data-confirm-scenes>确认场景，进入线稿</button>'
+    : (canAcceptCurrent ? '<button class="btn primary compact" data-accept-current-scenes>使用当前图片继续</button>' : '');
+  host.innerHTML = `<section class="view-head scene-view-head"><div><h1>场景</h1><p>默认查看场景画面，需要时可切换到提示词核对。</p></div></section>
     ${scenePlanReady || persistedScenePlanReady ? '' : scenePlanBlockedView(sceneEligibility, generationActive, { automatic: preview.autoInitialize || generationActive })}
     ${!scenePlanReady && !persistedScenePlanReady ? scenePromptPreviewMarkup(preview, (scene, index) => renderSceneProductionCard(scene, index, { provisional: true })) : ''}
-    ${persistedScenePlanReady ? `<section class="scene-production"><header><div><h2>场景提示词与画面</h2><p>提示词修改后自动保存；已有或生成中的画面默认展示，需要时可切回提示词。</p></div><div class="scene-view-actions"><span>Image ${imageSummary[0]}/${imageSummary[1]}</span>${sceneActionPlan.count ? `${modelPicker.html}<button class="btn primary compact" data-run-scene-actions>${onlyReverify ? '重新审核场景' : '继续完成场景'}（${sceneActionPlan.count}）</button>` : ''}</div></header><div class="scene-production-grid">${scenes.map((scene, index) => { const sceneId = scene.id || scene.scene_id; return renderSceneProductionCard(scene, index, { generationActive: sceneIsActive(sceneId), batchManaged: unifiedActionManaged, progress: sceneProgress(sceneId) }); }).join('')}</div></section>` : ''}`;
+    ${persistedScenePlanReady ? `<section class="scene-production"><header><div><h2>场景提示词与画面</h2><p>提示词修改后自动保存；已有或生成中的画面默认展示，需要时可切回提示词。</p></div><div class="scene-view-actions"><span>Image ${imageSummary[0]}/${imageSummary[1]}</span>${sceneActionPlan.count ? `${modelPicker.html}<button class="btn primary compact" data-run-scene-actions>${onlyReverify ? '重新审核场景' : '继续完成场景'}（${sceneActionPlan.count}）</button>` : ''}${completionAction}</div></header><div class="scene-production-grid">${scenes.map((scene, index) => { const sceneId = scene.id || scene.scene_id; return renderSceneProductionCard(scene, index, { generationActive: sceneIsActive(sceneId), batchManaged: unifiedActionManaged, progress: sceneProgress(sceneId) }); }).join('')}</div></section>` : ''}`;
 
   context.selectedSceneImageModel = bindGenerationModelPicker(host, modelPicker);
 

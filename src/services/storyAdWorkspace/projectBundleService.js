@@ -556,6 +556,9 @@ function buildProjectBundle(taskId, { sections = '', user = {} } = {}) {
       relations: list(context.subject_relations || context.asset_relations).slice(0, 200),
     };
     Object.assign(bundle, sceneWorkflowProjection.projectBundleState(bundle.assets.scenes, context, outputs));
+    if (bundle.scene_workflow?.visuals_accepted === true) {
+      bundle.assets.scenes = bundle.assets.scenes.map(scene => ({ ...scene, accepted_current_visuals: true }));
+    }
   }
 
   if (include('story')) {

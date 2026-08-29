@@ -5,6 +5,9 @@ import { sceneGenerationSettingsMarkup } from './sceneDossierCardSettings.js?v=2
 const submitted = new Set();
 
 export function sceneProductionAction(scene = {}) {
+  if (scene.accepted_current_visuals === true) return {
+    kind: 'accepted', button: '', status: '', billable: false,
+  };
   const plan = scene.repair_plan && typeof scene.repair_plan === 'object' ? scene.repair_plan : {};
   const action = String(plan.action || '');
   const labels = Array.isArray(plan.view_labels) ? plan.view_labels.filter(Boolean) : [];
@@ -25,6 +28,7 @@ export function sceneProductionAction(scene = {}) {
 }
 
 export function scenePendingAction(scene = {}) {
+  if (scene.accepted_current_visuals === true) return null;
   const action = String(scene.repair_plan?.action || '');
   if (['reverify', 'regenerate_failed_views', 'rebuild_atlas', 'regenerate_full_scene'].includes(action)) {
     return sceneProductionAction(scene);
@@ -64,7 +68,7 @@ export function renderSceneProductionCard(scene = {}, index = 0, options = {}) {
     <nav class="scene-production-tabs"><button class="${preferredTab === 'prompt' ? 'is-active' : ''}" data-scene-detail-tab="prompt">提示词</button><button class="${preferredTab === 'images' ? 'is-active' : ''}" data-scene-detail-tab="images">场景画面 ${imageCount ? `(${imageCount})` : ''}</button></nav>
     <section class="scene-production-pane" data-scene-detail-pane="prompt" ${preferredTab === 'prompt' ? '' : 'hidden'}>${promptPane}</section>
     <section class="scene-production-pane" data-scene-detail-pane="images" ${preferredTab === 'images' ? '' : 'hidden'}>${renderSceneCoverCard(scene)}</section>
-    ${provisional ? '' : `<footer><span>${options.generationActive ? '任务正在后台处理，可留在当前页面查看进度。' : productionAction.status}</span>${options.batchManaged || productionAction.kind === 'fix' ? '' : `<div class="scene-card-controls">${productionAction.billable ? sceneGenerationSettingsMarkup() : ''}<button class="btn primary compact scene-card-generate" data-${productionAction.kind}-scene="${sceneId}" ${options.generationActive ? 'disabled' : ''}>${options.generationActive ? `${escapeHtml(progressAction)}…` : escapeHtml(productionAction.button)}</button></div>`}</footer>`}
+    ${provisional || productionAction.kind === 'accepted' ? '' : `<footer><span>${options.generationActive ? '任务正在后台处理，可留在当前页面查看进度。' : productionAction.status}</span>${options.batchManaged || productionAction.kind === 'fix' ? '' : `<div class="scene-card-controls">${productionAction.billable ? sceneGenerationSettingsMarkup() : ''}<button class="btn primary compact scene-card-generate" data-${productionAction.kind}-scene="${sceneId}" ${options.generationActive ? 'disabled' : ''}>${options.generationActive ? `${escapeHtml(progressAction)}…` : escapeHtml(productionAction.button)}</button></div>`}</footer>`}
   </article>`;
 }
 

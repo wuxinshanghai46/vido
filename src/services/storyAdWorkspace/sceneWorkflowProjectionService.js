@@ -67,7 +67,9 @@ function projectBundleState(scenes = [], context = {}, outputs = {}) {
       preview_scenes: planned.length ? [] : previewScenes,
       visuals_complete: planned.length > 0 && locked.length === planned.length,
       visuals_accepted: acceptanceState.accepted,
-      can_accept_current: acceptanceState.all_views_complete && locked.length !== planned.length,
+      can_accept_current: acceptanceState.all_views_complete
+        && locked.length !== planned.length
+        && acceptanceState.accepted !== true,
       acceptance_mode: acceptanceState.accepted ? 'explicit_user_acceptance' : '',
       confirmed: context.scene_setup_confirmed === true
         && (locked.length === planned.length || acceptanceState.accepted),

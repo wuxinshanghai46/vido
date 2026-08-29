@@ -493,12 +493,6 @@ export async function mount(host, context) {
         setButtonBusy(button, false);
       }
     });
-  });
-  return () => {
-    disposed = true;
-    if (sketchBatchPollTimer) clearTimeout(sketchBatchPollTimer);
-  };
-}
     card.querySelector('[data-save-shot-voice]')?.addEventListener('click', async event => {
       const button = event.currentTarget;
       try {
@@ -508,3 +502,9 @@ export async function mount(host, context) {
         await context.refreshShell();
       } catch (error) { toast(error.message, 'danger'); setButtonBusy(button, false); }
     });
+  });
+  return () => {
+    disposed = true;
+    if (sketchBatchPollTimer) clearTimeout(sketchBatchPollTimer);
+  };
+}
