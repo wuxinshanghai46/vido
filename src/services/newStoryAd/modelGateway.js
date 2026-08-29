@@ -136,9 +136,13 @@ const failureDomainSubmissionStates = new Map();
 
 async function acquireFailureDomainSubmission(model = {}) {
   const key = rateLimitDomainHealthKey(model);
+  const stage = String(model._stageId || model.stage || '');
+  const parallelism = ['new_story_ad.scene_vision', 'new_story_ad.scene_camera_qa'].includes(stage)
+    ? VISION_FAILURE_DOMAIN_PARALLELISM
+    : 1;
   const state = failureDomainSubmissionStates.get(key) || { active: 0, waiters: [] };
   failureDomainSubmissionStates.set(key, state);
-  if (state.active >= VISION_FAILURE_DOMAIN_PARALLELISM) {
+  if (state.active >= parallelism) {
     await new Promise(resolve => state.waiters.push(resolve));
   } else {
     state.active += 1;
@@ -1030,7 +1034,7 @@ async function generateVision({
   for (let i = 0; i < attemptCandidates.length; i += 1) {
     cancellation.throwIfCancelled(taskId);
     const model = attemptCandidates[i];
-    const releaseFailureDomain = await acquireFailureDomainSubmission(model);
+    const releaseFailureDomain = await acquireFailureDomainSubmission({ ...model, _stageId: stage });
     try {
       cancellation.throwIfCancelled(taskId);
       const attemptTimeoutMs = visionAttemptTimeoutForBudget({

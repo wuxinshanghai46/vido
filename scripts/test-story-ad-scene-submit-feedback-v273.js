@@ -65,7 +65,7 @@ async function verifyFreshGenerationClock() {
 
 async function verifyBoundedParallelVision() {
   const gateway = require('../src/services/newStoryAd/modelGateway');
-  const model = { provider_id: 'parallel-fixture', model_id: 'vision' };
+  const model = { provider_id: 'parallel-fixture', model_id: 'vision', _stageId: 'new_story_ad.scene_vision' };
   const releaseOne = await gateway.acquireFailureDomainSubmission(model);
   const releaseTwo = await gateway.acquireFailureDomainSubmission(model);
   let thirdAcquired = false;
