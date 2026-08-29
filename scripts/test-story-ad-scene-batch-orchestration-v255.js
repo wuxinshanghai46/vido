@@ -89,7 +89,7 @@ async function main() {
   assert.deepEqual(plan.actions.map(item => item.image_total), [5, 0], '批进度必须按 Image 单元计数，纯审核不得伪造图片数量');
   assert.equal(plan.actions.length, 2, '同一场景必须只进入一次批处理');
   storage.updateTask(taskId, { active_target_generations: {
-    'scene_qa:other': { generation_id: 'other', stage: 'scene_qa', target_id: 'other', status: 'running' },
+    'scene_asset:other': { generation_id: 'other', stage: 'scene_asset', target_id: 'other', status: 'running' },
   } });
   assert.throws(() => orchestrator.plan(taskId, { actions: [{ scene_id: 'scene-generate' }] }), error => (
     error?.code === 'SCENE_BATCH_BUSY'

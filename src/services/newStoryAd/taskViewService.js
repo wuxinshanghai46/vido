@@ -318,8 +318,8 @@ function createTaskViewService(deps = {}) {
       saved_progress: task.saved_progress === true,
       active_stage: task.active_stage || '',
       active_generation_id: task.active_generation_id || '',
-      active_target_generations: task.active_target_generations && typeof task.active_target_generations === 'object'
-        ? task.active_target_generations : {},
+      active_target_generations: Object.fromEntries(Object.entries(task.active_target_generations || {})
+        .filter(([, value]) => String(value?.stage || '') !== 'scene_qa')),
       target_generation_results: task.target_generation_results && typeof task.target_generation_results === 'object'
         ? task.target_generation_results : {},
       content_revision: Math.max(1, Number(task.content_revision || 1) || 1),

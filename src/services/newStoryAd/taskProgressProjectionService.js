@@ -51,16 +51,19 @@ function compactProgress(value = {}) {
  */
 function projectTaskProgress(task = {}, sinceRevision = '') {
   const progress = compactProgress(task.generation_progress);
+  const currentTargets = Object.fromEntries(Object.entries(task.active_target_generations || {})
+    .filter(([, value]) => String(value?.stage || '') !== 'scene_qa'));
+  const currentProgress = Object.fromEntries(Object.entries(task.target_generation_progress || {})
+    .filter(([key, value]) => !String(key).startsWith('scene_qa:') && String(value?.stage || '') !== 'scene_qa'));
   const projectedTask = {
     id: text(task.id, 120),
     status: text(task.status, 40),
     stage: text(task.stage, 80),
     active_generation_id: text(task.active_generation_id, 120),
     active_stage: text(task.active_stage, 80),
-    active_target_generations: task.active_target_generations && typeof task.active_target_generations === 'object'
-      ? task.active_target_generations : {},
-    target_generation_progress: task.target_generation_progress && typeof task.target_generation_progress === 'object'
-      ? Object.fromEntries(Object.entries(task.target_generation_progress).slice(0, 30).map(([key, value]) => [
+    active_target_generations: currentTargets,
+    target_generation_progress: Object.keys(currentProgress).length
+      ? Object.fromEntries(Object.entries(currentProgress).slice(0, 30).map(([key, value]) => [
         text(key, 240), compactProgress(value),
       ])) : {},
     generation_queued_at: text(task.generation_queued_at, 48),

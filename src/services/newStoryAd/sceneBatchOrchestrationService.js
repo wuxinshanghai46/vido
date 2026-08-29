@@ -23,7 +23,7 @@ function create(deps = {}) {
   function plan(taskId, body = {}) {
     const task = storage.getTask(taskId);
     const activeSceneAction = Object.values(task?.active_target_generations || {}).find(item => (
-      ['scene_asset', 'scene_qa'].includes(String(item?.stage || ''))
+      String(item?.stage || '') === 'scene_asset'
       && ['queued', 'running', 'processing', 'verifying'].includes(String(item?.status || '').toLowerCase())
     ));
     if (activeSceneAction) {

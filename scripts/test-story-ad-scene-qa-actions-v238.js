@@ -169,7 +169,6 @@ async function testBatchBinding() {
 
 async function main() {
   testPlanner();
-  await testFixBinding();
   await testBatchBinding();
   const dossier = loadDossier();
   const prompt = loadPrompt(dossier);
@@ -179,8 +178,8 @@ async function main() {
   assert.deepEqual([...dossier.sceneQaFailureDetails(reverify).labels], ['跨视角一致性']);
   assert.match(dossier.renderSceneCoverCard(reverify), /QA 尚未定位到具体图片[\s\S]*反向视图入口位置与主视图不一致/);
   const reverifyHtml = prompt.renderSceneProductionCard(reverify);
-  assert.match(reverifyHtml, /data-fix-scene="scene-reverify"/);
-  assert.match(reverifyHtml, /重新审核（0 次图片调用）/);
+  assert.doesNotMatch(reverifyHtml, /data-fix-scene=/, '旧单场景修复按钮不得再渲染');
+  assert.match(reverifyHtml, /只重新审核，不重新生成图片。/);
   assert.doesNotMatch(reverifyHtml, /data-scene-quality/);
   const qaUnavailable = completeScene('reverify');
   qaUnavailable.qa.qa_unavailable = true;
@@ -233,22 +232,21 @@ async function main() {
 
   const repair = completeScene('regenerate_failed_views', { count: 1, view_labels: ['反向空间'], message: '只重做反向空间。' });
   const repairHtml = prompt.renderSceneProductionCard(repair);
-  assert.match(repairHtml, /data-fix-scene="scene-regenerate_failed_views"/);
-  assert.match(repairHtml, /修复：反向空间（1 张）/);
-  assert.match(repairHtml, /data-scene-quality/);
+  assert.doesNotMatch(repairHtml, /data-fix-scene=/, '逐图修复必须由统一批任务接管');
+  assert.match(repairHtml, /只重做反向空间/);
+  assert.doesNotMatch(repairHtml, /data-scene-quality/, '模型选择只允许出现在统一场景操作区');
   assert.equal(dossier.sceneNeedsGeneration(repair), false, '定向修复不得误入普通批量生成路由');
   assert.equal(prompt.scenePendingAction(repair).kind, 'fix', '定向补图必须进入统一修复聚合');
 
   const atlasHtml = prompt.renderSceneProductionCard(completeScene('rebuild_atlas', { count: 2 }));
-  assert.match(atlasHtml, /修复空间母图与布局（2 次图片调用）/);
+  assert.match(atlasHtml, /透视视图来自同一母图，需要重建母图与俯视布局/);
   const fullHtml = prompt.renderSceneProductionCard(completeScene('regenerate_full_scene', { count: 2 }));
-  assert.match(fullHtml, /data-fix-scene="scene-regenerate_full_scene"/);
-  assert.match(fullHtml, /修复并升级当前场景/);
+  assert.doesNotMatch(fullHtml, /data-fix-scene=/);
+  assert.match(fullHtml, /旧版空间合同需要完整升级/);
 
   const interactions = read('public/story-ad/views/sceneQaActions.js');
-  assert.match(interactions, /scene-assets\/\$\{encodeURIComponent\(sceneId\)\}\/fix/);
-  assert.match(interactions, /authorizeBillingReviews/);
-  assert.match(interactions, /confirmBillingAwareAction/);
+  assert.match(interactions, /LEGACY_SCENE_FIX_DISABLED/);
+  assert.doesNotMatch(interactions, /runStage\(/);
   assert.doesNotMatch(interactions, /data-reverify-scene|data-repair-scene/);
   const worldPage = read('public/story-ad/views/sceneWorldPage.js');
   assert.match(worldPage, /data-run-scene-actions>继续完成场景（\$\{sceneActionPlan\.count\}）/);
@@ -262,18 +260,11 @@ async function main() {
     routes.indexOf("router.post('/tasks/:id/scene-assets/:sceneId/fix'"),
     routes.indexOf("router.get('/tasks/:id/progress'"),
   );
-  assert.match(fixRoute, /const suppliedBody = req\.body \|\| \{\};[\s\S]*assertCurrentPrompt\([^)]*suppliedBody\)/,
-    'QA-only scene fix must validate the supplied request before any paid-model selection is required');
-  assert.match(fixRoute, /const qaOnly = plan\.action === 'reverify'/);
-  assert.match(fixRoute, /const stage = qaOnly \? 'scene_qa' : 'scene_asset'/,
-    'QA-only reverify must have an independent job stage from paid scene image repair');
-  assert.match(fixRoute, /if \(qaOnly\)[\s\S]*reverifySceneAsset[\s\S]*provider_image_call_count: 0/,
-    'QA-only route must stop after verification and report zero image calls');
-  assert.match(fixRoute, /return sceneAssetService\.fixSceneAsset/,
-    'real regenerate/repair actions must retain the scene_asset execution branch');
+  assert.match(fixRoute, /LEGACY_SCENE_FIX_DISABLED/);
+  assert.doesNotMatch(fixRoute, /queueTaskStage|reverifySceneAsset|fixSceneAsset/,
+    '旧单场景入口必须在排队、写状态和模型调用之前无条件拒绝');
   const permitSource = read('src/services/newStoryAd/generationPermitService.js');
-  assert.doesNotMatch(permitSource.match(/const PROTECTED_STAGES = new Set\([\s\S]*?\);/)?.[0] || '', /scene_qa/,
-    'scene_qa must not consume an image generation Active Plan permit');
+  assert.doesNotMatch(permitSource.match(/const PROTECTED_STAGES = new Set\([\s\S]*?\);/)?.[0] || '', /scene_qa/);
   assert.match(routes, /LEGACY_SCENE_VERIFY_DISABLED/);
   assert.match(routes, /LEGACY_SCENE_REPAIR_DISABLED/);
   console.log(JSON.stringify({ passed: true, unified_fix_action: true, targeted_repair_views: 1, atlas_image_calls: 2, supplier_calls: 0 }));

@@ -1,6 +1,5 @@
 import { setButtonBusy, toast } from '../components/ui.js?v=20260829-production-v274b';
 import { authorizeBillingReviews, confirmBillingAwareAction } from './assetCenterBillingRetry.js?v=20260829-production-v274b';
-import { bindSceneQaActions, submitSceneFix } from './sceneQaActions.js?v=20260829-production-v274b';
 import { createSceneCardEditorRuntime } from './sceneCardEditorRuntime.js?v=20260829-production-v274b';
 import { buildSceneBatchActionPlan } from './sceneBatchActionPlan.js?v=20260829-production-v274b';
 
@@ -26,7 +25,6 @@ export function bindSceneCards(host, context) {
     if (card) switchTab(card, 'images');
     return result;
   };
-  bindSceneQaActions({ host, context, controllerFor, cardFor });
   host.querySelectorAll('[data-generate-scene]').forEach(button => button.addEventListener('click', async () => {
     const sceneId = button.dataset.generateScene;
     const scene = (context.bundle.assets?.scenes || []).find(item => String(item.id || item.scene_id) === sceneId);

@@ -61,6 +61,7 @@ const BASE_FILES = [
   'scripts/test-story-ad-szznai-routing-v243.js',
   'scripts/test-story-ad-scene-submit-feedback-v273.js',
   'scripts/test-story-ad-scene-auto-qa-repair-v274.js',
+  'scripts/test-story-ad-new-contract-redline-v275.js',
   'scripts/migrate-story-ad-era-identities-v170.js',
   'scripts/migrate-story-ad-person-count-contract-v174.js',
   'scripts/migrate-story-ad-person-demographics-v63.js',

@@ -1719,57 +1719,11 @@ router.post('/tasks/:id/scene-assets/:sceneId/repair', asyncRoute(async (req, re
 
 router.post('/tasks/:id/scene-assets/:sceneId/fix', asyncRoute(async (req, res) => {
   taskForReq(req);
-  const suppliedBody = req.body || {};
-  const currentPrompt = scenePromptConfirmation.assertCurrentPrompt(req.params.id, req.params.sceneId, suppliedBody);
-  const sceneAssets = sceneAssetService.normalizeSceneAssets(storage.getOutput(req.params.id, 'scene_assets') || []);
-  const currentScene = sceneAssets.find(item => String(item.scene_id || item.id || '') === String(req.params.sceneId));
-  const plan = currentScene?.repair_plan || sceneAssetService.buildSceneRepairPlan(currentScene || {});
-  const body = plan.action === 'reverify'
-    ? suppliedBody
-    : mediaModelSelection.applySelection('new_story_ad.scene_asset', suppliedBody);
-  const fixRevision = [
-    currentPrompt.prompt_version_id,
-    currentScene?.scene_revision || currentScene?.revision || 1,
-    plan.version || 1,
-    plan.action || 'unknown',
-    ...(Array.isArray(plan.view_keys) ? plan.view_keys : []),
-  ].join(':');
-  const authoritativeBody = {
-    ...body,
-    prompt_version_id: currentPrompt.prompt_version_id,
-    scene_id: req.params.sceneId,
-    request_key: String(body.request_key || body.requestKey || `${req.params.id}:scene_asset_fix:${req.params.sceneId}:${fixRevision}`).slice(0, 180),
-  };
-  req.body = authoritativeBody;
-  const qaOnly = plan.action === 'reverify';
-  const stage = qaOnly ? 'scene_qa' : 'scene_asset';
-  return queueTaskStage(req, res, stage, async job => {
-    if (qaOnly) {
-      const diagnosis = await sceneAssetService.reverifySceneAsset(req.params.id, req.params.sceneId);
-      const nextPlan = diagnosis.scene_asset?.repair_plan
-        || sceneAssetService.buildSceneRepairPlan(diagnosis.scene_asset || {});
-      return {
-        ...diagnosis,
-        fix_status: nextPlan.action === 'none'
-          ? 'verified_without_image_repair'
-          : 'reverified_without_image_repair',
-        provider_image_call_count: 0,
-      };
-    }
-    return sceneAssetService.fixSceneAsset(req.params.id, req.params.sceneId, {
-      ...authoritativeBody,
-      generation_id: job.generationId,
-    }, {
-      generationId: job.generationId,
-    });
-  }, {
-    scopeId: req.params.sceneId,
-    deadlineMs: 20 * 60 * 1000,
-    failureContext: {
-      scene_id: req.params.sceneId,
-      scene_name: body.name || body.scene_name || body.sceneName || '',
-    },
-  });
+  const error = new Error('旧单场景修复入口已停用；请刷新页面后使用统一“继续完成场景”，系统会自动审核、局部修复并复核。');
+  error.code = 'LEGACY_SCENE_FIX_DISABLED';
+  error.status = 410;
+  error.retryable = false;
+  throw error;
 }));
 
 router.get('/tasks/:id/progress', asyncRoute(async (req, res) => {

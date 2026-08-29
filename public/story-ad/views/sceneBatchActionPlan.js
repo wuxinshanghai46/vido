@@ -13,7 +13,7 @@ export function buildSceneBatchActionPlan(scenes = [], activeTargets = []) {
     requiresBillingConfirmation: false,
   };
   const active = new Set((Array.isArray(activeTargets) ? activeTargets : [])
-    .filter(item => ['scene_asset', 'scene_qa'].includes(text(item?.stage))
+    .filter(item => text(item?.stage) === 'scene_asset'
       && ['queued', 'running', 'processing', 'verifying'].includes(text(item?.status).toLowerCase()))
     .map(item => text(item?.target_id || item?.scope_id))
     .filter(Boolean));

@@ -82,7 +82,7 @@ assert.match(assets, /data-generate-product-reference/u, '材料卡必须接通�
 assert.match(assetPlanningDetails, /data-drawer-generate-product/u, '材料详情抽屉必须接通中性参考图入口');
 assert.match(assetPlanningDetails, /不能替代真实样片/u, '中性参考图必须明确不能冒充真实样片');
 assert.match(assetPlanningDetails, /qa\.reasons\.map\(publicSceneQaReason\)/u, '场景详情抽屉也必须使用普通用户 QA 投影');
-assert.match(sceneQaActions, /!billingAuthorized && !qaOnly/u, 'QA-only reverify must skip paid image confirmation and authorization');
+assert.match(sceneQaActions, /LEGACY_SCENE_FIX_DISABLED/u, '旧单场景修复交互必须成为无调用拒绝壳');
 assert.doesNotMatch(sceneRuntimeFailure, /provider_id|model_id|provider_request_id|provider_task_id|http_status|error_code/u,
   'ordinary scene runtime card must not expose provider/model/request internals');
 assert.match(sceneDossierCard, /function assetCardMedia/);
@@ -661,7 +661,7 @@ assert.match(scenePromptPreview, /scene-card-entry/, '进入场景按钮必须�
 assert.match(scenePromptPreview, /scene-card-generate/, '单场景生成按钮必须使用紧凑场景操作样式');
 assert.match(scenePromptPreview, /data-scene-progress/u, 'current scene card must own its live progress');
 assert.match(sceneWorldPage, /target_generation_progress/u, 'scene page must read target-scoped progress instead of the representative global job');
-assert.match(sceneWorldPage, /scene_qa:\$\{sceneId\}/u, 'QA-only progress must be keyed by the current scene');
+assert.doesNotMatch(sceneWorldPage, /scene_qa:\$\{sceneId\}/u, '旧 QA 进度不得参与当前场景投影');
 assert.match(sceneWorldPage, /scene_asset:\$\{sceneId\}/u, 'image progress must be keyed by the current scene');
 assert.match(read('public/story-ad/components/ui.js'), /currentView === 'scene' && \['scene_asset', 'scene_qa'\]\.includes\(view\.stage\)/u,
   'aggregate scene progress banner must not cover target-scoped current-scene progress');

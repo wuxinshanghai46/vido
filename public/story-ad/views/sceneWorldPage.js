@@ -8,7 +8,7 @@ import { bindGenerationModelPicker, loadGenerationModelPicker } from './generati
 import { normalizeSceneDossier } from './sceneDossierCard.js?v=20260829-production-v274b';
 
 export function latestSceneTargetProgress(progress = {}, sceneId = '', generationId = '') {
-  const rows = Object.values(progress).filter(item => ['scene_asset', 'scene_qa'].includes(String(item?.stage || ''))
+  const rows = Object.values(progress).filter(item => String(item?.stage || '') === 'scene_asset'
     && String(item?.scene_id || item?.scope_id || '') === String(sceneId))
     .sort((a, b) => (Date.parse(b?.updated_at || b?.started_at || '') || 0) - (Date.parse(a?.updated_at || a?.started_at || '') || 0));
   return rows.find(item => generationId && item?.generation_id === generationId) || rows[0] || null;
@@ -31,15 +31,15 @@ export async function mount(host, context) {
   const batchActive = Boolean(batchTarget || (generationActive && String(generationProgress.mode || '') === 'scene_batch'));
   const sceneIsActive = sceneId => activeTargets.some(item => {
     const status = String(item?.status || '').toLowerCase();
-    return ['scene_asset', 'scene_qa'].includes(String(item?.stage || ''))
+    return String(item?.stage || '') === 'scene_asset'
       && String(item?.target_id || item?.scope_id || '') === String(sceneId)
       && (!status || ['queued', 'running', 'processing', 'verifying'].includes(status));
   }) || ['queued', 'running', 'processing', 'verifying'].includes(String(
-    targetProgress[`scene_asset:${sceneId}`]?.status || targetProgress[`scene_qa:${sceneId}`]?.status || '',
+    targetProgress[`scene_asset:${sceneId}`]?.status || '',
   ).toLowerCase());
   const targetProgress = bundle?.project?.target_generation_progress && typeof bundle.project.target_generation_progress === 'object'
     ? bundle.project.target_generation_progress : {};
-  const sceneActiveTarget = sceneId => activeTargets.find(item => ['scene_asset', 'scene_qa'].includes(String(item?.stage || ''))
+  const sceneActiveTarget = sceneId => activeTargets.find(item => String(item?.stage || '') === 'scene_asset'
     && String(item?.target_id || item?.scope_id || '') === String(sceneId));
   const sceneProgress = sceneId => {
     const activeTarget = sceneActiveTarget(sceneId);
