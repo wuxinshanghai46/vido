@@ -190,6 +190,7 @@ function projectSceneAssets(outputRows = [], modelCalls = []) {
         if (preview.checkpoint_mode === 'repair') {
           const viewByKey = new Map((Array.isArray(assets[existingIndex].view_images) ? assets[existingIndex].view_images : [])
             .map(view => [text(view?.key, 40), view]).filter(([key]) => key));
+          preview.failed_view_keys.forEach(key => viewByKey.delete(text(key, 40)));
           preview.view_images.forEach(view => viewByKey.set(text(view?.key, 40), view));
           const mergedViews = VIEW_ORDER.map(key => viewByKey.get(key)).filter(Boolean);
           assets[existingIndex] = {

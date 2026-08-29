@@ -33,7 +33,7 @@ storage.saveOutput(taskId, 'scene_assets', [{
   repair_plan: { version: 6, action: 'reverify', view_keys: [], count: 0 },
 }]);
 storage.saveOutput(taskId, `scene_asset_checkpoint:${sceneId}`, {
-  scene_id: sceneId, status: 'partial', metadata: { space_id: sceneId, generation_contract_version: 7 },
+  scene_id: sceneId, status: 'partial', metadata: { mode: 'repair', space_id: sceneId, generation_contract_version: 7 },
   views: {
     master: { status: 'succeeded', ...view('master') },
     reverse: { status: 'succeeded', ...view('reverse') },
