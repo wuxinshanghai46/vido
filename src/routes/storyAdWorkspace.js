@@ -5,6 +5,7 @@ const projectBundles = require('../services/storyAdWorkspace/projectBundleServic
 const graphProjection = require('../services/storyAdWorkspace/graphProjectionService');
 const graphLayouts = require('../services/storyAdWorkspace/graphLayoutService');
 const storyboardSketches = require('../services/storyAdWorkspace/storyboardSketchService');
+const storyboardImageConfirmation = require('../services/storyAdWorkspace/storyboardImageConfirmationGateService');
 const sceneWorlds = require('../services/storyAdWorkspace/sceneWorldService');
 const directorScenes = require('../services/storyAdWorkspace/directorSceneService');
 const referenceUnderstandingConfirmations = require('../services/storyAdWorkspace/referenceUnderstandingConfirmationService');
@@ -453,6 +454,12 @@ router.post('/projects/:taskId/storyboard-images/:shotIndex/generate', asyncRout
     body,
   );
   res.json({ success: true, task_id: req.params.taskId, ...result });
+}));
+
+router.put('/projects/:taskId/storyboard-images/:shotIndex/prompt', asyncRoute(async (req, res) => {
+  projectForRequest(req);
+  const result = storyboardSketches.savePromptOverride(req.params.taskId, req.params.shotIndex, req.body?.prompt_text || '', currentUser(req));
+  res.json({ success: true, task_id: req.params.taskId, ...result, image_gate: storyboardImageConfirmation.inspect(req.params.taskId) });
 }));
 
 router.post('/projects/:taskId/storyboard-images/generate-batch', asyncRoute(async (req, res) => {

@@ -212,6 +212,15 @@ function promptBlock(contract = {}) {
   ].join('\n');
 }
 
+function userPrompt(shot = {}, contract = compile({ shot })) {
+  return [
+    clean(shot.visual || shot.visual_description || shot.title, 1200),
+    `决定性瞬间：${clean(contract.decisive_moment, 900)}`,
+    `镜头：${clean([shot.shot_size, shot.camera_angle, shot.lens_mm ? `${shot.lens_mm}mm` : '', shot.composition, shot.subject_position, shot.camera_movement].filter(Boolean).join('；'), 700)}`,
+    `连续性：${clean(contract.camera_strategy, 700)}`,
+  ].filter(line => !line.endsWith('：')).join('\n');
+}
+
 module.exports = {
   CONTRACT_VERSION,
   compile,
@@ -224,4 +233,5 @@ module.exports = {
   inferMotion,
   spatialTopology,
   cameraStrategy,
+  userPrompt,
 };

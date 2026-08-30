@@ -60,13 +60,15 @@ const DOMAIN_RULES = [
     risk: 'story_content',
     patterns: [
       /^src\/services\/newStoryAd\/(?:blueprint|storyboard)/i,
-      /^src\/services\/newStoryAd\/scene(?:PlanningAuthority|PerformanceCoverageContract)Service\.js$/i,
+      /^src\/services\/newStoryAd\/scene(?:PlanningAuthority|PerformanceCoverageContract|DomainContract)Service\.js$/i,
       /^scripts\/test-(?:new-)?story-ad-(?:blueprint|storyboard|detail-sketch)/i,
       /^scripts\/test-story-ad-direct-storyboard/i,
       /^src\/services\/newStoryAd\/(?:productionBoardContractService|qualityReviewService|storyAdService|storyBeatAssistService|ttsAdapter)\.js$/i,
       /^src\/services\/newStoryAd\/(?:productionPromptCompilerService|soundJourneyService)\.js$/i,
       /^src\/services\/newStoryAd\/jsonRepairService\.js$/i,
-      /^src\/services\/storyAdWorkspace\/(?:storyboardSketch|storyboardSketchGate)Service\.js$/i,
+      /^src\/services\/storyAdWorkspace\/(?:storyboardSketch|storyboardSketchGate|storyboardImageConfirmationGate|storyboardPromptOverride)Service\.js$/i,
+      /^scripts\/(?:repair-story-ad-storyboard-domain-contract|test-story-ad-universal-scene-domain)/i,
+      /^scripts\/configure-story-ad-consistency-vision-routing-v240\.js$/i,
       /^src\/services\/storyAdWorkspace\/storyFlow(?:Contract|Planning)Service\.js$/i,
       /^scripts\/test-story-ad-(?:production-prompt-application|audio-realization)/i,
       /^scripts\/test-story-ad-production-board-v158\.js$/i,
@@ -183,6 +185,12 @@ function scopedDomainFromPatch(file = '', patch = '') {
     && hunks.every(hunk => /reference-video-analyses|referenceVideoAnalyses|extendedAnalysisConfirmed|preflightFingerprint/i.test(hunk))) {
     return 'reference';
   }
+  if (normalized === 'src/routes/storyAdWorkspace.js'
+    && hunks.every(hunk => /storyboard-images|savePromptOverride|storyboardImageConfirmation/i.test(hunk))) return 'story_content';
+  if (normalized === 'src/services/storyAdWorkspace/projectBundleService.js'
+    && hunks.every(hunk => /storyboard|prompt_overrides|reference_packs/i.test(hunk))) return 'story_content';
+  if (normalized === 'src/services/pipelineModelService.js'
+    && hunks.every(hunk => /storyboard_subject_qa|分镜主体数量与唯一性/i.test(hunk))) return 'story_content';
   if (normalized === 'src/routes/newStoryAd.js'
     && hunks.every(hunk => /tasks\/:id\/storyboard|generate_images|generateSketchBatch|STORYBOARD_IMAGE_CONFIRMATION_REQUIRED/i.test(hunk))) {
     return 'story_content';

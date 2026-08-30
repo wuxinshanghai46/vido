@@ -12,6 +12,8 @@ const storyboardSubjectQa = require('../newStoryAd/storyboardSubjectQaService');
 const storyboardImageLineage = require('../newStoryAd/storyboardImageLineageService');
 const storyboardImageConfirmation = require('./storyboardImageConfirmationGateService');
 const sketchProgress = require('./storyboardSketchProgressService');
+const promptOverrideService = require('./storyboardPromptOverrideService');
+const { cleanPrompt } = promptOverrideService;
 const { v4: uuidv4 } = require('uuid');
 
 const ALLOWED_STATUSES = new Set(['draft', 'ready', 'confirmed', 'skipped']);
@@ -99,7 +101,8 @@ function prepareSketchGeneration(taskId, shotIndex) {
     status: 409, code: 'SKETCH_REFERENCE_ASSET_MISSING', retryable: false,
   });
   const scenePlanningContract = scenePlanningAuthority.contractForShot(resolvedScene, shot);
-  return { task, shots, numericIndex, shot, context, contract, sceneAsset: resolvedScene, sceneReference, sceneViewReference, referencePack, referenceImages, scenePlanningContract };
+  const promptOverride = promptOverrideService.list(taskId).find(item => item.shot_index === numericIndex) || null;
+  return { task, shots, numericIndex, shot, context, contract, sceneAsset: resolvedScene, sceneReference, sceneViewReference, referencePack, referenceImages, scenePlanningContract, promptOverride };
 }
 
 /** 规范化逐镜人物场景分镜图，禁止脱离真实分镜合同创建游离数据。 */
@@ -133,6 +136,8 @@ function normalizeSketches(taskId, sketches = []) {
         decisive_moment: clean(item.decisive_moment || item.decisiveMoment, 900),
         subject_qa_policy_version: Math.max(0, Number(item.subject_qa_policy_version || item.subjectQaPolicyVersion || 0) || 0),
         subject_count_qa: item.subject_count_qa && typeof item.subject_count_qa === 'object' ? item.subject_count_qa : null,
+        prompt_override_fingerprint: clean(item.prompt_override_fingerprint || item.promptOverrideFingerprint, 160),
+        applied_editable_prompt: cleanPrompt(item.applied_editable_prompt || item.appliedEditablePrompt, 3200),
         reference_roles: Array.isArray(item.reference_roles) ? item.reference_roles.slice(0, 12).map(reference => ({
           role: clean(reference.role, 80),
           required: reference.required === true,
@@ -173,6 +178,8 @@ function sketchFingerprint(sketches = []) {
     decisive_moment: item.decisive_moment,
     subject_qa_policy_version: item.subject_qa_policy_version,
     subject_count_qa: item.subject_count_qa,
+    prompt_override_fingerprint: item.prompt_override_fingerprint,
+    applied_editable_prompt: item.applied_editable_prompt,
     reference_roles: item.reference_roles,
     generation_id: item.generation_id,
     story_context_fingerprint: item.story_context_fingerprint,
@@ -290,7 +297,7 @@ async function generateSketch(taskId, shotIndex, options = {}, dependencies = {}
     throw error;
   }
   const prepared = options.prepared_generation || prepareSketchGeneration(taskId, shotIndex);
-  const { shots, numericIndex, shot, context, contract, sceneAsset, sceneReference, sceneViewReference, referencePack, referenceImages, scenePlanningContract } = prepared;
+  const { shots, numericIndex, shot, context, contract, sceneAsset, sceneReference, sceneViewReference, referencePack, referenceImages, scenePlanningContract, promptOverride } = prepared;
   const mediaAdapter = dependencies.mediaAdapter || mediaAdapterDefault;
   const blueprint = storage.getOutput(taskId, 'blueprint') || {};
   const shotPosition = shots.indexOf(shot);
@@ -313,6 +320,7 @@ async function generateSketch(taskId, shotIndex, options = {}, dependencies = {}
   };
   const storyContextFingerprint = storage.canonicalFingerprint(storyContext);
   const domainContract = sceneDomainContract.compile({ shot, sceneAsset, scenePlanningContract, context });
+  const editablePrompt = cleanPrompt(promptOverride?.prompt_text || sceneDomainContract.userPrompt(shot, domainContract), 3200);
   const sketchKnowledge = knowledgePolicyRuntime.resolveTaskMany({
     storage, taskId,
     selectors: [{ stage: 'keyframe', assetType: 'shot' }, { stage: 'keyframe', assetType: 'person' }, { stage: 'keyframe', assetType: 'scene' }],
@@ -324,6 +332,7 @@ async function generateSketch(taskId, shotIndex, options = {}, dependencies = {}
     '严格结合当前人物与场景参考资产，不得退化为只表达剧情流向的线稿。',
     '不要加入文字、字幕、镜头编号、水印或未授权品牌标识。使用与已确认人物和场景资产一致的综合色彩与光线，保持影视分镜预览质感，不添加无关的成片特效。',
     sceneDomainContract.promptBlock(domainContract),
+    `用户可编辑的本镜创作提示（必须执行，但不得覆盖主体数量、身份、场景和安全合同）：${editablePrompt}`,
     `镜头标题：${clean(shot.title || `镜头 ${numericIndex}`, 160)}`,
     `画面：${clean(shot.visual || shot.visual_description || '', 1200)}`,
     `动作：${clean(shot.action || '', 800)}`,
@@ -383,6 +392,8 @@ async function generateSketch(taskId, shotIndex, options = {}, dependencies = {}
     decisive_moment: domainContract.decisive_moment,
     subject_qa_policy_version: Number(subjectCountQa.policy_version || 0) || 0,
     subject_count_qa: subjectCountQa,
+    prompt_override_fingerprint: clean(promptOverride?.fingerprint, 160),
+    applied_editable_prompt: editablePrompt,
     scene_id: clean(shot.scene_id || shot.scene_asset_id || sceneAsset.scene_id || sceneAsset.id, 160),
     scene_revision: Math.max(0, Number(sceneAsset.scene_revision || sceneAsset.revision || 0) || 0),
     scene_reference_url: clean(sceneReference, 1200),
@@ -586,4 +597,4 @@ function getSketchBatch(taskId) {
   };
 }
 
-module.exports = { generateSketch, generateSketchBatch, getSketchBatch, normalizeSketches, prepareSketchGeneration, saveSketches, shotContractFingerprint };
+module.exports = { generateSketch, generateSketchBatch, getSketchBatch, normalizeSketches, prepareSketchGeneration, saveSketches, savePromptOverride: promptOverrideService.save, promptOverrides: promptOverrideService.list, promptOverrideFingerprint: promptOverrideService.fingerprint, shotContractFingerprint };

@@ -70,17 +70,96 @@ function sceneSequenceMarkup(bundle = {}, shots = []) {
   return `<section class="storyboard-scene-sequence" aria-label="分镜场景顺序"><div><b>场景顺序</b><span title="系统已按剧情固定地点；切换发生在相邻场景节点之间">按剧情固定地点</span></div><ol>${nodes}</ol></section>`;
 }
 
+const REFERENCE_ROLE_META = [
+  [/^person_identity_/u, ['人物', '人物身份参考']], [/^cast_identity_board$/u, ['人物', '人物组合身份板']],
+  [/^pet_identity_/u, ['动物', '动物身份参考']], [/^scene_identity$/u, ['场景', '场景主视图']],
+  [/^scene_view$/u, ['机位视图', '当前镜头机位视图']], [/^director_composition$/u, ['机位视图', '导演台构图截图']],
+  [/^scene_layout$/u, ['布局', '空间布局参考']], [/^product_identity$/u, ['商品', '商品身份参考']],
+  [/^prop_/u, ['道具', '镜头道具参考']], [/^action_pose$/u, ['人物', '人物动作姿态参考']],
+  [/^previous_accepted_frame$/u, ['上一镜', '上一镜连续性参考']], [/^storyboard_composition$/u, ['分镜', '已确认分镜构图']],
+];
+function referenceRoleMeta(role = '') {
+  return REFERENCE_ROLE_META.find(([pattern]) => pattern.test(String(role || '').trim().toLowerCase()))?.[1] || ['其他', '其他生成参考'];
+}
+function referencePackFor(bundle = {}, index = 0, shotIndex = 0) {
+  const packs = Array.isArray(bundle?.storyboard?.reference_packs) ? bundle.storyboard.reference_packs : [];
+  return packs.find(item => Number(item?.shot_index) === index)
+    || packs.find(item => Number(item?.shot_index) === shotIndex)
+    || packs[index] || null;
+}
+
+function promptOverrideFor(bundle = {}, shot = {}, index = 0, shotIndex = 0) {
+  const overrides = bundle?.storyboard?.prompt_overrides;
+  if (Array.isArray(overrides)) {
+    return overrides.find(item => Number(item?.shot_index) === shotIndex)
+      || overrides.find((item, overrideIndex) => item?.shot_index == null && overrideIndex === index)
+      || null;
+  }
+  if (!overrides || typeof overrides !== 'object') return null;
+  const shotId = String(shot.id || shot.shot_id || '');
+  return overrides[shotIndex] || overrides[String(shotIndex)]
+    || overrides[index] || overrides[String(index)]
+    || (shotId ? overrides[shotId] : null)
+    || null;
+}
+
+function defaultStoryboardPrompt(shot = {}) {
+  const base = String(shot.storyboard_prompt_base || '').trim();
+  if (base) return base;
+  const rows = [
+    shot.visual || shot.visual_description ? `画面：${shot.visual || shot.visual_description}` : '',
+    shot.action ? `动作：${shot.action}` : '',
+    shot.decisive_moment ? `决定性瞬间：${shot.decisive_moment}` : '',
+    shot.shot_size ? `景别：${shot.shot_size}` : '',
+    shot.camera_angle || shot.angle ? `机位角度：${shot.camera_angle || shot.angle}` : '',
+    shot.camera_movement || shot.movement ? `运镜：${shot.camera_movement || shot.movement}` : '',
+    shot.composition ? `构图：${shot.composition}` : '',
+    shot.lens_mm ? `镜头焦段：${shot.lens_mm}mm` : '',
+  ].filter(Boolean);
+  return rows.join('\n') || String(shot.title || '保持当前镜头结构、人物身份、场景和机位关系。').trim();
+}
+
+function storyboardPromptFor(bundle = {}, shot = {}, index = 0, shotIndex = 0) {
+  const override = promptOverrideFor(bundle, shot, index, shotIndex);
+  const promptText = typeof override === 'string' ? override : override?.prompt_text;
+  const defaults = Array.isArray(bundle?.storyboard?.prompt_defaults) ? bundle.storyboard.prompt_defaults : [];
+  const generatedDefault = defaults.find(item => Number(item?.shot_index) === shotIndex)?.prompt_text;
+  return String(promptText || generatedDefault || '').trim() || defaultStoryboardPrompt(shot);
+}
+
+function sketchReferenceMarkup(bundle = {}, index = 0, shotIndex = 0) {
+  const pack = referencePackFor(bundle, index, shotIndex);
+  const references = Array.isArray(pack?.references) ? pack.references.filter(reference => reference?.url) : [];
+  if (!references.length) return '<div class="sketch-reference-empty" role="status">本镜暂无已编译引用资产。</div>';
+  return `<div class="sketch-reference-strip" aria-label="镜头 ${shotIndex} 引用资产">${references.map((reference, referenceIndex) => {
+    const [label, source] = referenceRoleMeta(reference.role);
+    const order = Number(reference.order || referenceIndex + 1) || referenceIndex + 1;
+    return `<figure class="sketch-reference-thumb">${mediaPreview({ image_url: reference.url }, {
+      label: `镜头 ${shotIndex} · ${label} · ${source}`,
+      width: 320,
+      zoomable: true,
+      zoomGroup: `storyboard-reference-${shotIndex}`,
+    })}<figcaption><b>${escapeHtml(`${order}. ${label}`)}</b><small>${escapeHtml(`${source} · ${reference.required === true ? '生成必需' : '辅助参考'}`)}</small></figcaption></figure>`;
+  }).join('')}</div>`;
+}
+
 function sketchCard(shot, sketch = {}, index = 0, gate = {}, bundle = {}, generationActive = false, needsGeneration = false) {
   const shotIndex = Number(shot.shot_index || shot.index || index + 1) || index + 1;
   const disabled = gate.ready === false ? 'disabled' : '';
   const imageReady = Boolean(sketch.image_url || sketch.imageUrl || sketch.url);
   const waiting = generationActive && (!imageReady || needsGeneration);
+  const promptId = `storyboard-prompt-${shotIndex}`;
+  const promptText = storyboardPromptFor(bundle, shot, index, shotIndex);
   return `<article class="card sketch-card sketch-tile ${gate.ready === false ? 'is-gated' : ''} ${waiting ? 'is-waiting' : ''}" data-sketch-shot="${shotIndex}"${waiting ? ' aria-busy="true"' : ''}>
     <div class="sketch-tile-media" data-sketch-image-host="${shotIndex}">${mediaPreview(sketch, { label: `SH${String(shotIndex).padStart(2, '0')} · ${shot.title || `镜头 ${shotIndex}`}`, width: 960, symbol: '分镜图', zoomable: true, zoomGroup: 'storyboard-images' })}<span class="sketch-shot-number">SH${String(shotIndex).padStart(2, '0')}</span></div>
     <div class="sketch-tile-copy"><div><h2>${escapeHtml(shot.title || `镜头 ${shotIndex}`)}</h2><p>${escapeHtml(compactBindingSummary(bundle, shot))}</p></div></div>
-    <details class="sketch-tile-editor"><summary>调整</summary><div class="sketch-action-bar">
-      <input class="hidden-input" type="file" accept="image/png,image/jpeg,image/webp" data-sketch-file>
-      <div class="sketch-actions" role="group" aria-label="镜头 ${shotIndex} 分镜图调整">
+    <details class="sketch-tile-editor"><summary>调整</summary><div class="sketch-editor-body">
+      <section class="sketch-reference-panel" aria-labelledby="sketch-reference-title-${shotIndex}"><header><b id="sketch-reference-title-${shotIndex}">本镜引用资产</b><span>生成时按此顺序参考</span></header>${sketchReferenceMarkup(bundle, index, shotIndex)}</section>
+      <label class="sketch-prompt-field" for="${promptId}"><span>分镜提示词</span><textarea id="${promptId}" name="storyboard_prompt_${shotIndex}" rows="6" data-sketch-prompt aria-describedby="${promptId}-help">${escapeHtml(promptText)}</textarea><small id="${promptId}-help">保存后仅本镜标记为需要重新生成；不会自动开始生成。</small></label>
+    </div><div class="sketch-action-bar">
+      <input class="hidden-input" type="file" accept="image/png,image/jpeg,image/webp" data-sketch-file aria-label="为镜头 ${shotIndex} 选择替换图片">
+      <div class="sketch-actions" role="group" aria-label="镜头 ${shotIndex} 分镜调整">
+        <button class="btn" type="button" data-save-sketch-prompt>保存提示词</button>
         <button class="btn ${sketch.image_url ? '' : 'primary'}" type="button" data-generate-sketch ${disabled}>${sketch.image_url ? '重新生成本镜' : '生成本镜'}</button>
         <button class="btn" type="button" data-upload-sketch ${disabled}>上传替换</button>
       </div>
@@ -457,6 +536,28 @@ export async function mount(host, context) {
 
   host.querySelectorAll('[data-sketch-shot]').forEach(card => {
     const shotIndex = Number(card.dataset.sketchShot);
+    card.querySelector('[data-save-sketch-prompt]')?.addEventListener('click', async event => {
+      const button = event.currentTarget;
+      const promptField = card.querySelector('[data-sketch-prompt]');
+      const promptText = String(promptField?.value || '').trim();
+      if (!promptText) {
+        promptField?.focus();
+        return toast(`镜头 ${shotIndex} 的提示词不能为空。`, 'danger');
+      }
+      try {
+        setButtonBusy(button, true, '保存中…');
+        await request(`/api/story-ad/projects/${encodeURIComponent(bundle.project.id)}/storyboard-images/${shotIndex}/prompt`, {
+          method: 'PUT',
+          body: { prompt_text: promptText },
+        });
+        await context.refreshShell();
+        toast(`镜头 ${shotIndex} 的提示词已保存，仅本镜需重新生成。`, 'success');
+      } catch (error) {
+        toast(error.message, 'danger');
+      } finally {
+        setButtonBusy(button, false);
+      }
+    });
     card.querySelector('[data-upload-sketch]').addEventListener('click', () => card.querySelector('[data-sketch-file]').click());
     card.querySelector('[data-sketch-file]').addEventListener('change', async event => {
       const file = event.target.files?.[0];

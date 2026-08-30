@@ -289,6 +289,10 @@ function cssRule(source, selector) {
 }
 
 const storyboardCss = fs.readFileSync(path.join(__dirname, '../public/story-ad/storyboard-simple.css'), 'utf8');
+const storyboardView = fs.readFileSync(path.join(__dirname, '../public/story-ad/views/storyboardView.js'), 'utf8');
+const workspaceRoute = fs.readFileSync(path.join(__dirname, '../src/routes/storyAdWorkspace.js'), 'utf8');
+const sketchServiceSource = fs.readFileSync(path.join(__dirname, '../src/services/storyAdWorkspace/storyboardSketchService.js'), 'utf8');
+const projectBundleSource = fs.readFileSync(path.join(__dirname, '../src/services/storyAdWorkspace/projectBundleService.js'), 'utf8');
 
 verify('分镜操作栏保持紧凑并靠右', () => {
   const actionBar = cssRule(storyboardCss, '.storyboard-simple-view .sketch-tile-editor > .sketch-action-bar');
@@ -315,6 +319,19 @@ verify('分镜操作按钮尺寸符合紧凑合同', () => {
   assert.match(buttons, /min-height:30px/);
   assert.match(buttons, /padding:5px11px/);
   assert.match(buttons, /font-size:10px/);
+});
+
+verify('逐镜编辑器展示引用、提示词并通过独立零生成路由保存', () => {
+  assert.match(storyboardView, /本镜引用资产/u);
+  assert.match(storyboardView, /data-sketch-prompt/u);
+  assert.match(storyboardView, /data-save-sketch-prompt/u);
+  assert.match(storyboardView, /storyboard-images\/\$\{shotIndex\}\/prompt/u);
+  assert.match(storyboardView, /仅本镜需重新生成/u);
+  assert.match(workspaceRoute, /storyboard-images\/:shotIndex\/prompt/u);
+  assert.match(workspaceRoute, /savePromptOverride/u);
+  assert.match(sketchServiceSource, /用户可编辑的本镜创作提示/u);
+  assert.match(projectBundleSource, /prompt_defaults/u);
+  assert.match(projectBundleSource, /sceneDomainContract\.userPrompt/u);
 });
 
 console.log(JSON.stringify({

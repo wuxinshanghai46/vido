@@ -280,6 +280,22 @@ async function testGeneratedImageLineageAndPackInvalidation() {
   assert.ok(capturedRequest.referenceImages.some(url => /scene_showroom\/r2\/detail\.png$/.test(url)));
   assert.equal(storage.listModelCalls(taskId).length, 0);
 
+  const customPrompt = '陈默单独站在整面背景墙前，右手只触碰中央铜色样板，保持中广景和完整墙面。';
+  const promptSave = sketches.savePromptOverride(taskId, 5, customPrompt, { id: 'fixture-editor' });
+  assert.equal(promptSave.changed, true);
+  const promptStale = imageGate.inspect(taskId);
+  assert.deepEqual(promptStale.stale_indexes, [5]);
+  assert.deepEqual(promptStale.stale_reasons[5], ['STORYBOARD_PROMPT_CHANGED']);
+  const regenerated = await sketches.generateSketch(taskId, 5, {
+    confirmed: true,
+    client_request_id: 'fixture-generation:shot-5:custom-prompt',
+  }, { mediaAdapter, compositionService, subjectQaService });
+  assert.match(capturedRequest.prompt, new RegExp(customPrompt));
+  assert.equal(regenerated.sketch.prompt_override_fingerprint, promptSave.override.fingerprint);
+  assert.equal(regenerated.sketch.applied_editable_prompt, customPrompt);
+  assert.ok(!imageGate.inspect(taskId).stale_indexes.includes(5));
+  assert.equal(storage.listModelCalls(taskId).length, 0);
+
   const changedPacks = storage.getOutput(taskId, 'shot_reference_packs');
   changedPacks[4] = {
     ...changedPacks[4],

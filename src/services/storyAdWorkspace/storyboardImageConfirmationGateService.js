@@ -25,6 +25,7 @@ function inspect(taskId) {
   );
   const sceneById = new Map(sceneAssets.map(asset => [clean(asset.scene_id || asset.id, 160), asset]));
   const byIndex = new Map(images.map(item => [Number(item.shot_index), item]));
+  const promptOverrides = new Map(list(storage.getOutput(taskId, 'storyboard_image_prompt_overrides')).map(item => [Number(item.shot_index), item]));
   const missing = [];
   const stale = [];
   const staleReasons = {};
@@ -49,6 +50,8 @@ function inspect(taskId) {
       const selectedReference = clean(selectedView?.image_url || selectedView?.url, 1200);
       const modernLineage = lineageVersion >= 1;
       const reasons = [];
+      const currentPromptFingerprint = clean(promptOverrides.get(shotIndex)?.fingerprint, 160);
+      if (clean(image.prompt_override_fingerprint, 160) !== currentPromptFingerprint) reasons.push('STORYBOARD_PROMPT_CHANGED');
       if (legacyContractStale) reasons.push('SHOT_CONTRACT_CHANGED');
       if (Number(image.source_content_revision || 0) > 0
         && Number(image.source_content_revision) !== Number(task.content_revision || 1)) reasons.push('CONTENT_REVISION_CHANGED');

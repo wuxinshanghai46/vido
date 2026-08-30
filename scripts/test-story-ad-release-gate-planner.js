@@ -50,6 +50,22 @@ assert.deepEqual(
   ['workspace_ui', 'release_core'],
   '家庭电脑的角色库只读投影和交互测试必须走工作台 UI 定向门禁，不得误触资产方案生成或完整回归',
 );
+assert.deepEqual(
+  planner.createPlan({
+    root: process.cwd(), baseRevision: 'a'.repeat(40), targetRevision: 'b'.repeat(40), sourceTree: 'c'.repeat(40), reliable: true, targetedHome: true,
+    files: [
+      'src/services/newStoryAd/sceneDomainContractService.js',
+      'src/services/newStoryAd/storyboardSubjectQaService.js',
+      'src/services/storyAdWorkspace/storyboardSketchService.js',
+      'src/services/storyAdWorkspace/storyboardImageConfirmationGateService.js',
+      'src/services/storyAdWorkspace/storyboardPromptOverrideService.js',
+      'scripts/test-story-ad-universal-scene-domain-v311.js',
+      'public/story-ad/views/storyboardView.js',
+    ],
+  }).gates.map(row => row.id),
+  ['story_content', 'workspace_ui', 'release_core'],
+  '家庭电脑的全行业分镜合同、人数质检与提示词编辑只能触发本任务影响域门禁',
+);
 assert.equal(plan(['src/services/newStoryAd/referenceVideoUploadService.js']).profile, 'upload_media');
 const sceneRecoveryPlan = planner.createPlan({
   root: process.cwd(), baseRevision: 'a'.repeat(40), targetRevision: 'b'.repeat(40), sourceTree: 'c'.repeat(40),

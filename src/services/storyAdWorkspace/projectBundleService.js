@@ -17,6 +17,7 @@ const sceneQaProjection = require('./sceneQaProjectionService');
 const sceneSpatialProjection = require('./sceneSpatialProjectionService');
 const storyboardImageConfirmation = require('./storyboardImageConfirmationGateService');
 const scenePlanningAuthority = require('../newStoryAd/scenePlanningAuthorityService');
+const sceneDomainContract = require('../newStoryAd/sceneDomainContractService');
 const storage = require('../newStoryAd/storageService');
 const MAX_MEDIA_ITEMS = 120;
 function clean(value = '', max = 240) { return String(value || '').replace(/\s+/g, ' ').trim().slice(0, max); }
@@ -557,6 +558,16 @@ function buildProjectBundle(taskId, { sections = '', user = {} } = {}) {
     bundle.storyboard.sketch_gate = storyboardSketchGate.inspect(taskId);
     bundle.storyboard.image_gate = storyboardImageConfirmation.inspect(taskId);
     bundle.storyboard.reference_packs = list(outputs.shot_reference_packs).slice(0, 200);
+    bundle.storyboard.prompt_overrides = list(outputs.storyboard_image_prompt_overrides).slice(0, 200);
+    const promptScenes = list(outputs.scene_assets);
+    bundle.storyboard.prompt_defaults = list(bundle.storyboard.shots).slice(0, 200).map((shot, index) => {
+      const shotIndex = Number(shot.shot_index || shot.index || index + 1) || index + 1;
+      const sceneId = clean(shot.scene_id || shot.scene_asset_id, 160);
+      const sceneAsset = promptScenes.find(scene => [scene.scene_id, scene.id].map(value => clean(value, 160)).includes(sceneId)) || {};
+      const planningContract = scenePlanningAuthority.contractForShot(sceneAsset, shot);
+      const domainContract = sceneDomainContract.compile({ shot, sceneAsset, scenePlanningContract: planningContract, context });
+      return { shot_index: shotIndex, prompt_text: sceneDomainContract.userPrompt(shot, domainContract), fingerprint: domainContract.fingerprint };
+    });
     if (!bundle.navigation.counts.shots) bundle.navigation.counts.shots = bundle.storyboard.shots.length;
   }
 
