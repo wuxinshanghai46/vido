@@ -1,5 +1,5 @@
-import { request } from '../api.js?v=20260830-production-v304';
-import { toast } from '../components/ui.js?v=20260830-production-v304';
+import { request } from '../api.js?v=20260830-production-v305';
+import { toast } from '../components/ui.js?v=20260830-production-v305';
 
 const rows = value => Array.isArray(value) ? value.filter(Boolean) : [];
 
