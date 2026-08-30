@@ -11,7 +11,7 @@ const scenes = [
 ];
 const state = {
   context: { story_seed: {
-    opening: '陈默先进入现代高端家居展示厅，观察客厅整面背景墙。',
+    opening: '陈默先进入明亮现代的高端家居展示厅，观察客厅整面背景墙。',
     development: '她在现代高端家居展示厅完成触摸体验。',
     resolution: '随后从现代高端家居展示厅前往高端商业展台，在展台前完成收束。',
   } },

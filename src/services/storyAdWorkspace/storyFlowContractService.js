@@ -139,6 +139,10 @@ function overlapScore(left = '', right = '') {
   return score;
 }
 
+function sceneMentionText(value = '') {
+  return clean(value, 2400).toLowerCase().replace(/[\s，。；、：,.!！?？“”"'（）()\[\]【】的]/gu, '');
+}
+
 function declaredSceneSequence(state = {}, scenes = []) {
   const seed = state.context?.story_seed && typeof state.context.story_seed === 'object' ? state.context.story_seed : {};
   const phaseKeys = ['opening', 'setup', 'development', 'turning_point', 'progression', 'resolution', 'ending', 'closing'];
@@ -148,7 +152,8 @@ function declaredSceneSequence(state = {}, scenes = []) {
   ].map(value => clean(typeof value === 'object' ? JSON.stringify(value) : value, 1800)).filter(Boolean);
   const sequence = [];
   segments.forEach((segment) => {
-    const exactMatches = scenes.map(scene => ({ scene, position: scene.name ? segment.indexOf(scene.name) : -1 }))
+    const normalizedSegment = sceneMentionText(segment);
+    const exactMatches = scenes.map(scene => ({ scene, position: scene.name ? normalizedSegment.indexOf(sceneMentionText(scene.name)) : -1 }))
       .filter(item => item.position >= 0).sort((a, b) => a.position - b.position);
     const ranked = scenes.map(scene => ({ scene, score: overlapScore(segment, `${scene.name} ${scene.story_purpose || ''}`) }))
       .sort((a, b) => b.score - a.score);
