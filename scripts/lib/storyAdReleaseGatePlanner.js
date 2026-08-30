@@ -60,7 +60,7 @@ const DOMAIN_RULES = [
     risk: 'story_content',
     patterns: [
       /^src\/services\/newStoryAd\/(?:blueprint|storyboard)/i,
-      /^src\/services\/newStoryAd\/scene(?:PlanningAuthority|PerformanceCoverageContract|DomainContract)Service\.js$/i,
+      /^src\/services\/newStoryAd\/scene(?:Binding|PlanningAuthority|PerformanceCoverageContract|DomainContract)Service\.js$/i,
       /^scripts\/test-(?:new-)?story-ad-(?:blueprint|storyboard|detail-sketch)/i,
       /^scripts\/test-story-ad-direct-storyboard/i,
       /^src\/services\/newStoryAd\/(?:productionBoardContractService|qualityReviewService|storyAdService|storyBeatAssistService|ttsAdapter)\.js$/i,
@@ -188,7 +188,11 @@ function scopedDomainFromPatch(file = '', patch = '') {
   if (normalized === 'src/routes/storyAdWorkspace.js'
     && hunks.every(hunk => /storyboard-images|savePromptOverride|storyboardImageConfirmation/i.test(hunk))) return 'story_content';
   if (normalized === 'src/services/storyAdWorkspace/projectBundleService.js'
-    && hunks.every(hunk => /storyboard|prompt_overrides|reference_packs/i.test(hunk))) return 'story_content';
+    && hunks.every(hunk => /storyboard|prompt_overrides|prompt_defaults|reference_packs|sceneDomainContract/i.test(hunk))) return 'story_content';
+  if (normalized === 'scripts/test-story-ad-multiscene-reference-lineage-v293.js'
+    && hunks.every(hunk => /subjectQaService|subject_count_qa|同一身份|决定性瞬间|customPrompt|promptSave|promptStale|STORYBOARD_PROMPT_CHANGED|prompt_override_fingerprint|applied_editable_prompt/i.test(hunk))) {
+    return 'story_content';
+  }
   if (normalized === 'src/services/pipelineModelService.js'
     && hunks.every(hunk => /storyboard_subject_qa|分镜主体数量与唯一性/i.test(hunk))) return 'story_content';
   if (normalized === 'src/routes/newStoryAd.js'

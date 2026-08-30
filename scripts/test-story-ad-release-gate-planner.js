@@ -207,6 +207,19 @@ assert.equal(planner.scopedDomainFromPatch('src/services/pipelineModelService.js
   '@@ -72,0 +73 @@',
   '+  { id: \'new_story_ad.reference_video_transcript\' },',
 ].join('\n')), 'reference');
+assert.equal(planner.scopedDomainFromPatch('src/services/storyAdWorkspace/projectBundleService.js', [
+  '@@ -17,0 +18 @@',
+  "+const sceneDomainContract = require('../newStoryAd/sceneDomainContractService');",
+  '@@ -557,0 +558 @@',
+  '+bundle.storyboard.prompt_defaults = [];',
+].join('\n')), 'story_content');
+assert.equal(planner.scopedDomainFromPatch('scripts/test-story-ad-multiscene-reference-lineage-v293.js', [
+  '@@ -255,0 +256 @@',
+  '+const subjectQaService = { assert: async () => ({ pass: true }) };',
+  '@@ -275,0 +280 @@',
+  "+const customPrompt = 'only one actor';",
+  "+assert.deepEqual(promptStale.stale_reasons[5], ['STORYBOARD_PROMPT_CHANGED']);",
+].join('\n')), 'story_content');
 assert.equal(planner.scopedDomainFromPatch('src/routes/newStoryAd.js', [
   '@@ -10 +10 @@ router.post(\'/tasks\'',
   '+  unrelatedMutation();',
