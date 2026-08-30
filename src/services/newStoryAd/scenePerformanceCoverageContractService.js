@@ -2,7 +2,7 @@
 
 const personIdentity = require('./personIdentityContractService');
 
-const CONTRACT_VERSION = 3;
+const CONTRACT_VERSION = 4;
 const list = value => Array.isArray(value) ? value.filter(Boolean) : [];
 const clean = (value = '', max = 1600) => String(value || '').replace(/\s+/g, ' ').trim().slice(0, max);
 
@@ -81,6 +81,31 @@ function sceneOnlyLayout(value = '') {
     .join('；');
 }
 
+function contentGoal(value = '', fallbackTitle = '', role = '') {
+  const source = stripInternalPlanningNotes(value || fallbackTitle);
+  const seen = new Set();
+  return source.split(/[。；;]/u)
+    .map(clause => clean(clause, 800).replace(/^内容目标\s*[:：]\s*/u, ''))
+    .filter(Boolean)
+    .filter(clause => {
+      if (role === 'actor_interaction') {
+        return !/^(?:通过)?人物在完整.+中的规划动线与互动动作证明实际空间应用$/u.test(clause)
+          && !/^人物按规划路线体验/u.test(clause);
+      }
+      if (role === 'scene_establishing') {
+        return !/^以完整空间、整面主要展示面和.+建立.+$/u.test(clause)
+          && !/完整空间与整面主要展示面$/u.test(clause);
+      }
+      return true;
+    })
+    .filter(clause => {
+      if (seen.has(clause)) return false;
+      seen.add(clause);
+      return true;
+    })
+    .join('；');
+}
+
 function ensureCoverage(shots = [], sceneAssets = [], ctx = {}) {
   const result = list(shots).map(shot => ({ ...shot }));
   const assets = new Map(list(sceneAssets).map(asset => [idOf(asset), asset]));
@@ -110,7 +135,7 @@ function ensureCoverage(shots = [], sceneAssets = [], ctx = {}) {
     const anchorLabel = clean(anchor.label || anchor.name, 200);
     const routeLabel = clean(route.label || route.continuity, 300);
     const sceneName = clean((assets.get(sceneId) || {}).name || selected.shot.scene_name || sceneId, 200);
-    const interactionGoal = clean(selected.shot.purpose || selected.shot.title, 500);
+    const interactionGoal = contentGoal(selected.shot.purpose, selected.shot.title, 'actor_interaction');
     const interactionMovement = cameraMovement(interactionCamera, 'slow_follow');
     const visualAuthority = [
       `人物依照已确认场景规划进入并完成互动，画面保留可识别的完整空间关系`,
@@ -152,7 +177,7 @@ function ensureCoverage(shots = [], sceneAssets = [], ctx = {}) {
         anchorLabel ? `保留互动点“${anchorLabel}”所在位置` : '',
       ].filter(Boolean).join('；');
       if (!contractCurrent(establishing.shot, 'planned_scene_establishing')) {
-        const establishingGoal = clean(establishing.shot.purpose || establishing.shot.title, 500);
+        const establishingGoal = contentGoal(establishing.shot.purpose, establishing.shot.title, 'scene_establishing');
         const establishingMovement = cameraMovement(masterCamera, establishing.shot.camera_movement || 'slow_push');
         establishing.shot = result[establishing.index] = {
           ...establishing.shot,

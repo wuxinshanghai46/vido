@@ -124,6 +124,31 @@ assert.equal(upgradedCoverage[3].scene_performance_contract.version, scenePerfor
 assert.doesNotMatch(upgradedCoverage[2].composition, /纹理充满全画幅/);
 assert.doesNotMatch(upgradedCoverage[3].composition, /单块色板充满全画幅/);
 
+const dirtyV3Coverage = upgradedCoverage.map(shot => {
+  if (shot.scene_context_role === 'planned_actor_interaction') return {
+    ...shot,
+    purpose: '通过人物在完整现代高端家居展示厅中的规划动线与互动动作证明实际空间应用；内容目标：通过人物在完整现代高端家居展示厅中的规划动线与互动动作证明实际空间应用；内容目标：拉丝纹理材质证明',
+    visual: `${shot.visual}；内容目标：通过人物在完整现代高端家居展示厅中的规划动线与互动动作证明实际空间应用；内容目标：拉丝纹理材质证明`,
+    scene_performance_contract: { ...shot.scene_performance_contract, version: 3 },
+  };
+  if (shot.scene_context_role === 'planned_scene_establishing') return {
+    ...shot,
+    purpose: '以完整空间、整面主要展示面和入口至互动点的空间动线关系建立现代高端家居展示厅；内容目标：以完整空间、整面主要展示面和人物行动关系建立现代高端家居展示厅；内容目标：以清晰并排的色板证明不锈钢可呈现多种颜色搭配',
+    visual: `${shot.visual}；内容目标：以完整空间、整面主要展示面和人物行动关系建立现代高端家居展示厅；内容目标：以清晰并排的色板证明不锈钢可呈现多种颜色搭配`,
+    scene_performance_contract: { ...shot.scene_performance_contract, version: 3 },
+  };
+  return shot;
+});
+const cleanedV4Coverage = scenePerformance.ensureCoverage(dirtyV3Coverage, assets, ctx);
+assert.equal(cleanedV4Coverage[2].scene_performance_contract.version, scenePerformance.CONTRACT_VERSION, 'V3 拼接污染必须升级');
+assert.equal((cleanedV4Coverage[2].purpose.match(/内容目标/g) || []).length, 1, '人物镜内容目标不得重复拼接');
+assert.match(cleanedV4Coverage[2].purpose, /内容目标：拉丝纹理材质证明$/u);
+assert.doesNotMatch(cleanedV4Coverage[2].purpose, /内容目标：通过人物/u);
+assert.equal((cleanedV4Coverage[3].purpose.match(/内容目标/g) || []).length, 1, '空间建立镜内容目标不得重复拼接');
+assert.doesNotMatch(cleanedV4Coverage[3].purpose, /人物行动关系/u);
+assert.doesNotMatch(cleanedV4Coverage[3].visual, /人物行动关系/u);
+assert.match(cleanedV4Coverage[3].purpose, /内容目标：以清晰并排的色板/u);
+
 const baseFingerprint = lineage.shotContractFingerprint(bound[2], 2);
 for (const patch of [
   { camera_id: 'camera_changed' }, { scene_view: 'master' }, { zone_ids: ['zone_changed'] },
