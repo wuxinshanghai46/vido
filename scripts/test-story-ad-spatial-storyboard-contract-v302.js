@@ -178,6 +178,8 @@ storage.saveOutput(taskId, 'storyboard_images', bound.map((shot, index) => {
     reference_pack_fingerprint: `pack_${index + 1}`,
     scene_planning_fingerprint: asset.scene_planning_fingerprint,
     shot_contract_fingerprint: lineage.shotContractFingerprint(shot, index),
+    subject_qa_policy_version: 2,
+    subject_count_qa: { pass: true },
   };
 }));
 assert.equal(imageGate.inspect(taskId).ready, true, '空间和镜头血缘一致时允许继续');
@@ -207,9 +209,11 @@ storage.saveOutput(legacyTaskId, 'storyboard_images', bound.map((shot, index) =>
     } : {}),
   };
 }));
-assert.equal(imageGate.inspect(legacyTaskId).ready, true, 'V301 旧图应按生成时指纹口径兼容，不能升级后全量误伤');
+assert.equal(imageGate.inspect(legacyTaskId).ready, false, '旧主体质检合同不得继续放行视频生成');
+assert.deepEqual(imageGate.inspect(legacyTaskId).stale_indexes, bound.map((_, index) => index + 1));
+assert(imageGate.inspect(legacyTaskId).stale_reasons[1].includes('SUBJECT_COUNT_QA_POLICY_OUTDATED'));
 storage.saveOutput(legacyTaskId, 'storyboard_table', bound.map((shot, index) => index === 2 ? { ...shot, action: `${shot.action}并停留确认` } : shot));
-assert.deepEqual(imageGate.inspect(legacyTaskId).stale_indexes, [3], '旧图内容真正变化时仍必须精准失效');
+assert(imageGate.inspect(legacyTaskId).stale_reasons[3].includes('SHOT_CONTRACT_CHANGED'), '旧图内容变化仍须记录镜头合同失效原因');
 
 storage.saveOutput(taskId, 'scene_world_overrides', {
   assignment_revision: 2,
