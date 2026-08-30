@@ -3,6 +3,7 @@ const sceneLineage = require('./sceneLineageContractService');
 const sceneVisualAcceptance = require('./sceneVisualAcceptanceService');
 const sceneReadability = require('./sceneReadabilityContractService');
 const scenePerformanceCoverage = require('./scenePerformanceCoverageContractService');
+const sceneDomainContract = require('./sceneDomainContractService');
 
 // 这四个键只用于现有“五视图空间锁”的向后兼容，不再作为业务镜位白名单。
 const VIEW_KEYS = ['master', 'reverse', 'interaction', 'detail'];
@@ -599,7 +600,7 @@ function bindShotsToScenes(shots = [], sceneAssets = [], options = {}) {
     const asset = selectSceneAsset(assets, shot.scene_id || shot.scene_asset_id, index);
     if (!asset) return shot;
     const spatial = spatialBindingForShot(shot, asset, shot.scene_view);
-    return {
+    const spatiallyBound = {
       ...shot,
       camera_id: spatial.camera_id,
       scene_zone: spatial.zone_label,
@@ -607,6 +608,19 @@ function bindShotsToScenes(shots = [], sceneAssets = [], options = {}) {
       scene_zone_label_zh: cleanText(spatial.zone_label, 160) || undefined,
       zone_ids: spatial.zone_ids,
       anchor_ids: spatial.anchor_ids,
+    };
+    const planningContract = asset.scene_planning_contract || asset.scene_plan || asset.scene_contract || {};
+    const domainContract = sceneDomainContract.compile({
+      shot: spatiallyBound,
+      sceneAsset: asset,
+      scenePlanningContract: planningContract,
+      context: options.context || {},
+    });
+    return {
+      ...spatiallyBound,
+      scene_domain_contract: domainContract,
+      subject_count_contract: domainContract.subject_counts,
+      decisive_moment: domainContract.decisive_moment,
     };
   });
 }

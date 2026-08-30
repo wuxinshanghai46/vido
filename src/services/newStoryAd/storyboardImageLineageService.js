@@ -49,6 +49,9 @@ function shotContractFingerprint(shot = {}, index = 0) {
     composition: clean(shot.composition, 500),
     subject_position: clean(shot.subject_position, 500),
     scene_context_role: clean(shot.scene_context_role, 120),
+    scene_domain_contract: shot.scene_domain_contract || null,
+    subject_count_contract: shot.subject_count_contract || null,
+    decisive_moment: clean(shot.decisive_moment, 900),
   });
 }
 

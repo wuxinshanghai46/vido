@@ -1,6 +1,6 @@
 {
-  "build_id": "20260830-production-v310",
-  "contract_version": "story-scene-platform-v8",
+  "build_id": "20260830-production-v311",
+  "contract_version": "universal-storyboard-domain-v1",
   "node_runtime": {
     "version": "v20.20.2",
     "platform": "linux-x64-glibc-217",

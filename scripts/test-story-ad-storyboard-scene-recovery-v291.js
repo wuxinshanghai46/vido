@@ -89,7 +89,8 @@ function testUiAndBillingContracts() {
   assert.doesNotMatch(storyboard, /aspect-ratio:\$\{Number\(ratio\[1\]\)\} \/ \$\{Number\(ratio\[2\]\)\}/);
   assert.match(css, /storyboard-simple-view \.sketch-tile-media \.media \{[^}]*object-fit:cover/s);
   assert.match(css, /storyboard-scene-sequence ol\{[^}]*flex:1 1 auto/s);
-  assert.match(css, /\.sketch-actions \{ display: flex; justify-content:center/);
+  assert.match(css, /\.sketch-action-bar \{[^}]*justify-content:flex-end[^}]*padding:6px 10px 8px[^}]*border-top:0/s);
+  assert.match(css, /\.sketch-actions \{[^}]*justify-content:flex-end[^}]*width:auto[^}]*margin-left:auto/s);
   assert.match(storyboard, /store\.subscribe\?\./);
   assert.match(storyboard, /storyboardActive \|\| \(String\(sketchBatch\?\.status/);
   assert.match(storyboard, /正在整理镜头结构/);

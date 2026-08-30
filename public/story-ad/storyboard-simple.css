@@ -24,8 +24,8 @@
 .storyboard-simple-view .sketch-tile-copy { min-height: 74px; }
 .storyboard-simple-view .sketch-tile-copy p { -webkit-line-clamp: 2; }
 .storyboard-simple-view .sketch-tile-editor > summary { padding: 9px 12px; }
-.storyboard-simple-view .sketch-tile-editor > .sketch-action-bar { padding: 0 12px 12px; }
-.storyboard-simple-view .sketch-actions { display: flex; justify-content:center; flex-wrap:wrap; gap: 6px; }
+.storyboard-simple-view .sketch-tile-editor > .sketch-action-bar { display:flex; justify-content:flex-end; margin:0; padding:6px 10px 8px; border-top:0; }
+.storyboard-simple-view .sketch-actions { display:flex; justify-content:flex-end; width:auto; margin-left:auto; flex-wrap:wrap; gap:6px; }
 .storyboard-simple-view .sketch-actions .btn { width: auto; min-width:86px; min-height:30px; padding:5px 11px; font-size:10px; }
 @media(prefers-reduced-motion:reduce){.storyboard-simple-view .project-progress-track.is-indeterminate i,.storyboard-simple-view .sketch-tile.is-waiting .sketch-tile-media::after{animation:none}}
 @media(max-width:1320px){.storyboard-simple-view .sketch-tile-media{height:clamp(280px,28vw,340px)}}

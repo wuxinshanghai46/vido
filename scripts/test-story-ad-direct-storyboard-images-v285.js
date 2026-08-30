@@ -60,13 +60,14 @@ async function testSameJobCanContinueIntoImages() {
     called.push(index); active += 1; peak = Math.max(peak, active); await delay(8); active -= 1;
     return { image_url: `/generated/v285-${index}.png`, provider_used: 'fixture' };
   } };
+  const subjectQaService = { assert: async () => ({ pass: true, policy_version: 1, status: 'verified' }) };
   await assert.rejects(
     () => storyboardImages.generateSketch( taskId, 1, { confirmed: true }, { mediaAdapter }),
     error => error?.code === 'GENERATION_ACTIVE_EDIT_BLOCKED',
   );
   const result = await storyboardImages.generateSketchBatch(taskId, {
     confirmed: true, generation_id: 'generation-v285', image_model: 'fixture-image', client_request_id: 'v285-batch',
-  }, { mediaAdapter });
+  }, { mediaAdapter, subjectQaService });
   assert.deepEqual(called.sort((a, b) => a - b), [1, 2, 3]);
   assert.equal(peak, 2);
   assert.equal(result.sketches.length, 3);

@@ -7,6 +7,8 @@ const compositionService = require('./storyboardImageCompositionService');
 const generationConcurrency = require('../newStoryAd/generationConcurrencyService');
 const shotReferencePacks = require('../newStoryAd/shotReferencePackService');
 const scenePlanningAuthority = require('../newStoryAd/scenePlanningAuthorityService');
+const sceneDomainContract = require('../newStoryAd/sceneDomainContractService');
+const storyboardSubjectQa = require('../newStoryAd/storyboardSubjectQaService');
 const storyboardImageLineage = require('../newStoryAd/storyboardImageLineageService');
 const storyboardImageConfirmation = require('./storyboardImageConfirmationGateService');
 const sketchProgress = require('./storyboardSketchProgressService');
@@ -126,6 +128,11 @@ function normalizeSketches(taskId, sketches = []) {
         scene_view_reference_url: clean(item.scene_view_reference_url || item.sceneViewReferenceUrl, 1200),
         reference_pack_fingerprint: clean(item.reference_pack_fingerprint || item.referencePackFingerprint, 160),
         scene_planning_fingerprint: clean(item.scene_planning_fingerprint || item.scenePlanningFingerprint, 160),
+        scene_domain_contract_fingerprint: clean(item.scene_domain_contract_fingerprint || item.sceneDomainContractFingerprint, 160),
+        subject_count_contract: item.subject_count_contract && typeof item.subject_count_contract === 'object' ? item.subject_count_contract : null,
+        decisive_moment: clean(item.decisive_moment || item.decisiveMoment, 900),
+        subject_qa_policy_version: Math.max(0, Number(item.subject_qa_policy_version || item.subjectQaPolicyVersion || 0) || 0),
+        subject_count_qa: item.subject_count_qa && typeof item.subject_count_qa === 'object' ? item.subject_count_qa : null,
         reference_roles: Array.isArray(item.reference_roles) ? item.reference_roles.slice(0, 12).map(reference => ({
           role: clean(reference.role, 80),
           required: reference.required === true,
@@ -161,6 +168,11 @@ function sketchFingerprint(sketches = []) {
     scene_view_reference_url: item.scene_view_reference_url,
     reference_pack_fingerprint: item.reference_pack_fingerprint,
     scene_planning_fingerprint: item.scene_planning_fingerprint,
+    scene_domain_contract_fingerprint: item.scene_domain_contract_fingerprint,
+    subject_count_contract: item.subject_count_contract,
+    decisive_moment: item.decisive_moment,
+    subject_qa_policy_version: item.subject_qa_policy_version,
+    subject_count_qa: item.subject_count_qa,
     reference_roles: item.reference_roles,
     generation_id: item.generation_id,
     story_context_fingerprint: item.story_context_fingerprint,
@@ -300,6 +312,7 @@ async function generateSketch(taskId, shotIndex, options = {}, dependencies = {}
     next: nextShot ? { title: nextShot.title || '', action: nextShot.action || '', entry_frame_state: nextShot.entry_frame_state || '', screen_direction: nextShot.screen_direction || '', object_states: nextShot.object_states || '' } : null,
   };
   const storyContextFingerprint = storage.canonicalFingerprint(storyContext);
+  const domainContract = sceneDomainContract.compile({ shot, sceneAsset, scenePlanningContract, context });
   const sketchKnowledge = knowledgePolicyRuntime.resolveTaskMany({
     storage, taskId,
     selectors: [{ stage: 'keyframe', assetType: 'shot' }, { stage: 'keyframe', assetType: 'person' }, { stage: 'keyframe', assetType: 'scene' }],
@@ -310,6 +323,7 @@ async function generateSketch(taskId, shotIndex, options = {}, dependencies = {}
     '只生成一个决定性瞬间的一张连续完整画面。禁止上下分屏、左右分屏、双联画、三联画、拼贴、前后对比、分镜表、多机位同框；镜头运动只表现当前瞬间的构图和方向，不得把运动起点与终点同时画在一张图里。',
     '严格结合当前人物与场景参考资产，不得退化为只表达剧情流向的线稿。',
     '不要加入文字、字幕、镜头编号、水印或未授权品牌标识。使用与已确认人物和场景资产一致的综合色彩与光线，保持影视分镜预览质感，不添加无关的成片特效。',
+    sceneDomainContract.promptBlock(domainContract),
     `镜头标题：${clean(shot.title || `镜头 ${numericIndex}`, 160)}`,
     `画面：${clean(shot.visual || shot.visual_description || '', 1200)}`,
     `动作：${clean(shot.action || '', 800)}`,
@@ -348,6 +362,12 @@ async function generateSketch(taskId, shotIndex, options = {}, dependencies = {}
     inputFidelity: referenceImages.length ? 'high' : undefined,
   });
   await (dependencies.compositionService || compositionService).assertSingleFrame(generated);
+  const subjectCountQa = await (dependencies.subjectQaService || storyboardSubjectQa).assert({
+    taskId,
+    shot,
+    generatedUrl: clean(generated.image_url || generated.url, 1200),
+    domainContract,
+  });
   const previous = storage.getOutput(taskId, 'storyboard_images') || [];
   const nextSketch = {
     id: `storyboard-image-${numericIndex}`,
@@ -358,6 +378,11 @@ async function generateSketch(taskId, shotIndex, options = {}, dependencies = {}
     source: 'generated',
     reference_count: referenceImages.length,
     lineage_schema_version: 2,
+    scene_domain_contract_fingerprint: clean(domainContract.fingerprint, 160),
+    subject_count_contract: domainContract.subject_counts,
+    decisive_moment: domainContract.decisive_moment,
+    subject_qa_policy_version: Number(subjectCountQa.policy_version || 0) || 0,
+    subject_count_qa: subjectCountQa,
     scene_id: clean(shot.scene_id || shot.scene_asset_id || sceneAsset.scene_id || sceneAsset.id, 160),
     scene_revision: Math.max(0, Number(sceneAsset.scene_revision || sceneAsset.revision || 0) || 0),
     scene_reference_url: clean(sceneReference, 1200),

@@ -255,13 +255,18 @@ async function testGeneratedImageLineageAndPackInvalidation() {
     },
   };
   const compositionService = { assertSingleFrame: async () => ({ passed: true }) };
+  const subjectQaService = { assert: async () => ({ pass: true, policy_version: 1, status: 'verified' }) };
   const result = await sketches.generateSketch(taskId, 5, {
     confirmed: true,
     client_request_id: 'fixture-generation:shot-5',
-  }, { mediaAdapter, compositionService });
+  }, { mediaAdapter, compositionService, subjectQaService });
   const pack = storage.getOutput(taskId, 'shot_reference_packs')[4];
   const image = result.sketch;
   assert.equal(image.lineage_schema_version, 2);
+  assert.equal(image.subject_qa_policy_version, 1);
+  assert.equal(image.subject_count_qa.pass, true);
+  assert.match(capturedRequest.prompt, /同一身份不得因动作路径、镜面、时间阶段或构图需要被复制/);
+  assert.match(capturedRequest.prompt, /本张图只呈现这个决定性瞬间/);
   assert.ok(image.scene_planning_fingerprint);
   assert.equal(image.scene_id, 'scene_showroom');
   assert.equal(image.scene_revision, 2);

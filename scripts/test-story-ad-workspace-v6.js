@@ -405,6 +405,7 @@ async function main() {
     confirmed: true,
     client_request_id: 'sketch-test-request',
   }, {
+    subjectQaService: { assert: async () => ({ pass: true, policy_version: 1, status: 'verified' }) },
     mediaAdapter: {
       generateImage: async options => {
         assert.equal(options.singleAttempt, true, '线稿必须限制为单次图片调用');

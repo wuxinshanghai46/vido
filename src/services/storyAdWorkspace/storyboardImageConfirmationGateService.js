@@ -63,6 +63,7 @@ function inspect(taskId) {
       if (Number(image.lineage_schema_version || 0) >= 2 && !image.scene_planning_fingerprint) reasons.push('SCENE_PLANNING_LINEAGE_MISSING');
       if (image.scene_planning_fingerprint && currentScene?.scene_planning_fingerprint
         && clean(image.scene_planning_fingerprint, 160) !== clean(currentScene.scene_planning_fingerprint, 160)) reasons.push('SCENE_PLANNING_CHANGED');
+      if (Number(image.subject_qa_policy_version || 0) >= 1 && image.subject_count_qa?.pass !== true) reasons.push('SUBJECT_COUNT_QA_FAILED');
       if (reasons.length) {
         stale.push(shotIndex);
         staleReasons[shotIndex] = [...new Set(reasons)];

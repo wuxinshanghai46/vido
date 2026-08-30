@@ -14,6 +14,7 @@ const STAGES = Object.freeze([
   'new_story_ad.person_consistency_qa',
   'new_story_ad.person_dossier_qa',
   'new_story_ad.product_consistency_qa',
+  'new_story_ad.storyboard_subject_qa',
   'new_story_ad.scene_vision',
   'new_story_ad.scene_consistency_qa',
   'new_story_ad.scene_panorama_qa',
