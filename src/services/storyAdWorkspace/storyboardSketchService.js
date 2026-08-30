@@ -3,6 +3,7 @@ const storyAd = require('../newStoryAd');
 const mediaAdapterDefault = require('../newStoryAd/mediaAdapter');
 const sketchGate = require('./storyboardSketchGateService');
 const knowledgePolicyRuntime = require('../newStoryAd/knowledgePolicyRuntimeService');
+const compositionService = require('./storyboardImageCompositionService');
 const generationConcurrency = require('../newStoryAd/generationConcurrencyService');
 const { v4: uuidv4 } = require('uuid');
 
@@ -314,12 +315,14 @@ async function generateSketch(taskId, shotIndex, options = {}, dependencies = {}
   });
   const prompt = [
     '商业影视人物场景分镜图，清晰呈现已确认人物、场景、动作、站位、景别、机位和运动方向。',
+    '只生成一个决定性瞬间的一张连续完整画面。禁止上下分屏、左右分屏、双联画、三联画、拼贴、前后对比、分镜表、多机位同框；镜头运动只表现当前瞬间的构图和方向，不得把运动起点与终点同时画在一张图里。',
     '严格结合当前人物与场景参考资产，不得退化为只表达剧情流向的线稿。',
     '不要加入文字、字幕、镜头编号、水印或未授权品牌标识。使用与已确认人物和场景资产一致的综合色彩与光线，保持影视分镜预览质感，不添加无关的成片特效。',
     `镜头标题：${clean(shot.title || `镜头 ${numericIndex}`, 160)}`,
     `画面：${clean(shot.visual || shot.visual_description || '', 1200)}`,
     `动作：${clean(shot.action || '', 800)}`,
     `场景：${clean(sceneAsset.name || shot.scene_zone || shot.scene_id || '', 220)}；剧情用途：${clean(sceneAsset.story_purpose || '', 500)}`,
+    '当前绑定场景是唯一地点权威。剧情或相邻镜头若出现其他地点名称，只用于理解转场因果，不得把其他场景的建筑、家具、展台或布局混入本镜。',
     `故事与连续性权威：${clean(JSON.stringify(storyContext), 2600)}`,
     '分镜图必须画出本镜在故事中的动作因果，并承接上一镜退出状态、交给下一镜进入状态；银幕方向、视线、轴线和道具状态不得跳变。',
     referenceImages.length ? '附件参考图是当前任务的人物、商品与场景权威资产；只借鉴其中真实主体和空间关系，不复制档案排版、拼图边框或参考图背景。' : '',
@@ -350,6 +353,7 @@ async function generateSketch(taskId, shotIndex, options = {}, dependencies = {}
     requireReferences: referenceImages.length > 0,
     inputFidelity: referenceImages.length ? 'high' : undefined,
   });
+  await (dependencies.compositionService || compositionService).assertSingleFrame(generated);
   const previous = storage.getOutput(taskId, 'storyboard_images') || [];
   const nextSketch = {
     id: `storyboard-image-${numericIndex}`,

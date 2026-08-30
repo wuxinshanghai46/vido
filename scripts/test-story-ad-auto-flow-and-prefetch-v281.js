@@ -58,8 +58,8 @@ let modelCalls = 0;
     modelCalls += 1;
     assert.equal(options.stage, 'new_story_ad.story_flow_planning');
     const parsed_json = { units: [
-      { beat_id: 'beat_entry', scene_id: 'scene_showroom', character_ids: ['character_chenmo'], look_bindings: { character_chenmo: 'look_business' } },
-      { beat_id: 'beat_material', scene_id: 'scene_exhibition', character_ids: ['character_chenmo'], look_bindings: { character_chenmo: 'look_business' } },
+      { beat_id: 'beat_entry', scene_id: 'scene_showroom', transition_from: '', transition_reason: '', character_ids: ['character_chenmo'], look_bindings: { character_chenmo: 'look_business' } },
+      { beat_id: 'beat_material', scene_id: 'scene_exhibition', transition_from: 'scene_showroom', transition_reason: '剧情从家居应用转向商业材料选型', character_ids: ['character_chenmo'], look_bindings: { character_chenmo: 'look_business' } },
     ] };
     await options.validateText(JSON.stringify(parsed_json), { parsed_json });
     return { text: JSON.stringify(parsed_json), parsed_json, used_model: 'test/semantic-binder' };

@@ -3,7 +3,7 @@
 const storage = require('../newStoryAd/storageService');
 
 const OUTPUT_KIND = 'story_flow_contract';
-const CONTRACT_VERSION = 1;
+const CONTRACT_VERSION = 2;
 const DOWNSTREAM_KINDS = Object.freeze([
   'storyboard_checkpoint', 'storyboard_coverage_plan', 'storyboard_table', 'storyboard_meta',
   'storyboard_images', 'storyboard_image_batch', 'storyboard_sketches', 'storyboard_sketch_batch',
@@ -78,15 +78,23 @@ function personAuthority(person = {}, index = 0) {
   };
 }
 
-function sceneAuthority(scene = {}, index = 0) {
+function sceneAuthority(scene = {}, index = 0, sceneConfig = {}) {
   const contract = scene.scene_contract && typeof scene.scene_contract === 'object' ? scene.scene_contract : {};
+  const sceneId = stableId(scene.scene_id || scene.space_id || scene.id);
+  const configured = list(sceneConfig.spaces || sceneConfig.scenes || sceneConfig.scene_plan)
+    .find(space => stableId(space.scene_id || space.space_id || space.id) === sceneId) || {};
   const views = list(scene.view_images || scene.views).map((view, viewIndex) => ({
     view_id: stableId(view.view_id || view.key || view.id, `view_${viewIndex + 1}`),
     image_url: clean(view.image_url || view.imageUrl || view.url, 1200),
   }));
   return {
-    scene_id: stableId(scene.scene_id || scene.space_id || scene.id),
+    scene_id: sceneId,
     name: clean(scene.name || scene.scene_name || scene.title || `场景 ${index + 1}`, 120),
+    story_purpose: clean(scene.story_purpose || configured.story_purpose || configured.purpose || contract.story_purpose, 900),
+    layout: clean(configured.layout || configured.layout_text || contract.layout || scene.layout, 700),
+    interaction: clean(configured.interaction || configured.interaction_text || contract.interaction || scene.interaction, 700),
+    covered_beat_ids: list(configured.covered_beat_ids || configured.beat_ids || configured.story_beat_ids).map(String),
+    required_in_story: configured.required_in_story !== false,
     description: clean([
       scene.description, scene.prompt, scene.scene_prompt, contract.description,
       contract.spatial_summary, contract.layout, contract.materials, contract.lighting,
@@ -99,7 +107,7 @@ function sceneAuthority(scene = {}, index = 0) {
 
 function authoritySnapshot(state) {
   const people = state.cast.map(personAuthority);
-  const scenes = state.sceneAssets.map(sceneAuthority);
+  const scenes = state.sceneAssets.map((scene, index) => sceneAuthority(scene, index, state.sceneConfig));
   const blueprintFingerprint = clean(state.blueprint.fingerprint, 220) || storage.canonicalFingerprint({
     title: state.blueprint.story_title || state.blueprint.title || '',
     logline: state.blueprint.logline || '',
@@ -141,7 +149,7 @@ function plannedSceneForBeat(state, beat, index, scenes) {
   }
   if (scenes.length === 1) return scenes[0].scene_id;
   const beatText = [beat.title, beat.plot, beat.visual, beat.action, beat.location, beat.scene].filter(Boolean).join(' ');
-  const ranked = scenes.map(scene => ({ scene, score: overlapScore(beatText, `${scene.name} ${scene.description || ''}`) }))
+  const ranked = scenes.map(scene => ({ scene, score: overlapScore(beatText, `${scene.name} ${scene.story_purpose || ''} ${scene.layout || ''} ${scene.interaction || ''}`) }))
     .sort((a, b) => b.score - a.score);
   return ranked[0]?.score > 0 && ranked[0].score > (ranked[1]?.score || 0) ? ranked[0].scene.scene_id : '';
 }
@@ -182,6 +190,8 @@ function unitFromBeat(state, beat, index, authority) {
       return [id, person?.voice_id || ''];
     })),
     scene_id: plannedSceneForBeat(state, beat, index, authority.scenes),
+    transition_from: '',
+    transition_reason: '',
   };
 }
 
@@ -189,9 +199,17 @@ function draft(taskId) {
   const state = taskState(taskId);
   const authority = authoritySnapshot(state);
   const stored = storage.getOutput(taskId, OUTPUT_KIND);
-  const current = stored && stored.authority_fingerprint === authority.authority_fingerprint
+  const current = stored && Number(stored.contract_version || 0) === CONTRACT_VERSION
+    && stored.authority_fingerprint === authority.authority_fingerprint
     && stored.blueprint_fingerprint === authority.blueprint_fingerprint;
   const generatedUnits = state.beats.map((beat, index) => unitFromBeat(state, beat, index, authority));
+  generatedUnits.forEach((unit, index) => {
+    const previous = generatedUnits[index - 1];
+    if (!previous || !unit.scene_id || unit.scene_id === previous.scene_id) return;
+    const scene = authority.scenes.find(item => item.scene_id === unit.scene_id);
+    unit.transition_from = previous.scene_id;
+    unit.transition_reason = `剧情从“${previous.title}”推进到“${unit.title}”，地点切换至“${scene?.name || unit.scene_id}”`;
+  });
   const priorById = new Map(current ? list(stored.units).map(unit => [stableId(unit.beat_id), unit]) : []);
   const units = generatedUnits.map(unit => {
     const prior = priorById.get(unit.beat_id);
@@ -238,6 +256,8 @@ function validateUnits(base, supplied = [], options = {}) {
     const characterIds = [...new Set(list(source.character_ids).map(value => stableId(value)).filter(Boolean))];
     characterIds.forEach(id => { if (!personIds.has(id)) errors.push(`${unit.title} 引用了不存在的人物 ${id}`); });
     const sceneId = stableId(source.scene_id);
+    const transitionFrom = stableId(source.transition_from);
+    const transitionReason = clean(source.transition_reason, 500);
     if (base.scenes.length && !sceneId) errors.push(`${unit.title} 尚未绑定场景`);
     else if (sceneId && !sceneIds.has(sceneId)) errors.push(`${unit.title} 引用了不存在的场景 ${sceneId}`);
     const lookBindings = Object.fromEntries(characterIds.map(id => {
@@ -252,12 +272,37 @@ function validateUnits(base, supplied = [], options = {}) {
       ...unit,
       character_ids: characterIds,
       scene_id: sceneId,
+      transition_from: transitionFrom,
+      transition_reason: transitionReason,
       look_bindings: lookBindings,
       voice_bindings: Object.fromEntries(characterIds.map(id => {
         const person = base.people.find(item => item.character_id === id);
         return [id, person?.voice_id || ''];
       })),
     };
+  });
+  const unitByBeatId = new Map(units.map(unit => [unit.beat_id, unit]));
+  base.scenes.forEach(scene => {
+    if (scene.required_in_story !== false && !units.some(unit => unit.scene_id === scene.scene_id)) {
+      errors.push(`已确认场景“${scene.name}”没有绑定任何剧情节点`);
+    }
+    list(scene.covered_beat_ids).forEach(id => {
+      const unit = unitByBeatId.get(String(id)) || units[Number(id) - 1];
+      if (unit && unit.scene_id !== scene.scene_id) errors.push(`${unit.title} 必须使用场景“${scene.name}”`);
+    });
+  });
+  units.forEach((unit, index) => {
+    const previous = units[index - 1];
+    if (!previous) {
+      if (unit.transition_from) errors.push(`${unit.title} 是首个剧情节点，不应填写来源场景`);
+      return;
+    }
+    if (unit.scene_id !== previous.scene_id) {
+      if (unit.transition_from !== previous.scene_id) errors.push(`${unit.title} 的场景切换来源必须是 ${previous.scene_id}`);
+      if (!unit.transition_reason) errors.push(`${unit.title} 切换场景时必须说明剧情原因`);
+    } else if (unit.transition_from) {
+      errors.push(`${unit.title} 没有切换场景，不应填写 transition_from`);
+    }
   });
   if (errors.length) throw Object.assign(new Error(`剧情流向尚不能确认：${errors.join('；')}`), {
     code: 'STORY_FLOW_CONTRACT_INVALID', status: 422, retryable: false, issues: errors,
@@ -272,7 +317,7 @@ function persistConfirmation(taskId, supplied = [], actor = {}, options = {}) {
   const nextFingerprint = storage.canonicalFingerprint({
     blueprint_fingerprint: base.blueprint_fingerprint,
     authority_fingerprint: base.authority_fingerprint,
-    units: units.map(unit => ({ beat_id: unit.beat_id, character_ids: unit.character_ids, look_bindings: unit.look_bindings, voice_bindings: unit.voice_bindings, scene_id: unit.scene_id })),
+    units: units.map(unit => ({ beat_id: unit.beat_id, character_ids: unit.character_ids, look_bindings: unit.look_bindings, voice_bindings: unit.voice_bindings, scene_id: unit.scene_id, transition_from: unit.transition_from, transition_reason: unit.transition_reason })),
   });
   const status = options.status === 'system_confirmed' ? 'system_confirmed' : 'confirmed';
   const changed = previous.contract_fingerprint !== nextFingerprint || previous.status !== status;
@@ -348,7 +393,8 @@ function inspect(taskId) {
     };
   }
   const stored = storage.getOutput(taskId, OUTPUT_KIND) || {};
-  const fresh = stored.blueprint_fingerprint === base.blueprint_fingerprint
+  const fresh = Number(stored.contract_version || 0) === CONTRACT_VERSION
+    && stored.blueprint_fingerprint === base.blueprint_fingerprint
     && stored.authority_fingerprint === base.authority_fingerprint;
   const complete = list(stored.units).length === base.units.length
     && list(stored.units).every(unit => !base.scenes.length || stableId(unit.scene_id));

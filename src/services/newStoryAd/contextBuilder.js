@@ -440,6 +440,10 @@ function normalizePropAssets(input) {
 
 function normalizeSceneSpec(input = {}) {
   const raw = input && typeof input === 'object' ? input : {};
+  const point = value => (Array.isArray(value) ? value : [])
+    .slice(0, 2).map(Number).filter(Number.isFinite).map(number => Math.max(0, Math.min(1, number)));
+  const pathPoints = value => (Array.isArray(value) ? value : []).slice(0, 24)
+    .map(point).filter(value => value.length === 2);
   const layoutText = cleanText(raw.layoutText || raw.layout_text || raw.layout || '', 600);
   const materialLightText = cleanText(raw.materialLightText || raw.material_light_text || raw.material || raw.light || '', 600);
   const negativeText = cleanText(raw.negativeText || raw.negative_text || raw.negative || '', 500);
@@ -463,6 +467,7 @@ function normalizeSceneSpec(input = {}) {
     id: cleanText(anchor?.id || `interaction_anchor_${index + 1}`, 100),
     label: cleanText(anchor?.label || anchor?.name || `互动点 ${index + 1}`, 100),
     purpose: cleanText(anchor?.purpose || anchor?.description, 220),
+    normalized_position: point(anchor?.normalized_position || anchor?.position_on_layout || anchor?.position),
     contact_rules: textList(anchor?.contact_rules || anchor?.rules, 8, 200),
   }));
   const routes = (Array.isArray(raw.routes || raw.movement_routes)
@@ -473,22 +478,49 @@ function normalizeSceneSpec(input = {}) {
     from: cleanText(route?.from, 120),
     to: cleanText(route?.to, 120),
     actor: cleanText(route?.actor, 120),
+    movement_type: cleanText(route?.movement_type || route?.movement, 100),
+    speed: cleanText(route?.speed, 80),
+    from_position: point(route?.from_position || route?.start_position),
+    to_position: point(route?.to_position || route?.end_position),
+    path_points: pathPoints(route?.path_points || route?.route_points || route?.normalized_path),
     continuity: cleanText(route?.continuity || route?.rule, 220),
   }));
-  const cameraPlan = (Array.isArray(raw.cameraPlan || raw.camera_plan)
+  const rawCameraPlan = Array.isArray(raw.cameraPlan || raw.camera_plan)
     ? (raw.cameraPlan || raw.camera_plan)
-    : []).slice(0, 24).map((camera, index) => ({
+    : [];
+  const canonicalCameraCoordinates = rawCameraPlan.length === 4
+    && rawCameraPlan.every(camera => !point(camera?.normalized_position || camera?.position_on_layout).length)
+    && rawCameraPlan.every(camera => ['主建立机位', '反向机位', '互动机位', '细节机位'].includes(cleanText(camera?.label || camera?.name, 100)))
+    ? {
+      主建立机位: { view_id: 'master', normalized_position: [0.12, 0.82], look_at: [0.52, 0.48] },
+      反向机位: { view_id: 'reverse', normalized_position: [0.84, 0.22], look_at: [0.48, 0.52] },
+      互动机位: { view_id: 'interaction', normalized_position: [0.28, 0.7], look_at: [0.58, 0.46] },
+      细节机位: { view_id: 'detail', normalized_position: [0.58, 0.54], look_at: [0.6, 0.5] },
+    } : {};
+  const cameraPlan = rawCameraPlan.slice(0, 24).map((camera, index) => {
+    const label = cleanText(camera?.label || camera?.name || `机位 ${index + 1}`, 100);
+    const restored = canonicalCameraCoordinates[label] || {};
+    return ({
     id: cleanText(camera?.id || camera?.camera_id || `camera_${index + 1}`, 100),
-    label: cleanText(camera?.label || camera?.name || `机位 ${index + 1}`, 100),
+    label,
+    view_id: cleanText(camera?.view_id || restored.view_id, 80),
+    normalized_position: point(camera?.normalized_position || camera?.position_on_layout || restored.normalized_position),
+    look_at: point(camera?.look_at || camera?.target_on_layout || restored.look_at),
     zone: cleanText(camera?.zone || camera?.zone_id, 120),
     framing: cleanText(camera?.framing || camera?.shot_size, 100),
     lens: cleanText(camera?.lens || camera?.lens_class || camera?.focal_length, 100),
     movement: cleanText(camera?.movement || camera?.camera_movement || camera?.move, 300),
+    movement_type: cleanText(camera?.movement_type || camera?.move_type, 100),
+    height: cleanText(camera?.height || camera?.height_class, 100),
+    route: cleanText(camera?.route || camera?.path, 300),
+    speed: cleanText(camera?.speed, 100),
     start_state: cleanText(camera?.start_state || camera?.start, 220),
     end_state: cleanText(camera?.end_state || camera?.end, 220),
     duration: Math.max(0, Math.min(60, Number(camera?.duration || camera?.duration_sec || 0) || 0)),
     notes: cleanText(camera?.notes || camera?.purpose, 260),
-  }));
+    coordinate_source: cleanText(camera?.coordinate_source || (restored.view_id ? 'deterministic_director_plan' : ''), 100),
+  });
+  });
   const surfaceTopology = shotDesign.reconcileSceneSurfaceTopology(
     raw.surfaceTopology || raw.surface_topology,
     [layoutText, materialLightText, negativeText, raw.surfaceTopology?.notes, raw.surface_topology?.notes],

@@ -1,7 +1,7 @@
-import { request } from '../api.js?v=20260830-production-v289g';
-import { elapsedTimeTag, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260830-production-v289g';
-import { bindMediaLightbox } from './mediaLightbox.js?v=20260830-production-v289g';
-import { bindGenerationModelPicker, loadGenerationModelPicker } from './generationModelPicker.js?v=20260830-production-v289g';
+import { request } from '../api.js?v=20260830-production-v290';
+import { elapsedTimeTag, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260830-production-v290';
+import { bindMediaLightbox } from './mediaLightbox.js?v=20260830-production-v290';
+import { bindGenerationModelPicker, loadGenerationModelPicker } from './generationModelPicker.js?v=20260830-production-v290';
 
 export function friendlyBindings(bundle = {}, shot = {}) {
   const assets = bundle.assets || {};
@@ -41,6 +41,26 @@ function compactBindingSummary(bundle = {}, shot = {}) {
     .filter(label => /^(人物|动物|场景)：/.test(label))
     .map(label => label.replace(/ · r\d+$/u, ''));
   return bindings.length ? bindings.join(' · ') : '人物与场景由系统自动匹配';
+}
+
+function sceneSequenceMarkup(bundle = {}, shots = []) {
+  const scenes = Array.isArray(bundle?.assets?.scenes) ? bundle.assets.scenes : [];
+  const groups = [];
+  shots.forEach((shot, index) => {
+    const sceneId = String(shot.scene_id || shot.scene_asset_id || '');
+    const scene = scenes.find(item => [item.id, item.asset_id, item.scene_id].filter(Boolean).map(String).includes(sceneId));
+    const previous = groups[groups.length - 1];
+    if (previous?.sceneId === sceneId) previous.count += 1;
+    else groups.push({
+      sceneId,
+      name: scene?.name || shot.scene_name || `场景 ${groups.length + 1}`,
+      count: 1,
+      start: index + 1,
+      reason: shot.transition_reason || '',
+    });
+  });
+  if (!groups.length) return '';
+  return `<section class="storyboard-scene-sequence" aria-label="分镜场景顺序"><div><b>场景顺序</b><span>系统已按剧情固定地点；切换发生在相邻场景节点之间</span></div><ol>${groups.map((group, index) => `<li><span>${index + 1}</span><div><b>${escapeHtml(group.name)}</b><small>SH${String(group.start).padStart(2, '0')} 起 · ${group.count} 镜${group.reason ? ` · ${escapeHtml(group.reason)}` : ''}</small></div></li>`).join('')}</ol></section>`;
 }
 
 function sketchCard(shot, sketch = {}, index = 0, gate = {}, bundle = {}) {
@@ -91,7 +111,7 @@ function storyboardProgressMarkup({ batch = null, active = false, failed = false
 
 export async function mount(host, context) {
   if (context.route?.params?.get('stage') === 'shot') {
-    const shotDesigner = await import('./shotDesignerView.js?v=20260830-production-v289g');
+    const shotDesigner = await import('./shotDesignerView.js?v=20260830-production-v290');
     return shotDesigner.mount(host, context);
   }
   const { bundle, store } = context;
@@ -146,6 +166,7 @@ export async function mount(host, context) {
         ${headerAction ? `<div class="view-actions">${headerAction}</div>` : ''}
       </section>
       ${primaryAction ? `<div class="storyboard-primary-actions">${primaryAction}</div>` : ''}
+      ${sceneSequenceMarkup(bundle, shots)}
       <div data-sketch-batch-host>${storyboardProgressMarkup({
         batch: sketchBatch,
         active: storyboardActive || sketchBatchActive,
@@ -227,8 +248,9 @@ export async function mount(host, context) {
     if (batchHost) batchHost.innerHTML = sketchBatchMarkup(sketchBatch, sketchBatchTargetCount || generatedSketchCount);
     const active = ['queued', 'running'].includes(String(sketchBatch?.status || ''));
     if (batchButton) {
+      batchButton.dataset.processed = String(sketchBatch.processed ?? sketchBatch.completed ?? 0);
       batchButton.disabled = active;
-      batchButton.textContent = active ? `分镜生成中 ${sketchBatch.processed ?? sketchBatch.completed ?? 0}/${sketchBatch.requested || sketchBatchTargetCount}` : batchButtonLabel();
+      batchButton.textContent = active ? '生成中' : batchButtonLabel();
     }
   };
   const renderSketchResults = rows => {
@@ -269,7 +291,7 @@ export async function mount(host, context) {
     const targetCount = regenerateAll ? shots.length : missingSketchCount;
     try {
       batchFinalizing = false;
-      setButtonBusy(button, true, `正在启动 0/${targetCount}…`, { elapsed: true });
+      setButtonBusy(button, true, '正在提交…');
       renderSketchBatch({ status: 'running', requested: targetCount, completed: 0, message: '批次已提交，生成结果会逐镜保存到下方镜头卡片。' });
       sketchBatchPollTimer = setTimeout(pollSketchBatch, 500);
       const data = await request(`/api/story-ad/projects/${encodeURIComponent(bundle.project.id)}/storyboard-images/generate-batch`, {

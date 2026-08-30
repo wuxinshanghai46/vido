@@ -78,7 +78,9 @@ const productionAssetOrchestrator = read('src/services/newStoryAd/productionAsse
 const billingRoutes = read('src/routes/newStoryAd/visualAssetBillingRoutes.js');
 assert(route.includes("queueTaskStage(req, res, 'subject_assets'"), 'the subject route independently owns person generation');
 assert(route.includes("queueTaskStage(req, res, 'scene_asset'"), 'the scene route independently owns scene generation');
-assert(productionAssetOrchestrator.includes('Promise.allSettled([subjectLane, sceneLane])'));
+assert(!productionAssetOrchestrator.includes('Promise.allSettled([subjectLane, sceneLane])'), '未知计费风险下不得恢复旧版人物/场景并行提交');
+assert(productionAssetOrchestrator.includes('if (subjectFailure) throw subjectFailure;'));
+assert(productionAssetOrchestrator.includes('await sceneLane.then('));
 assert(productionAssetOrchestrator.includes('deferCommit: true'));
 assert(productionAssetOrchestrator.includes('deferPublish: true'));
 assert(productionAssetOrchestrator.includes('existingSceneAssets: sceneAssets'));

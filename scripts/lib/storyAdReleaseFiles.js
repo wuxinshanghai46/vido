@@ -115,6 +115,7 @@ const BASE_FILES = [
   'scripts/migrate-story-ad-active-plan-release.js',
   'scripts/migrate-story-ad-public-media-models-v262.js',
   'scripts/recover-story-ad-storyboard-checkpoint-v289.js',
+  'scripts/test-story-ad-story-scene-experience-v290.js',
   'scripts/lib/storyAdReleaseFiles.js',
   'scripts/run-with-pm2-env.js',
 ];

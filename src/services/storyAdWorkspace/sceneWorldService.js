@@ -250,6 +250,20 @@ function routeEdges(bundle = {}, worlds = []) {
   const plan = bundle.asset_editor?.scene_plan || {};
   const routes = list(plan.routes || plan.scene_routes || plan.transitions);
   const ids = new Set(worlds.map(world => world.id));
+  const flowUnits = list(bundle.story_flow?.contract?.units || bundle.story_flow_contract?.units);
+  const flowEdges = flowUnits.slice(1).map((unit, index) => {
+    const previous = flowUnits[index];
+    return {
+      id: `story-transition:${previous?.beat_id || index + 1}:${unit?.beat_id || index + 2}`,
+      from_world_id: clean(previous?.scene_id, 120),
+      to_world_id: clean(unit?.scene_id, 120),
+      type: 'story_flow_contract',
+      reason: clean(unit?.transition_reason, 300),
+      visual_bridge: clean(unit?.visual_bridge, 220),
+      audio_bridge: clean(unit?.audio_bridge, 220),
+    };
+  }).filter(edge => ids.has(edge.from_world_id) && ids.has(edge.to_world_id) && edge.from_world_id !== edge.to_world_id);
+  if (flowEdges.length) return flowEdges;
   const explicit = routes.map((route, index) => ({
     id: clean(route.id || `transition:${index + 1}`, 120),
     from_world_id: clean(route.from_scene_id || route.from || route.scene_id, 120),
@@ -347,6 +361,7 @@ function buildSceneWorlds(bundle = {}, overrides = {}) {
       to_world_id: edge.to_world_id,
       label: `通往 ${worlds.find(item => item.id === edge.to_world_id)?.name || edge.to_world_id}`,
       transition_id: edge.id,
+      reason: edge.reason,
     })),
   }));
 }

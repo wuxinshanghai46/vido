@@ -125,6 +125,7 @@ function testUiAndExportBoundaries() {
   const scenePromptEditor = read('public/story-ad/views/scenePromptEditor.js');
   const details = read('public/story-ad/views/assetCenterPlanningDetails.js');
   const world = read('public/story-ad/views/sceneWorldView.js');
+  const panoramaGeneration = read('public/story-ad/views/panoramaGeneration.js');
   const mediaAdapter = require('../src/services/newStoryAd/mediaAdapter');
   const api = read('public/story-ad/api.js');
   const css = read('public/story-ad/scene-dossier.css');
@@ -163,7 +164,8 @@ function testUiAndExportBoundaries() {
   assert(mediaAdapter.assetThumbPathFromName('scene.png', 1800).endsWith('.1600.webp'), '高清衍生图必须按有限桶归一，避免同一文件产生重复缓存变体');
   assert(css.includes('aspect-ratio:16/9') && css.includes('min-height:220px'), '场景摘要必须给完整画幅足够的纵向空间，不能把竖图或方图压在旧的超宽矮容器中');
   assert(!css.includes('.scene-cover-board{display:grid;height:210px'), '场景摘要不得恢复固定 210px 总高度');
-  assert(!world.includes('data-generate-panorama'), '场景世界不得绕过统一制作图谱恢复旧的单项全景付费入口');
+  assert(world.includes('data-generate-panorama') && world.includes('runPanoramaGeneration'), '缺少全景时必须提供明确的按需生成入口');
+  assert(panoramaGeneration.indexOf('/panorama/plan') < panoramaGeneration.indexOf("method: 'POST'"), '单项全景必须先读取服务端调用计划和幂等指纹，不能绕过统一计费图谱');
   assert(css.includes('@media(max-width:820px)') && css.includes('.drawer.is-scene-drawer{width:100vw'), '移动端场景抽屉必须使用完整视口宽度');
   assert(html.includes('/story-ad/scene-dossier.css'));
 }

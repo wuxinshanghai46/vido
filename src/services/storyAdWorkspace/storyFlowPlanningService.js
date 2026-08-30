@@ -10,14 +10,18 @@ function list(value) { return Array.isArray(value) ? value.filter(Boolean) : [];
 
 function promptPayload(draft = {}) {
   return {
-    task: '把每个剧情节点绑定到已经确认的人物与场景。只允许使用下列 ID，不得创造人物、场景或剧情节点。',
+    task: '把每个剧情节点绑定到已经确认的人物与场景，并建立有剧情依据的场景切换。只允许使用下列 ID，不得创造人物、场景或剧情节点。',
     rules: [
       '必须原样返回每一个 beat_id，且每个只出现一次。',
       'scene_id 必须从 scenes 中选择；不得根据数组顺序猜测。',
+      '必须优先根据 scene.story_purpose、layout、interaction 与当前剧情动作选择场景；description 只作补充，不能让其他地点词覆盖所选场景。',
+      'required_in_story=true 的每个已确认场景必须至少承载一个剧情节点；covered_beat_ids 指定的节点必须使用对应场景。',
+      '尽量让同一地点的连续剧情保持在同一场景，只有剧情地点或用途真正变化时才切换，禁止在一个节点内混合多个地点。',
+      'scene_id 与上一节点不同时，transition_from 必须等于上一节点 scene_id，transition_reason 必须说明剧情为何在此切换；未切换时两字段均为空字符串。',
       'character_ids 只能来自 people；纯空镜可以为空，人物出现或行动时必须绑定对应人物。',
       '每个出镜人物都必须在 look_bindings 中选择该人物 looks 列表内最符合当前剧情、动作和场景的 look_id；人物只有一个造型时也必须原样返回。',
       '不要改写剧情、人物、场景、对白或动作。',
-      '只返回 JSON 对象：{"units":[{"beat_id":"...","scene_id":"...","character_ids":["..."],"look_bindings":{"character_id":"look_id"}}]}。',
+      '只返回 JSON 对象：{"units":[{"beat_id":"...","scene_id":"...","transition_from":"","transition_reason":"","character_ids":["..."],"look_bindings":{"character_id":"look_id"}}]}。',
     ],
     people: list(draft.people),
     scenes: list(draft.scenes),
