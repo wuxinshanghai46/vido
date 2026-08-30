@@ -2,7 +2,7 @@
 
 const personIdentity = require('./personIdentityContractService');
 
-const CONTRACT_VERSION = 2;
+const CONTRACT_VERSION = 3;
 const list = value => Array.isArray(value) ? value.filter(Boolean) : [];
 const clean = (value = '', max = 1600) => String(value || '').replace(/\s+/g, ' ').trim().slice(0, max);
 
@@ -67,12 +67,16 @@ function cameraAngle(camera = {}, fallback = 'eye_level') {
 
 function stripInternalPlanningNotes(value = '') {
   return clean(value, 1600).split(/[。；;]/u)
+    .map(clause => clean(clause, 1600))
+    .filter(Boolean)
     .filter(clause => !/^\s*(?:AI|系统|自动)补齐[:：]/iu.test(clause))
     .join('；');
 }
 
 function sceneOnlyLayout(value = '') {
   return clean(value, 1800).split(/[。；;]/u)
+    .map(clause => clean(clause, 1800))
+    .filter(Boolean)
     .filter(clause => !/(?:人物|角色|演员|模特|顾客|客户|真人|person|actor|model|customer)/iu.test(clause))
     .join('；');
 }
@@ -153,7 +157,7 @@ function ensureCoverage(shots = [], sceneAssets = [], ctx = {}) {
         establishing.shot = result[establishing.index] = {
           ...establishing.shot,
           title: `${sceneName}完整空间与整面主要展示面`,
-          purpose: `以完整空间、整面主要展示面和人物行动关系建立${sceneName}${establishingGoal ? `；内容目标：${establishingGoal}` : ''}`,
+          purpose: `以完整空间、整面主要展示面和入口至互动点的空间动线关系建立${sceneName}${establishingGoal ? `；内容目标：${establishingGoal}` : ''}`,
           subject_type: 'scene_only',
           expected_people: 0,
           characters: [],

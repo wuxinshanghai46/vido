@@ -99,11 +99,12 @@ assert.equal(bound[3].no_person, true);
 assert.equal(bound[3].expected_people, 0);
 assert.equal(personIdentity.shotPersonPresence(bound[3], {}).required, false);
 assert.equal(personIdentity.shotPersonRequired(ctx, bound[3], {}), false);
+assert.doesNotMatch(bound[3].purpose, /人物|角色|演员|模特|顾客/);
 assert.doesNotMatch(bound[3].visual, /局部特写|只显示一块|微距/);
 assert.doesNotMatch(bound[3].composition, /单块色板充满全画幅/);
 assert.equal(bound[3].shot_size, 'wide');
-assert.equal(bound[2].scene_performance_contract.version, 2);
-assert.equal(bound[3].scene_performance_contract.version, 2);
+assert.equal(bound[2].scene_performance_contract.version, scenePerformance.CONTRACT_VERSION);
+assert.equal(bound[3].scene_performance_contract.version, scenePerformance.CONTRACT_VERSION);
 assert.doesNotMatch(bound[2].action, /AI补齐|系统补齐|自动补齐/);
 assert.equal(scenePerformance.inspect(bound, assets, ctx).ready, true);
 assert.equal(bound[0].scene_performance_contract, undefined, '已有正确人物覆盖的相邻场景不得被重写');
@@ -115,11 +116,11 @@ const legacyCovered = bound.map(shot => shot.scene_id === 'home' ? {
   ...shot,
   title: shot.scene_context_role === 'planned_actor_interaction' ? '旧极致特写' : '旧局部墙面',
   composition: shot.scene_context_role === 'planned_actor_interaction' ? '纹理充满全画幅' : '单块色板充满全画幅',
-  scene_performance_contract: { ...shot.scene_performance_contract, version: 1 },
+  scene_performance_contract: { ...shot.scene_performance_contract, version: scenePerformance.CONTRACT_VERSION - 1 },
 } : shot);
 const upgradedCoverage = scenePerformance.ensureCoverage(legacyCovered, assets, ctx);
-assert.equal(upgradedCoverage[2].scene_performance_contract.version, 2, '旧空间表演合同必须升级');
-assert.equal(upgradedCoverage[3].scene_performance_contract.version, 2, '旧空间建立合同必须升级');
+assert.equal(upgradedCoverage[2].scene_performance_contract.version, scenePerformance.CONTRACT_VERSION, '旧空间表演合同必须升级');
+assert.equal(upgradedCoverage[3].scene_performance_contract.version, scenePerformance.CONTRACT_VERSION, '旧空间建立合同必须升级');
 assert.doesNotMatch(upgradedCoverage[2].composition, /纹理充满全画幅/);
 assert.doesNotMatch(upgradedCoverage[3].composition, /单块色板充满全画幅/);
 
