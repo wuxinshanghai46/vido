@@ -9,7 +9,7 @@ const panoramaProjection = require('./panoramaProjectionService');
 const scenePanorama = require('./scenePanoramaService');
 const { completeSpaceLock, layoutSceneReference } = require('./sceneBindingService');
 
-const SHOT_REFERENCE_PACK_VERSION = 3;
+const SHOT_REFERENCE_PACK_VERSION = 4;
 const OUTPUT_KIND = 'shot_reference_packs';
 
 function text(value, max = 1000) { return String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, max); }
@@ -59,6 +59,8 @@ function compile({ taskId = '', shotIndex = 0, ctx = {}, shot = {}, contract = {
     source_revision: Number(sceneAsset.revision || sceneAsset.scene_revision || 0) || 0,
     camera_id: requestedCamera,
     entity_revisions: directorEntityRevisions(ctx),
+    assignment_revision: Number(sceneAsset.scene_assignment_revision || 0) || 0,
+    scene_planning_fingerprint: text(sceneAsset.scene_planning_fingerprint, 160),
   }) : null;
   const panoramaReference = panoramaCameraReference(sceneAsset, shot, contract);
   const candidates = references.keyframeReferenceCandidates(ctx, {
@@ -87,6 +89,8 @@ function compile({ taskId = '', shotIndex = 0, ctx = {}, shot = {}, contract = {
     scene_view_reference_hash: sceneViewReference
       ? fingerprint({ url: sceneViewReference, role: 'scene_view' }) : '',
     director_revision: Number(directorSnapshot ? (storage.getOutput(taskId, 'director_scene_states')?.states?.[worldId]?.revision || 0) : 0),
+    scene_planning_fingerprint: text(sceneAsset.scene_planning_fingerprint, 160),
+    scene_assignment_revision: Math.max(0, Number(sceneAsset.scene_assignment_revision || 0) || 0),
     panorama_sha256: text(panoramaReference?.panorama_sha256, 80),
     panorama_view_sha256: text(panoramaReference?.sha256, 80),
     contract_fingerprint: text(contract.fingerprint || contract.contract_fingerprint, 120), provider_limit: limit,

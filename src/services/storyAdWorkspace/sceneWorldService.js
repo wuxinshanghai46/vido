@@ -276,6 +276,8 @@ function baseWorld(scene = {}, index = 0) {
     name: clean(scene.name || `场景世界 ${index + 1}`, 120),
     description: clean(scene.description, 900),
     story_purpose: clean(scene.story_purpose, 500),
+    scene_planning_fingerprint: clean(scene.scene_planning_fingerprint, 160),
+    scene_assignment_revision: Math.max(0, finite(scene.scene_assignment_revision, 0)),
     place_lineage: sceneLineage.normalize(scene, index),
     visual_authority_ready: hasSceneVisualAuthority(scene),
     status: clean(scene.status || 'planned', 50),

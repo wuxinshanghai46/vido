@@ -16,6 +16,8 @@ const sceneAssetAvailability = require('./sceneAssetAvailabilityProjectionServic
 const sceneQaProjection = require('./sceneQaProjectionService');
 const sceneSpatialProjection = require('./sceneSpatialProjectionService');
 const storyboardImageConfirmation = require('./storyboardImageConfirmationGateService');
+const scenePlanningAuthority = require('../newStoryAd/scenePlanningAuthorityService');
+const storage = require('../newStoryAd/storageService');
 const MAX_MEDIA_ITEMS = 120;
 function clean(value = '', max = 240) { return String(value || '').replace(/\s+/g, ' ').trim().slice(0, max); }
 function cleanMultiline(value = '', max = 5000) { return multilineTextContract.normalize(value, max); }
@@ -279,12 +281,18 @@ function logoAssets(context = {}) {
 }
 
 /** 将场景规划、生成资产和未绑定参考合并成同一组稳定场景卡，避免规划已存在却显示为 0。 */
-function sceneAssets(outputs = {}, context = {}) {
+function sceneAssets(outputs = {}, context = {}, options = {}) {
   const plan = outputs.scene_config && typeof outputs.scene_config === 'object'
     ? outputs.scene_config
     : (context.scene_plan && typeof context.scene_plan === 'object' ? context.scene_plan : {});
   const planned = list(plan.spaces);
-  const generated = list(outputs.scene_assets).length ? list(outputs.scene_assets) : list(context.scene_assets);
+  const generatedSource = list(outputs.scene_assets).length ? list(outputs.scene_assets) : list(context.scene_assets);
+  const generated = scenePlanningAuthority.enrichSceneAssets(
+    generatedSource,
+    plan,
+    context,
+    options.sceneWorldOverrides || outputs.scene_world_overrides || {},
+  );
   const references = list(context.assets).filter(item => clean(item.role || item.asset_role, 80) === 'scene_reference');
   const consumedAssets = new Set();
   const consumedReferences = new Set();
@@ -369,6 +377,8 @@ function sceneAssets(outputs = {}, context = {}) {
       generation_prompt: generationPrompt,
       generation_prompt_source: generationPromptSource,
       scene_spec: sceneSpatialProjection.specContract(spec),
+      scene_planning_fingerprint: clean(asset.scene_planning_fingerprint, 160),
+      scene_assignment_revision: Math.max(0, Number(asset.scene_assignment_revision || 0) || 0),
       camera_plan: sceneSpatialProjection.cameraPlan(spec, space),
       layout: {
         status: clean(layout.status || (layout.reference_image_url ? 'available' : ''), 60),
@@ -447,7 +457,7 @@ function buildProjectBundle(taskId, { sections = '', user = {} } = {}) {
     products: productAssets(context),
     logos: logoAssets(context),
     props: projectedProps,
-    scenes: sceneAssets(outputs, context).map(scene => { const promptState = scenePromptConfirmation.project(taskId, scene.id); return { ...scene, generation_prompt: promptState.generation_prompt || scene.generation_prompt, prompt_state: promptState }; }),
+    scenes: sceneAssets(outputs, context, { sceneWorldOverrides: storage.getOutput(taskId, 'scene_world_overrides') || {} }).map(scene => { const promptState = scenePromptConfirmation.project(taskId, scene.id); return { ...scene, generation_prompt: promptState.generation_prompt || scene.generation_prompt, prompt_state: promptState }; }),
   } : null;
   const projectedCounts = projectedAssets ? countProjection.projectCounts(projectedAssets, mediaUrl, list)
     : { assets: 0, subject_assets: 0, ready_subject_assets: 0, planned_assets: 0, scenes: 0 };

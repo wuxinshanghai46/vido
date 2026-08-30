@@ -326,7 +326,7 @@ function normalizeShots(rows, ctx) {
     .sort((a, b) => Number(a?.index || a?.shot_index || 0) - Number(b?.index || b?.shot_index || 0));
   const normalized = normalizeDurations(sorted, ctx).map((shot, idx) => ({ ...shot, index: idx + 1 }));
   return brandEnding.applyToShots(
-    withContinuityContracts(bindShotsToScenes(normalized, ctx.scene_assets || [])),
+    withContinuityContracts(bindShotsToScenes(normalized, ctx.scene_assets || [], { context: ctx })),
     ctx,
   );
 }

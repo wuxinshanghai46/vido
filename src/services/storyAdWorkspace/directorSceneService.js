@@ -27,6 +27,8 @@ function sourceContract(world = {}) {
     cameras: list(world.cameras).map(camera => ({ id: text(camera.id, 120), pose: camera.pose || {} })),
     source_image: text(world.source_asset?.image_url, 1000),
     layout_image: text(world.source_asset?.layout_image_url, 1000),
+    scene_planning_fingerprint: text(world.scene_planning_fingerprint, 160),
+    assignment_revision: Math.max(0, number(world.scene_assignment_revision, 0, 0, 1000000)),
   };
 }
 
@@ -151,11 +153,13 @@ function normalizePath(path = {}, index = 0) {
   };
 }
 
-function normalizeSnapshot(snapshot = {}, index = 0) {
+function normalizeSnapshot(snapshot = {}, index = 0, lineage = {}) {
   return {
     snapshot_id: text(snapshot.snapshot_id || snapshot.id || `snapshot-${index + 1}`, 120),
     camera_id: text(snapshot.camera_id, 120), label: text(snapshot.label || `导演截图 ${index + 1}`, 120),
     image_url: text(snapshot.image_url || snapshot.url, 1000), sha256: text(snapshot.sha256, 80),
+    assignment_revision: Math.max(0, number(snapshot.assignment_revision || lineage.assignment_revision, 0, 0, 1000000)),
+    scene_planning_fingerprint: text(snapshot.scene_planning_fingerprint || lineage.scene_planning_fingerprint, 160),
     created_at: text(snapshot.created_at || new Date().toISOString(), 80),
   };
 }
@@ -166,6 +170,8 @@ function defaultState(bundle = {}, world = {}, manifest = {}) {
     schema_version: DIRECTOR_SCENE_SCHEMA_VERSION, director_scene_id: `director:${text(world.id, 100)}`,
     world_id: text(world.id, 120), world_revision: Math.max(1, number(world.revision, 1, 1, 1000000)), revision: 1,
     source_revision: Math.max(0, number(world.source_asset?.source_revision, 0, 0, 1000000)),
+    assignment_revision: Math.max(0, number(manifest.assignment_revision || world.scene_assignment_revision, 0, 0, 1000000)),
+    scene_planning_fingerprint: text(world.scene_planning_fingerprint, 160),
     source_contract_hash: stableHash(contract), status: 'draft', entities: defaultEntities(bundle, world, manifest),
     cameras: defaultCameras(world), paths: defaultPaths(world, manifest), snapshots: [], updated_at: '',
   };
@@ -256,7 +262,12 @@ function save(taskId, bundle = {}, world = {}, patch = {}, options = {}) {
     entities: list(patch.entities ?? current.entities).slice(0, 60).map(normalizeEntity),
     cameras: list(patch.cameras ?? current.cameras).slice(0, 30).map(normalizeCamera),
     paths: list(patch.paths ?? current.paths).slice(0, 80).map(normalizePath),
-    snapshots: list(patch.snapshots ?? current.snapshots).slice(-30).map(normalizeSnapshot),
+    assignment_revision: Math.max(0, number(options.manifest?.assignment_revision, current.assignment_revision || 0, 0, 1000000)),
+    scene_planning_fingerprint: text(world.scene_planning_fingerprint || current.scene_planning_fingerprint, 160),
+    snapshots: list(patch.snapshots ?? current.snapshots).slice(-30).map((snapshot, index) => normalizeSnapshot(snapshot, index, {
+      assignment_revision: options.manifest?.assignment_revision || current.assignment_revision || 0,
+      scene_planning_fingerprint: world.scene_planning_fingerprint || current.scene_planning_fingerprint || '',
+    })),
     updated_at: new Date().toISOString(),
   };
   delete next.expected_revision;
@@ -282,6 +293,10 @@ function activeSnapshot(taskId, worldId, options = {}) {
     return expected > 0 && expected !== Number(entity.entity_revision || 0);
   })) return null;
   const cameraId = text(options.camera_id, 120);
+  const assignmentRevision = Math.max(0, number(options.assignment_revision, 0, 0, 1000000));
+  if (assignmentRevision && Number(state.assignment_revision || 0) !== assignmentRevision) return null;
+  const planningFingerprint = text(options.scene_planning_fingerprint, 160);
+  if (planningFingerprint && text(state.scene_planning_fingerprint, 160) !== planningFingerprint) return null;
   const snapshots = list(state.snapshots).filter(item => text(item.image_url, 1000));
   return (cameraId ? snapshots.find(item => item.camera_id === cameraId) : null) || snapshots.at(-1) || null;
 }

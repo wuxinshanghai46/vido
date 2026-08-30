@@ -57,7 +57,7 @@ function sceneSequenceMarkup(bundle = {}, shots = []) {
       name: scene?.name || shot.scene_name || `场景 ${groups.length + 1}`,
       count: 1,
       start: index + 1,
-      reason: shot.transition_reason || '',
+      reason: shot.transition_reason || scene?.story_purpose || shot.purpose || '',
     });
   });
   if (!groups.length) return '';
@@ -65,7 +65,7 @@ function sceneSequenceMarkup(bundle = {}, shots = []) {
     const shotRange = `SH${String(group.start).padStart(2, '0')} 起 · ${group.count} 镜`;
     const reason = String(group.reason || '').trim();
     const tooltip = reason ? `剧情依据：${reason}` : `${group.name} · ${shotRange}`;
-    return `<li title="${escapeHtml(tooltip)}" aria-label="${escapeHtml(`${group.name}，${shotRange}${reason ? `，剧情依据：${reason}` : ''}`)}"><span>${index + 1}</span><div><b>${escapeHtml(group.name)}</b><small>${shotRange}</small></div>${reason ? `<em title="${escapeHtml(`剧情依据：${reason}`)}">剧情依据</em>` : ''}</li>`;
+    return `<li title="${escapeHtml(tooltip)}" aria-label="${escapeHtml(`${group.name}，${shotRange}${reason ? `，剧情依据：${reason}` : ''}`)}"><span>${index + 1}</span><div><b>${escapeHtml(group.name)}</b><small>${shotRange}</small>${reason ? `<p>${escapeHtml(reason)}</p>` : ''}</div></li>`;
   }).join('');
   return `<section class="storyboard-scene-sequence" aria-label="分镜场景顺序"><div><b>场景顺序</b><span title="系统已按剧情固定地点；切换发生在相邻场景节点之间">按剧情固定地点</span></div><ol>${nodes}</ol></section>`;
 }
@@ -75,10 +75,8 @@ function sketchCard(shot, sketch = {}, index = 0, gate = {}, bundle = {}, genera
   const disabled = gate.ready === false ? 'disabled' : '';
   const imageReady = Boolean(sketch.image_url || sketch.imageUrl || sketch.url);
   const waiting = generationActive && (!imageReady || needsGeneration);
-  const ratio = String(bundle?.brief?.output_ratio || bundle?.brief?.ratio || '16:9').match(/^(\d+(?:\.\d+)?)\s*[:/]\s*(\d+(?:\.\d+)?)$/);
-  const aspectStyle = ratio ? ` style="aspect-ratio:${Number(ratio[1])} / ${Number(ratio[2])}"` : '';
   return `<article class="card sketch-card sketch-tile ${gate.ready === false ? 'is-gated' : ''} ${waiting ? 'is-waiting' : ''}" data-sketch-shot="${shotIndex}"${waiting ? ' aria-busy="true"' : ''}>
-    <div class="sketch-tile-media" data-sketch-image-host="${shotIndex}"${aspectStyle}>${mediaPreview(sketch, { label: `SH${String(shotIndex).padStart(2, '0')} · ${shot.title || `镜头 ${shotIndex}`}`, width: 960, symbol: '分镜图', zoomable: true, zoomGroup: 'storyboard-images' })}<span class="sketch-shot-number">SH${String(shotIndex).padStart(2, '0')}</span></div>
+    <div class="sketch-tile-media" data-sketch-image-host="${shotIndex}">${mediaPreview(sketch, { label: `SH${String(shotIndex).padStart(2, '0')} · ${shot.title || `镜头 ${shotIndex}`}`, width: 960, symbol: '分镜图', zoomable: true, zoomGroup: 'storyboard-images' })}<span class="sketch-shot-number">SH${String(shotIndex).padStart(2, '0')}</span></div>
     <div class="sketch-tile-copy"><div><h2>${escapeHtml(shot.title || `镜头 ${shotIndex}`)}</h2><p>${escapeHtml(compactBindingSummary(bundle, shot))}</p></div></div>
     <details class="sketch-tile-editor"><summary>调整</summary><div class="sketch-action-bar">
       <input class="hidden-input" type="file" accept="image/png,image/jpeg,image/webp" data-sketch-file>
@@ -92,21 +90,17 @@ function sketchCard(shot, sketch = {}, index = 0, gate = {}, bundle = {}, genera
 
 function checkpointShotCard(shot, index = 0, bundle = {}) {
   const shotIndex = Number(shot.shot_index || shot.index || index + 1) || index + 1;
-  const ratio = String(bundle?.brief?.output_ratio || bundle?.brief?.ratio || '16:9').match(/^(\d+(?:\.\d+)?)\s*[:/]\s*(\d+(?:\.\d+)?)$/);
-  const aspectStyle = ratio ? ` style="aspect-ratio:${Number(ratio[1])} / ${Number(ratio[2])}"` : '';
   return `<article class="card sketch-card sketch-tile is-checkpoint" data-checkpoint-shot="${shotIndex}">
-    <div class="sketch-tile-media"${aspectStyle}><div class="media-placeholder"><span>镜头结构已保存</span></div><span class="sketch-shot-number">SH${String(shotIndex).padStart(2, '0')}</span></div>
+    <div class="sketch-tile-media"><div class="media-placeholder"><span>镜头结构已保存</span></div><span class="sketch-shot-number">SH${String(shotIndex).padStart(2, '0')}</span></div>
     <div class="sketch-tile-copy"><div><h2>${escapeHtml(shot.title || `镜头 ${shotIndex}`)}</h2><p>${escapeHtml(compactBindingSummary(bundle, shot))}</p></div><span class="status-tag is-neutral">待出图</span></div>
   </article>`;
 }
 
 function liveGenerationShotCard(shot, sketch = {}, index = 0, bundle = {}) {
   const shotIndex = Number(shot.shot_index || shot.index || index + 1) || index + 1;
-  const ratio = String(bundle?.brief?.output_ratio || bundle?.brief?.ratio || '16:9').match(/^(\d+(?:\.\d+)?)\s*[:/]\s*(\d+(?:\.\d+)?)$/);
-  const aspectStyle = ratio ? ` style="aspect-ratio:${Number(ratio[1])} / ${Number(ratio[2])}"` : '';
   const ready = Boolean(sketch.image_url || sketch.imageUrl || sketch.url);
   return `<article class="card sketch-card sketch-tile is-live-generation ${ready ? '' : 'is-waiting'}"${ready ? '' : ' aria-busy="true"'}>
-    <div class="sketch-tile-media"${aspectStyle}>${mediaPreview(sketch, { label: `SH${String(shotIndex).padStart(2, '0')} · ${shot.title || `镜头 ${shotIndex}`}`, width: 960, symbol: ready ? '分镜图' : '等待出图', zoomable: ready, zoomGroup: 'storyboard-images' })}<span class="sketch-shot-number">SH${String(shotIndex).padStart(2, '0')}</span></div>
+    <div class="sketch-tile-media">${mediaPreview(sketch, { label: `SH${String(shotIndex).padStart(2, '0')} · ${shot.title || `镜头 ${shotIndex}`}`, width: 960, symbol: ready ? '分镜图' : '等待出图', zoomable: ready, zoomGroup: 'storyboard-images' })}<span class="sketch-shot-number">SH${String(shotIndex).padStart(2, '0')}</span></div>
     <div class="sketch-tile-copy"><div><h2>${escapeHtml(shot.title || `镜头 ${shotIndex}`)}</h2><p>${escapeHtml(compactBindingSummary(bundle, shot))}</p></div><span class="status-tag ${ready ? 'is-ready' : 'is-neutral'}">${ready ? '已完成' : '生成中'}</span></div>
   </article>`;
 }

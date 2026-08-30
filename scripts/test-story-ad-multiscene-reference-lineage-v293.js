@@ -227,7 +227,7 @@ async function testMasterAndDetailReferencePack() {
   const prepared = sketches.prepareSketchGeneration(taskId, 5);
   const pack = prepared.referencePack;
   const persisted = storage.getOutput(taskId, 'shot_reference_packs');
-  assert.equal(pack.schema_version, 3);
+  assert.equal(pack.schema_version, 4);
   assert.equal(pack.scene_id, 'scene_showroom');
   assert.equal(pack.scene_revision, 2);
   assert.equal(persisted[4].fingerprint, pack.fingerprint);
@@ -260,7 +260,8 @@ async function testGeneratedImageLineageAndPackInvalidation() {
   }, { mediaAdapter, compositionService });
   const pack = storage.getOutput(taskId, 'shot_reference_packs')[4];
   const image = result.sketch;
-  assert.equal(image.lineage_schema_version, 1);
+  assert.equal(image.lineage_schema_version, 2);
+  assert.ok(image.scene_planning_fingerprint);
   assert.equal(image.scene_id, 'scene_showroom');
   assert.equal(image.scene_revision, 2);
   assert.match(image.scene_reference_url, /scene_showroom\/r2\/master\.png$/);
@@ -386,7 +387,9 @@ function testStoryboardWaitAndCompactLayoutContract() {
   assert.match(view, /is-indeterminate/);
   assert.match(view, /storyboard-stale-notice/);
   assert.match(view, /剧情依据/);
-  assert.match(css, /max-height:\s*min\(310px,42vh\)/);
+  assert.match(css, /storyboard-simple-view \.sketch-tile-media \.media \{[^}]*object-fit:cover/s);
+  assert.match(css, /storyboard-scene-sequence ol\{[^}]*flex:1 1 auto/s);
+  assert.doesNotMatch(view, /aspect-ratio:\$\{Number\(ratio\[1\]\)/);
   assert.match(css, /storyboard-progress-indeterminate/);
   assert.match(css, /storyboard-card-shimmer/);
   assert.doesNotMatch(css, /storyboard-scene-sequence li\{[^}]*min-width:max-content/);

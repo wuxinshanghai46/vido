@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const storage = require('./storageService');
 const { buildKeyframeContracts, contractCompilerSignature } = require('./keyframeContractService');
 const { bindShotsToScenes } = require('./sceneBindingService');
+const scenePlanningAuthority = require('./scenePlanningAuthorityService');
 
 function imageUrl(frame = {}) {
   return frame.image_url || frame.imageUrl || frame.url || '';
@@ -127,10 +128,16 @@ function compileCurrentTask(taskId) {
   const task = storage.getTask(taskId);
   if (!task) return { contracts: [], shots: [], ctx: {} };
   const baseCtx = storage.getOutput(taskId, 'context') || task.request || {};
-  const sceneAssets = storage.getOutput(taskId, 'scene_assets') || baseCtx.scene_assets || [];
-  const ctx = { ...baseCtx, scene_assets: Array.isArray(sceneAssets) ? sceneAssets : [], knowledge_policy_snapshot: storage.getOutput(taskId, 'knowledge_policy_snapshot') || {} };
+  const rawSceneAssets = storage.getOutput(taskId, 'scene_assets') || baseCtx.scene_assets || [];
+  const sceneAssets = scenePlanningAuthority.enrichSceneAssets(
+    Array.isArray(rawSceneAssets) ? rawSceneAssets : [],
+    storage.getOutput(taskId, 'scene_config') || {},
+    baseCtx,
+    storage.getOutput(taskId, 'scene_world_overrides') || {},
+  );
+  const ctx = { ...baseCtx, scene_assets: sceneAssets, knowledge_policy_snapshot: storage.getOutput(taskId, 'knowledge_policy_snapshot') || {} };
   const storedShots = storage.getOutput(taskId, 'storyboard_table');
-  const shots = bindShotsToScenes(Array.isArray(storedShots) ? storedShots : [], ctx.scene_assets);
+  const shots = bindShotsToScenes(Array.isArray(storedShots) ? storedShots : [], ctx.scene_assets, { context: ctx });
   return { ctx, shots, contracts: buildKeyframeContracts(ctx, shots) };
 }
 

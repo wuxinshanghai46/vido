@@ -18,6 +18,8 @@ const references = require('./src/services/newStoryAd/referenceSelectionService'
 const personIdentity = require('./src/services/newStoryAd/personIdentityContractService');
 const productIdentity = require('./src/services/newStoryAd/productIdentityContractService');
 const sceneBinding = require('./src/services/newStoryAd/sceneBindingService');
+const scenePlanningAuthority = require('./src/services/newStoryAd/scenePlanningAuthorityService');
+const imageGate = require('./src/services/storyAdWorkspace/storyboardImageConfirmationGateService');
 const id = ${JSON.stringify(id)};
 const rows = value => Array.isArray(value) ? value : [];
 const clean = value => String(value ?? '').trim();
@@ -29,22 +31,27 @@ const keyframes = rows(storage.getOutput(id, 'keyframes'));
 const sketches = rows(storage.getOutput(id, 'storyboard_sketches'));
 const images = rows(storage.getOutput(id, 'storyboard_images'));
 const flow = storage.getOutput(id, 'story_flow_contract') || {};
-const sceneAssets = rows(storage.getOutput(id, 'scene_assets'));
+const rawSceneAssets = rows(storage.getOutput(id, 'scene_assets'));
+const sceneConfig = storage.getOutput(id, 'scene_config') || {};
+const sceneWorldOverrides = storage.getOutput(id, 'scene_world_overrides') || {};
 const baseContext = storage.getOutput(id, 'context') || task?.request || {};
+const sceneAssets = scenePlanningAuthority.enrichSceneAssets(rawSceneAssets, sceneConfig, baseContext, sceneWorldOverrides);
 const context = { ...baseContext, scene_assets: sceneAssets };
 const runs = storage.listGenerationRuns({ task_id: id });
 const calls = storage.listModelCalls(id);
 const byShot = value => new Map(rows(value).map((row, index) => [Number(row.shot_index ?? index + 1), row]));
 const contractsByShot = byShot(contracts), keyframesByShot = byShot(keyframes), sketchesByShot = byShot(sketches), imagesByShot = byShot(images);
 const report = {
-  schema_version: 1,
+  schema_version: 2,
   read_only: true,
   source: 'production_ssh',
   task: task ? pick(task, ['id', 'status', 'current_stage', 'active_generation_id', 'generation_progress', 'updated_at']) : null,
   counts: { shots: shots.length, contracts: contracts.length, keyframes: keyframes.length, sketches: sketches.length, images: images.length, scene_assets: sceneAssets.length, runs: runs.length, model_calls: calls.length },
+  image_gate: imageGate.inspect(id),
   flow: { version: flow.version || flow.contract_version || '', fingerprint: flow.fingerprint || flow.contract_fingerprint || '', units: rows(flow.units).map(unit => pick(unit, ['unit_id', 'scene_id', 'scene_name', 'story_beat_ids', 'transition_reason'])) },
   scenes: sceneAssets.map(scene => ({
-    ...pick(scene, ['id', 'scene_id', 'name', 'title', 'scene_name', 'prompt_fingerprint']),
+    ...pick(scene, ['id', 'scene_id', 'name', 'title', 'scene_name', 'prompt_fingerprint', 'scene_planning_fingerprint', 'assignment_revision']),
+    planning: scene.planning_contract ? pick(scene.planning_contract, ['version', 'actor_blocking_required', 'experience_narrative', 'selected_camera_id']) : null,
     urls: Object.fromEntries(Object.entries(scene).filter(([key, value]) => /url|image/i.test(key) && typeof value === 'string' && value).slice(0, 20)),
   })),
   shots: shots.map((shot, index) => {
@@ -66,13 +73,13 @@ const report = {
     const referenceCandidates = references.keyframeReferenceCandidates(context, { sceneReference, shot, includePerson, includeProduct, layoutReference });
     return {
       shot_index: shotIndex,
-      shot: pick(shot, ['title', 'visual', 'visual_description', 'action', 'purpose', 'shot_size', 'camera_angle', 'camera_movement', 'lens_mm', 'composition', 'subject_position', 'scene_id', 'scene_name', 'scene_zone_id', 'scene_zone_label', 'story_beat_id', 'story_beat_ids', 'contract_fingerprint', 'shot_fingerprint', 'content_fingerprint']),
+      shot: pick(shot, ['title', 'visual', 'visual_description', 'action', 'purpose', 'shot_size', 'camera_angle', 'camera_movement', 'lens_mm', 'composition', 'subject_position', 'subject_type', 'expected_people', 'characters', 'scene_id', 'scene_name', 'scene_view', 'camera_id', 'scene_zone_id', 'scene_zone_ids', 'scene_zone_label', 'scene_anchor_ids', 'story_beat_id', 'story_beat_ids', 'contract_fingerprint', 'shot_fingerprint', 'content_fingerprint']),
       contract: pick(contract, ['scene_id', 'scene_name', 'contract_fingerprint', 'shot_fingerprint', 'content_fingerprint', 'prompt_fingerprint']),
       scene_reference: sceneReference,
       reference_candidates: referenceCandidates.slice(0, 8).map(item => pick(item, ['role', 'url', 'priority', 'required'])),
       keyframe: pick(frame, ['scene_id', 'scene_name', 'url', 'image_url', 'contract_fingerprint', 'shot_fingerprint', 'content_fingerprint', 'prompt_fingerprint', 'generation_id']),
       sketch: pick(sketch, ['scene_id', 'scene_name', 'url', 'image_url', 'contract_fingerprint', 'shot_fingerprint', 'content_fingerprint', 'prompt_fingerprint', 'generation_id']),
-      image: { keys: Object.keys(image), ...pick(image, ['scene_id', 'scene_name', 'url', 'image_url', 'contract_fingerprint', 'shot_contract_fingerprint', 'story_context_fingerprint', 'content_fingerprint', 'prompt_fingerprint', 'generation_id', 'reference_count', 'source_content_revision', 'updated_at']) },
+      image: { keys: Object.keys(image), ...pick(image, ['scene_id', 'scene_name', 'url', 'image_url', 'lineage_schema_version', 'contract_fingerprint', 'shot_contract_fingerprint', 'scene_planning_fingerprint', 'story_context_fingerprint', 'content_fingerprint', 'prompt_fingerprint', 'generation_id', 'reference_count', 'source_content_revision', 'updated_at']) },
     };
   }),
   storyboard_runs: runs.filter(run => /storyboard/i.test(clean(run.stage || run.target_stage || run.domain || run.target_type))).sort((a, b) => clean(a.created_at).localeCompare(clean(b.created_at))).slice(-20).map(run => pick(run, ['id', 'state', 'status', 'stage', 'target_stage', 'domain', 'target_type', 'shot_index', 'created_at', 'started_at', 'completed_at', 'updated_at'])),

@@ -2,19 +2,12 @@
 
 const storage = require('../newStoryAd/storageService');
 const sceneReadability = require('../newStoryAd/sceneReadabilityContractService');
+const scenePlanningAuthority = require('../newStoryAd/scenePlanningAuthorityService');
+const storyboardImageLineage = require('../newStoryAd/storyboardImageLineageService');
 
 function list(value) { return Array.isArray(value) ? value.filter(Boolean) : []; }
 function clean(value = '', max = 1600) { return String(value || '').replace(/\s+/g, ' ').trim().slice(0, max); }
-function shotContractFingerprint(shot = {}, index = 0) {
-  return storage.canonicalFingerprint({
-    shot_id: clean(shot.shot_id || `shot_${index + 1}`, 160), source_beat_id: clean(shot.source_beat_id, 160),
-    scene_id: clean(shot.scene_id || shot.scene_asset_id, 160),
-    character_ids: list(shot.character_ids).map(value => clean(value, 160)), look_bindings: shot.look_bindings || {},
-    visual: clean(shot.visual || shot.visual_description), action: clean(shot.action, 800),
-    shot_size: clean(shot.shot_size, 80), camera_angle: clean(shot.camera_angle, 80),
-    camera_movement: clean(shot.camera_movement, 120), lens_mm: Number(shot.lens_mm || 0) || 0,
-  });
-}
+const { shotContractFingerprint } = storyboardImageLineage;
 
 function inspect(taskId) {
   const task = storage.getTask(taskId);
@@ -23,7 +16,13 @@ function inspect(taskId) {
   const images = list(storage.getOutput(taskId, 'storyboard_images'));
   const storedReferencePacks = storage.getOutput(taskId, 'shot_reference_packs');
   const referencePacks = Array.isArray(storedReferencePacks) ? storedReferencePacks : [];
-  const sceneAssets = list(storage.getOutput(taskId, 'scene_assets'));
+  const baseContext = storage.getOutput(taskId, 'context') || task.request || {};
+  const sceneAssets = scenePlanningAuthority.enrichSceneAssets(
+    list(storage.getOutput(taskId, 'scene_assets')),
+    storage.getOutput(taskId, 'scene_config') || {},
+    baseContext,
+    storage.getOutput(taskId, 'scene_world_overrides') || {},
+  );
   const sceneById = new Map(sceneAssets.map(asset => [clean(asset.scene_id || asset.id, 160), asset]));
   const byIndex = new Map(images.map(item => [Number(item.shot_index), item]));
   const missing = [];
@@ -57,6 +56,9 @@ function inspect(taskId) {
       if (modernLineage && !image.reference_pack_fingerprint) reasons.push('REFERENCE_PACK_MISSING');
       if (modernLineage && pack?.fingerprint
         && clean(image.reference_pack_fingerprint, 160) !== clean(pack.fingerprint, 160)) reasons.push('REFERENCE_PACK_CHANGED');
+      if (Number(image.lineage_schema_version || 0) >= 2 && !image.scene_planning_fingerprint) reasons.push('SCENE_PLANNING_LINEAGE_MISSING');
+      if (image.scene_planning_fingerprint && currentScene?.scene_planning_fingerprint
+        && clean(image.scene_planning_fingerprint, 160) !== clean(currentScene.scene_planning_fingerprint, 160)) reasons.push('SCENE_PLANNING_CHANGED');
       if (reasons.length) {
         stale.push(shotIndex);
         staleReasons[shotIndex] = [...new Set(reasons)];

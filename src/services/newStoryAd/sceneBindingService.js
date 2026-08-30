@@ -2,6 +2,7 @@ const { cleanText, normalizeSceneSpec } = require('./contextBuilder');
 const sceneLineage = require('./sceneLineageContractService');
 const sceneVisualAcceptance = require('./sceneVisualAcceptanceService');
 const sceneReadability = require('./sceneReadabilityContractService');
+const scenePerformanceCoverage = require('./scenePerformanceCoverageContractService');
 
 // 这四个键只用于现有“五视图空间锁”的向后兼容，不再作为业务镜位白名单。
 const VIEW_KEYS = ['master', 'reverse', 'interaction', 'detail'];
@@ -181,6 +182,7 @@ function sceneAssetDigest(sceneAssets = []) {
     const views = primarySceneViews(asset);
     const layoutReference = layoutSceneReference(asset);
     const contract = asset.scene_contract || {};
+    const plannedSpec = asset.scene_spec || {};
     return {
       scene_id: normalizeSceneId(asset, index),
       name: cleanText(asset.name || `任务场景 ${index + 1}`, 120),
@@ -188,6 +190,10 @@ function sceneAssetDigest(sceneAssets = []) {
       layout_summary: cleanText(asset.layout_summary || '', 500),
       material_summary: cleanText(asset.material_summary || '', 500),
       style_summary: cleanText(asset.style_summary || '', 300),
+      planned_layout: cleanText(plannedSpec.layoutText || plannedSpec.layout_text || plannedSpec.layout || '', 900),
+      planned_interaction: cleanText(plannedSpec.interactionText || plannedSpec.interaction_text || '', 900),
+      scene_experience_contract: plannedSpec.sceneExperienceContract || plannedSpec.scene_experience_contract || null,
+      planned_routes: (Array.isArray(plannedSpec.routes || plannedSpec.movement_routes) ? (plannedSpec.routes || plannedSpec.movement_routes) : []).slice(0, 8),
       scene_revision: Math.max(1, Number(asset.scene_revision || asset.scene_contract?.scene_revision || 1) || 1),
       space_lock_status: completeSpaceLock(asset)
         ? 'complete'
@@ -577,7 +583,7 @@ function bindShotToScene(shot = {}, sceneAssets = [], index = 0, previousShot = 
   };
 }
 
-function bindShotsToScenes(shots = [], sceneAssets = []) {
+function bindShotsToScenes(shots = [], sceneAssets = [], options = {}) {
   const assets = Array.isArray(sceneAssets) ? sceneAssets : [];
   let previous = null;
   const boundShots = (Array.isArray(shots) ? shots : []).map((shot, index) => {
@@ -587,8 +593,9 @@ function bindShotsToScenes(shots = [], sceneAssets = []) {
     return bound;
   });
   const readableShots = sceneReadability.ensureReadableCoverage(boundShots, assets);
+  const coveredShots = scenePerformanceCoverage.ensureCoverage(readableShots, assets, options.context || {});
   // 可识别镜头可能从 detail 切换到 master；重新编译空间机器绑定，避免沿用旧机位/区域。
-  return readableShots.map((shot, index) => {
+  return coveredShots.map((shot, index) => {
     const asset = selectSceneAsset(assets, shot.scene_id || shot.scene_asset_id, index);
     if (!asset) return shot;
     const spatial = spatialBindingForShot(shot, asset, shot.scene_view);
@@ -623,6 +630,8 @@ function sceneBindingPrompt(sceneAssets = []) {
     'scene_zone_label_zh is presentation-only and must be a concise Simplified Chinese zone name. Translation must never alter scene_zone_id or zone_ids.',
     'Single-scene task: keep all shots on the same scene_id and vary only scene_view or scene_zone.',
     'Multi-scene task: changing scene_id is allowed only when the story/commercial purpose requires it; transition_reason must explain the change.',
+    'When a selected scene has planned_interaction, actor_blocking_required, planned routes or interaction anchors, the shots assigned to that scene must visibly cover that planned actor action and blocking. Do not replace all of them with product-only close-ups.',
+    'For every scene, keep at least one readable establishing frame that preserves the planned_layout and complete primary display surface. A detail frame cannot be the only proof of that scene.',
     'Do not invent any specific space, industry environment or location that is not represented by the current task scene assets.',
   ].join('\n');
 }
@@ -636,6 +645,7 @@ function sceneContractForShot(ctx = {}, shot = {}, index = 0) {
   const sceneView = resolveSceneView(shot, asset);
   const spatial = spatialBindingForShot(shot, asset, sceneView);
   const contract = asset.scene_contract || {};
+  const plannedSpec = asset.scene_spec || {};
   const layoutReference = layoutSceneReference(asset);
   return {
     scene_id: sceneId,
@@ -674,6 +684,17 @@ function sceneContractForShot(ctx = {}, shot = {}, index = 0) {
       spatial_coverage_qa: contract.spatial_coverage_qa || asset.spatial_coverage_qa || null,
     },
     scene_contract: contract || null,
+    scene_planning_fingerprint: cleanText(asset.scene_planning_fingerprint || '', 160),
+    scene_planning_lock: {
+      layout: cleanText(plannedSpec.layoutText || plannedSpec.layout_text || plannedSpec.layout || '', 1800),
+      interaction: cleanText(plannedSpec.interactionText || plannedSpec.interaction_text || '', 1400),
+      story_states: Array.isArray(plannedSpec.storyStates || plannedSpec.story_states) ? (plannedSpec.storyStates || plannedSpec.story_states) : [],
+      interaction_anchors: Array.isArray(plannedSpec.interactionAnchors || plannedSpec.interaction_anchors) ? (plannedSpec.interactionAnchors || plannedSpec.interaction_anchors) : [],
+      routes: Array.isArray(plannedSpec.routes || plannedSpec.movement_routes) ? (plannedSpec.routes || plannedSpec.movement_routes) : [],
+      selected_camera: (Array.isArray(contract.cameras) ? contract.cameras : []).find(camera => camera.id === spatial.camera_id || camera.view_id === sceneView) || null,
+      assignment_revision: Math.max(0, Number(asset.scene_assignment_revision || 0) || 0),
+      assignments: Array.isArray(asset.scene_assignments) ? asset.scene_assignments : [],
+    },
   };
 }
 

@@ -6,6 +6,8 @@ const knowledgePolicyRuntime = require('../newStoryAd/knowledgePolicyRuntimeServ
 const compositionService = require('./storyboardImageCompositionService');
 const generationConcurrency = require('../newStoryAd/generationConcurrencyService');
 const shotReferencePacks = require('../newStoryAd/shotReferencePackService');
+const scenePlanningAuthority = require('../newStoryAd/scenePlanningAuthorityService');
+const storyboardImageLineage = require('../newStoryAd/storyboardImageLineageService');
 const storyboardImageConfirmation = require('./storyboardImageConfirmationGateService');
 const sketchProgress = require('./storyboardSketchProgressService');
 const { v4: uuidv4 } = require('uuid');
@@ -21,21 +23,7 @@ function clean(value = '', max = 800) {
   return String(value || '').replace(/\s+/g, ' ').trim().slice(0, max);
 }
 
-function shotContractFingerprint(shot = {}, index = 0) {
-  return storage.canonicalFingerprint({
-    shot_id: clean(shot.shot_id || `shot_${index + 1}`, 160),
-    source_beat_id: clean(shot.source_beat_id, 160),
-    scene_id: clean(shot.scene_id || shot.scene_asset_id, 160),
-    character_ids: Array.isArray(shot.character_ids) ? shot.character_ids.map(value => clean(value, 160)) : [],
-    look_bindings: shot.look_bindings || {},
-    visual: clean(shot.visual || shot.visual_description, 1600),
-    action: clean(shot.action, 800),
-    shot_size: clean(shot.shot_size, 80),
-    camera_angle: clean(shot.camera_angle, 80),
-    camera_movement: clean(shot.camera_movement, 120),
-    lens_mm: Number(shot.lens_mm || 0) || 0,
-  });
-}
+const { shotContractFingerprint } = storyboardImageLineage;
 
 /**
  * 在任何图片提交之前解析单镜的权威人物、场景和参考图。
@@ -49,8 +37,14 @@ function prepareSketchGeneration(taskId, shotIndex) {
   const shot = shots.find((item, index) => Number(item.shot_index || item.index || index + 1) === numericIndex);
   if (!shot) throw Object.assign(new Error('没有找到对应镜头'), { status: 404, code: 'STORYBOARD_SHOT_NOT_FOUND' });
   const baseContext = storage.getOutput(taskId, 'context') || task.request || {};
-  const sceneAssets = storage.getOutput(taskId, 'scene_assets') || baseContext.scene_assets || [];
-  const context = { ...baseContext, scene_assets: Array.isArray(sceneAssets) ? sceneAssets : [] };
+  const rawSceneAssets = storage.getOutput(taskId, 'scene_assets') || baseContext.scene_assets || [];
+  const sceneAssets = scenePlanningAuthority.enrichSceneAssets(
+    Array.isArray(rawSceneAssets) ? rawSceneAssets : [],
+    storage.getOutput(taskId, 'scene_config') || {},
+    baseContext,
+    storage.getOutput(taskId, 'scene_world_overrides') || {},
+  );
+  const context = { ...baseContext, scene_assets: sceneAssets };
   const contracts = storage.getOutput(taskId, 'keyframe_contracts') || [];
   const contract = contracts.find((item, index) => Number(item.shot_index || item.index || index + 1) === numericIndex);
   if (!contract) throw Object.assign(new Error(`第 ${numericIndex} 镜缺少当前关键帧合同，已在图片调用前停止`), {
@@ -102,7 +96,8 @@ function prepareSketchGeneration(taskId, shotIndex) {
   if (hasBoundAssets && !referenceImages.length) throw Object.assign(new Error(`第 ${numericIndex} 镜已绑定人物、场景或商品，但没有可追溯参考图；已在图片调用前停止`), {
     status: 409, code: 'SKETCH_REFERENCE_ASSET_MISSING', retryable: false,
   });
-  return { task, shots, numericIndex, shot, context, contract, sceneAsset: resolvedScene, sceneReference, sceneViewReference, referencePack, referenceImages };
+  const scenePlanningContract = scenePlanningAuthority.contractForShot(resolvedScene, shot);
+  return { task, shots, numericIndex, shot, context, contract, sceneAsset: resolvedScene, sceneReference, sceneViewReference, referencePack, referenceImages, scenePlanningContract };
 }
 
 /** 规范化逐镜人物场景分镜图，禁止脱离真实分镜合同创建游离数据。 */
@@ -130,6 +125,7 @@ function normalizeSketches(taskId, sketches = []) {
         scene_reference_url: clean(item.scene_reference_url || item.sceneReferenceUrl, 1200),
         scene_view_reference_url: clean(item.scene_view_reference_url || item.sceneViewReferenceUrl, 1200),
         reference_pack_fingerprint: clean(item.reference_pack_fingerprint || item.referencePackFingerprint, 160),
+        scene_planning_fingerprint: clean(item.scene_planning_fingerprint || item.scenePlanningFingerprint, 160),
         reference_roles: Array.isArray(item.reference_roles) ? item.reference_roles.slice(0, 12).map(reference => ({
           role: clean(reference.role, 80),
           required: reference.required === true,
@@ -137,7 +133,8 @@ function normalizeSketches(taskId, sketches = []) {
         })) : [],
         generation_id: clean(item.generation_id || item.generationId, 160),
         story_context_fingerprint: clean(item.story_context_fingerprint || item.storyContextFingerprint, 160),
-        shot_contract_fingerprint: shotContractFingerprint(currentShot?.shot || {}, currentShot?.index || 0),
+        shot_contract_fingerprint: clean(item.shot_contract_fingerprint || item.shotContractFingerprint, 160)
+          || shotContractFingerprint(currentShot?.shot || {}, currentShot?.index || 0),
         source_content_revision: Math.max(1, Number(item.source_content_revision || item.sourceContentRevision || 1) || 1),
         knowledge_policy: item.knowledge_policy && typeof item.knowledge_policy === 'object' ? item.knowledge_policy : null,
         updated_at: clean(item.updated_at, 80) || new Date().toISOString(),
@@ -163,6 +160,7 @@ function sketchFingerprint(sketches = []) {
     scene_reference_url: item.scene_reference_url,
     scene_view_reference_url: item.scene_view_reference_url,
     reference_pack_fingerprint: item.reference_pack_fingerprint,
+    scene_planning_fingerprint: item.scene_planning_fingerprint,
     reference_roles: item.reference_roles,
     generation_id: item.generation_id,
     story_context_fingerprint: item.story_context_fingerprint,
@@ -280,7 +278,7 @@ async function generateSketch(taskId, shotIndex, options = {}, dependencies = {}
     throw error;
   }
   const prepared = options.prepared_generation || prepareSketchGeneration(taskId, shotIndex);
-  const { shots, numericIndex, shot, context, contract, sceneAsset, sceneReference, sceneViewReference, referencePack, referenceImages } = prepared;
+  const { shots, numericIndex, shot, context, contract, sceneAsset, sceneReference, sceneViewReference, referencePack, referenceImages, scenePlanningContract } = prepared;
   const mediaAdapter = dependencies.mediaAdapter || mediaAdapterDefault;
   const blueprint = storage.getOutput(taskId, 'blueprint') || {};
   const shotPosition = shots.indexOf(shot);
@@ -316,6 +314,8 @@ async function generateSketch(taskId, shotIndex, options = {}, dependencies = {}
     `画面：${clean(shot.visual || shot.visual_description || '', 1200)}`,
     `动作：${clean(shot.action || '', 800)}`,
     `场景：${clean(sceneAsset.name || shot.scene_zone || shot.scene_id || '', 220)}；剧情用途：${clean(sceneAsset.story_purpose || '', 500)}`,
+    `场景空间与导演规划（强制执行）：${clean(JSON.stringify(scenePlanningContract || {}), 5200)}`,
+    '必须按所选 camera_id 的位置、朝向和焦点构图；必须保留布局描述中的完整空间边界及必需锚点。人物出镜时，其站位、入口、路线和互动终点必须与规划一致；明确无人镜头不得擅自加入人物。',
     '当前绑定场景是唯一地点权威。剧情或相邻镜头若出现其他地点名称，只用于理解转场因果，不得把其他场景的建筑、家具、展台或布局混入本镜。',
     `故事与连续性权威：${clean(JSON.stringify(storyContext), 2600)}`,
     '分镜图必须画出本镜在故事中的动作因果，并承接上一镜退出状态、交给下一镜进入状态；银幕方向、视线、轴线和道具状态不得跳变。',
@@ -357,12 +357,13 @@ async function generateSketch(taskId, shotIndex, options = {}, dependencies = {}
     composition_notes: clean(options.composition_notes || '', 1200),
     source: 'generated',
     reference_count: referenceImages.length,
-    lineage_schema_version: 1,
+    lineage_schema_version: 2,
     scene_id: clean(shot.scene_id || shot.scene_asset_id || sceneAsset.scene_id || sceneAsset.id, 160),
     scene_revision: Math.max(0, Number(sceneAsset.scene_revision || sceneAsset.revision || 0) || 0),
     scene_reference_url: clean(sceneReference, 1200),
     scene_view_reference_url: clean(sceneViewReference, 1200),
     reference_pack_fingerprint: clean(referencePack?.fingerprint, 160),
+    scene_planning_fingerprint: clean(sceneAsset.scene_planning_fingerprint, 160),
     reference_roles: Array.isArray(referencePack?.references) ? referencePack.references.map(reference => ({
       role: reference.role,
       required: reference.required === true,

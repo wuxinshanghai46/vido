@@ -238,7 +238,7 @@ function shotPersonPresence(shot = {}, contract = {}) {
   const visualLayers = Array.isArray(shot.visual_layers)
     ? shot.visual_layers.map(layer => typeof layer === 'string' ? layer : (layer?.content || layer?.text || ''))
     : [];
-  const text = [
+  const rawText = [
     shot.subject_type,
     shot.shot_type,
     shot.visual,
@@ -253,6 +253,12 @@ function shotPersonPresence(shot = {}, contract = {}) {
     shot.title,
     ...visualLayers,
   ].filter(Boolean).join(' ');
+  // Negative constraints such as “禁止出现人物” describe what must not be
+  // visible. They must never be interpreted as positive person evidence.
+  const text = rawText.split(/[。；;\n]/u).filter(clause => !(
+    /(?:禁止|不得|不要|不出现|不可出现|无人|无人物|no\s+person|without\s+(?:a\s+)?person)/iu.test(clause)
+    && /人物|真人|演员|主角|模特|顾客|人手|人脸|person|human|actor|model|hand|face/iu.test(clause)
+  )).join(' ');
   const handVisible = /手部|手指|指尖|手掌|手腕|手臂|\b(?:hand|finger|fingertip|palm|wrist|arm)\b/i.test(text);
   const wardrobeVisible = /袖口|衣袖|服装|衣服|外套|连衣裙|衬衫|裤装|鞋|配饰|\b(?:sleeve|wardrobe|outfit|dress|shirt|jacket|trouser|shoe|accessor)\w*\b/i.test(text);
   const facePartial = /侧脸|半张脸|\b(?:side\s+profile|partial\s+face)\b/i.test(text);
@@ -271,6 +277,8 @@ function shotPersonPresence(shot = {}, contract = {}) {
   const partialPersonFraming = explicitPersonPartial
     || (genericTightFraming && (castDeclared || handVisible || wardrobeVisible || faceVisible || bodyVisible || reflection || obscured || full));
   const partial = partialPersonFraming || handVisible || wardrobeVisible;
+  const noPerson = shot.no_person === true || shot.noHuman === true
+    || /^(?:product_only|scene_only|brand_endcard|object_only|no_human|environment)$/i.test(String(shot.subject_type || '').trim());
   if (shotCharacters.length || lockedCharacters.length || partial || facePartial || reflection || obscured || full) {
     return {
       required: true,
@@ -285,8 +293,6 @@ function shotPersonPresence(shot = {}, contract = {}) {
       ].filter(Boolean),
     };
   }
-  const noPerson = shot.no_person === true || shot.noHuman === true
-    || /^(?:product_only|scene_only|brand_endcard|object_only|no_human)$/i.test(String(shot.subject_type || '').trim());
   return { required: !noPerson && !Object.prototype.hasOwnProperty.call(shot, 'characters'), mode: noPerson ? 'none' : 'unspecified', reasons: [] };
 }
 
