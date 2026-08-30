@@ -37,6 +37,21 @@ function checkpointMatchesStoryFlow(checkpoint = null, contractFingerprint = '')
     && shots.every(shot => shot?.story_flow_contract_fingerprint === contractFingerprint);
 }
 
+function assertConfirmationReady(storage, taskId, body = {}) {
+  if (body.shot_design_confirmed !== true && body.shotDesignConfirmed !== true) return;
+  const shots = storage.getOutput(taskId, 'storyboard_table') || [];
+  const images = storage.getOutput(taskId, 'storyboard_images') || [];
+  const readyIndexes = new Set((Array.isArray(images) ? images : [])
+    .filter(image => image?.image_url || image?.imageUrl || image?.url)
+    .map(image => Number(image.shot_index || image.index || 0)));
+  const allReady = Array.isArray(shots) && shots.length > 0
+    && shots.every((shot, index) => readyIndexes.has(Number(shot.shot_index || shot.index || index + 1)));
+  if (allReady) return;
+  const error = new Error('请先完成并保存全部分镜画面，再进入视频生成');
+  error.code = 'STORYBOARD_CONFIRMATION_NOT_READY'; error.status = 409; error.retryable = false;
+  throw error;
+}
+
 function checkpointWriter({ storage, stageProgress, taskId, blueprint, blueprintRevision, blueprintFingerprint, storyFlowContractFingerprint = '', expectedPlan, expectedTotal, generationId, startedAt }) {
   return async ({ phase = 'running', shots = [], completed_indexes = [], expected_total = 0, coverage_plan = null, blocked_units = [] } = {}) => {
     storage.saveOutput(taskId, 'storyboard_checkpoint', {
@@ -63,4 +78,4 @@ function checkpointWriter({ storage, stageProgress, taskId, blueprint, blueprint
   };
 }
 
-module.exports = { expectedPlan, cacheCurrent, metadata, checkpointMatchesStoryFlow, checkpointWriter };
+module.exports = { expectedPlan, cacheCurrent, metadata, checkpointMatchesStoryFlow, assertConfirmationReady, checkpointWriter };
