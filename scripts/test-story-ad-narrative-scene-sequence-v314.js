@@ -12,8 +12,8 @@ const scenes = [
 const state = {
   context: { story_seed: {
     opening: '陈默先进入明亮现代的高端家居展示厅，观察客厅整面背景墙。',
-    development: '她在现代高端家居展示厅完成触摸体验。',
-    resolution: '随后从现代高端家居展示厅前往高端商业展台，在展台前完成收束。',
+    development: '她完成触摸体验，随后场景切换至高端商业展台。',
+    resolution: '镜头定格材料，说明不锈钢可用于精致高级的家居与展台。',
   } },
 };
 const declared = flow.declaredSceneSequence(state, scenes);
@@ -38,7 +38,7 @@ assert.throws(() => flow.validateUnits(base, [
 
 const prompt = planning.promptPayload({ scenes, people: [], units: base.units, narrative_scene_sequence: declared, story_seed: state.context.story_seed });
 assert.deepEqual(prompt.narrative_scene_sequence, declared);
-assert.match(JSON.stringify(prompt.story_seed), /家居展示厅前往高端商业展台/u);
+assert.match(JSON.stringify(prompt.story_seed), /场景切换至高端商业展台/u);
 assert(prompt.rules.some(rule => rule.includes('不得为了平均覆盖场景而改写该顺序')));
 
 console.log(JSON.stringify({ passed: true, declared_sequence: declared, correct_flow_accepted: true, reversed_flow_blocked: true, unsupported_reentry_blocked: true, provider_calls: 0 }));

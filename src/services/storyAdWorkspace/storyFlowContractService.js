@@ -155,11 +155,7 @@ function declaredSceneSequence(state = {}, scenes = []) {
     const normalizedSegment = sceneMentionText(segment);
     const exactMatches = scenes.map(scene => ({ scene, position: scene.name ? normalizedSegment.indexOf(sceneMentionText(scene.name)) : -1 }))
       .filter(item => item.position >= 0).sort((a, b) => a.position - b.position);
-    const ranked = scenes.map(scene => ({ scene, score: overlapScore(segment, `${scene.name} ${scene.story_purpose || ''}`) }))
-      .sort((a, b) => b.score - a.score);
-    const selected = exactMatches.length
-      ? exactMatches.map(item => item.scene)
-      : (ranked[0]?.score >= 4 && ranked[0].score >= (ranked[1]?.score || 0) + 2 ? [ranked[0].scene] : []);
+    const selected = exactMatches.map(item => item.scene);
     selected.forEach((scene) => {
       if (scene?.scene_id && sequence[sequence.length - 1] !== scene.scene_id) sequence.push(scene.scene_id);
     });
