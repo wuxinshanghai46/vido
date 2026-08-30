@@ -7,6 +7,8 @@ export function beginStageSubmissionState({ state, set }, stage = 'full', total 
     stage,
     status: 'queued',
     phase: '正在提交',
+    percent: 2,
+    indeterminate: true,
     target_total: count,
     processed: 0,
     message,

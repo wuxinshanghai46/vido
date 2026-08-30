@@ -4,11 +4,12 @@ const productionLimits = require('./productionLimitsService');
 const { storyboardCoveragePlan } = require('./storyboardTableService');
 
 function expectedPlan(blueprint = {}, context = {}) {
+  const flowUnits = Array.isArray(context.story_flow_contract?.units) ? context.story_flow_contract.units.length : 0;
   return storyboardCoveragePlan(blueprint, {
     ...context,
     expected_storyboard_count: productionLimits.requiredStoryboardShotCount(
       context.target_duration,
-      Math.max(Number(context.shot_count || 0), Number(blueprint.beats?.length || 0)),
+      Math.max(flowUnits, Number(blueprint.beats?.length || 0)),
     ),
   });
 }

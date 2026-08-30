@@ -1,10 +1,10 @@
-import { request, uploadAsset, uploadReferenceVideo } from '../api.js?v=20260830-production-v292';
+import { request, uploadAsset, uploadReferenceVideo } from '../api.js?v=20260830-production-v293';
 import { beginReferenceReplacement, referenceSyncInterrupted, replacementCurrent, removeProjectReference, restoreReferenceReplacement } from './referenceReplacementState.js?v=20260830-production-v292';
 import { cancelReferenceAnalysisRequest, retryReferenceAnalysisRequest, retryReferenceImportRequest } from './referenceRetryStore.js?v=20260830-production-v292';
 import { loadProjectList } from './projectListStore.js?v=20260830-production-v292';
 import { loadProjectBundle, prefetchProjectBundle, refreshProjectBundle } from './projectBundleStore.js?v=20260830-production-v292';
-import { beginStageSubmissionState } from './stageSubmissionState.js?v=20260830-production-v292';
-import { createStoryboardLiveRefresh } from './storyboardLiveRefresh.js?v=20260830-production-v292';
+import { beginStageSubmissionState } from './stageSubmissionState.js?v=20260830-production-v293';
+import { createStoryboardLiveRefresh } from './storyboardLiveRefresh.js?v=20260830-production-v293';
 export function createProjectStore() {
   const state = {
     projects: [],
@@ -144,6 +144,9 @@ export function createProjectStore() {
     const taskId = state.bundle?.project?.id;
     if (!taskId) throw new Error('请先创建项目。');
     set({ saving: true, error: '' });
+    // The optimistic state is already visible at this point; begin observing the
+    // server immediately instead of waiting for the submission response.
+    syncProgressPolling(true);
     try {
       const data = await request(`/api/new-story-ad/tasks/${encodeURIComponent(taskId)}/${path}`, {
         method: 'POST',
@@ -525,14 +528,16 @@ export function createProjectStore() {
           generation_queued_at: progressTask.generation_queued_at || state.bundle?.project?.generation_queued_at || '',
           generation_started_at: progressTask.generation_started_at || state.bundle?.project?.generation_started_at || '',
           generation_finished_at: progressTask.generation_finished_at || state.bundle?.project?.generation_finished_at || '',
-          generation_progress: progressTask.generation_progress || null,
+          generation_progress: progressTask.generation_progress
+            || (progressTask.active_generation_id ? state.bundle?.project?.generation_progress : null),
           error: progressTask.error || '',
           error_code: progressTask.error_code || '',
           retryable: progressTask.retryable === true,
         };
         const generation = {
           ...(state.bundle?.generation || {}),
-          progress: progressTask.generation_progress || null,
+          progress: progressTask.generation_progress
+            || (progressTask.active_generation_id ? state.bundle?.generation?.progress : null),
         };
         const bundle = { ...(state.bundle || {}), project, generation };
         set({ bundle, progressRevision: state.progressRevision });

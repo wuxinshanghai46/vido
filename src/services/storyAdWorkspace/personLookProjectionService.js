@@ -31,6 +31,7 @@ function personProfile(source = {}, index = 0) {
     lineage_identity_id: clean(source.lineage_identity_id || source.lineageIdentityId || source.source_identity_id || source.id, 120),
     name_source: clean(source.name_source || source.nameSource, 80),
     roleName: clean(source.roleName || source.role_name || source.role, 120),
+    gender: clean(source.gender || source.sex || source.demographics?.gender || source.identity?.gender, 24).toLowerCase(),
     age: clean(source.age || source.ageRange || source.age_range || 'match_brief', 40),
     ethnicity: clean(source.ethnicity || source.ethnic_appearance, 120),
     ethnicity_source: clean(source.ethnicity_source || source.ethnicitySource, 80),

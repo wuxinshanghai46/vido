@@ -31,20 +31,44 @@ function sourceContract(world = {}) {
 }
 
 function defaultEntities(bundle = {}, world = {}, manifest = {}) {
-  const cellsByCharacter = new Map(list(manifest.character_world_matrix).map(row => [String(row.character_id), row]));
+  const subjectMatrix = list(manifest.subject_world_matrix).length ? list(manifest.subject_world_matrix) : list(manifest.character_world_matrix);
+  const cellsByCharacter = new Map(subjectMatrix.map(row => [String(row.character_id || row.subject_id), row]));
   const people = list(bundle.assets?.people).filter(person => {
     const id = text(person.subject_id || person.profile?.id || person.id, 120);
     const cell = list(cellsByCharacter.get(id)?.cells).find(item => String(item.world_id) === String(world.id));
     return cell?.presence !== 'excluded';
-  }).map((person, index) => ({
-    entity_id: text(person.subject_id || person.profile?.id || person.id || `person-${index + 1}`, 120),
+  }).map((person, index) => {
+    const id = text(person.subject_id || person.profile?.id || person.id || `person-${index + 1}`, 120);
+    const cell = list(cellsByCharacter.get(id)?.cells).find(item => String(item.world_id) === String(world.id));
+    const point = Array.isArray(cell?.blocking_position) ? cell.blocking_position : [];
+    return ({
+    entity_id: id,
     entity_revision: Math.max(1, number(person.revision || person.person_revision, 1, 1, 1000000)),
-    kind: 'person',
+    kind: 'person', gender: text(person.gender || person.profile?.gender, 24).toLowerCase(),
     label: text(person.name || person.profile?.displayName || `人物 ${index + 1}`, 120),
     image_url: text(person.image_url || person.referenceImageUrl || person.dossier_sheet?.image_url, 1000),
-    position: [Number(((index - (Math.max(1, list(bundle.assets?.people).length) - 1) / 2) * 1.4).toFixed(3)), 0, 0],
-    rotation: [0, 0, 0], scale: [1, 1, 1], pose_id: 'neutral_stand', visible: true,
-  }));
+    position: point.length >= 2 ? [Number(((point[0] - .5) * 12).toFixed(3)), 0, Number(((point[1] - .5) * 8).toFixed(3))] : [0, 0, 0],
+    coordinate_planned: point.length >= 2,
+    rotation: [0, 0, 0], scale: [1, 1, 1], pose_id: 'neutral_stand', visible: point.length >= 2,
+  }); });
+  const animals = list(bundle.assets?.animals).filter(animal => {
+    const id = text(animal.subject_id || animal.id || animal.asset_id, 120);
+    const cell = list(cellsByCharacter.get(id)?.cells).find(item => String(item.world_id) === String(world.id));
+    return cell?.presence !== 'excluded';
+  }).map((animal, index) => {
+    const id = text(animal.subject_id || animal.id || animal.asset_id || `animal-${index + 1}`, 120);
+    const row = cellsByCharacter.get(id) || {};
+    const cell = list(row.cells).find(item => String(item.world_id) === String(world.id));
+    const point = Array.isArray(cell?.blocking_position) ? cell.blocking_position : [];
+    return {
+      entity_id: id, entity_revision: Math.max(1, number(animal.revision, 1, 1, 1000000)),
+      kind: 'animal', species: text(row.species || animal.profile?.species || animal.role || animal.name, 80),
+      label: text(animal.name || `动物 ${index + 1}`, 120), image_url: text(animal.image_url, 1000),
+      position: point.length >= 2 ? [Number(((point[0] - .5) * 12).toFixed(3)), 0, Number(((point[1] - .5) * 8).toFixed(3))] : [0, 0, 0],
+      coordinate_planned: point.length >= 2,
+      rotation: [0, 0, 0], scale: [.8, .8, .8], pose_id: 'neutral', visible: point.length >= 2,
+    };
+  });
   const products = list(bundle.assets?.products).slice(0, 12).map((product, index) => ({
     entity_id: text(product.id || product.asset_id || `product-${index + 1}`, 120),
     entity_revision: Math.max(1, number(product.revision, 1, 1, 1000000)),
@@ -53,7 +77,22 @@ function defaultEntities(bundle = {}, world = {}, manifest = {}) {
     position: [Number(((index + 1) * 1.2).toFixed(3)), 0.45, -1.2],
     rotation: [0, 0, 0], scale: [0.7, 0.7, 0.7], pose_id: '', visible: true,
   }));
-  return [...people, ...products].slice(0, 60);
+  return [...people, ...animals, ...products].slice(0, 60);
+}
+
+function defaultPaths(world = {}, manifest = {}) {
+  const matrix = list(manifest.subject_world_matrix).length ? list(manifest.subject_world_matrix) : list(manifest.character_world_matrix);
+  return matrix.flatMap(row => {
+    const cell = list(row.cells).find(item => String(item.world_id) === String(world.id));
+    if (!cell || !['confirmed', 'suggested'].includes(cell.presence)) return [];
+    const points = [cell.entry_point, ...list(cell.route_points), cell.blocking_position, cell.exit_point]
+      .filter(point => Array.isArray(point) && point.length >= 2)
+      .map((point, index) => ({ position: [Number(((point[0] - .5) * 12).toFixed(3)), .04, Number(((point[1] - .5) * 8).toFixed(3))], time_sec: index }));
+    return points.length < 2 ? [] : [{
+      path_id: `path:${text(row.character_id || row.subject_id, 100)}`, kind: 'actor',
+      entity_id: text(row.character_id || row.subject_id, 120), duration_sec: Math.max(1, points.length - 1), easing: 'ease_in_out', points,
+    }];
+  });
 }
 
 function defaultCameras(world = {}) {
@@ -79,6 +118,8 @@ function normalizeEntity(entity = {}, index = 0) {
     entity_id: text(entity.entity_id || entity.id || `entity-${index + 1}`, 120),
     entity_revision: Math.max(1, number(entity.entity_revision || entity.revision, 1, 1, 1000000)),
     kind: text(entity.kind || 'object', 40), label: text(entity.label || entity.name || `实体 ${index + 1}`, 120),
+    gender: text(entity.gender, 24).toLowerCase(), species: text(entity.species, 80),
+    coordinate_planned: entity.coordinate_planned === true,
     image_url: text(entity.image_url || entity.url, 1000), position: vector(entity.position),
     rotation: vector(entity.rotation, [0, 0, 0], -360, 360),
     scale: vector(entity.scale, [1, 1, 1], 0.05, 20), pose_id: text(entity.pose_id, 80),
@@ -126,7 +167,7 @@ function defaultState(bundle = {}, world = {}, manifest = {}) {
     world_id: text(world.id, 120), world_revision: Math.max(1, number(world.revision, 1, 1, 1000000)), revision: 1,
     source_revision: Math.max(0, number(world.source_asset?.source_revision, 0, 0, 1000000)),
     source_contract_hash: stableHash(contract), status: 'draft', entities: defaultEntities(bundle, world, manifest),
-    cameras: defaultCameras(world), paths: [], snapshots: [], updated_at: '',
+    cameras: defaultCameras(world), paths: defaultPaths(world, manifest), snapshots: [], updated_at: '',
   };
 }
 
@@ -146,8 +187,19 @@ function resolveStored(bundle = {}, world = {}, manifest = {}, stored = null) {
   }).map(entity => text(entity.entity_id, 120));
   const sourceCurrent = stored.source_contract_hash === currentHash;
   const entitiesCurrent = staleEntityRefs.length === 0;
+  const storedEntities = new Map(list(stored.entities).map(entity => [String(entity.entity_id), entity]));
+  const mergedEntities = [
+    ...list(base.entities).map(entity => {
+      const merged = { ...entity, ...(storedEntities.get(String(entity.entity_id)) || {}) };
+      if (['person', 'animal'].includes(entity.kind) && entity.coordinate_planned === false) merged.visible = false;
+      return merged;
+    }),
+    ...list(stored.entities).filter(entity => !currentEntities.has(String(entity.entity_id))),
+  ];
   return {
     ...base, ...stored, world_id: base.world_id, world_revision: base.world_revision,
+    entities: mergedEntities,
+    paths: list(stored.paths).length ? stored.paths : base.paths,
     source_contract_hash: currentHash,
     compatibility_status: !sourceCurrent ? 'stale_source' : (entitiesCurrent ? 'current' : 'stale_entities'),
     stale_entity_refs: staleEntityRefs,

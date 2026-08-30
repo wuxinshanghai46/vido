@@ -290,6 +290,20 @@ function updateTaskRequest(taskId, body = {}, user = {}, options = {}) {
     throw error;
   }
   const workflowConfirmationOnly = workflowTransition.isWorkflowConfirmationOnly(body);
+  if (body.shot_design_confirmed === true || body.shotDesignConfirmed === true) {
+    const shots = storage.getOutput(taskId, 'storyboard_table') || [];
+    const images = storage.getOutput(taskId, 'storyboard_images') || [];
+    const readyIndexes = new Set((Array.isArray(images) ? images : [])
+      .filter(image => image?.image_url || image?.imageUrl || image?.url)
+      .map(image => Number(image.shot_index || image.index || 0)));
+    const allReady = Array.isArray(shots) && shots.length > 0
+      && shots.every((shot, index) => readyIndexes.has(Number(shot.shot_index || shot.index || index + 1)));
+    if (!allReady) {
+      const error = new Error('请先完成并保存全部分镜画面，再进入视频生成');
+      error.code = 'STORYBOARD_CONFIRMATION_NOT_READY'; error.status = 409; error.retryable = false;
+      throw error;
+    }
+  }
   const briefExplicit = Object.prototype.hasOwnProperty.call(body, 'brief')
     || Object.prototype.hasOwnProperty.call(body, 'content');
   const briefSourceExplicit = Object.prototype.hasOwnProperty.call(body, 'brief_source')
@@ -891,7 +905,7 @@ async function generateStoryboardStage(taskId, options = {}) {
     stageProgress.update(taskId, { stage: 'storyboard', status: 'done', phase: 'fingerprint_reused', completed: existingShots.length, total: existingShots.length, processed: existingShots.length, percent: 100, generationId, message: '蓝图指纹一致，已复用完整分镜和关键帧合同' });
     return { shots: existingShots, review: storage.getOutput(taskId, 'quality_review') || {}, keyframe_contracts: existingContracts, model_meta: { cache_hit: true } };
   }
-  const startedAt = new Date().toISOString();
+  const startedAt = storage.getTask(taskId)?.generation_started_at || new Date().toISOString();
   const savedCheckpoint = storage.getOutput(taskId, 'storyboard_checkpoint') || null;
   const resumeShots = savedCheckpoint?.blueprint_fingerprint === sourceFingerprint && storyboardCoverageLifecycle.checkpointMatchesStoryFlow(savedCheckpoint, storyFlowContract.contract_fingerprint) && Array.isArray(savedCheckpoint.shots) ? savedCheckpoint.shots : [];
   const characterSeed = `${ctx.request_id || taskId}|${ctx.brief || ''}|${ctx.product_subject || ''}`;
@@ -900,7 +914,7 @@ async function generateStoryboardStage(taskId, options = {}) {
     scene_assets: Array.isArray(sceneAssets) ? sceneAssets : [],
     expected_storyboard_count: productionLimits.requiredStoryboardShotCount(
       ctx.target_duration,
-      Math.max(Number(ctx.shot_count || 0), Number(blueprint.beats?.length || 0)),
+      Math.max(Number(storyFlowContract.units?.length || 0), Number(blueprint.beats?.length || 0)),
     ),
     characters: normalizeCharacters(Array.isArray(blueprint.characters) && blueprint.characters.length ? blueprint.characters : ctx.characters, characterSeed),
   };

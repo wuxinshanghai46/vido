@@ -47,33 +47,24 @@ function storyboardTextValues(shot = {}) {
   ].map(textValue).filter(Boolean);
 }
 
-const SCENE_SEMANTIC_STOP_WORDS = new Set([
-  '场景', '空间', '展示', '人物', '主体', '产品', '材料', '材质', '镜头', '画面', '光线',
-  '效果', '当前', '整个', '不同', '使用', '需要', '进行', '一个', '一种', '真实', '现代', '高级',
+const GENERIC_SCENE_LABELS = new Set([
+  '场景', '空间', '区域', '主区域', '互动区', '展示区', '入口', '出口', '人物', '主体',
+  '产品', '材料', '材质', '背景', '墙面', '地面', '面板', '自然光', '灯光',
 ]);
-const WORD_SEGMENTER = typeof Intl?.Segmenter === 'function'
-  ? new Intl.Segmenter('zh-CN', { granularity: 'word' })
-  : null;
 
-function sceneAuthorityText(asset = {}) {
+// Cross-scene rejection must only use persisted physical labels. Narrative prose,
+// lighting adjectives and interaction verbs are intentionally excluded: those
+// words describe how a shot is filmed, not which physical world it belongs to.
+function sceneAuthorityTerms(asset = {}) {
   const contract = asset.scene_contract && typeof asset.scene_contract === 'object' ? asset.scene_contract : {};
   const layout = contract.layout_contract && typeof contract.layout_contract === 'object' ? contract.layout_contract : {};
-  return [
-    asset.name, asset.scene_name, asset.title, asset.story_purpose,
-    contract.requested_layout, contract.requested_interaction, contract.requested_material_light,
-    ...(Array.isArray(contract.zones) ? contract.zones.flatMap(item => [item.label, item.label_zh, item.purpose, item.description]) : []),
-    ...(Array.isArray(contract.anchors) ? contract.anchors.flatMap(item => [item.label, item.purpose, item.description]) : []),
-    ...(Array.isArray(layout.zones) ? layout.zones.flatMap(item => [item.label, item.label_zh, item.purpose, item.description]) : []),
-    ...(Array.isArray(layout.anchors) ? layout.anchors.flatMap(item => [item.label, item.description, item.relative_position]) : []),
-  ].map(textValue).filter(Boolean).join('；');
-}
-
-function sceneSemanticTokens(asset = {}) {
-  const source = sceneAuthorityText(asset);
-  const words = WORD_SEGMENTER
-    ? [...WORD_SEGMENTER.segment(source)].filter(item => item.isWordLike).map(item => item.segment)
-    : source.split(/[^\p{L}\p{N}_-]+/u);
-  return new Set(words.map(textValue).filter(word => word.length >= 2 && !SCENE_SEMANTIC_STOP_WORDS.has(word)));
+  return Array.from(new Set([
+    asset.name, asset.scene_name, asset.title,
+    ...(Array.isArray(contract.zones) ? contract.zones.flatMap(item => [item.label, item.label_zh, item.name]) : []),
+    ...(Array.isArray(contract.anchors) ? contract.anchors.flatMap(item => [item.label, item.label_zh, item.name]) : []),
+    ...(Array.isArray(layout.zones) ? layout.zones.flatMap(item => [item.label, item.label_zh, item.name]) : []),
+    ...(Array.isArray(layout.anchors) ? layout.anchors.flatMap(item => [item.label, item.label_zh, item.name]) : []),
+  ].map(textValue).filter(term => term.length >= 2 && !GENERIC_SCENE_LABELS.has(term))));
 }
 
 function shotSceneVisualText(shot = {}) {
@@ -92,14 +83,19 @@ function sceneSemanticContaminationIssues(sceneAssets = [], shot = {}, index = 0
   const selectedId = String(shot.scene_id || shot.scene_asset_id || '').trim();
   const selected = assets.find((asset, assetIndex) => String(asset.scene_id || asset.id || `scene_${assetIndex + 1}`) === selectedId);
   if (!selected) return [];
-  const selectedTokens = sceneSemanticTokens(selected);
+  const selectedTerms = new Set(sceneAuthorityTerms(selected));
   const visualText = shotSceneVisualText(shot);
   const conflicts = [];
   assets.forEach((asset, assetIndex) => {
     const id = String(asset.scene_id || asset.id || `scene_${assetIndex + 1}`);
     if (id === selectedId) return;
-    const unique = [...sceneSemanticTokens(asset)].filter(token => !selectedTokens.has(token) && visualText.includes(token));
-    if (unique.length) conflicts.push(`${asset.name || asset.scene_name || id}：${unique.slice(0, 5).join('、')}`);
+    const unique = sceneAuthorityTerms(asset).filter(term => !selectedTerms.has(term) && visualText.includes(term));
+    const foreignSceneName = textValue(asset.name || asset.scene_name || asset.title);
+    // One short shared object (for example “面板” or “沙发”) is not enough to
+    // prove contamination. A full scene name, one specific long label, or two
+    // independent structured labels is required.
+    const strong = unique.filter(term => term === foreignSceneName || term.length >= 4);
+    if (strong.length || unique.length >= 2) conflicts.push(`${asset.name || asset.scene_name || id}：${unique.slice(0, 5).join('、')}`);
   });
   return conflicts.length
     ? [`第 ${index + 1} 镜绑定“${selected.name || selected.scene_name || selectedId}”，但画面混入其他场景独有元素（${conflicts.join('；')}）`]

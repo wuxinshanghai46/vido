@@ -27,6 +27,7 @@ const remoteScript = String.raw`
   const { bindShotsToScenes } = require('./src/services/newStoryAd/sceneBindingService');
   const reboundShots = bindShotsToScenes(shots, sceneAssets);
   const calls = storage.getTaskBundle(taskId, { diagnostics: true }).model_calls || [];
+  const reviews = storage.getTaskBundle(taskId, { diagnostics: true }).reviews || [];
   console.log(JSON.stringify({
     found: true,
     task_id: taskId,
@@ -69,6 +70,15 @@ const remoteScript = String.raw`
       blocking_issues: review.blocking_issues || [],
       rewrite_issues: review.rewrite_issues || [],
     },
+    storyboard_reviews: reviews.filter(row => String(row.stage || '').startsWith('storyboard.')).map(row => ({
+      stage: row.stage || '',
+      created_at: row.created_at || '',
+      updated_at: row.updated_at || '',
+      pass: row.review?.pass,
+      blocking_issues: row.review?.blocking_issues || [],
+      rewrite_issues: row.review?.rewrite_issues || [],
+      warnings: row.review?.warnings || [],
+    })),
     flow_sketches: flowSketches.map(item => ({
       beat_index: item.beat_index,
       status: item.status || '',

@@ -1,4 +1,4 @@
-import { bindSceneWorldWorkspace } from './sceneWorldView.js?v=20260830-production-v292';
+import { bindSceneWorldWorkspace } from './sceneWorldView.js?v=20260830-production-v293';
 import { bindScenePlanUpdate, scenePlanBlockedView } from './scenePlanStatus.js?v=20260830-production-v292';
 import { renderSceneProductionCard, scenePromptPreviewMarkup, scenePromptPreviewState, startInitialScenePlan } from './scenePromptPreview.js?v=20260830-production-v292';
 import { bindMediaLightbox } from './mediaLightbox.js?v=20260830-production-v292';

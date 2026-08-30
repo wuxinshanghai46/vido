@@ -1,8 +1,8 @@
-import * as THREE from '../vendor/three.module.min.js?v=20260830-production-v292';
-import { request, uploadAsset } from '../api.js?v=20260830-production-v292';
-import { escapeHtml, toast } from '../components/ui.js?v=20260830-production-v292';
+import * as THREE from '../vendor/three.module.min.js?v=20260830-production-v293';
+import { request, uploadAsset } from '../api.js?v=20260830-production-v293';
+import { escapeHtml, toast } from '../components/ui.js?v=20260830-production-v293';
 
-const VERSION = '20260827-director-clarity-v9';
+const VERSION = '20260830-director-clarity-v10';
 
 function list(value) { return Array.isArray(value) ? value.filter(Boolean) : []; }
 function number(value, fallback = 0) { const parsed = Number(value); return Number.isFinite(parsed) ? parsed : fallback; }
@@ -13,8 +13,31 @@ function addStyle() {
   document.head.appendChild(link);
 }
 function copyState(value) { return JSON.parse(JSON.stringify(value)); }
-function entityColor(kind = '') {
-  return ({ person: 0x5de0bd, product: 0xf6b94a, animal: 0xb69cff, vehicle: 0x52a8ff, object: 0x9eaec0 }[kind] || 0x9eaec0);
+function entityColor(entity = {}) {
+  const kind = typeof entity === 'string' ? entity : entity.kind;
+  const gender = String(typeof entity === 'object' ? entity.gender || '' : '').toLowerCase();
+  if (kind === 'person' && /female|woman|女/.test(gender)) return 0xff83b3;
+  if (kind === 'person' && /male|man|男/.test(gender)) return 0x44d7a8;
+  return ({ person: 0x9aa9b6, product: 0xf6b94a, animal: 0xf1b86a, vehicle: 0x52a8ff, object: 0x9eaec0 }[kind] || 0x9eaec0);
+}
+function entityIcon(entity = {}) {
+  if (entity.kind === 'animal') {
+    const species = String(entity.species || entity.label || '');
+    if (/猫|cat/i.test(species)) return '🐱';
+    if (/狗|犬|dog/i.test(species)) return '🐶';
+    if (/鸟|bird/i.test(species)) return '🐦';
+    return '🐾';
+  }
+  if (entity.kind === 'person') return /female|woman|女/.test(String(entity.gender || '').toLowerCase()) ? '♀' : '●';
+  return entity.kind === 'product' ? '◆' : '●';
+}
+function sceneImages(world = {}) {
+  const nodes = list(world.observation_nodes);
+  const url = row => String(row?.image_url || row?.url || '').trim();
+  return {
+    layout: world.source_asset?.layout_image_url || url(nodes.find(row => String(row.view_key || '').toLowerCase() === 'layout')),
+    master: world.source_asset?.image_url || url(nodes.find(row => String(row.view_key || '').toLowerCase() === 'master')) || url(nodes.find(row => url(row))),
+  };
 }
 function field(label, name, value, options = {}) {
   const step = options.step || '0.1';
@@ -45,7 +68,7 @@ export async function openDirectorStudio({ taskId, world }) {
   const overlay = document.createElement('div');
   overlay.className = 'director-studio';
   overlay.innerHTML = `<section><header><div><small>DirectorScene · 通用空间导演台 · 版本 <span data-director-revision>${state.revision || 1}</span></small><h2>${escapeHtml(world.name)}</h2><p>人物、商品和机位只引用当前权威资产版本；拖动画布对象不会修改人物或场景正文，也不会调用生成模型。</p></div><div><button class="btn" type="button" data-export-director>导出当前机位截图</button><button class="btn primary" type="button" data-save-director>保存导演状态</button><button type="button" data-close-director aria-label="关闭">×</button></div></header>
-    <div class="director-layout"><aside><h3>空间对象</h3><div class="director-object-list">${list(state.entities).map(item => `<button type="button" data-director-entity="${escapeHtml(item.entity_id)}"><i style="--entity-color:#${entityColor(item.kind).toString(16).padStart(6, '0')}"></i><span><b>${escapeHtml(item.label)}</b><small>${escapeHtml(item.kind)} · r${item.entity_revision || 1}</small></span></button>`).join('') || '<small>当前场景没有可编辑实体</small>'}</div><h3>机位</h3><div class="director-camera-list">${list(state.cameras).map(item => `<button type="button" data-director-camera="${escapeHtml(item.camera_id)}"><span><b>${escapeHtml(item.label)}</b><small>${Math.round(item.focal_length || 35)}mm · FOV ${Math.round(item.fov || 52)}°</small></span></button>`).join('')}</div><h3>轨迹</h3><div data-director-path-summary>${list(state.paths).length} 条轨迹</div></aside>
+    <div class="director-layout"><aside><h3>空间对象</h3><div class="director-object-list">${list(state.entities).map(item => `<button type="button" data-director-entity="${escapeHtml(item.entity_id)}"><i style="--entity-color:#${entityColor(item).toString(16).padStart(6, '0')}">${entityIcon(item)}</i><span><b>${escapeHtml(item.label)}</b><small>${escapeHtml(item.kind)} · ${item.coordinate_planned === false && ['person', 'animal'].includes(item.kind) ? '站位未规划' : `r${item.entity_revision || 1}`}</small></span></button>`).join('') || '<small>当前场景没有可编辑实体</small>'}</div><h3>机位</h3><div class="director-camera-list">${list(state.cameras).map(item => `<button type="button" data-director-camera="${escapeHtml(item.camera_id)}"><i class="director-camera-icon" aria-hidden="true">🎥</i><span><b>${escapeHtml(item.label)}</b><small>${Math.round(item.focal_length || 35)}mm · FOV ${Math.round(item.fov || 52)}°</small></span></button>`).join('')}</div><h3>轨迹</h3><div data-director-path-summary>${list(state.paths).length} 条轨迹</div></aside>
     <main><div class="director-viewport" data-director-viewport></div><div class="director-help">左键选择并拖动实体 · 右键旋转观察 · 滚轮缩放 · 机位和轨迹均会进入逐镜参考包</div></main>
     <aside class="director-inspector" data-director-inspector-host>${inspectorHtml(null)}</aside></div>
     <footer><span data-director-status>${state.compatibility_status === 'stale_source' ? '上游场景已更新，保存后将重建当前导演版本' : '当前导演状态与场景版本一致'}</span><span>${list(state.snapshots).length} 张导演截图 · ${list(state.paths).reduce((sum, path) => sum + list(path.points).length, 0)} 个轨迹点</span></footer></section>`;
@@ -71,11 +94,20 @@ export async function openDirectorStudio({ taskId, world }) {
     const material = new THREE.MeshStandardMaterial({ color: 0x174b46, transparent: true, opacity: .28 });
     const mesh = new THREE.Mesh(geometry, material); mesh.position.set(number(bounds.x), .01, number(bounds.z)); scene.add(mesh);
   });
-  if (world.source_asset?.layout_image_url) {
-    new THREE.TextureLoader().load(world.source_asset.layout_image_url, texture => {
+  const images = sceneImages(world);
+  if (images.layout) {
+    new THREE.TextureLoader().load(images.layout, texture => {
       texture.colorSpace = THREE.SRGBColorSpace;
-      const plane = new THREE.Mesh(new THREE.PlaneGeometry(12, 8), new THREE.MeshBasicMaterial({ map: texture, transparent: true, opacity: .28, depthWrite: false }));
+      const plane = new THREE.Mesh(new THREE.PlaneGeometry(12, 8), new THREE.MeshBasicMaterial({ map: texture, transparent: true, opacity: .76, depthWrite: false }));
       plane.rotation.x = -Math.PI / 2; plane.position.y = .025; scene.add(plane);
+    }, undefined, () => {});
+  }
+  if (images.master) {
+    new THREE.TextureLoader().load(images.master, texture => {
+      texture.colorSpace = THREE.SRGBColorSpace;
+      const aspect = Math.max(.8, Number(texture.image?.width || 16) / Math.max(1, Number(texture.image?.height || 9)));
+      const backdrop = new THREE.Mesh(new THREE.PlaneGeometry(8 * aspect, 8), new THREE.MeshBasicMaterial({ map: texture, transparent: true, opacity: .68, depthWrite: false }));
+      backdrop.position.set(0, 3.8, -5.2); scene.add(backdrop);
     }, undefined, () => {});
   }
 
@@ -105,14 +137,23 @@ export async function openDirectorStudio({ taskId, world }) {
     part(new THREE.CapsuleGeometry(.085, .68, 5, 9), dark, [.13, .43, 0]);
     return group;
   };
+  const animalAvatar = item => {
+    const group = new THREE.Group(); const color = entityColor(item);
+    const material = new THREE.MeshStandardMaterial({ color, roughness: .72 });
+    const body = new THREE.Mesh(new THREE.SphereGeometry(.36, 18, 12), material); body.scale.set(1.35, .75, .8); body.position.y = .45;
+    const head = new THREE.Mesh(new THREE.SphereGeometry(.25, 18, 12), material); head.position.set(0, .72, -.32);
+    const ear = new THREE.ConeGeometry(.09, .18, 8);
+    const left = new THREE.Mesh(ear, material); left.position.set(-.12, .96, -.34);
+    const right = left.clone(); right.position.x = .12; group.add(body, head, left, right); return group;
+  };
   const wireEntity = item => {
     const geometry = item.kind === 'product' ? new THREE.BoxGeometry(.8, .8, .8) : new THREE.SphereGeometry(.5, 18, 12);
     const group = new THREE.Group();
-    group.add(new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({ color: entityColor(item.kind), transparent: true, opacity: .12, roughness: .75 })));
-    group.add(new THREE.LineSegments(new THREE.EdgesGeometry(geometry), new THREE.LineBasicMaterial({ color: entityColor(item.kind) })));
+    group.add(new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({ color: entityColor(item), transparent: true, opacity: .12, roughness: .75 })));
+    group.add(new THREE.LineSegments(new THREE.EdgesGeometry(geometry), new THREE.LineBasicMaterial({ color: entityColor(item) })));
     return group;
   };
-  const entityObject = item => item.kind === 'person' ? personAvatar(entityColor(item.kind)) : wireEntity(item);
+  const entityObject = item => item.kind === 'person' ? personAvatar(entityColor(item)) : (item.kind === 'animal' ? animalAvatar(item) : wireEntity(item));
   const syncEntityMesh = (item, mesh) => {
     mesh.position.fromArray(item.position || [0, 0, 0]);
     if (item.kind === 'person') mesh.position.y = Math.max(0, mesh.position.y || 0);
@@ -129,7 +170,12 @@ export async function openDirectorStudio({ taskId, world }) {
     const group = new THREE.Group();
     const body = new THREE.Mesh(new THREE.BoxGeometry(.48, .32, .62), new THREE.MeshStandardMaterial({ color: 0x52a8ff }));
     const lens = new THREE.Mesh(new THREE.ConeGeometry(.18, .5, 12), new THREE.MeshStandardMaterial({ color: 0x91caff }));
-    lens.rotation.x = -Math.PI / 2; lens.position.z = -.48; group.add(body, lens); group.position.fromArray(item.position); group.userData = { type: 'camera', id: item.camera_id };
+    const reelMaterial = new THREE.MeshStandardMaterial({ color: 0x91caff });
+    const reelGeometry = new THREE.CylinderGeometry(.16, .16, .08, 18);
+    const reelA = new THREE.Mesh(reelGeometry, reelMaterial); reelA.rotation.z = Math.PI / 2; reelA.position.set(-.14, .28, 0);
+    const reelB = reelA.clone(); reelB.position.x = .14;
+    const tripod = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.ConeGeometry(.38, .72, 3)), new THREE.LineBasicMaterial({ color: 0x91caff })); tripod.position.y = -.48;
+    lens.rotation.x = -Math.PI / 2; lens.position.z = -.48; group.add(body, lens, reelA, reelB, tripod); group.position.fromArray(item.position); group.userData = { type: 'camera', id: item.camera_id };
     group.traverse(child => { child.userData = group.userData; }); scene.add(group); cameraMeshes.set(item.camera_id, group);
   });
 

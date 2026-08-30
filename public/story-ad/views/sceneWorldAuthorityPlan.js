@@ -1,5 +1,5 @@
-import { escapeHtml as esc } from '../components/ui.js?v=20260830-production-v292';
-import { list } from './sceneWorldData.js?v=20260830-production-v292';
+import { escapeHtml as esc } from '../components/ui.js?v=20260830-production-v293';
+import { list } from './sceneWorldData.js?v=20260830-production-v293';
 
 const value = (row, keys) => keys.map(key => row?.[key]).find(item => item !== undefined && item !== null && item !== '');
 export function normalizedLayoutPoint(input) {
@@ -28,12 +28,23 @@ export function sceneCameraRows(bundle = {}, world = {}) {
   });
 }
 export function scenePeopleRows(bundle = {}, world = {}) {
-  return list(bundle.production_manifest?.character_world_matrix).map(row => {
+  return sceneSubjectRows(bundle, world).filter(row => row.kind !== 'animal');
+}
+export function sceneSubjectRows(bundle = {}, world = {}) {
+  const matrix = list(bundle.production_manifest?.subject_world_matrix).length
+    ? list(bundle.production_manifest.subject_world_matrix)
+    : list(bundle.production_manifest?.character_world_matrix);
+  const peopleById = new Map(list(bundle.assets?.people).map(item => [String(item.subject_id || item.profile?.id || item.id), item]));
+  return matrix.map(row => {
     const cell = list(row.cells).find(item => String(item.world_id || '') === String(world.id || ''));
     if (!cell || !['confirmed', 'suggested'].includes(cell.presence)) return null;
+    const person = peopleById.get(String(row.character_id || row.subject_id || '')) || {};
     return {
       id: row.character_id || row.id || row.name,
       name: row.name || '未命名人物',
+      kind: row.kind || 'person',
+      gender: String(row.gender || person.gender || person.profile?.gender || '').toLowerCase(),
+      species: row.species || '',
       presence: cell.presence,
       position: normalizedLayoutPoint(value(cell, ['blocking_position', 'position_on_layout', 'position'])),
       entryPoint: normalizedLayoutPoint(value(cell, ['entry_point', 'entry_position'])),

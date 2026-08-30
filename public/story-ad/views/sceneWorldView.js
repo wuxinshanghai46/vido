@@ -115,7 +115,9 @@ function initNativeSceneWorldViewer({ overlay, bundle, world, authority }) {
   const context = canvas.getContext('2d');
   const colors = ['#1cc8a0', '#50a9ff', '#a883ff', '#e8b55d', '#ff7f73'];
   const state = { yaw: -0.62, pitch: 0.62, zoom: 34, centerX: 0, centerZ: 0, mode: 'model', dragging: false, x: 0, y: 0 };
-  const matrixRows = list(bundle.production_manifest?.character_world_matrix);
+  const matrixRows = list(bundle.production_manifest?.subject_world_matrix).length
+    ? list(bundle.production_manifest.subject_world_matrix)
+    : list(bundle.production_manifest?.character_world_matrix);
   const cameraRows = authority.sceneCameraRows(bundle, world);
   const zones = list(world.zones).length ? list(world.zones) : [{ id: `${world.id}_main`, name: world.name, bounds: { x: 0, z: 0, width: 4, depth: 3 } }];
   const nativePhotoNodes = photoNodes(world);
@@ -211,29 +213,52 @@ function initNativeSceneWorldViewer({ overlay, bundle, world, authority }) {
       polygon([item.bottom[2], item.bottom[3], item.top[3], item.top[2]], `${color}2f`);
       polygon(item.top, `${color}9a`, `${color}dd`);
       const label = item.top.reduce((acc, point) => ({ x: acc.x + point.x / 4, y: acc.y + point.y / 4 }), { x: 0, y: 0 });
-      context.fillStyle = '#f3ffff'; context.font = '600 12px system-ui'; context.textAlign = 'center';
+      context.fillStyle = '#f3ffff'; context.font = '600 13px Inter, "PingFang SC", "Microsoft YaHei", sans-serif'; context.textAlign = 'center';
       context.fillText(item.zone.name || `区域 ${item.index + 1}`, label.x, label.y - 8);
     });
-    if (state.mode === 'blocking') {
+    if (['model', 'blocking', 'camera'].includes(state.mode)) {
       matrixRows.forEach((row, index) => {
         const cell = list(row.cells).find(item => item.world_id === world.id);
         const savedPosition = authority.normalizedLayoutPoint(cell?.blocking_position || cell?.position_on_layout || cell?.position);
         if (!['confirmed', 'suggested'].includes(cell?.presence) || !savedPosition) return;
+        const route = [cell?.entry_point, ...list(cell?.route_points), cell?.blocking_position, cell?.exit_point]
+          .map(authority.normalizedLayoutPoint).filter(Boolean);
+        if (route.length > 1) {
+          context.beginPath();
+          route.forEach((point, routeIndex) => {
+            const projected = project({ x: (point.x - .5) * 12, y: .06, z: (point.y - .5) * 8 }, width, height);
+            if (routeIndex) context.lineTo(projected.x, projected.y); else context.moveTo(projected.x, projected.y);
+          });
+          context.strokeStyle = row.kind === 'animal' ? '#f1b86a' : '#ffd166'; context.lineWidth = 2; context.setLineDash([7, 5]); context.stroke(); context.setLineDash([]);
+        }
         const position = project({ x: (savedPosition.x - 0.5) * 12, y: 0.75, z: (savedPosition.y - 0.5) * 8 }, width, height);
-        context.fillStyle = '#ffd49b'; context.beginPath(); context.arc(position.x, position.y - 14, 7, 0, Math.PI * 2); context.fill();
-        context.strokeStyle = '#fff1d5'; context.lineWidth = 5; context.beginPath(); context.moveTo(position.x, position.y - 5); context.lineTo(position.x, position.y + 23); context.stroke();
-        context.fillStyle = '#ffffff'; context.font = '11px system-ui'; context.fillText(row.name || `人物 ${index + 1}`, position.x, position.y + 40);
+        const gender = String(row.gender || list(bundle.assets?.people).find(person => String(person.subject_id || person.profile?.id || person.id) === String(row.character_id))?.profile?.gender || '').toLowerCase();
+        const color = row.kind === 'animal' ? '#f1b86a' : (/female|woman|女/.test(gender) ? '#ff83b3' : (/male|man|男/.test(gender) ? '#44d7a8' : '#9aa9b6'));
+        if (row.kind === 'animal') {
+          context.fillStyle = color; context.font = '24px "Segoe UI Emoji", sans-serif'; context.fillText(/猫|cat/i.test(row.species) ? '🐱' : (/狗|犬|dog/i.test(row.species) ? '🐶' : (/鸟|bird/i.test(row.species) ? '🐦' : '🐾')), position.x, position.y + 6);
+        } else {
+          context.fillStyle = color; context.beginPath(); context.arc(position.x, position.y - 14, 7, 0, Math.PI * 2); context.fill();
+          context.strokeStyle = color; context.lineWidth = 7; context.beginPath(); context.moveTo(position.x, position.y - 4); context.lineTo(position.x, position.y + 20); context.stroke();
+          context.lineWidth = 4; context.beginPath(); context.moveTo(position.x, position.y + 2); context.lineTo(position.x - 9, position.y + 10); context.moveTo(position.x, position.y + 2); context.lineTo(position.x + 9, position.y + 10); context.stroke();
+        }
+        context.fillStyle = '#ffffff'; context.font = '600 12px Inter, "PingFang SC", "Microsoft YaHei", sans-serif'; context.textAlign = 'center'; context.fillText(row.name || `主体 ${index + 1}`, position.x, position.y + 40);
       });
     }
     if (state.mode === 'camera' || state.mode === 'model') {
       cameraRows.forEach(cameraNode => {
         if (!cameraNode.position) return;
         const marker = project({ x: (cameraNode.position.x - 0.5) * 12, y: 1.4, z: (cameraNode.position.y - 0.5) * 8 }, width, height);
-        context.fillStyle = '#f8fbff'; context.fillRect(marker.x - 8, marker.y - 6, 16, 12);
-        context.fillStyle = '#61e7c2aa'; context.beginPath(); context.moveTo(marker.x, marker.y); context.lineTo(marker.x - 20, marker.y + 34); context.lineTo(marker.x + 20, marker.y + 34); context.closePath(); context.fill();
+        context.fillStyle = '#61e7c2'; context.fillRect(marker.x - 10, marker.y - 5, 18, 13);
+        context.beginPath(); context.arc(marker.x - 5, marker.y - 9, 5, 0, Math.PI * 2); context.arc(marker.x + 5, marker.y - 9, 5, 0, Math.PI * 2); context.fill();
+        context.beginPath(); context.moveTo(marker.x + 8, marker.y - 2); context.lineTo(marker.x + 17, marker.y - 7); context.lineTo(marker.x + 17, marker.y + 5); context.closePath(); context.fill();
+        context.strokeStyle = '#61e7c2'; context.lineWidth = 2; context.beginPath(); context.moveTo(marker.x, marker.y + 8); context.lineTo(marker.x - 8, marker.y + 22); context.moveTo(marker.x, marker.y + 8); context.lineTo(marker.x + 8, marker.y + 22); context.stroke();
+        if (cameraNode.lookAt) {
+          const target = project({ x: (cameraNode.lookAt.x - .5) * 12, y: .05, z: (cameraNode.lookAt.y - .5) * 8 }, width, height);
+          context.strokeStyle = '#61e7c2aa'; context.setLineDash([5, 4]); context.beginPath(); context.moveTo(marker.x, marker.y); context.lineTo(target.x, target.y); context.stroke(); context.setLineDash([]);
+        }
       });
     }
-    context.fillStyle = '#8aabb2'; context.font = '11px system-ui'; context.textAlign = 'left';
+    context.fillStyle = '#8aabb2'; context.font = '12px Inter, "PingFang SC", "Microsoft YaHei", sans-serif'; context.textAlign = 'left';
     context.fillText(textureReady ? '场景实图参考平面 · 可旋转机位规划' : '场景结构代理 · 可旋转机位规划', 18, 26);
   };
   const reset = () => { Object.assign(state, { yaw: -0.62, pitch: 0.62, zoom: 34, centerX: 0, centerZ: 0 }); draw(); };
@@ -357,7 +382,7 @@ function initSceneWorldViewer({ overlay, bundle, world, authority }) {
     const requestToken = activation;
     activateModeButton(mode);
     currentNode = node;
-    const { mountSceneWorldLayoutViewer } = await import('./sceneWorldLayoutViewer.js?v=20260830-production-v292');
+    const { mountSceneWorldLayoutViewer } = await import('./sceneWorldLayoutViewer.js?v=20260830-production-v293');
     if (requestToken !== activation) return;
     viewer = mountSceneWorldLayoutViewer({ host, bundle, world, authority, node, nodes, mode, previewUrl, photoStrip, onSelectPhoto: showPhoto });
     if (help) help.textContent = viewer.helpText;
@@ -439,7 +464,7 @@ function initSceneWorldViewer({ overlay, bundle, world, authority }) {
 }
 
 async function openSceneWorldStudio(bundle, world, store = null) {
-  const authority = await import('./sceneWorldAuthorityPlan.js?v=20260830-production-v292');
+  const authority = await import('./sceneWorldAuthorityPlan.js?v=20260830-production-v293');
   const realPhotoNodes = photoNodes(world);
   const hasRealPhotos = realPhotoNodes.length > 0;
   const worlds = list(bundle.scene_worlds);
@@ -477,7 +502,7 @@ async function openSceneWorldStudio(bundle, world, store = null) {
   overlay.querySelector('[data-close-scene-world]').addEventListener('click', close);
   overlay.querySelector('[data-open-full-director]')?.addEventListener('click', async () => {
     close();
-    const { openDirectorStudio } = await import('./directorStudioView.js?v=20260830-production-v292');
+    const { openDirectorStudio } = await import('./directorStudioView.js?v=20260830-production-v293');
     await openDirectorStudio({ taskId: bundle.project.id, world });
   });
   overlay.querySelector('[data-scene-world-switch]')?.addEventListener('change', event => {

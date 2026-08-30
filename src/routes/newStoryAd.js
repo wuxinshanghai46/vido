@@ -1857,9 +1857,20 @@ router.post('/tasks/:id/script-package', asyncRoute(async (req, res) => {
 }));
 
 router.post('/tasks/:id/storyboard', asyncRoute(async (req, res) => {
+  taskForReq(req);
   const body = req.body?.generate_images === true
     ? mediaModelSelection.applySelection('new_story_ad.storyboard_image', req.body || {})
     : (req.body || {});
+  // A complete checkpoint is reviewed and published locally before a new job is
+  // queued. This removes the former paid rewrite loop after a provider timeout;
+  // the queued job then sees a current storyboard cache and proceeds to images.
+  if (body.force_regenerate !== true) {
+    try {
+      service.recoverStoryboardCheckpoint(req.params.id, { reason: 'user_resume_complete_checkpoint' });
+    } catch (error) {
+      if (!['STORYBOARD_CHECKPOINT_NOT_RECOVERABLE', 'STORYBOARD_CHECKPOINT_REVIEW_BLOCKED'].includes(error?.code)) throw error;
+    }
+  }
   return queueTaskStage(
     req,
     res,

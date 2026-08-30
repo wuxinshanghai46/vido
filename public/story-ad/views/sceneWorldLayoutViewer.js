@@ -1,7 +1,7 @@
-import { escapeHtml } from '../components/ui.js?v=20260830-production-v292';
+import { escapeHtml } from '../components/ui.js?v=20260830-production-v293';
 
 export function mountSceneWorldLayoutViewer({ host, bundle, world, authority, node, nodes, mode, previewUrl, photoStrip, onSelectPhoto }) {
-  const people = authority.scenePeopleRows(bundle, world);
+  const people = authority.sceneSubjectRows(bundle, world);
   const cameras = authority.sceneCameraRows(bundle, world);
   const positionedPeople = people.filter(person => person.position);
   const positionedCameras = cameras.filter(camera => camera.position);
@@ -10,7 +10,8 @@ export function mountSceneWorldLayoutViewer({ host, bundle, world, authority, no
     return points.length > 1 ? `<polyline class="scene-layout-route" points="${points.map(point => `${point.x * 100},${point.y * 100}`).join(' ')}"></polyline>` : '';
   }).join('');
   const cameraMarkup = positionedCameras.map((camera, index) => `${camera.lookAt ? `<line class="scene-layout-camera-ray" x1="${camera.position.x * 100}" y1="${camera.position.y * 100}" x2="${camera.lookAt.x * 100}" y2="${camera.lookAt.y * 100}"></line>` : ''}<g class="scene-layout-camera-marker" transform="translate(${camera.position.x * 100} ${camera.position.y * 100})"><circle r="3.1"></circle><text y="-5">C${index + 1}</text></g>`).join('');
-  const personMarkup = positionedPeople.map(person => `<g class="scene-layout-person-marker" transform="translate(${person.position.x * 100} ${person.position.y * 100})"><circle r="3.2"></circle><text y="-5">${escapeHtml(person.name)}</text></g>`).join('');
+  const subjectClass = person => person.kind === 'animal' ? 'is-animal' : (/female|woman|女/.test(person.gender) ? 'is-female' : (/male|man|男/.test(person.gender) ? 'is-male' : 'is-neutral'));
+  const personMarkup = positionedPeople.map(person => `<g class="scene-layout-person-marker ${subjectClass(person)}" transform="translate(${person.position.x * 100} ${person.position.y * 100})">${person.kind === 'animal' ? '<path d="M-3 2 Q-4-1-2-2 Q-1-5 0-2 Q2-5 3-2 Q5-1 3 2 Q2 4 0 4 Q-2 4-3 2Z"></path>' : '<circle cy="-1.8" r="1.7"></circle><path d="M-3 4 Q-2 0 0 0 Q2 0 3 4Z"></path>'}<text y="-6">${escapeHtml(person.name)}</text></g>`).join('');
   const pending = [
     people.length && positionedPeople.length < people.length ? `${people.length - positionedPeople.length} 个人物站位/路线待规划` : '',
     cameras.length && positionedCameras.length < cameras.length ? `${cameras.length - positionedCameras.length} 个机位坐标待规划` : '',

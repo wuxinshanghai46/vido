@@ -1,7 +1,7 @@
-import { request } from '../api.js?v=20260830-production-v292';
-import { elapsedTimeTag, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260830-production-v292';
-import { bindMediaLightbox } from './mediaLightbox.js?v=20260830-production-v292';
-import { bindGenerationModelPicker, loadGenerationModelPicker } from './generationModelPicker.js?v=20260830-production-v292';
+import { request } from '../api.js?v=20260830-production-v293';
+import { elapsedTimeTag, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260830-production-v293';
+import { bindMediaLightbox } from './mediaLightbox.js?v=20260830-production-v293';
+import { bindGenerationModelPicker, generationModelPickerPlaceholder, loadGenerationModelPicker } from './generationModelPicker.js?v=20260830-production-v293';
 
 export function friendlyBindings(bundle = {}, shot = {}) {
   const assets = bundle.assets || {};
@@ -119,14 +119,27 @@ function sketchBatchMarkup(batch = null, total = 0) {
   </div>`;
 }
 
-function storyboardProgressMarkup({ batch = null, active = false, failed = false, completed = 0, total = 0, startedAt = '', finishedAt = '' } = {}) {
+function progressPhaseLabel(progress = {}, failed = false) {
+  if (failed) return '镜头结构生成已停止';
+  const phase = String(progress.phase || '').toLowerCase();
+  if (phase.includes('rewrite')) return '正在修正镜头结构';
+  if (phase === 'reviewing') return '正在核对镜头与剧情';
+  if (phase === 'preparing' || phase === '正在提交') return '正在启动分镜生成';
+  return '正在生成镜头结构';
+}
+
+function storyboardProgressMarkup({ batch = null, progress = {}, active = false, failed = false, completed = 0, total = 0, startedAt = '', finishedAt = '' } = {}) {
   if (batch && typeof batch === 'object') return sketchBatchMarkup(batch, total);
   if (!active && !failed) return '';
   const requested = Math.max(1, Number(total) || 1);
   const processed = Math.max(0, Math.min(requested, Number(completed) || 0));
-  const percent = Math.round((processed / requested) * 100);
+  const reportedPercent = Number(progress.percent);
+  const percent = Number.isFinite(reportedPercent)
+    ? Math.max(0, Math.min(100, Math.round(reportedPercent)))
+    : Math.round((processed / requested) * 100);
+  const phaseTitle = progressPhaseLabel(progress, failed);
   return `<div class="sketch-batch-progress is-${failed ? 'failed' : 'running'}" role="${failed ? 'alert' : 'status'}" aria-live="polite">
-    <div class="sketch-batch-progress-head"><b>${failed ? '镜头结构生成已停止' : '正在整理镜头结构'}</b><span>已完成 ${processed}/${requested} · ${percent}%</span></div>
+    <div class="sketch-batch-progress-head"><b>${phaseTitle}</b><span>已完成 ${processed}/${requested} · ${percent}%</span></div>
     ${active ? `<div class="project-progress-track" aria-hidden="true"><i style="width:${percent}%"></i></div>` : ''}
     <small>${failed ? '已完成的镜头结构会保留；分镜图片尚未开始，继续后只处理未完成镜头。' : '系统正在按剧情核对人物、场景、机位和站位；已完成的镜头结构会立即显示。'} ${elapsedTimeTag({ startedAt, finishedAt, active })}</small>
   </div>`;
@@ -165,9 +178,9 @@ export async function mount(host, context) {
   let sketchBatch = bundle?.storyboard?.image_batch || null;
   const sketchBatchActive = ['queued', 'running'].includes(String(sketchBatch?.status || ''));
   const storyboardActive = bundle?.project?.active_stage === 'storyboard' && !!bundle?.project?.active_generation_id;
-  const sketchModelPicker = storyboardActive
+  let sketchModelPicker = storyboardActive
     ? { taskId: bundle.project.id, stage: 'new_story_ad.storyboard_image', selected: '', html: '' }
-    : await loadGenerationModelPicker(bundle.project.id, 'new_story_ad.storyboard_image', { label: '分镜模型' });
+    : generationModelPickerPlaceholder(bundle.project.id, 'new_story_ad.storyboard_image', { label: '分镜模型' });
   const storyboardFailed = !shots.length && !storyboardActive
     && String(bundle?.project?.status || '').toLowerCase() === 'failed'
     && String(bundle?.project?.stage || '').toLowerCase().includes('storyboard');
@@ -193,11 +206,11 @@ export async function mount(host, context) {
         <div><h1>人物场景分镜</h1><p>${isReferenceDraft ? '保存参考视频提取的分镜草稿后，系统会继续自动匹配人物与场景。' : '系统会根据已确认的剧情自动匹配人物与场景，直接生成分镜画面。'}</p></div>
         ${headerAction ? `<div class="view-actions">${headerAction}</div>` : ''}
       </section>
-      ${gateBlocked ? `<div class="storyboard-stale-notice"><b>现有画面来自旧版人物与场景绑定，仅作历史参考。</b><span>${escapeHtml(sketchGate.reason || '系统需要重新核对剧情、人物和全部已确认场景。')} 选择模型并点击“重新生成分镜”，后台会自动完成核对后再生成，不会续用错误画面。</span></div>` : ''}
       ${primaryAction ? `<div class="storyboard-primary-actions">${primaryAction}</div>` : ''}
       ${sceneSequenceMarkup(bundle, displayShots)}
       <div data-sketch-batch-host>${storyboardProgressMarkup({
         batch: storyboardActive ? null : sketchBatch,
+        progress: bundle?.project?.generation_progress || bundle?.generation?.progress || {},
         active: storyboardActive || sketchBatchActive,
         failed: storyboardFailed || gateBlocked,
         completed: shots.length ? generatedSketchCount : checkpointShots.length,
@@ -208,10 +221,25 @@ export async function mount(host, context) {
       <div data-storyboard-live-results>${displayShots.length ? `<div class="storyboard-sketch-grid">${visibleShots.map((shot, index) => shots.length
         ? sketchCard(shot, sketchByShot.get(Number(shot.shot_index || shot.index || pageStart + index + 1)) || {}, pageStart + index, sketchGate, bundle)
         : checkpointShotCard(shot, pageStart + index, bundle)).join('')}</div>${pageNav}` : `<div class="card storyboard-empty-card">${emptyState({ title: storyboardActive ? '正在生成分镜' : '还没有分镜画面', body: storyboardActive ? '镜头结构保存后会立即显示在这里。' : '选择模型并点击“生成分镜”即可开始。' })}</div>`}</div>
+      ${shots.length && missingSketchCount === 0 ? `<div class="storyboard-next-action"><div><b>分镜画面已完成</b><span>确认当前镜头后，可继续进入声音、视频与合成。</span></div><button class="btn primary" type="button" data-confirm-storyboard>确认分镜，进入视频生成</button></div>` : ''}
     </div>`;
 
   bindMediaLightbox(host);
-  const selectedSketchModel = bindGenerationModelPicker(host, sketchModelPicker);
+  let selectedSketchModel = bindGenerationModelPicker(host, sketchModelPicker);
+  if (!storyboardActive) {
+    loadGenerationModelPicker(bundle.project.id, 'new_story_ad.storyboard_image', { label: '分镜模型' }).then(loaded => {
+      if (!host.isConnected) return;
+      const shell = host.querySelector('[data-generation-model-picker="new_story_ad.storyboard_image"]');
+      if (!shell) return;
+      shell.outerHTML = loaded.html;
+      sketchModelPicker = loaded;
+      selectedSketchModel = bindGenerationModelPicker(host, loaded);
+    }).catch(error => {
+      const shell = host.querySelector('[data-generation-model-picker="new_story_ad.storyboard_image"]');
+      if (shell) shell.innerHTML = `<span>分镜模型</span><select disabled><option>载入失败</option></select>`;
+      toast(`模型列表载入失败：${error.message}`, 'danger');
+    });
+  }
   const renderStoryboardStageProgress = currentBundle => {
     const project = currentBundle?.project || {};
     const progress = project.generation_progress || currentBundle?.generation?.progress || {};
@@ -221,7 +249,7 @@ export async function mount(host, context) {
     const completed = Math.max(0, Number(progress.completed ?? progress.processed ?? checkpointShots.length) || 0);
     const batchHost = host.querySelector('[data-sketch-batch-host]');
     if (batchHost) batchHost.innerHTML = storyboardProgressMarkup({
-      active: true, completed, total,
+      progress, active: true, completed, total,
       startedAt: progress.started_at || project.generation_started_at || '',
     });
     if (!shots.length) {
@@ -242,6 +270,18 @@ export async function mount(host, context) {
     if (action) { action.disabled = true; action.textContent = '正在整理镜头结构…'; }
   };
   const unsubscribeProgress = store.subscribe?.(state => renderStoryboardStageProgress(state.bundle));
+
+  host.querySelector('[data-confirm-storyboard]')?.addEventListener('click', async event => {
+    const button = event.currentTarget;
+    try {
+      setButtonBusy(button, true, '正在进入…');
+      await store.updateRequest({ shot_design_confirmed: true }, { skipRefresh: true });
+      context.navigate(`/story-ad/projects/${encodeURIComponent(bundle.project.id)}?view=final`);
+    } catch (error) {
+      toast(error.message, 'danger');
+      setButtonBusy(button, false);
+    }
+  });
 
   host.querySelectorAll('[data-storyboard-page]').forEach(button => button.addEventListener('click', () => {
     const targetPage = Math.max(1, Math.min(pageCount, Number(button.dataset.storyboardPage) || 1));
@@ -278,7 +318,6 @@ export async function mount(host, context) {
     await generateStoryboard(event.currentTarget, {
       generate_images: true,
       confirmed: true,
-      acknowledge_billing_unknown: true,
       user_initiated_direct_generation: true,
       image_model: model,
       client_request_id: globalThis.crypto?.randomUUID?.() || `${Date.now()}`,
