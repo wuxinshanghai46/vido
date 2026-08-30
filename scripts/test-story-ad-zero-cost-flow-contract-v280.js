@@ -85,7 +85,10 @@ assert(aligned.every(shot => shot.source_beat_id && shot.shot_id));
 storage.saveOutput(taskId, 'storyboard_table', aligned);
 assert.equal(imageGate.inspect(taskId).ready, false);
 storage.saveOutput(taskId, 'storyboard_images', storyboardImages.normalizeSketches(taskId,
-  aligned.map((shot, index) => ({ shot_index: index + 1, status: 'confirmed', image_url: `/storyboard-${index + 1}.png` }))));
+  aligned.map((shot, index) => ({
+    shot_index: index + 1, status: 'confirmed', image_url: `/storyboard-${index + 1}.png`,
+    subject_qa_policy_version: 2, subject_count_qa: { pass: true },
+  }))));
 assert.equal(imageGate.inspect(taskId).ready, true);
 const changedShots = aligned.map((shot, index) => index ? shot : { ...shot, camera_angle: 'low_angle' });
 storage.saveOutput(taskId, 'storyboard_table', changedShots);
