@@ -14,13 +14,16 @@ const videoReview = read('public/js/new-story-ad/video-review.js');
 const transitionReview = read('public/js/new-story-ad/transition-review.js');
 
 [
-  'name="duration"', 'name="visual"', 'name="action"', 'name="voiceover"',
-  'data-save-inline-shot', 'data-generate-sketch', 'data-confirm-sketch',
-].forEach(token => assert(currentStoryboard.includes(token), `missing current storyboard action hook: ${token}`));
+  'new_story_ad.storyboard_image', 'data-prepare-storyboard-sketch',
+  'data-generate-sketch-batch', 'data-generate-sketch', 'data-upload-sketch',
+  '<summary>调整</summary>', '人物与场景由系统自动匹配',
+].forEach(token => assert(currentStoryboard.includes(token), `missing simplified storyboard action hook: ${token}`));
 assert(currentStoryboard.includes('const pageSize = 20'), 'long-form storyboard must render one bounded page');
-assert(currentStoryboard.includes('data-open-shot-design'), 'confirmed storyboard must enter the current shot designer');
-['光影氛围', '音效', '运镜', '镜头提示词', 'storyboard-complete-row', 'shotPromptPreview']
-  .forEach(token => assert(currentStoryboard.includes(token), `complete storyboard table is missing: ${token}`));
+[
+  'name="duration"', 'name="visual"', 'name="action"', 'name="voiceover"',
+  'data-save-inline-shot', 'data-confirm-sketch', 'data-open-shot-design',
+  '镜头详情', 'storyboard-complete-row', 'shotPromptPreview',
+].forEach(token => assert(!currentStoryboard.includes(token), `retired storyboard control is still exposed: ${token}`));
 
 [
   'data-nsa-shot-field="transition_type"',
