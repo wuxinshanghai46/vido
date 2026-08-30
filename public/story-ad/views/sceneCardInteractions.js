@@ -116,7 +116,7 @@ export function bindSceneCompletionActions(host, context) {
       const result = await store.acceptCurrentScenes();
       const storyboard = result.bundle?.navigation?.steps?.storyboard;
       if (storyboard?.enabled === false) throw new Error(storyboard.blocker || '分镜尚未解锁');
-      context.navigate(`/story-ad/projects/${encodeURIComponent(bundle.project.id)}?view=flow`);
+      context.navigate(`/story-ad/projects/${encodeURIComponent(bundle.project.id)}?view=storyboard`);
     } catch (error) {
       toast(error.message || '无法使用当前图片继续', 'error');
       setButtonBusy(button, false);

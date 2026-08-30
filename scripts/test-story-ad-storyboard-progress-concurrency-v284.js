@@ -180,7 +180,9 @@ function testUiContract() {
   assert(view.indexOf("store.beginStageSubmission('storyboard'") < view.indexOf("store.runStage('storyboard', options)"), '点击后必须立即建立乐观进度');
   assert.match(view, /partial_shots/);
   assert.match(view, /renderSketchResults/);
-  assert.match(view, /active_indexes/);
+  assert.match(view, /sketchBatch\.processed/);
+  assert.match(view, /完成的画面会逐镜显示/);
+  assert.doesNotMatch(view, /data-board-tab/);
   assert.match(css, /storyboard-checkpoint-preview/);
   assert.match(css, /storyboard-empty-card \.empty-state \{ min-height: 112px/);
   assert.doesNotMatch(ui, /文字分镜生成失败/);

@@ -17,6 +17,7 @@ export function createProjectStore() {
     progressTimer: null,
     progressTaskId: '',
     progressRevision: '',
+    storyboardLiveRefreshAt: 0,
     generationCompletionSeq: 0,
     referenceTimer: null,
     referenceAnalysisId: '',
@@ -537,6 +538,10 @@ export function createProjectStore() {
         };
         const bundle = { ...(state.bundle || {}), project, generation };
         set({ bundle, progressRevision: state.progressRevision });
+        if (project.active_stage === 'storyboard' && Date.now() - state.storyboardLiveRefreshAt >= 1500) {
+          state.storyboardLiveRefreshAt = Date.now();
+          await refreshSections('shots');
+        }
         const terminalProgress = ['done', 'succeeded', 'failed', 'cancelled'].includes(String(project.generation_progress?.status || '').toLowerCase());
         if (!project.active_generation_id && (terminalProgress || !['queued', 'running', 'processing'].includes(String(project.status || '').toLowerCase()))) {
           stopProgressPolling();

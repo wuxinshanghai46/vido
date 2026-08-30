@@ -58,8 +58,8 @@ let modelCalls = 0;
     modelCalls += 1;
     assert.equal(options.stage, 'new_story_ad.story_flow_planning');
     const parsed_json = { units: [
-      { beat_id: 'beat_entry', scene_id: 'scene_showroom', character_ids: ['character_chenmo'] },
-      { beat_id: 'beat_material', scene_id: 'scene_exhibition', character_ids: ['character_chenmo'] },
+      { beat_id: 'beat_entry', scene_id: 'scene_showroom', character_ids: ['character_chenmo'], look_bindings: { character_chenmo: 'look_business' } },
+      { beat_id: 'beat_material', scene_id: 'scene_exhibition', character_ids: ['character_chenmo'], look_bindings: { character_chenmo: 'look_business' } },
     ] };
     await options.validateText(JSON.stringify(parsed_json), { parsed_json });
     return { text: JSON.stringify(parsed_json), parsed_json, used_model: 'test/semantic-binder' };
@@ -77,8 +77,8 @@ let modelCalls = 0;
   gateway.generateText = async options => {
     modelCalls += 1;
     const parsed_json = { units: [
-      { beat_id: 'beat_entry', scene_id: 'invented_scene', character_ids: ['invented_person'] },
-      { beat_id: 'beat_material', scene_id: 'scene_exhibition', character_ids: ['character_chenmo'] },
+      { beat_id: 'beat_entry', scene_id: 'invented_scene', character_ids: ['invented_person'], look_bindings: { invented_person: 'invented-look' } },
+      { beat_id: 'beat_material', scene_id: 'scene_exhibition', character_ids: ['character_chenmo'], look_bindings: { character_chenmo: 'look_business' } },
     ] };
     await options.validateText(JSON.stringify(parsed_json), { parsed_json });
     return { text: JSON.stringify(parsed_json), parsed_json, used_model: 'test/invalid' };

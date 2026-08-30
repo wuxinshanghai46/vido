@@ -6,7 +6,7 @@ const knowledgePolicyRuntime = require('../newStoryAd/knowledgePolicyRuntimeServ
 const generationConcurrency = require('../newStoryAd/generationConcurrencyService');
 const { v4: uuidv4 } = require('uuid');
 
-const ALLOWED_STATUSES = new Set(['draft', 'confirmed', 'skipped']);
+const ALLOWED_STATUSES = new Set(['draft', 'ready', 'confirmed', 'skipped']);
 const activeSketchBatches = new Set();
 const SKETCH_BATCH_OUTPUT = 'storyboard_image_batch';
 const SKETCH_BATCH_CONCURRENCY = Math.max(1, Math.min(4,
@@ -35,6 +35,28 @@ function saveBatchProgress(taskId, patch = {}) {
     content_revision: Number(task.content_revision || 1) || 1,
     snapshot_id: task.current_snapshot_id || `manual:${taskId}`,
   });
+  if (task.active_stage === 'storyboard' && task.active_generation_id) {
+    const previousProgress = task.generation_progress && typeof task.generation_progress === 'object'
+      ? task.generation_progress
+      : {};
+    storage.updateTask(taskId, {
+      generation_progress: {
+        ...previousProgress,
+        stage: 'storyboard',
+        phase: 'storyboard_images',
+        status: ['succeeded', 'failed'].includes(String(next.status || '')) ? next.status : 'running',
+        completed: next.completed,
+        processed: Math.max(0, Number(next.processed ?? next.completed) || 0),
+        total: next.requested,
+        percent: next.percent,
+        currentIndex: Number(next.current_index || 0) || 0,
+        startedAt: next.started_at || previousProgress.startedAt || task.generation_started_at || '',
+        finishedAt: next.finished_at || '',
+        generationId: task.active_generation_id,
+        message: next.message || '正在生成分镜画面',
+      },
+    });
+  }
   return next;
 }
 
@@ -57,6 +79,55 @@ function shotContractFingerprint(shot = {}, index = 0) {
     camera_movement: clean(shot.camera_movement, 120),
     lens_mm: Number(shot.lens_mm || 0) || 0,
   });
+}
+
+/**
+ * 在任何图片提交之前解析单镜的权威人物、场景和参考图。
+ * 多场景任务禁止按数组位置或首场景兜底，避免静默生成到错误空间。
+ */
+function prepareSketchGeneration(taskId, shotIndex) {
+  const task = storage.getTask(taskId);
+  if (!task) throw Object.assign(new Error('项目不存在'), { status: 404, code: 'TASK_NOT_FOUND' });
+  const shots = storage.getOutput(taskId, 'storyboard_table') || [];
+  const numericIndex = Number(shotIndex);
+  const shot = shots.find((item, index) => Number(item.shot_index || item.index || index + 1) === numericIndex);
+  if (!shot) throw Object.assign(new Error('没有找到对应镜头'), { status: 404, code: 'STORYBOARD_SHOT_NOT_FOUND' });
+  const baseContext = storage.getOutput(taskId, 'context') || task.request || {};
+  const sceneAssets = storage.getOutput(taskId, 'scene_assets') || baseContext.scene_assets || [];
+  const context = { ...baseContext, scene_assets: Array.isArray(sceneAssets) ? sceneAssets : [] };
+  const contracts = storage.getOutput(taskId, 'keyframe_contracts') || [];
+  const contract = contracts.find((item, index) => Number(item.shot_index || item.index || index + 1) === numericIndex);
+  if (!contract) throw Object.assign(new Error(`第 ${numericIndex} 镜缺少当前关键帧合同，已在图片调用前停止`), {
+    status: 409, code: 'SKETCH_KEYFRAME_CONTRACT_MISSING', retryable: false,
+  });
+  const sceneId = clean(contract.scene_lock?.scene_id || shot.scene_id || shot.scene_asset_id, 160);
+  if (context.scene_assets.length && !sceneId) throw Object.assign(new Error(`第 ${numericIndex} 镜尚未绑定场景，已在图片调用前停止`), {
+    status: 409, code: 'SKETCH_SCENE_BINDING_MISSING', retryable: false,
+  });
+  const sceneAsset = sceneId
+    ? context.scene_assets.find(item => [item.scene_id, item.id].map(value => clean(value, 160)).includes(sceneId))
+    : null;
+  if (sceneId && !sceneAsset) throw Object.assign(new Error(`第 ${numericIndex} 镜引用的场景 ${sceneId} 不在当前权威场景中，已在图片调用前停止`), {
+    status: 409, code: 'SKETCH_SCENE_BINDING_INVALID', retryable: false,
+  });
+  const resolvedScene = sceneAsset || {};
+  const wantedView = clean(contract.scene_lock?.scene_view || shot.scene_view || 'master', 80);
+  const sceneViews = Array.isArray(resolvedScene.view_images) ? resolvedScene.view_images : [];
+  const sceneView = sceneViews.find(item => clean(item.key || item.view || item.view_id, 80) === wantedView)
+    || sceneViews.find(item => clean(item.key || item.view || item.view_id, 80) === 'master')
+    || sceneViews[0]
+    || {};
+  const sceneReference = sceneView.image_url || sceneView.url || resolvedScene.image_url || '';
+  const referenceImages = storyAd.keyframeReferenceImages(context, sceneReference, null, shot, contract, resolvedScene);
+  const hasBoundAssets = Boolean(sceneId
+    || (Array.isArray(shot.characters) && shot.characters.length)
+    || (Array.isArray(shot.character_ids) && shot.character_ids.length)
+    || context.person_asset
+    || context.product_contract?.identity);
+  if (hasBoundAssets && !referenceImages.length) throw Object.assign(new Error(`第 ${numericIndex} 镜已绑定人物、场景或商品，但没有可追溯参考图；已在图片调用前停止`), {
+    status: 409, code: 'SKETCH_REFERENCE_ASSET_MISSING', retryable: false,
+  });
+  return { task, shots, numericIndex, shot, context, contract, sceneAsset: resolvedScene, sceneReference, referenceImages };
 }
 
 /** 规范化逐镜人物场景分镜图，禁止脱离真实分镜合同创建游离数据。 */
@@ -213,35 +284,9 @@ async function generateSketch(taskId, shotIndex, options = {}, dependencies = {}
     error.code = 'SKETCH_GENERATION_CONFIRMATION_REQUIRED';
     throw error;
   }
-  const shots = storage.getOutput(taskId, 'storyboard_table') || [];
-  const numericIndex = Number(shotIndex);
-  const shot = shots.find((item, index) => Number(item.shot_index || item.index || index + 1) === numericIndex);
-  if (!shot) {
-    const error = new Error('没有找到对应镜头');
-    error.status = 404;
-    error.code = 'STORYBOARD_SHOT_NOT_FOUND';
-    throw error;
-  }
+  const prepared = options.prepared_generation || prepareSketchGeneration(taskId, shotIndex);
+  const { shots, numericIndex, shot, context, contract, sceneAsset, sceneReference, referenceImages } = prepared;
   const mediaAdapter = dependencies.mediaAdapter || mediaAdapterDefault;
-  const baseContext = storage.getOutput(taskId, 'context') || task.request || {};
-  const sceneAssets = storage.getOutput(taskId, 'scene_assets') || baseContext.scene_assets || [];
-  const context = { ...baseContext, scene_assets: Array.isArray(sceneAssets) ? sceneAssets : [] };
-  const contracts = storage.getOutput(taskId, 'keyframe_contracts') || [];
-  const contract = contracts.find((item, index) => Number(item.shot_index || item.index || index + 1) === numericIndex)
-    || contracts[numericIndex - 1]
-    || {};
-  const sceneId = clean(contract.scene_lock?.scene_id || shot.scene_id || shot.scene_asset_id, 160);
-  const sceneAsset = context.scene_assets.find(item => [item.scene_id, item.id].map(value => clean(value, 160)).includes(sceneId))
-    || context.scene_assets[numericIndex - 1]
-    || context.scene_assets[0]
-    || {};
-  const wantedView = clean(contract.scene_lock?.scene_view || shot.scene_view || 'master', 80);
-  const sceneViews = Array.isArray(sceneAsset.view_images) ? sceneAsset.view_images : [];
-  const sceneView = sceneViews.find(item => clean(item.key || item.view || item.view_id, 80) === wantedView)
-    || sceneViews.find(item => clean(item.key || item.view || item.view_id, 80) === 'master')
-    || sceneViews[0]
-    || {};
-  const sceneReference = sceneView.image_url || sceneView.url || sceneAsset.image_url || '';
   const blueprint = storage.getOutput(taskId, 'blueprint') || {};
   const shotPosition = shots.indexOf(shot);
   const previousShot = shotPosition > 0 ? shots[shotPosition - 1] : null;
@@ -267,19 +312,6 @@ async function generateSketch(taskId, shotIndex, options = {}, dependencies = {}
     selectors: [{ stage: 'keyframe', assetType: 'shot' }, { stage: 'keyframe', assetType: 'person' }, { stage: 'keyframe', assetType: 'scene' }],
     context,
   });
-  const referenceImages = storyAd.keyframeReferenceImages(context, sceneReference, null, shot, contract, sceneAsset);
-  const hasBoundAssets = Boolean(sceneId
-    || (Array.isArray(shot.characters) && shot.characters.length)
-    || (Array.isArray(shot.character_ids) && shot.character_ids.length)
-    || context.person_asset
-    || context.product_contract?.identity);
-  if (hasBoundAssets && !referenceImages.length) {
-    const error = new Error('当前镜头已绑定人物、场景或商品，但没有可追溯参考图；已停止分镜图生成，避免人物和空间漂移');
-    error.status = 409;
-    error.code = 'SKETCH_REFERENCE_ASSET_MISSING';
-    error.retryable = false;
-    throw error;
-  }
   const prompt = [
     '商业影视人物场景分镜图，清晰呈现已确认人物、场景、动作、站位、景别、机位和运动方向。',
     '严格结合当前人物与场景参考资产，不得退化为只表达剧情流向的线稿。',
@@ -322,7 +354,7 @@ async function generateSketch(taskId, shotIndex, options = {}, dependencies = {}
   const nextSketch = {
     id: `storyboard-image-${numericIndex}`,
     shot_index: numericIndex,
-    status: 'draft',
+    status: 'ready',
     image_url: clean(generated.image_url || generated.url, 1200),
     composition_notes: clean(options.composition_notes || '', 1200),
     source: 'generated',
@@ -385,6 +417,8 @@ async function generateSketchBatch(taskId, options = {}, dependencies = {}) {
     });
     return { sketches: existing, requested: 0, completed: 0, skipped_existing: shots.length, progress };
   }
+  // 全批参考包必须在任何付费图片调用之前一次性通过；禁止并发开始后才发现另一镜绑定无效。
+  const preparedByIndex = new Map(targets.map(shotIndex => [shotIndex, prepareSketchGeneration(taskId, shotIndex)]));
   activeSketchBatches.add(taskId);
   const batchId = clean(options.client_request_id || uuidv4(), 120);
   const startedAt = new Date().toISOString();
@@ -431,6 +465,7 @@ async function generateSketchBatch(taskId, options = {}, dependencies = {}) {
             generation_id: options.generation_id || options.generationId,
             client_request_id: `${batchId}:${shotIndex}`,
             image_model: options.image_model || options.imageModel,
+            prepared_generation: preparedByIndex.get(shotIndex),
           }, dependencies);
           succeeded += 1;
           completedIndexes.push(shotIndex);
@@ -513,4 +548,4 @@ function getSketchBatch(taskId) {
   };
 }
 
-module.exports = { generateSketch, generateSketchBatch, getSketchBatch, normalizeSketches, saveSketches, shotContractFingerprint };
+module.exports = { generateSketch, generateSketchBatch, getSketchBatch, normalizeSketches, prepareSketchGeneration, saveSketches, shotContractFingerprint };

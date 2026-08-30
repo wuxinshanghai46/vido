@@ -55,11 +55,20 @@ function beatId(beat = {}, index = 0) {
 }
 
 function personAuthority(person = {}, index = 0) {
+  const looks = list(person.look_profiles).map((look, lookIndex) => ({
+    look_id: stableId(look.id || look.look_id, `look_${index + 1}_${lookIndex + 1}`),
+    name: clean(look.name || look.title || look.label || `造型 ${lookIndex + 1}`, 120),
+    description: clean([
+      look.description, look.prompt, look.wardrobe, look.clothing, look.accessories,
+      look.hair, look.makeup, look.scene_usage, look.story_usage,
+    ].flat().filter(Boolean).join('；'), 1000),
+  }));
   return {
     character_id: stableId(person.character_id || person.cast_id || person.id),
     name: clean(person.name || person.displayName || person.role || `人物 ${index + 1}`, 120),
     person_revision: Math.max(0, Number(person.person_revision || person.revision || 0) || 0),
-    look_ids: list(person.look_profiles).map((look, lookIndex) => stableId(look.id || look.look_id, `look_${index + 1}_${lookIndex + 1}`)),
+    look_ids: looks.map(look => look.look_id),
+    looks,
     voice_id: stableId(person.voice_id || person.voiceId || person.tts_voice_id || person.voice_assignment?.voice_id),
     description: clean([
       person.description, person.bio, person.identity, person.appearance,
@@ -231,16 +240,19 @@ function validateUnits(base, supplied = [], options = {}) {
     const sceneId = stableId(source.scene_id);
     if (base.scenes.length && !sceneId) errors.push(`${unit.title} 尚未绑定场景`);
     else if (sceneId && !sceneIds.has(sceneId)) errors.push(`${unit.title} 引用了不存在的场景 ${sceneId}`);
+    const lookBindings = Object.fromEntries(characterIds.map(id => {
+      const person = base.people.find(item => item.character_id === id);
+      const validLooks = list(person?.look_ids).map(stableId).filter(Boolean);
+      const requested = stableId(source.look_bindings?.[id]);
+      if (requested && !validLooks.includes(requested)) errors.push(`${unit.title} 为人物 ${id} 引用了不存在的造型 ${requested}`);
+      if (!requested && validLooks.length > 1) errors.push(`${unit.title} 尚未为人物 ${id} 选择剧情对应造型`);
+      return [id, requested || (validLooks.length === 1 ? validLooks[0] : '')];
+    }));
     return {
       ...unit,
       character_ids: characterIds,
       scene_id: sceneId,
-      look_bindings: Object.fromEntries(characterIds.map(id => {
-        const person = base.people.find(item => item.character_id === id);
-        const requested = stableId(source.look_bindings?.[id]);
-        const valid = person?.look_ids?.includes(requested) ? requested : (person?.look_ids?.[0] || '');
-        return [id, valid];
-      })),
+      look_bindings: lookBindings,
       voice_bindings: Object.fromEntries(characterIds.map(id => {
         const person = base.people.find(item => item.character_id === id);
         return [id, person?.voice_id || ''];

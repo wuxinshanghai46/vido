@@ -1,6 +1,8 @@
 const modelGateway = require('./modelGateway');
 const jsonRepair = require('./jsonRepairService');
 const { completeSpaceLock } = require('./sceneBindingService');
+const storage = require('./storageService');
+const sceneVisualAcceptance = require('./sceneVisualAcceptanceService');
 
 const INTERNAL_PROCESS_PATTERNS = [
   ['广告需求', /广告需求/],
@@ -206,7 +208,7 @@ function localReview(ctx, shots) {
         blocking.push(`第 ${n} 镜绑定了不存在的场景资产：${sceneId}`);
       }
       const sceneAsset = sceneAssets.find((asset, assetIndex) => String(asset.scene_id || asset.id || `scene_${assetIndex + 1}`) === sceneId);
-      if (sceneAsset && !completeSpaceLock(sceneAsset)) {
+      if (sceneAsset && !completeSpaceLock(sceneAsset) && ctx.scene_visual_acceptance_current !== true) {
         blocking.push(`第 ${n} 镜绑定的场景尚未完成空间锁定（需求符合度、多视图一致性、空间覆盖及俯视蓝图必须全部通过）`);
       }
       const expectedRevision = Math.max(1, Number(sceneAsset?.scene_revision || sceneAsset?.scene_contract?.scene_revision || 1) || 1);
@@ -308,7 +310,10 @@ function mergeReviews(local, model) {
 }
 
 async function reviewStoryboard(ctx, shots, { taskId = '' } = {}) {
-  const local = localReview(ctx, shots);
+  const acceptance = taskId ? storage.getOutput(taskId, sceneVisualAcceptance.OUTPUT_KIND) : null;
+  const acceptanceState = sceneVisualAcceptance.inspect(ctx.scene_assets || [], acceptance, storage);
+  const reviewCtx = { ...ctx, scene_visual_acceptance_current: acceptanceState.accepted === true };
+  const local = localReview(reviewCtx, shots);
   const systemPrompt = [
     'You are commercial QA for New Story Ad. Return strict JSON only.',
     'Do not treat "premium feel / texture / atmosphere" as hard blocking by itself.',
@@ -324,7 +329,7 @@ async function reviewStoryboard(ctx, shots, { taskId = '' } = {}) {
   for (const batch of batches) {
     const first = Number(batch[0]?.index || batch[0]?.shot_index || 1);
     const last = Number(batch.at(-1)?.index || batch.at(-1)?.shot_index || first);
-    const userPrompt = `Context: ${JSON.stringify(ctx).slice(0, 8000)}
+    const userPrompt = `Context: ${JSON.stringify(reviewCtx).slice(0, 8000)}
 Storyboard window ${first}-${last} of ${shots.length}: ${JSON.stringify(batch)}
 
 Review every shot in this window. Prefix every shot-specific issue with its exact shot number. Return JSON:

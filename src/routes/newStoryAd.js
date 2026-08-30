@@ -2043,15 +2043,11 @@ router.post('/tasks/:id/media', asyncRoute(async (req, res) => {
 }));
 
 router.post('/storyboard', asyncRoute(async (req, res) => {
-  const body = { ...(req.body || {}) };
-  delete body.task_id;
-  delete body.taskId;
-  const created = service.createTask(body, userFromReq(req));
-  req.params.id = created.task.id;
-  return queueTaskStage(req, res, 'full', async () => {
-    await service.generateSceneConfig(created.task.id);
-    await service.generateBlueprintStage(created.task.id);
-    await service.generateStoryboardStage(created.task.id);
+  res.status(410).json({
+    success: false,
+    code: 'LEGACY_STORYBOARD_CREATION_ROUTE_DISABLED',
+    retryable: false,
+    message: '旧文字分镜入口已停用，请从当前剧情广告项目的人物场景分镜步骤生成。',
   });
 }));
 

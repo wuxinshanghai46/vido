@@ -86,10 +86,13 @@ function testRouteAndUiContract() {
   assert.match(route, /generation_id: job\.generationId/);
   assert.match(view, /generate_images: true/);
   assert.match(view, /confirmed: true/);
-  assert.match(view, /const defaultPanel = isReferenceDraft \? 'shots' : 'sketches'/);
   assert.doesNotMatch(view, /pendingSketches/);
-  assert.match(view, />分镜画面 /);
-  assert.match(view, />镜头详情 /);
+  assert.match(view, /系统会根据已确认的剧情自动匹配人物与场景，直接生成分镜画面/);
+  assert.match(view, /data-generate-sketch-batch/);
+  assert.match(view, /<summary>调整<\/summary>/);
+  assert.doesNotMatch(view, /data-board-tab/);
+  assert.doesNotMatch(view, />镜头详情 /);
+  assert.doesNotMatch(view, /data-confirm-sketch/);
   assert.match(ui, /bundle\.storyboard\?\.image_batch/);
   assert.match(css, /storyboard-view-head h1 \{ font-size: 22px/);
   assert.match(css, /storyboard-primary-actions \.btn,.storyboard-primary-actions \.select \{ min-height: 34px; font-size: 12px/);
