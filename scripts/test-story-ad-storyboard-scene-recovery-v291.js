@@ -82,6 +82,7 @@ function testUiAndBillingContracts() {
   const storyboard = read('public/story-ad/views/storyboardView.js');
   const css = read('public/story-ad/storyboard-simple.css');
   const sceneUi = read('public/story-ad/views/sceneWorldView.js');
+  const workspaceCss = read('public/story-ad/workspace.css');
   const job = read('src/services/newStoryAd/jobService.js');
   const units = read('src/services/newStoryAd/generationUnitService.js');
   const service = read('src/services/newStoryAd/storyAdService.js');
@@ -95,6 +96,7 @@ function testUiAndBillingContracts() {
   assert.doesNotMatch(storyboard, /window\.confirm/);
   assert.match(sceneUi, /showNative\('model', 'director'\)/);
   assert.match(sceneUi, /data-open-full-director/);
+  assert.match(workspaceCss, /\[data-open-full-director\]\{[^}]*min-width:152px[^}]*font-size:12px[^}]*white-space:nowrap/);
   assert.match(job, /acknowledge_billing_unknown: acknowledgeBillingUnknown === true/);
   assert.match(units, /requires_billing_acknowledgement: true/);
   assert.match(service, /checkpointMatchesStoryFlow/);
@@ -106,4 +108,4 @@ testWorkspaceAndWorldProjection();
 testLocalJsonRecovery();
 testCheckpointStoryFlowFreshness();
 testUiAndBillingContracts();
-console.log(JSON.stringify({ passed: true, checks: 33, paid_model_calls: 0, scene_camera_coordinates: '4/4', person_blocking_coordinates: '1/1', immediate_storyboard_progress: true, billing_unknown_requires_explicit_ack: true, native_browser_dialogs: 0 }));
+console.log(JSON.stringify({ passed: true, checks: 34, paid_model_calls: 0, scene_camera_coordinates: '4/4', person_blocking_coordinates: '1/1', immediate_storyboard_progress: true, billing_unknown_requires_explicit_ack: true, native_browser_dialogs: 0, director_button_min_width: 152 }));
