@@ -83,6 +83,8 @@ function testSceneTransitionsAndUiContract() {
   assert.match(storyboard, /sceneSequenceMarkup/);
   assert.doesNotMatch(storyboard, /正在启动 0\/\$\{targetCount\}/);
   assert.match(storyboard, /active \? '生成中'/);
+  assert.match(storyboard, /gateBlocked[\s\S]*data-prepare-storyboard-sketch[\s\S]*重新生成分镜/);
+  assert.match(storyboard, /不会续用错误画面/);
   assert.match(storyboardCss, /\.sketch-actions \{ display: flex/);
   assert.match(sceneUi, /3D机位预演（可旋转）/);
   assert.match(sceneUi, /data-scene-world-switch/);
@@ -94,5 +96,5 @@ function testSceneTransitionsAndUiContract() {
   testSpatialPlanPreservationAndRecovery();
   await testSingleFrameCompositionGate();
   testSceneTransitionsAndUiContract();
-  console.log(JSON.stringify({ passed: true, checks: 24, story_flow_contract_version: flow.CONTRACT_VERSION, required_scene_coverage: true, scene_transition_contract: true, multi_panel_rejected: true, spatial_coordinates_preserved: true, rotatable_director_preview: true }));
+  console.log(JSON.stringify({ passed: true, checks: 26, story_flow_contract_version: flow.CONTRACT_VERSION, required_scene_coverage: true, scene_transition_contract: true, multi_panel_rejected: true, spatial_coordinates_preserved: true, rotatable_director_preview: true, stale_task_recovery_action: true }));
 })().catch(error => { console.error(error.stack || error); process.exitCode = 1; });

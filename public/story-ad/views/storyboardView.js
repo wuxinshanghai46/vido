@@ -147,9 +147,11 @@ export async function mount(host, context) {
     && String(bundle?.project?.stage || '').toLowerCase().includes('storyboard');
   const gateBlocked = shots.length > 0 && !sketchGate.ready && !completedHistorical && !isReferenceDraft && !sketchBatchActive;
   const mainSketchAction = shots.length
-    ? (missingSketchCount
+    ? (gateBlocked
+      ? `<button class="btn primary" type="button" data-prepare-storyboard-sketch ${storyboardActive ? 'disabled' : ''}>${storyboardActive ? '正在生成分镜…' : '重新生成分镜'}</button>`
+      : (missingSketchCount
       ? `<button class="btn primary" type="button" data-generate-sketch-batch ${sketchBatchActive || !sketchGate.ready ? 'disabled' : ''}>${sketchBatchActive ? '分镜生成中' : `继续生成分镜（${missingSketchCount}）`}</button>`
-      : `<button class="btn" type="button" data-generate-sketch-batch data-regenerate-all="true" ${sketchBatchActive || !sketchGate.ready ? 'disabled' : ''}>${sketchBatchActive ? '分镜生成中' : `全部重新生成（${shots.length}）`}</button>`)
+      : `<button class="btn" type="button" data-generate-sketch-batch data-regenerate-all="true" ${sketchBatchActive || !sketchGate.ready ? 'disabled' : ''}>${sketchBatchActive ? '分镜生成中' : `全部重新生成（${shots.length}）`}</button>`))
     : `<button class="btn primary" type="button" data-prepare-storyboard-sketch ${storyboardActive ? 'disabled' : ''}>${storyboardActive ? '正在生成分镜…' : (checkpointShots.length ? '继续生成分镜' : '生成分镜')}</button>`;
   const headerAction = isReferenceDraft
     ? '<button class="btn primary" type="button" data-save-reference-storyboard>保存参考分镜草稿</button>'
@@ -165,6 +167,7 @@ export async function mount(host, context) {
         <div><h1>人物场景分镜</h1><p>${isReferenceDraft ? '保存参考视频提取的分镜草稿后，系统会继续自动匹配人物与场景。' : '系统会根据已确认的剧情自动匹配人物与场景，直接生成分镜画面。'}</p></div>
         ${headerAction ? `<div class="view-actions">${headerAction}</div>` : ''}
       </section>
+      ${gateBlocked ? `<div class="storyboard-stale-notice"><b>现有画面来自旧版人物与场景绑定，仅作历史参考。</b><span>${escapeHtml(sketchGate.reason || '系统需要重新核对剧情、人物和全部已确认场景。')} 选择模型并点击“重新生成分镜”，后台会自动完成核对后再生成，不会续用错误画面。</span></div>` : ''}
       ${primaryAction ? `<div class="storyboard-primary-actions">${primaryAction}</div>` : ''}
       ${sceneSequenceMarkup(bundle, shots)}
       <div data-sketch-batch-host>${storyboardProgressMarkup({
