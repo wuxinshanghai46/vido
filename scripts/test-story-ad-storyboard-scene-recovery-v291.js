@@ -11,6 +11,7 @@ const completion = require('../src/services/newStoryAd/generationSpecCompletionS
 const jsonRepair = require('../src/services/newStoryAd/jsonRepairService');
 const projectBundle = require('../src/services/storyAdWorkspace/projectBundleService');
 const sceneWorld = require('../src/services/storyAdWorkspace/sceneWorldService');
+const coverageLifecycle = require('../src/services/newStoryAd/storyboardCoverageLifecycleService');
 
 function incompleteSceneSpec() {
   return {
@@ -71,6 +72,12 @@ function testLocalJsonRecovery() {
   assert.equal(parsed.shots[0].visual, '第一行\n第二行');
 }
 
+function testCheckpointStoryFlowFreshness() {
+  assert.equal(coverageLifecycle.checkpointMatchesStoryFlow({ story_flow_contract_fingerprint: 'flow_a' }, 'flow_a'), true);
+  assert.equal(coverageLifecycle.checkpointMatchesStoryFlow({ shots: [{ story_flow_contract_fingerprint: 'flow_a' }] }, 'flow_a'), true);
+  assert.equal(coverageLifecycle.checkpointMatchesStoryFlow({ shots: [{ story_flow_contract_fingerprint: 'flow_old' }] }, 'flow_a'), false);
+}
+
 function testUiAndBillingContracts() {
   const storyboard = read('public/story-ad/views/storyboardView.js');
   const css = read('public/story-ad/storyboard-simple.css');
@@ -88,12 +95,13 @@ function testUiAndBillingContracts() {
   assert.match(sceneUi, /data-open-full-director/);
   assert.match(job, /acknowledge_billing_unknown: acknowledgeBillingUnknown === true/);
   assert.match(units, /requires_billing_acknowledgement: true/);
-  assert.match(service, /checkpointFlowCurrent/);
+  assert.match(service, /checkpointMatchesStoryFlow/);
   assert.match(service, /storyFlowContractFingerprint: storyFlowContract\.contract_fingerprint/);
 }
 
 testDirectorCoordinatesClosure();
 testWorkspaceAndWorldProjection();
 testLocalJsonRecovery();
+testCheckpointStoryFlowFreshness();
 testUiAndBillingContracts();
-console.log(JSON.stringify({ passed: true, checks: 28, paid_model_calls: 0, scene_camera_coordinates: '4/4', person_blocking_coordinates: '1/1', immediate_storyboard_progress: true, billing_unknown_requires_explicit_ack: true }));
+console.log(JSON.stringify({ passed: true, checks: 31, paid_model_calls: 0, scene_camera_coordinates: '4/4', person_blocking_coordinates: '1/1', immediate_storyboard_progress: true, billing_unknown_requires_explicit_ack: true }));

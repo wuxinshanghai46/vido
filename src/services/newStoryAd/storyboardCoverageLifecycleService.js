@@ -27,6 +27,15 @@ function metadata(plan = {}, fallback = {}) {
   };
 }
 
+function checkpointMatchesStoryFlow(checkpoint = null, contractFingerprint = '') {
+  if (!checkpoint || !contractFingerprint) return false;
+  if (checkpoint.story_flow_contract_fingerprint === contractFingerprint) return true;
+  const shots = Array.isArray(checkpoint.shots) ? checkpoint.shots : [];
+  return !checkpoint.story_flow_contract_fingerprint
+    && shots.length > 0
+    && shots.every(shot => shot?.story_flow_contract_fingerprint === contractFingerprint);
+}
+
 function checkpointWriter({ storage, stageProgress, taskId, blueprint, blueprintRevision, blueprintFingerprint, storyFlowContractFingerprint = '', expectedPlan, expectedTotal, generationId, startedAt }) {
   return async ({ phase = 'running', shots = [], completed_indexes = [], expected_total = 0, coverage_plan = null, blocked_units = [] } = {}) => {
     storage.saveOutput(taskId, 'storyboard_checkpoint', {
@@ -53,4 +62,4 @@ function checkpointWriter({ storage, stageProgress, taskId, blueprint, blueprint
   };
 }
 
-module.exports = { expectedPlan, cacheCurrent, metadata, checkpointWriter };
+module.exports = { expectedPlan, cacheCurrent, metadata, checkpointMatchesStoryFlow, checkpointWriter };

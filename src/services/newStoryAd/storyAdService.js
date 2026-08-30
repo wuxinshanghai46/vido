@@ -893,14 +893,7 @@ async function generateStoryboardStage(taskId, options = {}) {
   }
   const startedAt = new Date().toISOString();
   const savedCheckpoint = storage.getOutput(taskId, 'storyboard_checkpoint') || null;
-  const checkpointFlowCurrent = savedCheckpoint?.story_flow_contract_fingerprint === storyFlowContract.contract_fingerprint
-    || (!savedCheckpoint?.story_flow_contract_fingerprint && Array.isArray(savedCheckpoint?.shots) && savedCheckpoint.shots.length > 0
-      && savedCheckpoint.shots.every(shot => shot?.story_flow_contract_fingerprint === storyFlowContract.contract_fingerprint));
-  const resumeShots = savedCheckpoint?.blueprint_fingerprint === sourceFingerprint
-    && checkpointFlowCurrent
-    && Array.isArray(savedCheckpoint.shots)
-    ? savedCheckpoint.shots
-    : [];
+  const resumeShots = savedCheckpoint?.blueprint_fingerprint === sourceFingerprint && storyboardCoverageLifecycle.checkpointMatchesStoryFlow(savedCheckpoint, storyFlowContract.contract_fingerprint) && Array.isArray(savedCheckpoint.shots) ? savedCheckpoint.shots : [];
   const characterSeed = `${ctx.request_id || taskId}|${ctx.brief || ''}|${ctx.product_subject || ''}`;
   const stageCtx = {
     ...ctx, story_flow_contract: storyFlowContract,
