@@ -1,4 +1,4 @@
-import { escapeHtml } from '../components/ui.js?v=20260830-production-v291a';
+import { escapeHtml } from '../components/ui.js?v=20260830-production-v291b';
 
 const VIEW_LABELS = Object.freeze({
   master: '主视总览', reverse: '反向空间', interaction: '互动区域', detail: '材质细节', layout: '俯视布局',
