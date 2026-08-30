@@ -1,6 +1,7 @@
 const { cleanText, normalizeSceneSpec } = require('./contextBuilder');
 const sceneLineage = require('./sceneLineageContractService');
 const sceneVisualAcceptance = require('./sceneVisualAcceptanceService');
+const sceneReadability = require('./sceneReadabilityContractService');
 
 // 这四个键只用于现有“五视图空间锁”的向后兼容，不再作为业务镜位白名单。
 const VIEW_KEYS = ['master', 'reverse', 'interaction', 'detail'];
@@ -579,11 +580,27 @@ function bindShotToScene(shot = {}, sceneAssets = [], index = 0, previousShot = 
 function bindShotsToScenes(shots = [], sceneAssets = []) {
   const assets = Array.isArray(sceneAssets) ? sceneAssets : [];
   let previous = null;
-  return (Array.isArray(shots) ? shots : []).map((shot, index) => {
+  const boundShots = (Array.isArray(shots) ? shots : []).map((shot, index) => {
     // 只绑定当前任务已有的场景资产，避免模型凭空切换到其他行业或无关空间。
     const bound = bindShotToScene(shot, assets, index, previous);
     previous = bound;
     return bound;
+  });
+  const readableShots = sceneReadability.ensureReadableCoverage(boundShots, assets);
+  // 可识别镜头可能从 detail 切换到 master；重新编译空间机器绑定，避免沿用旧机位/区域。
+  return readableShots.map((shot, index) => {
+    const asset = selectSceneAsset(assets, shot.scene_id || shot.scene_asset_id, index);
+    if (!asset) return shot;
+    const spatial = spatialBindingForShot(shot, asset, shot.scene_view);
+    return {
+      ...shot,
+      camera_id: spatial.camera_id,
+      scene_zone: spatial.zone_label,
+      scene_zone_id: spatial.zone_id || spatial.zone_ids[0] || undefined,
+      scene_zone_label_zh: cleanText(spatial.zone_label, 160) || undefined,
+      zone_ids: spatial.zone_ids,
+      anchor_ids: spatial.anchor_ids,
+    };
   });
 }
 

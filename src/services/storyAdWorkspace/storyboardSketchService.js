@@ -5,6 +5,8 @@ const sketchGate = require('./storyboardSketchGateService');
 const knowledgePolicyRuntime = require('../newStoryAd/knowledgePolicyRuntimeService');
 const compositionService = require('./storyboardImageCompositionService');
 const generationConcurrency = require('../newStoryAd/generationConcurrencyService');
+const shotReferencePacks = require('../newStoryAd/shotReferencePackService');
+const storyboardImageConfirmation = require('./storyboardImageConfirmationGateService');
 const { v4: uuidv4 } = require('uuid');
 
 const ALLOWED_STATUSES = new Set(['draft', 'ready', 'confirmed', 'skipped']);
@@ -36,7 +38,7 @@ function saveBatchProgress(taskId, patch = {}) {
     content_revision: Number(task.content_revision || 1) || 1,
     snapshot_id: task.current_snapshot_id || `manual:${taskId}`,
   });
-  if (task.active_stage === 'storyboard' && task.active_generation_id) {
+  if ((task.active_stage === 'storyboard' && task.active_generation_id) || !task.active_generation_id) {
     const previousProgress = task.generation_progress && typeof task.generation_progress === 'object'
       ? task.generation_progress
       : {};
@@ -53,7 +55,7 @@ function saveBatchProgress(taskId, patch = {}) {
         currentIndex: Number(next.current_index || 0) || 0,
         startedAt: next.started_at || previousProgress.startedAt || task.generation_started_at || '',
         finishedAt: next.finished_at || '',
-        generationId: task.active_generation_id,
+        generationId: task.active_generation_id || next.id || previousProgress.generationId || '',
         message: next.message || '正在生成分镜画面',
       },
     });
@@ -118,8 +120,27 @@ function prepareSketchGeneration(taskId, shotIndex) {
     || sceneViews.find(item => clean(item.key || item.view || item.view_id, 80) === 'master')
     || sceneViews[0]
     || {};
-  const sceneReference = sceneView.image_url || sceneView.url || resolvedScene.image_url || '';
-  const referenceImages = storyAd.keyframeReferenceImages(context, sceneReference, null, shot, contract, resolvedScene);
+  const identityView = sceneViews.find(item => clean(item.key || item.view || item.view_id, 80) === 'master')
+    || sceneViews.find(item => !/^(?:detail|layout|macro|close[_ -]?up)$/i.test(clean(item.key || item.view || item.view_id, 80)))
+    || sceneView;
+  const sceneReference = identityView.image_url || identityView.url || resolvedScene.image_url || '';
+  const selectedViewReference = sceneView.image_url || sceneView.url || '';
+  const sceneViewReference = selectedViewReference && selectedViewReference !== sceneReference ? selectedViewReference : '';
+  const referencePack = shotReferencePacks.compileForShot({
+    taskId,
+    shotIndex: numericIndex - 1,
+    ctx: context,
+    shot,
+    contract,
+    sceneAsset: resolvedScene,
+    sceneIdentityReference: sceneReference,
+    sceneViewReference,
+    providerLimit: 4,
+  });
+  const seenReferences = new Set();
+  const referenceImages = referencePack.references
+    .map(item => mediaAdapterDefault.absolutePublicImageUrl(item.url))
+    .filter(url => url && !seenReferences.has(url) && !!seenReferences.add(url));
   const hasBoundAssets = Boolean(sceneId
     || (Array.isArray(shot.characters) && shot.characters.length)
     || (Array.isArray(shot.character_ids) && shot.character_ids.length)
@@ -128,7 +149,7 @@ function prepareSketchGeneration(taskId, shotIndex) {
   if (hasBoundAssets && !referenceImages.length) throw Object.assign(new Error(`第 ${numericIndex} 镜已绑定人物、场景或商品，但没有可追溯参考图；已在图片调用前停止`), {
     status: 409, code: 'SKETCH_REFERENCE_ASSET_MISSING', retryable: false,
   });
-  return { task, shots, numericIndex, shot, context, contract, sceneAsset: resolvedScene, sceneReference, referenceImages };
+  return { task, shots, numericIndex, shot, context, contract, sceneAsset: resolvedScene, sceneReference, sceneViewReference, referencePack, referenceImages };
 }
 
 /** 规范化逐镜人物场景分镜图，禁止脱离真实分镜合同创建游离数据。 */
@@ -150,6 +171,18 @@ function normalizeSketches(taskId, sketches = []) {
         composition_notes: clean(item.composition_notes || item.compositionNotes || item.notes, 1200),
         source: clean(item.source || (item.image_url || item.imageUrl ? 'upload' : 'manual'), 60),
         reference_count: Math.max(0, Number(item.reference_count || 0) || 0),
+        lineage_schema_version: Math.max(0, Number(item.lineage_schema_version || item.lineageSchemaVersion || 0) || 0),
+        scene_id: clean(item.scene_id || item.sceneId, 160),
+        scene_revision: Math.max(0, Number(item.scene_revision || item.sceneRevision || 0) || 0),
+        scene_reference_url: clean(item.scene_reference_url || item.sceneReferenceUrl, 1200),
+        scene_view_reference_url: clean(item.scene_view_reference_url || item.sceneViewReferenceUrl, 1200),
+        reference_pack_fingerprint: clean(item.reference_pack_fingerprint || item.referencePackFingerprint, 160),
+        reference_roles: Array.isArray(item.reference_roles) ? item.reference_roles.slice(0, 12).map(reference => ({
+          role: clean(reference.role, 80),
+          required: reference.required === true,
+          reference_hash: clean(reference.reference_hash, 160),
+        })) : [],
+        generation_id: clean(item.generation_id || item.generationId, 160),
         story_context_fingerprint: clean(item.story_context_fingerprint || item.storyContextFingerprint, 160),
         shot_contract_fingerprint: shotContractFingerprint(currentShot?.shot || {}, currentShot?.index || 0),
         source_content_revision: Math.max(1, Number(item.source_content_revision || item.sourceContentRevision || 1) || 1),
@@ -171,6 +204,14 @@ function sketchFingerprint(sketches = []) {
     composition_notes: item.composition_notes,
     source: item.source,
     reference_count: item.reference_count,
+    lineage_schema_version: item.lineage_schema_version,
+    scene_id: item.scene_id,
+    scene_revision: item.scene_revision,
+    scene_reference_url: item.scene_reference_url,
+    scene_view_reference_url: item.scene_view_reference_url,
+    reference_pack_fingerprint: item.reference_pack_fingerprint,
+    reference_roles: item.reference_roles,
+    generation_id: item.generation_id,
     story_context_fingerprint: item.story_context_fingerprint,
     shot_contract_fingerprint: item.shot_contract_fingerprint,
     source_content_revision: item.source_content_revision,
@@ -286,7 +327,7 @@ async function generateSketch(taskId, shotIndex, options = {}, dependencies = {}
     throw error;
   }
   const prepared = options.prepared_generation || prepareSketchGeneration(taskId, shotIndex);
-  const { shots, numericIndex, shot, context, contract, sceneAsset, sceneReference, referenceImages } = prepared;
+  const { shots, numericIndex, shot, context, contract, sceneAsset, sceneReference, sceneViewReference, referencePack, referenceImages } = prepared;
   const mediaAdapter = dependencies.mediaAdapter || mediaAdapterDefault;
   const blueprint = storage.getOutput(taskId, 'blueprint') || {};
   const shotPosition = shots.indexOf(shot);
@@ -363,6 +404,18 @@ async function generateSketch(taskId, shotIndex, options = {}, dependencies = {}
     composition_notes: clean(options.composition_notes || '', 1200),
     source: 'generated',
     reference_count: referenceImages.length,
+    lineage_schema_version: 1,
+    scene_id: clean(shot.scene_id || shot.scene_asset_id || sceneAsset.scene_id || sceneAsset.id, 160),
+    scene_revision: Math.max(0, Number(sceneAsset.scene_revision || sceneAsset.revision || 0) || 0),
+    scene_reference_url: clean(sceneReference, 1200),
+    scene_view_reference_url: clean(sceneViewReference, 1200),
+    reference_pack_fingerprint: clean(referencePack?.fingerprint, 160),
+    reference_roles: Array.isArray(referencePack?.references) ? referencePack.references.map(reference => ({
+      role: reference.role,
+      required: reference.required === true,
+      reference_hash: reference.reference_hash,
+    })) : [],
+    generation_id: clean(options.generation_id || options.generationId || options.client_request_id, 160),
     story_context_fingerprint: storyContextFingerprint,
     shot_contract_fingerprint: shotContractFingerprint(shot, numericIndex - 1),
     source_content_revision: Number(task.content_revision || 1) || 1,
@@ -404,8 +457,10 @@ async function generateSketchBatch(taskId, options = {}, dependencies = {}) {
   }
   const existing = storage.getOutput(taskId, 'storyboard_images') || [];
   const existingByShot = new Map(existing.map(item => [Number(item.shot_index), item]));
+  const confirmationState = storyboardImageConfirmation.inspect(taskId);
+  const staleIndexes = new Set(confirmationState.stale_indexes || []);
   const targets = shots.map((shot, index) => Number(shot.shot_index || shot.index || index + 1) || index + 1)
-    .filter(shotIndex => options.regenerate_all === true || !existingByShot.get(shotIndex)?.image_url);
+    .filter(shotIndex => options.regenerate_all === true || !existingByShot.get(shotIndex)?.image_url || staleIndexes.has(shotIndex));
   if (!targets.length) {
     const progress = saveBatchProgress(taskId, {
       id: clean(options.client_request_id || uuidv4(), 120),

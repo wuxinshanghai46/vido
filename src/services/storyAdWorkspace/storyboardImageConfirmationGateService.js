@@ -1,6 +1,7 @@
 'use strict';
 
 const storage = require('../newStoryAd/storageService');
+const sceneReadability = require('../newStoryAd/sceneReadabilityContractService');
 
 function list(value) { return Array.isArray(value) ? value.filter(Boolean) : []; }
 function clean(value = '', max = 1600) { return String(value || '').replace(/\s+/g, ' ').trim().slice(0, max); }
@@ -20,14 +21,47 @@ function inspect(taskId) {
   if (!task) return { ready: false, code: 'TASK_NOT_FOUND', reason: '项目不存在', total: 0, confirmed: 0 };
   const shots = list(storage.getOutput(taskId, 'storyboard_table'));
   const images = list(storage.getOutput(taskId, 'storyboard_images'));
+  const storedReferencePacks = storage.getOutput(taskId, 'shot_reference_packs');
+  const referencePacks = Array.isArray(storedReferencePacks) ? storedReferencePacks : [];
+  const sceneAssets = list(storage.getOutput(taskId, 'scene_assets'));
+  const sceneById = new Map(sceneAssets.map(asset => [clean(asset.scene_id || asset.id, 160), asset]));
   const byIndex = new Map(images.map(item => [Number(item.shot_index), item]));
   const missing = [];
   const stale = [];
+  const staleReasons = {};
   shots.forEach((shot, index) => {
     const shotIndex = Number(shot.shot_index || shot.index || index + 1) || index + 1;
     const image = byIndex.get(shotIndex);
     if (!image?.image_url) missing.push(shotIndex);
-    else if (image.shot_contract_fingerprint !== shotContractFingerprint(shot, index)) stale.push(shotIndex);
+    else {
+      const legacyContractStale = image.shot_contract_fingerprint !== shotContractFingerprint(shot, index);
+      const pack = referencePacks[index] || null;
+      const currentSceneId = clean(shot.scene_id || shot.scene_asset_id, 160);
+      const currentScene = sceneById.get(currentSceneId) || null;
+      const currentSceneRevision = Math.max(0, Number(currentScene?.scene_revision || currentScene?.revision || 0) || 0);
+      const identityView = sceneReadability.identityView(currentScene || {});
+      const identityReference = clean(identityView?.image_url || identityView?.url || currentScene?.image_url, 1200);
+      const wantedView = clean(shot.scene_view || shot.sceneView, 80);
+      const selectedView = list(currentScene?.view_images).find(view => clean(view.key || view.view || view.view_id, 80) === wantedView) || identityView;
+      const selectedReference = clean(selectedView?.image_url || selectedView?.url, 1200);
+      const modernLineage = Number(image.lineage_schema_version || 0) >= 1;
+      const reasons = [];
+      if (legacyContractStale) reasons.push('SHOT_CONTRACT_CHANGED');
+      if (Number(image.source_content_revision || 0) > 0
+        && Number(image.source_content_revision) !== Number(task.content_revision || 1)) reasons.push('CONTENT_REVISION_CHANGED');
+      if (modernLineage && clean(image.scene_id, 160) !== currentSceneId) reasons.push('SCENE_BINDING_CHANGED');
+      if (modernLineage && currentSceneRevision > 0 && Number(image.scene_revision || 0) !== currentSceneRevision) reasons.push('SCENE_REVISION_CHANGED');
+      if (modernLineage && identityReference && clean(image.scene_reference_url, 1200) !== identityReference) reasons.push('SCENE_IDENTITY_REFERENCE_CHANGED');
+      if (modernLineage && selectedReference !== identityReference
+        && clean(image.scene_view_reference_url, 1200) !== selectedReference) reasons.push('SCENE_VIEW_REFERENCE_CHANGED');
+      if (modernLineage && !image.reference_pack_fingerprint) reasons.push('REFERENCE_PACK_MISSING');
+      if (modernLineage && pack?.fingerprint
+        && clean(image.reference_pack_fingerprint, 160) !== clean(pack.fingerprint, 160)) reasons.push('REFERENCE_PACK_CHANGED');
+      if (reasons.length) {
+        stale.push(shotIndex);
+        staleReasons[shotIndex] = [...new Set(reasons)];
+      }
+    }
   });
   const ready = shots.length > 0 && !missing.length && !stale.length;
   return {
@@ -41,6 +75,7 @@ function inspect(taskId) {
     missing_indexes: missing,
     unconfirmed_indexes: [],
     stale_indexes: stale,
+    stale_reasons: staleReasons,
   };
 }
 

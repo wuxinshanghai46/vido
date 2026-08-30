@@ -2,7 +2,7 @@ import * as THREE from '../vendor/three.module.min.js?v=20260830-production-v293
 import { request, uploadAsset } from '../api.js?v=20260830-production-v293';
 import { escapeHtml, toast } from '../components/ui.js?v=20260830-production-v293';
 
-const VERSION = '20260830-director-clarity-v10';
+const VERSION = '20260830-director-clarity-v11';
 
 function list(value) { return Array.isArray(value) ? value.filter(Boolean) : []; }
 function number(value, fallback = 0) { const parsed = Number(value); return Number.isFinite(parsed) ? parsed : fallback; }
@@ -69,7 +69,7 @@ export async function openDirectorStudio({ taskId, world }) {
   overlay.className = 'director-studio';
   overlay.innerHTML = `<section><header><div><small>DirectorScene · 通用空间导演台 · 版本 <span data-director-revision>${state.revision || 1}</span></small><h2>${escapeHtml(world.name)}</h2><p>人物、商品和机位只引用当前权威资产版本；拖动画布对象不会修改人物或场景正文，也不会调用生成模型。</p></div><div><button class="btn" type="button" data-export-director>导出当前机位截图</button><button class="btn primary" type="button" data-save-director>保存导演状态</button><button type="button" data-close-director aria-label="关闭">×</button></div></header>
     <div class="director-layout"><aside><h3>空间对象</h3><div class="director-object-list">${list(state.entities).map(item => `<button type="button" data-director-entity="${escapeHtml(item.entity_id)}"><i style="--entity-color:#${entityColor(item).toString(16).padStart(6, '0')}">${entityIcon(item)}</i><span><b>${escapeHtml(item.label)}</b><small>${escapeHtml(item.kind)} · ${item.coordinate_planned === false && ['person', 'animal'].includes(item.kind) ? '站位未规划' : `r${item.entity_revision || 1}`}</small></span></button>`).join('') || '<small>当前场景没有可编辑实体</small>'}</div><h3>机位</h3><div class="director-camera-list">${list(state.cameras).map(item => `<button type="button" data-director-camera="${escapeHtml(item.camera_id)}"><i class="director-camera-icon" aria-hidden="true">🎥</i><span><b>${escapeHtml(item.label)}</b><small>${Math.round(item.focal_length || 35)}mm · FOV ${Math.round(item.fov || 52)}°</small></span></button>`).join('')}</div><h3>轨迹</h3><div data-director-path-summary>${list(state.paths).length} 条轨迹</div></aside>
-    <main><div class="director-viewport" data-director-viewport></div><div class="director-help">左键选择并拖动实体 · 右键旋转观察 · 滚轮缩放 · 机位和轨迹均会进入逐镜参考包</div></main>
+    <main><div class="director-viewport" data-director-viewport></div><div class="director-help" data-director-help>左键拖空白旋转 · 左键拖对象移动 · 右键旋转 · 滚轮缩放</div></main>
     <aside class="director-inspector" data-director-inspector-host>${inspectorHtml(null)}</aside></div>
     <footer><span data-director-status>${state.compatibility_status === 'stale_source' ? '上游场景已更新，保存后将重建当前导演版本' : '当前导演状态与场景版本一致'}</span><span>${list(state.snapshots).length} 张导演截图 · ${list(state.paths).reduce((sum, path) => sum + list(path.points).length, 0)} 个轨迹点</span></footer></section>`;
   document.body.appendChild(overlay);
@@ -250,24 +250,49 @@ export async function openDirectorStudio({ taskId, world }) {
   const normalizedPointer = event => {
     const rect = renderer.domElement.getBoundingClientRect(); mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1; mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
   };
+  const help = overlay.querySelector('[data-director-help]');
+  const setInteractionState = mode => {
+    renderer.domElement.dataset.interactionState = mode;
+    renderer.domElement.classList.toggle('is-orbiting', mode === 'orbit');
+    renderer.domElement.classList.toggle('is-dragging-object', mode === 'drag-entity');
+    if (help) help.textContent = mode === 'orbit'
+      ? '正在旋转观察视角'
+      : mode === 'drag-entity'
+        ? `正在移动 ${selected?.row?.label || '对象'}`
+        : '左键拖空白旋转 · 左键拖对象移动 · 右键旋转 · 滚轮缩放';
+  };
+  const pointerHit = event => {
+    normalizedPointer(event); raycaster.setFromCamera(mouse, viewCamera);
+    return raycaster.intersectObjects([...entityMeshes.values(), ...cameraMeshes.values()], true)[0] || null;
+  };
   renderer.domElement.addEventListener('contextmenu', event => event.preventDefault());
   renderer.domElement.addEventListener('pointerdown', event => {
-    normalizedPointer(event); raycaster.setFromCamera(mouse, viewCamera);
-    const hit = raycaster.intersectObjects([...entityMeshes.values(), ...cameraMeshes.values()], true)[0];
+    const hit = pointerHit(event);
     if (hit?.object?.userData?.id) select(hit.object.userData.type, hit.object.userData.id);
-    pointer = { button: event.button, x: event.clientX, y: event.clientY, yaw: orbit.yaw, pitch: orbit.pitch, dragging: Boolean(hit && event.button === 0) };
+    const dragEntity = event.button === 0 && hit?.object?.userData?.type === 'entity';
+    const orbitView = event.button === 2 || (event.button === 0 && !hit);
+    const mode = dragEntity ? 'drag-entity' : (orbitView ? 'orbit' : 'select');
+    pointer = { mode, button: event.button, x: event.clientX, y: event.clientY, yaw: orbit.yaw, pitch: orbit.pitch };
+    setInteractionState(mode);
     renderer.domElement.setPointerCapture?.(event.pointerId);
   });
   renderer.domElement.addEventListener('pointermove', event => {
-    if (!pointer) return;
-    if (pointer.dragging && selected?.type === 'entity') {
+    if (!pointer) {
+      const hit = pointerHit(event);
+      renderer.domElement.classList.toggle('has-object-hover', hit?.object?.userData?.type === 'entity');
+      return;
+    }
+    if (pointer.mode === 'drag-entity' && selected?.type === 'entity') {
       normalizedPointer(event); raycaster.setFromCamera(mouse, viewCamera); const target = new THREE.Vector3(); raycaster.ray.intersectPlane(ground, target);
       if (target) { selected.row.position[0] = Number(target.x.toFixed(3)); selected.row.position[2] = Number(target.z.toFixed(3)); syncEntityMesh(selected.row, entityMeshes.get(selected.row.entity_id)); renderInspector(); }
-    } else if (pointer.button === 2 || event.buttons === 2) {
+    } else if (pointer.mode === 'orbit') {
       orbit.yaw = pointer.yaw - (event.clientX - pointer.x) * .008; orbit.pitch = Math.max(.12, Math.min(1.35, pointer.pitch + (event.clientY - pointer.y) * .006)); updateOrbitCamera();
     }
   });
-  renderer.domElement.addEventListener('pointerup', () => { pointer = null; });
+  const finishPointerInteraction = () => { pointer = null; setInteractionState('idle'); };
+  renderer.domElement.addEventListener('pointerup', finishPointerInteraction);
+  renderer.domElement.addEventListener('pointercancel', finishPointerInteraction);
+  renderer.domElement.addEventListener('pointerleave', () => { if (!pointer) renderer.domElement.classList.remove('has-object-hover'); });
   renderer.domElement.addEventListener('wheel', event => { event.preventDefault(); orbit.distance = Math.max(3, Math.min(40, orbit.distance * (event.deltaY > 0 ? 1.1 : .9))); updateOrbitCamera(); }, { passive: false });
 
   const save = async () => {

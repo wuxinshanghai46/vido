@@ -9,7 +9,7 @@ const panoramaProjection = require('./panoramaProjectionService');
 const scenePanorama = require('./scenePanoramaService');
 const { completeSpaceLock, layoutSceneReference } = require('./sceneBindingService');
 
-const SHOT_REFERENCE_PACK_VERSION = 2;
+const SHOT_REFERENCE_PACK_VERSION = 3;
 const OUTPUT_KIND = 'shot_reference_packs';
 
 function text(value, max = 1000) { return String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, max); }
@@ -49,7 +49,7 @@ function panoramaCameraReference(sceneAsset = {}, shot = {}, contract = {}) {
   return selected?.image_url ? { ...selected, panorama_sha256: panorama.sha256 } : null;
 }
 
-function compile({ taskId = '', shotIndex = 0, ctx = {}, shot = {}, contract = {}, sceneAsset = {}, sceneReference = '', previousFrame = null, includePerson = false, includeProduct = false, layoutReference = '', providerLimit = 4 } = {}) {
+function compile({ taskId = '', shotIndex = 0, ctx = {}, shot = {}, contract = {}, sceneAsset = {}, sceneReference = '', sceneIdentityReference = '', sceneViewReference = '', previousFrame = null, includePerson = false, includeProduct = false, layoutReference = '', providerLimit = 4 } = {}) {
   sceneAsset = sceneAsset || {};
   shot = shot || {};
   contract = contract || {};
@@ -62,7 +62,8 @@ function compile({ taskId = '', shotIndex = 0, ctx = {}, shot = {}, contract = {
   }) : null;
   const panoramaReference = panoramaCameraReference(sceneAsset, shot, contract);
   const candidates = references.keyframeReferenceCandidates(ctx, {
-    sceneReference, previousFrame, shot, includePerson, includeProduct, layoutReference,
+    sceneReference, sceneIdentityReference: sceneIdentityReference || sceneReference,
+    sceneViewReference, previousFrame, shot, includePerson, includeProduct, layoutReference,
     directorReference: directorSnapshot?.image_url || panoramaReference?.image_url || '',
     storyboardReference: shot.storyboard_image?.status === 'confirmed' ? shot.storyboard_image.image_url : '',
   });
@@ -80,6 +81,11 @@ function compile({ taskId = '', shotIndex = 0, ctx = {}, shot = {}, contract = {
     shot_id: text(shot.id || shot.shot_id || `shot-${shotIndex + 1}`, 120), shot_index: shotIndex,
     person_revision: Number(ctx.person_asset?.revision || ctx.person_asset?.person_revision || 0) || 0,
     scene_revision: Number(sceneAsset.revision || sceneAsset.scene_revision || 0) || 0,
+    scene_id: text(shot.scene_id || shot.scene_asset_id || sceneAsset.scene_id || sceneAsset.id, 120),
+    scene_identity_reference_hash: sceneIdentityReference || sceneReference
+      ? fingerprint({ url: sceneIdentityReference || sceneReference, role: 'scene_identity' }) : '',
+    scene_view_reference_hash: sceneViewReference
+      ? fingerprint({ url: sceneViewReference, role: 'scene_view' }) : '',
     director_revision: Number(directorSnapshot ? (storage.getOutput(taskId, 'director_scene_states')?.states?.[worldId]?.revision || 0) : 0),
     panorama_sha256: text(panoramaReference?.panorama_sha256, 80),
     panorama_view_sha256: text(panoramaReference?.sha256, 80),
@@ -98,6 +104,23 @@ function compile({ taskId = '', shotIndex = 0, ctx = {}, shot = {}, contract = {
   return pack;
 }
 
+function compileForShot({ taskId = '', shotIndex = 0, ctx = {}, shot = {}, contract = {}, sceneAsset = {}, sceneIdentityReference = '', sceneViewReference = '', previousFrame = null, providerLimit = 4 } = {}) {
+  const includePerson = personIdentity.shotPersonRequired(ctx, shot, contract) && !personIdentity.shotForbidsPerson(ctx, shot);
+  const includeProduct = productIdentity.shotProductRequired(ctx, shot, contract);
+  const layoutReference = completeSpaceLock(sceneAsset) ? layoutSceneReference(sceneAsset)?.url : '';
+  return compile({
+    taskId, shotIndex, ctx, shot, contract, sceneAsset,
+    sceneReference: sceneIdentityReference,
+    sceneIdentityReference,
+    sceneViewReference,
+    previousFrame,
+    includePerson,
+    includeProduct,
+    layoutReference,
+    providerLimit,
+  });
+}
+
 function referenceUrls(taskId = '', shotIndex = 0, ctx = {}, sceneReference = '', previousFrame = null, shot = {}, contract = {}, sceneAsset = {}) {
   const legacy = taskId && typeof taskId === 'object';
   if (legacy) {
@@ -109,9 +132,9 @@ function referenceUrls(taskId = '', shotIndex = 0, ctx = {}, sceneReference = ''
   const layoutReference = completeSpaceLock(sceneAsset) ? layoutSceneReference(sceneAsset)?.url : '';
   const rows = legacy
     ? references.keyframeReferenceUrls(ctx, { sceneReference, previousFrame, shot, includePerson, includeProduct, layoutReference, providerLimit: 4 })
-    : compile({ taskId, shotIndex, ctx, sceneReference, previousFrame, shot, contract, sceneAsset, includePerson, includeProduct, layoutReference, providerLimit: 4 }).references.map(item => item.url);
+    : compileForShot({ taskId, shotIndex, ctx, sceneIdentityReference: sceneReference, previousFrame, shot, contract, sceneAsset, providerLimit: 4 }).references.map(item => item.url);
   const seen = new Set();
   return rows.map(mediaAdapter.absolutePublicImageUrl).filter(url => url && !seen.has(url) && !!seen.add(url));
 }
 
-module.exports = { SHOT_REFERENCE_PACK_VERSION, OUTPUT_KIND, worldIdFor, directorEntityRevisions, activePanorama, panoramaCameraReference, compile, referenceUrls, fingerprint };
+module.exports = { SHOT_REFERENCE_PACK_VERSION, OUTPUT_KIND, worldIdFor, directorEntityRevisions, activePanorama, panoramaCameraReference, compile, compileForShot, referenceUrls, fingerprint };

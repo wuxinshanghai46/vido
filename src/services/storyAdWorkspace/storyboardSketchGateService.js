@@ -1,5 +1,6 @@
 const storageDefault = require('../newStoryAd/storageService');
 const storyFlowSketchGate = require('./storyFlowSketchGateService');
+const sceneReadability = require('../newStoryAd/sceneReadabilityContractService');
 
 function clean(value = '', max = 300) {
   return String(value || '').replace(/\s+/g, ' ').trim().slice(0, max);
@@ -13,12 +14,16 @@ function inspect(taskId, dependencies = {}) {
   const contracts = storage.getOutput(taskId, 'keyframe_contracts') || [];
   const review = storage.getOutput(taskId, 'quality_review') || null;
   const meta = storage.getOutput(taskId, 'storyboard_meta') || {};
+  const sceneAssets = storage.getOutput(taskId, 'scene_assets') || [];
   const progress = task.generation_progress || {};
   const blocking = Array.isArray(review?.blocking_issues) ? review.blocking_issues.filter(Boolean) : [];
   const rewrites = Array.isArray(review?.rewrite_issues) ? review.rewrite_issues.filter(Boolean) : [];
   const reviewHasVerdict = typeof review?.passed === 'boolean';
   const issues = [];
   const flow = storyFlowSketchGate.inspect(taskId);
+  const readability = sceneAssets.length
+    ? sceneReadability.inspect(shots, sceneAssets)
+    : { contract_version: sceneReadability.CONTRACT_VERSION, ready: true, scenes: [], issues: [] };
   const explicitFailure = task.stage === 'storyboard_failed'
     || meta.status === 'failed'
     || progress.phase === 'review_failed'
@@ -30,7 +35,9 @@ function inspect(taskId, dependencies = {}) {
   if (meta.status && meta.status !== 'ready') issues.push(`镜头结构状态为 ${clean(meta.status, 40)}`);
   if (shots.length && contracts.length !== shots.length) issues.push(`关键帧合同不完整（${contracts.length}/${shots.length}）`);
   if (!flow.ready) issues.unshift(flow.reason);
+  if (!readability.ready) issues.unshift(...readability.issues);
   const ready = flow.ready
+    && readability.ready
     && !explicitFailure
     && Array.isArray(shots)
     && shots.length > 0
@@ -45,6 +52,7 @@ function inspect(taskId, dependencies = {}) {
     contract_count: contracts.length,
     review_passed: reviewHasVerdict ? (review.passed === true && !blocking.length && !rewrites.length) : null,
     flow,
+    scene_readability: readability,
   };
 }
 

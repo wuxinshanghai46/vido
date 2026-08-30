@@ -39,16 +39,11 @@ function checkpointMatchesStoryFlow(checkpoint = null, contractFingerprint = '')
 
 function assertConfirmationReady(storage, taskId, body = {}) {
   if (body.shot_design_confirmed !== true && body.shotDesignConfirmed !== true) return;
-  const shots = storage.getOutput(taskId, 'storyboard_table') || [];
-  const images = storage.getOutput(taskId, 'storyboard_images') || [];
-  const readyIndexes = new Set((Array.isArray(images) ? images : [])
-    .filter(image => image?.image_url || image?.imageUrl || image?.url)
-    .map(image => Number(image.shot_index || image.index || 0)));
-  const allReady = Array.isArray(shots) && shots.length > 0
-    && shots.every((shot, index) => readyIndexes.has(Number(shot.shot_index || shot.index || index + 1)));
-  if (allReady) return;
-  const error = new Error('请先完成并保存全部分镜画面，再进入视频生成');
+  const state = require('../storyAdWorkspace/storyboardImageConfirmationGateService').inspect(taskId);
+  if (state.ready) return;
+  const error = new Error(state.reason || '请先完成并保存全部分镜画面，再进入视频生成');
   error.code = 'STORYBOARD_CONFIRMATION_NOT_READY'; error.status = 409; error.retryable = false;
+  error.details = state;
   throw error;
 }
 

@@ -61,15 +61,23 @@ function sceneSequenceMarkup(bundle = {}, shots = []) {
     });
   });
   if (!groups.length) return '';
-  return `<section class="storyboard-scene-sequence" aria-label="分镜场景顺序"><div><b>场景顺序</b><span>系统已按剧情固定地点；切换发生在相邻场景节点之间</span></div><ol>${groups.map((group, index) => `<li><span>${index + 1}</span><div><b>${escapeHtml(group.name)}</b><small>SH${String(group.start).padStart(2, '0')} 起 · ${group.count} 镜${group.reason ? ` · ${escapeHtml(group.reason)}` : ''}</small></div></li>`).join('')}</ol></section>`;
+  const nodes = groups.map((group, index) => {
+    const shotRange = `SH${String(group.start).padStart(2, '0')} 起 · ${group.count} 镜`;
+    const reason = String(group.reason || '').trim();
+    const tooltip = reason ? `剧情依据：${reason}` : `${group.name} · ${shotRange}`;
+    return `<li title="${escapeHtml(tooltip)}" aria-label="${escapeHtml(`${group.name}，${shotRange}${reason ? `，剧情依据：${reason}` : ''}`)}"><span>${index + 1}</span><div><b>${escapeHtml(group.name)}</b><small>${shotRange}</small></div>${reason ? `<em title="${escapeHtml(`剧情依据：${reason}`)}">剧情依据</em>` : ''}</li>`;
+  }).join('');
+  return `<section class="storyboard-scene-sequence" aria-label="分镜场景顺序"><div><b>场景顺序</b><span title="系统已按剧情固定地点；切换发生在相邻场景节点之间">按剧情固定地点</span></div><ol>${nodes}</ol></section>`;
 }
 
-function sketchCard(shot, sketch = {}, index = 0, gate = {}, bundle = {}) {
+function sketchCard(shot, sketch = {}, index = 0, gate = {}, bundle = {}, generationActive = false, needsGeneration = false) {
   const shotIndex = Number(shot.shot_index || shot.index || index + 1) || index + 1;
   const disabled = gate.ready === false ? 'disabled' : '';
+  const imageReady = Boolean(sketch.image_url || sketch.imageUrl || sketch.url);
+  const waiting = generationActive && (!imageReady || needsGeneration);
   const ratio = String(bundle?.brief?.output_ratio || bundle?.brief?.ratio || '16:9').match(/^(\d+(?:\.\d+)?)\s*[:/]\s*(\d+(?:\.\d+)?)$/);
   const aspectStyle = ratio ? ` style="aspect-ratio:${Number(ratio[1])} / ${Number(ratio[2])}"` : '';
-  return `<article class="card sketch-card sketch-tile ${gate.ready === false ? 'is-gated' : ''}" data-sketch-shot="${shotIndex}">
+  return `<article class="card sketch-card sketch-tile ${gate.ready === false ? 'is-gated' : ''} ${waiting ? 'is-waiting' : ''}" data-sketch-shot="${shotIndex}"${waiting ? ' aria-busy="true"' : ''}>
     <div class="sketch-tile-media" data-sketch-image-host="${shotIndex}"${aspectStyle}>${mediaPreview(sketch, { label: `SH${String(shotIndex).padStart(2, '0')} · ${shot.title || `镜头 ${shotIndex}`}`, width: 960, symbol: '分镜图', zoomable: true, zoomGroup: 'storyboard-images' })}<span class="sketch-shot-number">SH${String(shotIndex).padStart(2, '0')}</span></div>
     <div class="sketch-tile-copy"><div><h2>${escapeHtml(shot.title || `镜头 ${shotIndex}`)}</h2><p>${escapeHtml(compactBindingSummary(bundle, shot))}</p></div></div>
     <details class="sketch-tile-editor"><summary>调整</summary><div class="sketch-action-bar">
@@ -97,7 +105,7 @@ function liveGenerationShotCard(shot, sketch = {}, index = 0, bundle = {}) {
   const ratio = String(bundle?.brief?.output_ratio || bundle?.brief?.ratio || '16:9').match(/^(\d+(?:\.\d+)?)\s*[:/]\s*(\d+(?:\.\d+)?)$/);
   const aspectStyle = ratio ? ` style="aspect-ratio:${Number(ratio[1])} / ${Number(ratio[2])}"` : '';
   const ready = Boolean(sketch.image_url || sketch.imageUrl || sketch.url);
-  return `<article class="card sketch-card sketch-tile is-live-generation">
+  return `<article class="card sketch-card sketch-tile is-live-generation ${ready ? '' : 'is-waiting'}"${ready ? '' : ' aria-busy="true"'}>
     <div class="sketch-tile-media"${aspectStyle}>${mediaPreview(sketch, { label: `SH${String(shotIndex).padStart(2, '0')} · ${shot.title || `镜头 ${shotIndex}`}`, width: 960, symbol: ready ? '分镜图' : '等待出图', zoomable: ready, zoomGroup: 'storyboard-images' })}<span class="sketch-shot-number">SH${String(shotIndex).padStart(2, '0')}</span></div>
     <div class="sketch-tile-copy"><div><h2>${escapeHtml(shot.title || `镜头 ${shotIndex}`)}</h2><p>${escapeHtml(compactBindingSummary(bundle, shot))}</p></div><span class="status-tag ${ready ? 'is-ready' : 'is-neutral'}">${ready ? '已完成' : '生成中'}</span></div>
   </article>`;
@@ -112,10 +120,11 @@ function sketchBatchMarkup(batch = null, total = 0) {
   const succeeded = Math.max(0, Math.min(processed, Number(batch.succeeded ?? batch.completed ?? 0) || 0));
   const failed = Math.max(0, processed - succeeded);
   const percent = requested ? Math.round((processed / requested) * 100) : 100;
+  const indeterminate = active && (status === 'queued' || percent === 0);
   const title = status === 'failed' ? '分镜生成已停止' : (status === 'succeeded' ? '分镜生成已完成' : '正在生成分镜');
-  return `<div class="sketch-batch-progress is-${escapeHtml(status)}" role="${status === 'failed' ? 'alert' : 'status'}" aria-live="polite">
+  return `<div class="sketch-batch-progress is-${escapeHtml(status)} ${indeterminate ? 'is-indeterminate' : ''}" role="${status === 'failed' ? 'alert' : 'status'}" aria-live="polite">
     <div class="sketch-batch-progress-head"><b>${title}</b><span>已完成 ${processed}/${requested}${failed ? ` · ${failed} 镜需重试` : ''} · ${percent}%</span></div>
-    ${active ? `<div class="project-progress-track" aria-hidden="true"><i style="width:${percent}%"></i></div>` : ''}
+    ${active ? `<div class="project-progress-track ${indeterminate ? 'is-indeterminate' : ''}" aria-hidden="true"><i style="width:${percent}%"></i></div>` : ''}
     <small>${status === 'failed' ? '已完成的画面会保留；再次继续只处理未完成镜头。' : (active ? '人物与场景正在自动匹配，完成的画面会逐镜显示。' : '所有画面已保存。')} ${elapsedTimeTag({ startedAt: batch.started_at, finishedAt: batch.finished_at, active })}</small>
   </div>`;
 }
@@ -138,10 +147,11 @@ function storyboardProgressMarkup({ batch = null, progress = {}, active = false,
   const percent = Number.isFinite(reportedPercent)
     ? Math.max(0, Math.min(100, Math.round(reportedPercent)))
     : Math.round((processed / requested) * 100);
+  const indeterminate = active && percent === 0;
   const phaseTitle = progressPhaseLabel(progress, failed);
-  return `<div class="sketch-batch-progress is-${failed ? 'failed' : 'running'}" role="${failed ? 'alert' : 'status'}" aria-live="polite">
+  return `<div class="sketch-batch-progress is-${failed ? 'failed' : 'running'} ${indeterminate ? 'is-indeterminate' : ''}" role="${failed ? 'alert' : 'status'}" aria-live="polite">
     <div class="sketch-batch-progress-head"><b>${phaseTitle}</b><span>已完成 ${processed}/${requested} · ${percent}%</span></div>
-    ${active ? `<div class="project-progress-track" aria-hidden="true"><i style="width:${percent}%"></i></div>` : ''}
+    ${active ? `<div class="project-progress-track ${indeterminate ? 'is-indeterminate' : ''}" aria-hidden="true"><i style="width:${percent}%"></i></div>` : ''}
     <small>${failed ? '已完成的镜头结构会保留；分镜图片尚未开始，继续后只处理未完成镜头。' : '系统正在按剧情核对人物、场景、机位和站位；已完成的镜头结构会立即显示。'} ${elapsedTimeTag({ startedAt, finishedAt, active })}</small>
   </div>`;
 }
@@ -167,7 +177,16 @@ export async function mount(host, context) {
   const sketches = Array.isArray(bundle?.storyboard?.images) ? bundle.storyboard.images : [];
   const sketchByShot = new Map(sketches.map(item => [Number(item.shot_index), item]));
   const generatedSketchCount = shots.filter((shot, index) => sketchByShot.get(Number(shot.shot_index || shot.index || index + 1))?.image_url).length;
-  const missingSketchCount = Math.max(0, shots.length - generatedSketchCount);
+  const imageGate = bundle?.storyboard?.image_gate || null;
+  const pendingSketchIndexes = new Set([
+    ...(Array.isArray(imageGate?.missing_indexes) ? imageGate.missing_indexes : []),
+    ...(Array.isArray(imageGate?.stale_indexes) ? imageGate.stale_indexes : []),
+  ].map(Number));
+  const staleSketchIndexes = Array.isArray(imageGate?.stale_indexes) ? imageGate.stale_indexes.map(Number) : [];
+  const validSketchCount = imageGate && Number(imageGate.total) === shots.length
+    ? Math.max(0, Number(imageGate.confirmed || 0) || 0)
+    : generatedSketchCount;
+  const missingSketchCount = Math.max(0, shots.length - validSketchCount);
   const regenerateAllSketches = missingSketchCount === 0 && generatedSketchCount > 0;
   const sketchBatchTargetCount = regenerateAllSketches ? shots.length : missingSketchCount;
   const sketchGate = bundle?.storyboard?.sketch_gate || { ready: false, reason: '镜头结构状态尚未核对，请刷新页面。', issues: [] };
@@ -209,18 +228,19 @@ export async function mount(host, context) {
       </section>
       ${primaryAction ? `<div class="storyboard-primary-actions">${primaryAction}</div>` : ''}
       ${sceneSequenceMarkup(bundle, displayShots)}
+      ${staleSketchIndexes.length ? `<div class="storyboard-stale-notice" role="status"><b>${staleSketchIndexes.length} 镜需更新</b><span>镜头或场景参考已变化；其他 ${Math.max(0, shots.length - staleSketchIndexes.length)} 镜会保留，继续生成只处理失效镜头。</span></div>` : ''}
       <div data-sketch-batch-host>${storyboardProgressMarkup({
-        batch: storyboardActive ? null : sketchBatch,
+        batch: storyboardActive || (String(sketchBatch?.status || '') === 'succeeded' && missingSketchCount > 0) ? null : sketchBatch,
         progress: bundle?.project?.generation_progress || bundle?.generation?.progress || {},
         active: storyboardActive || sketchBatchActive,
         failed: storyboardFailed || gateBlocked,
-        completed: shots.length ? generatedSketchCount : checkpointShots.length,
+        completed: shots.length ? validSketchCount : checkpointShots.length,
         total: shots.length || checkpointTotal || 1,
         startedAt: bundle?.project?.generation_progress?.started_at || bundle?.project?.generation_started_at || '',
         finishedAt: bundle?.project?.generation_progress?.finished_at || '',
       })}</div>
       <div data-storyboard-live-results>${displayShots.length ? `<div class="storyboard-sketch-grid">${visibleShots.map((shot, index) => shots.length
-        ? sketchCard(shot, sketchByShot.get(Number(shot.shot_index || shot.index || pageStart + index + 1)) || {}, pageStart + index, sketchGate, bundle)
+        ? sketchCard(shot, sketchByShot.get(Number(shot.shot_index || shot.index || pageStart + index + 1)) || {}, pageStart + index, sketchGate, bundle, sketchBatchActive, pendingSketchIndexes.has(Number(shot.shot_index || shot.index || pageStart + index + 1)))
         : checkpointShotCard(shot, pageStart + index, bundle)).join('')}</div>${pageNav}` : `<div class="card storyboard-empty-card">${emptyState({ title: storyboardActive ? '正在生成分镜' : '还没有分镜画面', body: storyboardActive ? '镜头结构保存后会立即显示在这里。' : '选择模型并点击“生成分镜”即可开始。' })}</div>`}</div>
       ${shots.length && missingSketchCount === 0 ? `<div class="storyboard-next-action"><div><b>分镜画面已完成</b><span>确认当前镜头后，可继续进入声音、视频与合成。</span></div><button class="btn primary" type="button" data-confirm-storyboard>确认分镜，进入视频生成</button></div>` : ''}
     </div>`;
@@ -354,6 +374,13 @@ export async function mount(host, context) {
     const batchHost = host.querySelector('[data-sketch-batch-host]');
     if (batchHost) batchHost.innerHTML = sketchBatchMarkup(sketchBatch, sketchBatchTargetCount || generatedSketchCount);
     const active = ['queued', 'running'].includes(String(sketchBatch?.status || ''));
+    host.querySelectorAll('[data-sketch-shot]').forEach(card => {
+      const shotIndex = Number(card.dataset.sketchShot || 0);
+      const ready = Boolean(sketchByShot.get(shotIndex)?.image_url) && !pendingSketchIndexes.has(shotIndex);
+      card.classList.toggle('is-waiting', active && !ready);
+      if (active && !ready) card.setAttribute('aria-busy', 'true');
+      else card.removeAttribute('aria-busy');
+    });
     if (batchButton) {
       batchButton.dataset.processed = String(sketchBatch.processed ?? sketchBatch.completed ?? 0);
       batchButton.disabled = active;
@@ -369,6 +396,10 @@ export async function mount(host, context) {
       const mediaHost = host.querySelector(`[data-sketch-image-host="${shotIndex}"]`);
       if (!mediaHost) return;
       mediaHost.innerHTML = `${mediaPreview(sketch, { label: `SH${String(shotIndex).padStart(2, '0')} · ${shot.title || `镜头 ${shotIndex}`}`, width: 960, symbol: '分镜图', zoomable: true, zoomGroup: 'storyboard-images' })}<span class="sketch-shot-number">SH${String(shotIndex).padStart(2, '0')}</span>`;
+      const card = mediaHost.closest('[data-sketch-shot]');
+      pendingSketchIndexes.delete(shotIndex);
+      card?.classList.remove('is-waiting');
+      card?.removeAttribute('aria-busy');
     });
     bindMediaLightbox(host);
   };

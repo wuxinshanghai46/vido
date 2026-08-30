@@ -96,14 +96,16 @@ function keyframeReferenceCandidates(ctx = {}, options = {}) {
   const push = (url, role, priority, required = false) => { if (url) rows.push({ url, role, priority, required }); };
   push(options.directorReference, 'director_composition', 110, true);
   push(options.storyboardReference, 'storyboard_composition', 108, true);
-  if (!options.directorReference) push(options.sceneReference, 'scene_identity', 100, true);
+  const sceneIdentityReference = options.sceneIdentityReference || options.sceneReference;
+  if (!options.directorReference) push(sceneIdentityReference, 'scene_identity', 100, true);
   if (board) push(board, 'cast_identity_board', 98, true);
   else cast.forEach((url, index) => push(url, `person_identity_${index + 1}`, 96 - index, true));
   if (!board) pets.forEach((url, index) => push(url, `pet_identity_${index + 1}`, 92 - index, true));
   push(product, 'product_identity', 94, options.includeProduct === true);
   propRefs.forEach((url, index) => push(url, `prop_${index + 1}`, 86 - index));
   push(motion, motion === continuity ? 'previous_accepted_frame' : 'action_pose', 90, Boolean(options.includePerson));
-  push(options.sceneReference, 'scene_identity', options.directorReference ? 84 : 100);
+  push(sceneIdentityReference, 'scene_identity', options.directorReference ? 84 : 100);
+  push(options.sceneViewReference, 'scene_view', 83);
   push(options.layoutReference, 'scene_layout', 72);
   const unique = new Map();
   rows.sort((a, b) => Number(b.required) - Number(a.required) || b.priority - a.priority).forEach(row => {

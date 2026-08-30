@@ -15,6 +15,7 @@ const sceneAssetRuntimeProjection = require('./sceneAssetRuntimeProjectionServic
 const sceneAssetAvailability = require('./sceneAssetAvailabilityProjectionService');
 const sceneQaProjection = require('./sceneQaProjectionService');
 const sceneSpatialProjection = require('./sceneSpatialProjectionService');
+const storyboardImageConfirmation = require('./storyboardImageConfirmationGateService');
 const MAX_MEDIA_ITEMS = 120;
 function clean(value = '', max = 240) { return String(value || '').replace(/\s+/g, ' ').trim().slice(0, max); }
 function cleanMultiline(value = '', max = 5000) { return multilineTextContract.normalize(value, max); }
@@ -544,6 +545,7 @@ function buildProjectBundle(taskId, { sections = '', user = {} } = {}) {
     bundle.story_flow = referenceDrafts.storyFlowSection(taskId, outputs);
     bundle.storyboard = referenceDrafts.storyboardSection(context, outputs, raw);
     bundle.storyboard.sketch_gate = storyboardSketchGate.inspect(taskId);
+    bundle.storyboard.image_gate = storyboardImageConfirmation.inspect(taskId);
     bundle.storyboard.reference_packs = list(outputs.shot_reference_packs).slice(0, 200);
     if (!bundle.navigation.counts.shots) bundle.navigation.counts.shots = bundle.storyboard.shots.length;
   }
