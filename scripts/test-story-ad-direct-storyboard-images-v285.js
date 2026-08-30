@@ -78,7 +78,7 @@ function testRouteAndUiContract() {
   const route = fs.readFileSync(path.join(root, 'src/routes/newStoryAd.js'), 'utf8');
   const view = fs.readFileSync(path.join(root, 'public/story-ad/views/storyboardView.js'), 'utf8');
   const ui = fs.readFileSync(path.join(root, 'public/story-ad/components/ui.js'), 'utf8');
-  const css = fs.readFileSync(path.join(root, 'public/story-ad/workspace.css'), 'utf8');
+  const css = `${fs.readFileSync(path.join(root, 'public/story-ad/workspace.css'), 'utf8')}\n${fs.readFileSync(path.join(root, 'public/story-ad/storyboard-simple.css'), 'utf8')}`;
   const service = fs.readFileSync(path.join(root, 'src/services/newStoryAd/storyAdService.js'), 'utf8');
   const sketchService = fs.readFileSync(path.join(root, 'src/services/storyAdWorkspace/storyboardSketchService.js'), 'utf8');
   assert.match(route, /body\.generate_images !== true/);

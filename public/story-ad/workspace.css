@@ -372,18 +372,6 @@
 .storyboard-tabs .tab { padding: 8px 12px; font-size: 12px; }
 .storyboard-view-head + .guide { margin-bottom: 10px; padding: 9px 12px; font-size: 11px; line-height: 1.45; }
 @media (max-width: 760px) { .storyboard-primary-actions { align-items: stretch; flex-direction: column; } .storyboard-primary-actions .btn { width: 100%; } }
-.workspace-main:has(.storyboard-simple-view) > .project-progress-host { display: none; }
-.storyboard-simple-view { display: grid; gap: 14px; }
-.storyboard-simple-view .storyboard-view-head { align-items: center; margin: 0; }
-.storyboard-simple-view .storyboard-view-head p { max-width: 760px; }
-.storyboard-simple-view .storyboard-primary-actions { margin: 0; }
-.storyboard-simple-view .storyboard-sketch-grid { margin-top: 0; }
-.storyboard-simple-view .sketch-tile-copy { min-height: 74px; }
-.storyboard-simple-view .sketch-tile-copy p { -webkit-line-clamp: 2; }
-.storyboard-simple-view .sketch-tile-editor > summary { padding: 9px 12px; }
-.storyboard-simple-view .sketch-tile-editor > .sketch-action-bar { padding: 0 12px 12px; }
-.storyboard-simple-view .sketch-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-.storyboard-simple-view .sketch-actions .btn { width: 100%; min-height: 34px; font-size: 11px; }
 .sketch-batch-progress { display: grid; gap: 8px; margin: -2px 0 14px; padding: 12px 14px; border: 1px solid color-mix(in srgb, var(--mint) 45%, var(--line)); border-radius: 12px; background: var(--surface); }
 .sketch-batch-progress.is-failed { border-color: color-mix(in srgb, var(--danger) 55%, var(--line)); }
 .sketch-batch-progress.is-complete { border-color: color-mix(in srgb, var(--success) 55%, var(--line)); }

@@ -141,7 +141,7 @@ function testSourceRedlines() {
   assert.match(view, /data-(?:prepare-storyboard-sketch|generate-sketch-batch)/);
   assert.match(route, /LEGACY_STORYBOARD_CREATION_ROUTE_DISABLED/);
   assert.doesNotMatch(route, /router\.post\('\/storyboard'[\s\S]{0,500}createTask/);
-  assert.match(store, /active_stage === 'storyboard'[\s\S]*refreshSections\('shots'\)/);
+  assert.match(store, /createStoryboardLiveRefresh[\s\S]*refreshLiveStoryboard\(project, refreshSections\)/);
   assert.match(sceneUi, /\?view=storyboard/);
   assert.doesNotMatch(sceneUi, /\?view=flow/);
 }

@@ -4,6 +4,7 @@ import { cancelReferenceAnalysisRequest, retryReferenceAnalysisRequest, retryRef
 import { loadProjectList } from './projectListStore.js?v=20260830-production-v289d';
 import { loadProjectBundle, prefetchProjectBundle, refreshProjectBundle } from './projectBundleStore.js?v=20260830-production-v289d';
 import { beginStageSubmissionState } from './stageSubmissionState.js?v=20260830-production-v289d';
+import { createStoryboardLiveRefresh } from './storyboardLiveRefresh.js?v=20260830-production-v289d';
 export function createProjectStore() {
   const state = {
     projects: [],
@@ -17,12 +18,11 @@ export function createProjectStore() {
     progressTimer: null,
     progressTaskId: '',
     progressRevision: '',
-    storyboardLiveRefreshAt: 0,
     generationCompletionSeq: 0,
     referenceTimer: null,
     referenceAnalysisId: '',
     referenceReplacementSeq: 0,
-  }; const listeners = new Set();
+  }; const listeners = new Set(), refreshLiveStoryboard = createStoryboardLiveRefresh();
   let requestMutationChain = Promise.resolve();
   const notify = () => listeners.forEach(listener => listener(state)); const set = patch => { Object.assign(state, patch); notify(); };
 
@@ -55,11 +55,9 @@ export function createProjectStore() {
   }
   const mediaStore = () => import('./mediaCatalogStore.js?v=20260830-production-v289d'), loadMediaPage = async options => (await mediaStore()).loadMediaPage({ request, state }, options);
   const loadMoreMedia = async (kind = 'keyframes', limit = 24) => (await mediaStore()).loadMoreMedia({ request, state, set }, kind, limit);
-
   async function refreshSections(sections) {
     return refreshProjectBundle({ request, set, state, sections });
   }
-
   function applyMutationResult(data = {}) {
     const current = state.bundle;
     if (!current) return null;
@@ -538,10 +536,7 @@ export function createProjectStore() {
         };
         const bundle = { ...(state.bundle || {}), project, generation };
         set({ bundle, progressRevision: state.progressRevision });
-        if (project.active_stage === 'storyboard' && Date.now() - state.storyboardLiveRefreshAt >= 1500) {
-          state.storyboardLiveRefreshAt = Date.now();
-          await refreshSections('shots');
-        }
+        await refreshLiveStoryboard(project, refreshSections);
         const terminalProgress = ['done', 'succeeded', 'failed', 'cancelled'].includes(String(project.generation_progress?.status || '').toLowerCase());
         if (!project.active_generation_id && (terminalProgress || !['queued', 'running', 'processing'].includes(String(project.status || '').toLowerCase()))) {
           stopProgressPolling();

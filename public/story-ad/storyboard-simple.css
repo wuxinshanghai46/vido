@@ -1,0 +1,12 @@
+.workspace-main:has(.storyboard-simple-view) > .project-progress-host { display: none; }
+.storyboard-simple-view { display: grid; gap: 14px; }
+.storyboard-simple-view .storyboard-view-head { align-items: center; margin: 0; }
+.storyboard-simple-view .storyboard-view-head p { max-width: 760px; }
+.storyboard-simple-view .storyboard-primary-actions { margin: 0; }
+.storyboard-simple-view .storyboard-sketch-grid { margin-top: 0; }
+.storyboard-simple-view .sketch-tile-copy { min-height: 74px; }
+.storyboard-simple-view .sketch-tile-copy p { -webkit-line-clamp: 2; }
+.storyboard-simple-view .sketch-tile-editor > summary { padding: 9px 12px; }
+.storyboard-simple-view .sketch-tile-editor > .sketch-action-bar { padding: 0 12px 12px; }
+.storyboard-simple-view .sketch-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.storyboard-simple-view .sketch-actions .btn { width: 100%; min-height: 34px; font-size: 11px; }
