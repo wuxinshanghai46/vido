@@ -217,6 +217,7 @@ async function main() {
       throw new Error(`unexpected request ${url}`);
     },
     uploadAsset() {}, uploadReferenceVideo() {}, beginReferenceReplacement() {}, replacementCurrent() {},
+    createStoryboardLiveRefresh: () => async () => false,
     removeProjectReference() {}, restoreReferenceReplacement() {}, setTimeout, clearTimeout, Date, URLSearchParams,
   };
   const runnableStoreSource = storeUi.replace(/^import .*$/gm, '').replace(/\bexport\s+/g, '');
