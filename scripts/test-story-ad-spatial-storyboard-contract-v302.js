@@ -63,6 +63,12 @@ const assets = scenePlanning.enrichSceneAssets(rawAssets, plan, ctx, {});
 
 assert.equal(personIdentity.shotPersonPresence({ subject_type: 'product_only', expected_people: 0, characters: [], keyframe_notes: '禁止出现人物和手部' }).required, false,
   '负向人物约束不得反向触发人物参考');
+assert.equal(personIdentity.shotPersonPresence({
+  subject_type: 'product_only', expected_people: 0, characters: [],
+  action: '摄影机沿展示墙横移，不出现人物',
+  keyframe_notes: '禁止出现：人物、Logo 和其他空间元素',
+  material_usage: '展示墙采用用户确认的不锈钢材料表面成果',
+}).required, false, '“用户确认的材料”描述内容来源，不得被识别成画面人物');
 assert.equal(personIdentity.shotForbidsPerson(ctx, { subject_type: 'product_only', expected_people: 0, characters: [], keyframe_notes: '禁止出现人物' }), true);
 assert.equal(assets[1].scene_contract.anchors[0].id, 'anchor_home_wall', '场景规划锚点必须进入逐镜可绑定合同');
 assert.equal(assets[1].scene_contract.cameras[1].normalized_position[0], 0.3, '规划机位坐标必须进入场景权威');

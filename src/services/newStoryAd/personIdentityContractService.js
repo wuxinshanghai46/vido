@@ -264,7 +264,7 @@ function shotPersonPresence(shot = {}, contract = {}) {
   const facePartial = /侧脸|半张脸|\b(?:side\s+profile|partial\s+face)\b/i.test(text);
   const reflection = /人物倒影|人物反射|\b(?:human\s+reflection|person\s+reflection)\b/i.test(text);
   const obscured = /背影|人形剪影|\b(?:silhouette|back\s+view)\b/i.test(text);
-  const full = /人物|真人|演员|主角|主持人|模特|顾客|客户|用户|老师|顾问|工程师|开发者|人脸|全身|半身|眼神|发型|妆容|服装|连衣裙|衬衫|人物身份|human_scene|\b(?:person|actor|presenter|model|customer|teacher|consultant|engineer|developer|face|full[- ]body|half[- ]body|wardrobe|hairstyle)\b/i.test(text);
+  const full = /人物|真人|演员|主角|主持人|模特|顾客|客户|老师|顾问|工程师|开发者|人脸|全身|半身|眼神|发型|妆容|服装|连衣裙|衬衫|人物身份|human_scene|\b(?:person|actor|presenter|model|customer|teacher|consultant|engineer|developer|face|full[- ]body|half[- ]body|wardrobe|hairstyle)\b/i.test(text);
   const faceVisible = facePartial || /人脸|正脸|面部|\b(?:face|facial)\b/i.test(text);
   const bodyVisible = /全身|半身|人物站|人物坐|人物行走|演员站|演员坐|模特站|模特走|\b(?:full[- ]body|half[- ]body|standing person|seated person|walking person)\b/i.test(text);
   const fullBodyVisible = faceVisible || bodyVisible;
