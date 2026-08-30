@@ -1,6 +1,5 @@
 import { request } from '../api.js?v=20260830-production-v291e';
 import { elapsedTimeTag, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260830-production-v291e';
-import { confirmDialog } from '../components/dialog.js?v=20260830-production-v291e';
 import { bindMediaLightbox } from './mediaLightbox.js?v=20260830-production-v291e';
 import { bindGenerationModelPicker, loadGenerationModelPicker } from './generationModelPicker.js?v=20260830-production-v291e';
 
@@ -82,6 +81,27 @@ function sketchCard(shot, sketch = {}, index = 0, gate = {}, bundle = {}) {
   </article>`;
 }
 
+function checkpointShotCard(shot, index = 0, bundle = {}) {
+  const shotIndex = Number(shot.shot_index || shot.index || index + 1) || index + 1;
+  const ratio = String(bundle?.brief?.output_ratio || bundle?.brief?.ratio || '16:9').match(/^(\d+(?:\.\d+)?)\s*[:/]\s*(\d+(?:\.\d+)?)$/);
+  const aspectStyle = ratio ? ` style="aspect-ratio:${Number(ratio[1])} / ${Number(ratio[2])}"` : '';
+  return `<article class="card sketch-card sketch-tile is-checkpoint" data-checkpoint-shot="${shotIndex}">
+    <div class="sketch-tile-media"${aspectStyle}><div class="media-placeholder"><span>镜头结构已保存</span></div><span class="sketch-shot-number">SH${String(shotIndex).padStart(2, '0')}</span></div>
+    <div class="sketch-tile-copy"><div><h2>${escapeHtml(shot.title || `镜头 ${shotIndex}`)}</h2><p>${escapeHtml(compactBindingSummary(bundle, shot))}</p></div><span class="status-tag is-neutral">待出图</span></div>
+  </article>`;
+}
+
+function liveGenerationShotCard(shot, sketch = {}, index = 0, bundle = {}) {
+  const shotIndex = Number(shot.shot_index || shot.index || index + 1) || index + 1;
+  const ratio = String(bundle?.brief?.output_ratio || bundle?.brief?.ratio || '16:9').match(/^(\d+(?:\.\d+)?)\s*[:/]\s*(\d+(?:\.\d+)?)$/);
+  const aspectStyle = ratio ? ` style="aspect-ratio:${Number(ratio[1])} / ${Number(ratio[2])}"` : '';
+  const ready = Boolean(sketch.image_url || sketch.imageUrl || sketch.url);
+  return `<article class="card sketch-card sketch-tile is-live-generation">
+    <div class="sketch-tile-media"${aspectStyle}>${mediaPreview(sketch, { label: `SH${String(shotIndex).padStart(2, '0')} · ${shot.title || `镜头 ${shotIndex}`}`, width: 960, symbol: ready ? '分镜图' : '等待出图', zoomable: ready, zoomGroup: 'storyboard-images' })}<span class="sketch-shot-number">SH${String(shotIndex).padStart(2, '0')}</span></div>
+    <div class="sketch-tile-copy"><div><h2>${escapeHtml(shot.title || `镜头 ${shotIndex}`)}</h2><p>${escapeHtml(compactBindingSummary(bundle, shot))}</p></div><span class="status-tag ${ready ? 'is-ready' : 'is-neutral'}">${ready ? '已完成' : '生成中'}</span></div>
+  </article>`;
+}
+
 function sketchBatchMarkup(batch = null, total = 0) {
   if (!batch || typeof batch !== 'object') return '';
   const status = String(batch.status || '');
@@ -99,7 +119,7 @@ function sketchBatchMarkup(batch = null, total = 0) {
   </div>`;
 }
 
-function storyboardProgressMarkup({ batch = null, active = false, failed = false, completed = 0, total = 0 } = {}) {
+function storyboardProgressMarkup({ batch = null, active = false, failed = false, completed = 0, total = 0, startedAt = '', finishedAt = '' } = {}) {
   if (batch && typeof batch === 'object') return sketchBatchMarkup(batch, total);
   if (!active && !failed) return '';
   const requested = Math.max(1, Number(total) || 1);
@@ -108,7 +128,7 @@ function storyboardProgressMarkup({ batch = null, active = false, failed = false
   return `<div class="sketch-batch-progress is-${failed ? 'failed' : 'running'}" role="${failed ? 'alert' : 'status'}" aria-live="polite">
     <div class="sketch-batch-progress-head"><b>${failed ? '镜头结构生成已停止' : '正在整理镜头结构'}</b><span>已完成 ${processed}/${requested} · ${percent}%</span></div>
     ${active ? `<div class="project-progress-track" aria-hidden="true"><i style="width:${percent}%"></i></div>` : ''}
-    <small>${failed ? '已完成的镜头结构会保留；分镜图片尚未开始，继续后只处理未完成镜头。' : '系统正在按剧情核对人物、场景、机位和站位；结构完成后才开始生成分镜图片。'}</small>
+    <small>${failed ? '已完成的镜头结构会保留；分镜图片尚未开始，继续后只处理未完成镜头。' : '系统正在按剧情核对人物、场景、机位和站位；已完成的镜头结构会立即显示。'} ${elapsedTimeTag({ startedAt, finishedAt, active })}</small>
   </div>`;
 }
 
@@ -120,14 +140,15 @@ export async function mount(host, context) {
   const { bundle, store } = context;
   const shots = Array.isArray(bundle?.storyboard?.shots) ? bundle.storyboard.shots : [];
   const checkpointShots = Array.isArray(bundle?.storyboard?.partial_shots) ? bundle.storyboard.partial_shots : [];
+  const displayShots = shots.length ? shots : checkpointShots;
   const checkpointTotal = Math.max(checkpointShots.length, Number(bundle?.storyboard?.checkpoint?.total || bundle?.storyboard?.status?.checkpoint_total || 0));
   const pageSize = 20;
-  const pageCount = Math.max(1, Math.ceil(shots.length / pageSize));
+  const pageCount = Math.max(1, Math.ceil(displayShots.length / pageSize));
   const requestedPage = Math.max(1, Number(context.route?.params?.get('page')) || 1);
   const page = Math.min(pageCount, requestedPage);
   const pageStart = (page - 1) * pageSize;
-  const visibleShots = shots.slice(pageStart, pageStart + pageSize);
-  const pageNav = shots.length > pageSize ? `<nav class="storyboard-pagination" aria-label="分镜分页"><span>第 ${page}/${pageCount} 页 · 共 ${shots.length} 镜</span><button class="btn small" type="button" data-storyboard-page="${page - 1}" ${page <= 1 ? 'disabled' : ''}>上一页</button><button class="btn small" type="button" data-storyboard-page="${page + 1}" ${page >= pageCount ? 'disabled' : ''}>下一页</button></nav>` : '';
+  const visibleShots = displayShots.slice(pageStart, pageStart + pageSize);
+  const pageNav = displayShots.length > pageSize ? `<nav class="storyboard-pagination" aria-label="分镜分页"><span>第 ${page}/${pageCount} 页 · 共 ${displayShots.length} 镜</span><button class="btn small" type="button" data-storyboard-page="${page - 1}" ${page <= 1 ? 'disabled' : ''}>上一页</button><button class="btn small" type="button" data-storyboard-page="${page + 1}" ${page >= pageCount ? 'disabled' : ''}>下一页</button></nav>` : '';
   const isReferenceDraft = bundle?.storyboard?.source === 'reference_analysis_projection';
   const sketches = Array.isArray(bundle?.storyboard?.images) ? bundle.storyboard.images : [];
   const sketchByShot = new Map(sketches.map(item => [Number(item.shot_index), item]));
@@ -174,15 +195,19 @@ export async function mount(host, context) {
       </section>
       ${gateBlocked ? `<div class="storyboard-stale-notice"><b>现有画面来自旧版人物与场景绑定，仅作历史参考。</b><span>${escapeHtml(sketchGate.reason || '系统需要重新核对剧情、人物和全部已确认场景。')} 选择模型并点击“重新生成分镜”，后台会自动完成核对后再生成，不会续用错误画面。</span></div>` : ''}
       ${primaryAction ? `<div class="storyboard-primary-actions">${primaryAction}</div>` : ''}
-      ${sceneSequenceMarkup(bundle, shots)}
+      ${sceneSequenceMarkup(bundle, displayShots)}
       <div data-sketch-batch-host>${storyboardProgressMarkup({
         batch: storyboardActive ? null : sketchBatch,
         active: storyboardActive || sketchBatchActive,
         failed: storyboardFailed || gateBlocked,
         completed: shots.length ? generatedSketchCount : checkpointShots.length,
         total: shots.length || checkpointTotal || 1,
+        startedAt: bundle?.project?.generation_progress?.started_at || bundle?.project?.generation_started_at || '',
+        finishedAt: bundle?.project?.generation_progress?.finished_at || '',
       })}</div>
-      ${shots.length ? `<div class="storyboard-sketch-grid">${visibleShots.map((shot, index) => sketchCard(shot, sketchByShot.get(Number(shot.shot_index || shot.index || pageStart + index + 1)) || {}, pageStart + index, sketchGate, bundle)).join('')}</div>${pageNav}` : `<div class="card storyboard-empty-card">${emptyState({ title: storyboardActive ? '正在生成分镜' : '还没有分镜画面', body: storyboardActive ? '完成的画面会逐镜显示。' : '选择模型并点击“生成分镜”即可开始。' })}</div>`}
+      <div data-storyboard-live-results>${displayShots.length ? `<div class="storyboard-sketch-grid">${visibleShots.map((shot, index) => shots.length
+        ? sketchCard(shot, sketchByShot.get(Number(shot.shot_index || shot.index || pageStart + index + 1)) || {}, pageStart + index, sketchGate, bundle)
+        : checkpointShotCard(shot, pageStart + index, bundle)).join('')}</div>${pageNav}` : `<div class="card storyboard-empty-card">${emptyState({ title: storyboardActive ? '正在生成分镜' : '还没有分镜画面', body: storyboardActive ? '镜头结构保存后会立即显示在这里。' : '选择模型并点击“生成分镜”即可开始。' })}</div>`}</div>
     </div>`;
 
   bindMediaLightbox(host);
@@ -195,7 +220,24 @@ export async function mount(host, context) {
     const total = Math.max(1, Number(progress.target_total || progress.total || checkpointTotal || 1));
     const completed = Math.max(0, Number(progress.completed ?? progress.processed ?? checkpointShots.length) || 0);
     const batchHost = host.querySelector('[data-sketch-batch-host]');
-    if (batchHost) batchHost.innerHTML = storyboardProgressMarkup({ active: true, completed, total });
+    if (batchHost) batchHost.innerHTML = storyboardProgressMarkup({
+      active: true, completed, total,
+      startedAt: progress.started_at || project.generation_started_at || '',
+    });
+    if (!shots.length) {
+      const formalShots = Array.isArray(currentBundle?.storyboard?.shots) ? currentBundle.storyboard.shots : [];
+      const partialShotsNow = Array.isArray(currentBundle?.storyboard?.partial_shots) ? currentBundle.storyboard.partial_shots : [];
+      const liveShots = formalShots.length ? formalShots : partialShotsNow;
+      const liveImages = Array.isArray(currentBundle?.storyboard?.images) ? currentBundle.storyboard.images : [];
+      const liveImageByShot = new Map(liveImages.map(item => [Number(item.shot_index), item]));
+      const resultsHost = host.querySelector('[data-storyboard-live-results]');
+      if (resultsHost && liveShots.length) {
+        resultsHost.innerHTML = `<div class="storyboard-sketch-grid ${formalShots.length ? 'storyboard-live-generation' : 'storyboard-checkpoint-preview'}">${liveShots.map((shot, index) => formalShots.length
+          ? liveGenerationShotCard(shot, liveImageByShot.get(Number(shot.shot_index || shot.index || index + 1)) || {}, index, currentBundle)
+          : checkpointShotCard(shot, index, currentBundle)).join('')}</div>`;
+        bindMediaLightbox(resultsHost);
+      }
+    }
     const action = host.querySelector('[data-prepare-storyboard-sketch]');
     if (action) { action.disabled = true; action.textContent = '正在整理镜头结构…'; }
   };
@@ -209,7 +251,7 @@ export async function mount(host, context) {
   const generateStoryboard = async (button, options = {}) => {
     let accepted = false;
     try {
-      setButtonBusy(button, true, '正在提交…', { elapsed: true });
+      setButtonBusy(button, true, '正在提交…');
       const optimisticTotal = Math.max(1, checkpointTotal || bundle?.story_flow?.contract?.units?.length || 1);
       store.beginStageSubmission?.('storyboard', optimisticTotal, checkpointShots.length
         ? `正在继续生成分镜；已完成 ${checkpointShots.length}/${optimisticTotal}，只处理未完成镜头。`
@@ -223,12 +265,6 @@ export async function mount(host, context) {
       toast('分镜生成已开始，画面会逐镜保存并显示。', 'success');
       return true;
     } catch (error) {
-      if (error.code === 'GENERATION_BILLING_REVIEW_REQUIRED' && options.acknowledge_billing_unknown !== true) {
-        const confirmed = await confirmDialog('上一次有一个镜头请求已提交但计费状态未知。继续只会补齐缺失镜头，但供应商仍可能同时收取原请求和本次请求的费用。已完成镜头不会重复生成。', {
-          title: '确认可能重复计费', confirmText: '我接受风险，继续补齐', cancelText: '先不重试', danger: true,
-        });
-        if (confirmed) return generateStoryboard(button, { ...options, acknowledge_billing_unknown: true });
-      }
       toast(error.message, 'danger');
       try { await store.refreshSections?.('summary,shots'); } catch {}
       return false;
@@ -242,6 +278,8 @@ export async function mount(host, context) {
     await generateStoryboard(event.currentTarget, {
       generate_images: true,
       confirmed: true,
+      acknowledge_billing_unknown: true,
+      user_initiated_direct_generation: true,
       image_model: model,
       client_request_id: globalThis.crypto?.randomUUID?.() || `${Date.now()}`,
     });

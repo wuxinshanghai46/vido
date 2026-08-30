@@ -603,6 +603,7 @@ async function generateStoryboardTable(ctx, blueprint, { taskId = '', resumeShot
       'When product presentation is enabled, mark product/proof/material/brand layers in visual_layers whenever the shot is commercially suitable.',
       'Do not output shots that violate negative requirements.',
       'If scene assets exist, scene_id must be selected from the current task scene assets only.',
+      'flow_scene_id is the authoritative location for the supplied beat. Render only that scene\'s task-authored layout, furniture, fixtures, props, zones and anchors. If source prose compares several application contexts, keep the story meaning but never mix another scene\'s unique physical elements into the selected scene.',
       'When a visible character has multiple look_profiles, set look_id on every shot to one declared look ID. Prefer the look whose scene_ids contains the shot scene_id; change it only when the approved story explicitly changes wardrobe state.',
       'scene_zone_id and zone_ids are stable machine bindings from the selected scene contract. Never translate, rename or invent them.',
       'scene_zone_label_zh is the user-facing Simplified Chinese label for the selected zone. It may explain the binding but must not replace or change scene_zone_id/zone_ids.',
@@ -838,6 +839,7 @@ async function rewriteStoryboard(ctx, blueprint, shots, issues, { taskId = '', o
     'Keep the requested commercial, story, product, proof, brand, UI, space, emotion or comparison dimensions visible as applicable.',
     'Preserve and enforce Advanced production controls from context: scene direction, product presentation, style direction and negative requirements.',
     'Preserve scene_id, look_id, scene_revision, scene_view, camera_id, scene_zone_id, zone_ids, anchor_ids and transition_reason whenever they are valid for the current task scene assets and character looks. scene_zone_label_zh may be repaired into Simplified Chinese without changing those IDs.',
+    'The preserved scene_id is the only physical location authority. Remove furniture, fixtures, counters, booths, rooms, props, zones or anchors that belong only to another task scene while preserving the approved action and spoken line.',
     'Preserve and repair adjacent-shot entry/exit state, action start/end, screen direction, eyeline, camera axis, camera movement, object state, transition type, transition_design and audio bridge. Preserve micro_expression as observable gaze/eyelid/brow/mouth/jaw/head/gesture evidence rather than an abstract emotion word.',
     'Preserve and repair temporal_state. It is an open-vocabulary contract: only intended_changes may change; invariants and evidence_requirements must remain task-specific and must never be replaced by an industry template.',
   ].join('\n');

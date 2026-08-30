@@ -16,6 +16,8 @@ function promptPayload(draft = {}) {
       'scene_id 必须从 scenes 中选择；不得根据数组顺序猜测。',
       '必须优先根据 scene.story_purpose、layout、interaction 与当前剧情动作选择场景；description 只作补充，不能让其他地点词覆盖所选场景。',
       'required_in_story=true 的每个已确认场景必须至少承载一个剧情节点；covered_beat_ids 指定的节点必须使用对应场景。',
+      '当剧情节点数量不少于必用场景数的两倍时，每个 required_in_story=true 的场景至少承载两个有明确剧情作用的节点：一个用于建立/进入该空间，另一个用于人物动作、产品证明、结果或离开；不得只在结尾象征性挂一个场景 ID。',
+      '每个节点只能描写所选 scene_id 的空间、家具、展台、道具和动线；其他场景的独有元素不得混入当前节点。',
       '尽量让同一地点的连续剧情保持在同一场景，只有剧情地点或用途真正变化时才切换，禁止在一个节点内混合多个地点。',
       'scene_id 与上一节点不同时，transition_from 必须等于上一节点 scene_id，transition_reason 必须说明剧情为何在此切换；未切换时两字段均为空字符串。',
       'character_ids 只能来自 people；纯空镜可以为空，人物出现或行动时必须绑定对应人物。',

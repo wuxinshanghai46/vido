@@ -47,6 +47,65 @@ function storyboardTextValues(shot = {}) {
   ].map(textValue).filter(Boolean);
 }
 
+const SCENE_SEMANTIC_STOP_WORDS = new Set([
+  '场景', '空间', '展示', '人物', '主体', '产品', '材料', '材质', '镜头', '画面', '光线',
+  '效果', '当前', '整个', '不同', '使用', '需要', '进行', '一个', '一种', '真实', '现代', '高级',
+]);
+const WORD_SEGMENTER = typeof Intl?.Segmenter === 'function'
+  ? new Intl.Segmenter('zh-CN', { granularity: 'word' })
+  : null;
+
+function sceneAuthorityText(asset = {}) {
+  const contract = asset.scene_contract && typeof asset.scene_contract === 'object' ? asset.scene_contract : {};
+  const layout = contract.layout_contract && typeof contract.layout_contract === 'object' ? contract.layout_contract : {};
+  return [
+    asset.name, asset.scene_name, asset.title, asset.story_purpose,
+    contract.requested_layout, contract.requested_interaction, contract.requested_material_light,
+    ...(Array.isArray(contract.zones) ? contract.zones.flatMap(item => [item.label, item.label_zh, item.purpose, item.description]) : []),
+    ...(Array.isArray(contract.anchors) ? contract.anchors.flatMap(item => [item.label, item.purpose, item.description]) : []),
+    ...(Array.isArray(layout.zones) ? layout.zones.flatMap(item => [item.label, item.label_zh, item.purpose, item.description]) : []),
+    ...(Array.isArray(layout.anchors) ? layout.anchors.flatMap(item => [item.label, item.description, item.relative_position]) : []),
+  ].map(textValue).filter(Boolean).join('；');
+}
+
+function sceneSemanticTokens(asset = {}) {
+  const source = sceneAuthorityText(asset);
+  const words = WORD_SEGMENTER
+    ? [...WORD_SEGMENTER.segment(source)].filter(item => item.isWordLike).map(item => item.segment)
+    : source.split(/[^\p{L}\p{N}_-]+/u);
+  return new Set(words.map(textValue).filter(word => word.length >= 2 && !SCENE_SEMANTIC_STOP_WORDS.has(word)));
+}
+
+function shotSceneVisualText(shot = {}) {
+  const layers = Array.isArray(shot.visual_layers) ? shot.visual_layers : [];
+  return [
+    shot.title, shot.visual, shot.visual_description, shot.story_visual, shot.promo_visual,
+    shot.action, shot.material_usage, shot.keyframe_notes, shot.scene_zone, shot.scene_zone_label_zh,
+    shot.entry_frame_state, shot.exit_frame_state, shot.action_start, shot.action_end, shot.object_states,
+    ...layers.flatMap(item => [item?.type, item?.content]),
+  ].map(textValue).filter(Boolean).join('；');
+}
+
+function sceneSemanticContaminationIssues(sceneAssets = [], shot = {}, index = 0) {
+  const assets = Array.isArray(sceneAssets) ? sceneAssets : [];
+  if (assets.length < 2) return [];
+  const selectedId = String(shot.scene_id || shot.scene_asset_id || '').trim();
+  const selected = assets.find((asset, assetIndex) => String(asset.scene_id || asset.id || `scene_${assetIndex + 1}`) === selectedId);
+  if (!selected) return [];
+  const selectedTokens = sceneSemanticTokens(selected);
+  const visualText = shotSceneVisualText(shot);
+  const conflicts = [];
+  assets.forEach((asset, assetIndex) => {
+    const id = String(asset.scene_id || asset.id || `scene_${assetIndex + 1}`);
+    if (id === selectedId) return;
+    const unique = [...sceneSemanticTokens(asset)].filter(token => !selectedTokens.has(token) && visualText.includes(token));
+    if (unique.length) conflicts.push(`${asset.name || asset.scene_name || id}：${unique.slice(0, 5).join('、')}`);
+  });
+  return conflicts.length
+    ? [`第 ${index + 1} 镜绑定“${selected.name || selected.scene_name || selectedId}”，但画面混入其他场景独有元素（${conflicts.join('；')}）`]
+    : [];
+}
+
 function hasGarbledStoryboardText(shot = {}) {
   return storyboardTextValues(shot).some(value => GARBLED_TEXT_PATTERN.test(value));
 }
@@ -239,6 +298,7 @@ function localReview(ctx, shots) {
       if (prevSceneId && sceneId && prevSceneId !== sceneId && !String(shot.transition_reason || '').trim()) {
         rewrite.push(`第 ${n} 镜切换场景但缺少转场原因`);
       }
+      blocking.push(...sceneSemanticContaminationIssues(sceneAssets, shot, idx));
     }
 
     if (multiMode) {
@@ -388,6 +448,7 @@ module.exports = {
   detailContractIssues,
   repeatedCameraTemplateIssue,
   internalProcessHits,
+  sceneSemanticContaminationIssues,
   localReview,
   reviewStoryboard,
   mergeReviews,

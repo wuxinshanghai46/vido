@@ -118,6 +118,13 @@ function initNativeSceneWorldViewer({ overlay, bundle, world, authority }) {
   const matrixRows = list(bundle.production_manifest?.character_world_matrix);
   const cameraRows = authority.sceneCameraRows(bundle, world);
   const zones = list(world.zones).length ? list(world.zones) : [{ id: `${world.id}_main`, name: world.name, bounds: { x: 0, z: 0, width: 4, depth: 3 } }];
+  const nativePhotoNodes = photoNodes(world);
+  const textureNode = nativePhotoNodes.find(node => String(node.view_key || '').toLowerCase() === 'layout')
+    || nativePhotoNodes.find(node => String(node.view_key || '').toLowerCase() === 'master')
+    || nativePhotoNodes[0]
+    || null;
+  const sceneTexture = textureNode?.image_url ? new Image() : null;
+  let textureReady = false;
 
   const project = (point, width, height) => {
     const x = Number(point.x || 0) - state.centerX;
@@ -157,6 +164,24 @@ function initNativeSceneWorldViewer({ overlay, bundle, world, authority }) {
     gradient.addColorStop(1, '#041015');
     context.fillStyle = gradient;
     context.fillRect(0, 0, width, height);
+    if (sceneTexture && textureReady) {
+      const floorA = project({ x: -6, y: 0.015, z: -4 }, width, height);
+      const floorB = project({ x: 6, y: 0.015, z: -4 }, width, height);
+      const floorD = project({ x: -6, y: 0.015, z: 4 }, width, height);
+      context.save();
+      context.globalAlpha = textureNode?.view_key === 'layout' ? 0.8 : 0.48;
+      context.imageSmoothingEnabled = true;
+      context.transform(
+        (floorB.x - floorA.x) / sceneTexture.naturalWidth,
+        (floorB.y - floorA.y) / sceneTexture.naturalWidth,
+        (floorD.x - floorA.x) / sceneTexture.naturalHeight,
+        (floorD.y - floorA.y) / sceneTexture.naturalHeight,
+        floorA.x,
+        floorA.y,
+      );
+      context.drawImage(sceneTexture, 0, 0);
+      context.restore();
+    }
     context.strokeStyle = '#1d4a4f88';
     context.lineWidth = 1;
     for (let line = -8; line <= 8; line += 1) {
@@ -209,7 +234,7 @@ function initNativeSceneWorldViewer({ overlay, bundle, world, authority }) {
       });
     }
     context.fillStyle = '#8aabb2'; context.font = '11px system-ui'; context.textAlign = 'left';
-    context.fillText('NATIVE 3D PROXY · 实时旋转预览', 18, 26);
+    context.fillText(textureReady ? '场景实图参考平面 · 可旋转机位规划' : '场景结构代理 · 可旋转机位规划', 18, 26);
   };
   const reset = () => { Object.assign(state, { yaw: -0.62, pitch: 0.62, zoom: 34, centerX: 0, centerZ: 0 }); draw(); };
   const pointerDown = event => { state.dragging = true; state.x = event.clientX; state.y = event.clientY; canvas.setPointerCapture?.(event.pointerId); };
@@ -253,6 +278,11 @@ function initNativeSceneWorldViewer({ overlay, bundle, world, authority }) {
     else reset();
     draw();
   };
+  if (sceneTexture) {
+    sceneTexture.addEventListener('load', () => { textureReady = true; draw(); }, { once: true });
+    sceneTexture.addEventListener('error', () => { textureReady = false; draw(); }, { once: true });
+    sceneTexture.src = window.VidoMediaDelivery?.previewUrl?.(textureNode.image_url, 1280, 'webp') || textureNode.image_url;
+  }
   reset();
   return { reset, setMode, dispose() {
     resizeObserver.disconnect();
@@ -358,7 +388,7 @@ function initSceneWorldViewer({ overlay, bundle, world, authority }) {
     viewer = initNativeSceneWorldViewer({ overlay, bundle, world, authority });
     viewer.setMode(mode);
     if (help) help.textContent = displayMode === 'director'
-      ? '3D导演预演 · 拖动旋转场景，滚轮缩放；机位与站位均为规划坐标，不冒充真实6DoF测量'
+      ? '场景实图参考平面 + 可旋转机位预演 · 拖动旋转，滚轮缩放；机位与站位为规划坐标，不冒充真实6DoF测量'
       : mode === 'blocking'
       ? '结构代理站位 · 仅用于编排方向，不代表6DoF深度、碰撞与真实遮挡'
       : (mode === 'camera' ? '机位结构代理 · 拖动旋转，滚轮缩放' : '场景结构 / 路线代理 · 仅在本模式下初始化Canvas');

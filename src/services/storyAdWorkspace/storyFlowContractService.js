@@ -3,7 +3,7 @@
 const storage = require('../newStoryAd/storageService');
 
 const OUTPUT_KIND = 'story_flow_contract';
-const CONTRACT_VERSION = 2;
+const CONTRACT_VERSION = 3;
 const DOWNSTREAM_KINDS = Object.freeze([
   'storyboard_checkpoint', 'storyboard_coverage_plan', 'storyboard_table', 'storyboard_meta',
   'storyboard_images', 'storyboard_image_batch', 'storyboard_sketches', 'storyboard_sketch_batch',
@@ -282,9 +282,14 @@ function validateUnits(base, supplied = [], options = {}) {
     };
   });
   const unitByBeatId = new Map(units.map(unit => [unit.beat_id, unit]));
+  const requiredScenes = base.scenes.filter(scene => scene.required_in_story !== false);
+  const defaultMinimum = requiredScenes.length && units.length >= requiredScenes.length * 2 ? 2 : 1;
   base.scenes.forEach(scene => {
-    if (scene.required_in_story !== false && !units.some(unit => unit.scene_id === scene.scene_id)) {
-      errors.push(`已确认场景“${scene.name}”没有绑定任何剧情节点`);
+    const sceneUnits = units.filter(unit => unit.scene_id === scene.scene_id);
+    const explicitMinimum = Math.max(0, Number(scene.minimum_story_units || 0) || 0);
+    const minimum = scene.required_in_story === false ? explicitMinimum : Math.max(defaultMinimum, explicitMinimum);
+    if (sceneUnits.length < minimum) {
+      errors.push(`已确认场景“${scene.name}”至少需要 ${minimum} 个有剧情作用的节点，当前只有 ${sceneUnits.length} 个`);
     }
     list(scene.covered_beat_ids).forEach(id => {
       const unit = unitByBeatId.get(String(id)) || units[Number(id) - 1];
