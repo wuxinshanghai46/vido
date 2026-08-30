@@ -1,4 +1,4 @@
-import { escapeHtml } from '../components/ui.js?v=20260830-production-v315';
+import { escapeHtml } from '../components/ui.js?v=20260830-production-v316';
 
 export function generationModelPickerPlaceholder(taskId, stage, options = {}) {
   const label = options.label || '图片模型';
