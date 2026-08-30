@@ -2,7 +2,7 @@
 
 const personIdentity = require('./personIdentityContractService');
 
-const CONTRACT_VERSION = 4;
+const CONTRACT_VERSION = 5;
 const list = value => Array.isArray(value) ? value.filter(Boolean) : [];
 const clean = (value = '', max = 1600) => String(value || '').replace(/\s+/g, ' ').trim().slice(0, max);
 
@@ -166,6 +166,7 @@ function ensureCoverage(shots = [], sceneAssets = [], ctx = {}) {
         visual: `${visualAuthority}；镜头为单一连续中广景，人物、路线、互动点和整面主要展示面必须同时可读${interactionGoal ? `；内容目标：${interactionGoal}` : ''}。`,
         action: clean(action, 1400) || '人物按规划路线移动到互动位置并完成当前剧情动作。',
         keyframe_notes: `${visualAuthority}；必须显示人物、规划站位、整面主要展示面和对应场景机位；禁止微距、局部材质满画幅或裁掉空间边界。`,
+        transition_reason: `进入${sceneName}，沿入口至${anchorLabel || '互动点'}的规划路线展开人物体验。`,
         scene_performance_contract: { version: CONTRACT_VERSION, scene_id: sceneId, source: 'structured_scene_plan', role: 'actor_interaction' },
       };
     }
@@ -201,6 +202,7 @@ function ensureCoverage(shots = [], sceneAssets = [], ctx = {}) {
           visual: `${establishingAuthority}；镜头为单一连续广角空间建立画面${establishingGoal ? `；内容目标：${establishingGoal}` : ''}。`,
           action: `摄影机从主建立机位以${establishingMovement}缓慢展示完整空间、整面主要展示面和互动点，画面不得裁成局部材质。`,
           keyframe_notes: `${establishingAuthority}；必须显示完整空间边界和整面主要展示面；禁止人物和微距，不得裁成仅剩局部墙面或单块材质，不得裁掉入口与中央区域。`,
+          transition_reason: `保持${sceneName}，由人物互动转为完整空间与整面主要展示面建立。`,
           scene_performance_contract: { version: CONTRACT_VERSION, scene_id: sceneId, source: 'structured_scene_plan', role: 'spatial_establishing' },
         };
       }
