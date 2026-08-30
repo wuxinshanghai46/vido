@@ -76,8 +76,8 @@ assert.equal(assets[1].scene_contract.cameras[1].normalized_position[0], 0.3, '�
 const sourceShots = [
   { index: 1, shot_id: 's1', scene_id: 'exhibition', scene_view: 'master', subject_type: 'human_scene', expected_people: 1, characters: [{ name: '陈默' }], visual: '人物进入展台', action: '人物观察材料', shot_size: 'wide' },
   { index: 2, shot_id: 's2', scene_id: 'exhibition', scene_view: 'detail', subject_type: 'product_only', expected_people: 0, characters: [], visual: '展台材质特写', action: '无人物', shot_size: 'close_up' },
-  { index: 3, shot_id: 's3', scene_id: 'home', scene_view: 'detail', subject_type: 'product_only', expected_people: 0, characters: [], visual: '金属拉丝微距', action: '禁止出现人物', keyframe_notes: '只显示材料，禁止人物', shot_size: 'macro', lens_mm: 85, transition_reason: '进入家居应用场景' },
-  { index: 4, shot_id: 's4', scene_id: 'home', scene_view: 'master', subject_type: 'product_only', expected_people: 0, characters: [], visual: '颜色搭配墙面', action: '不出现人物', keyframe_notes: '禁止人物', shot_size: 'wide' },
+  { index: 3, shot_id: 's3', scene_id: 'home', scene_view: 'detail', subject_type: 'product_only', expected_people: 0, characters: [], title: '金属拉丝极致特写', purpose: '拉丝纹理材质证明', visual: '纹理充满全画幅的金属拉丝微距', action: '禁止出现人物，镜头贴近板材', composition: '纹理充满全画幅', camera_movement: '极近横移', keyframe_notes: '只显示材料，禁止人物', shot_size: 'macro', lens_mm: 85, transition_reason: '进入家居应用场景' },
+  { index: 4, shot_id: 's4', scene_id: 'home', scene_view: 'detail', subject_type: 'product_only', expected_people: 0, characters: [], title: '颜色搭配局部特写', purpose: '多颜色搭配证明', visual: '只显示一块颜色板的局部', action: '不出现人物，微距贴近色板', composition: '单块色板充满全画幅', camera_movement: 'macro_push', keyframe_notes: '禁止人物，只保留局部墙面', shot_size: 'close_up', lens_mm: 85 },
   { index: 5, shot_id: 's5', scene_id: 'exhibition', scene_view: 'master', subject_type: 'human_scene', expected_people: 1, characters: [{ name: '陈默' }], visual: '人物返回展台', action: '人物完成收束', shot_size: 'wide', transition_reason: '返回品牌展台收束' },
 ];
 const bound = bindShotsToScenes(sourceShots, assets, { context: { ...ctx, scene_assets: assets } });
@@ -85,14 +85,40 @@ assert.equal(bound[2].scene_context_role, 'planned_actor_interaction');
 assert.equal(bound[2].expected_people, 1);
 assert.equal(bound[2].scene_view, 'interaction');
 assert.match(bound[2].visual, /完整空间关系/);
+assert.match(bound[2].title, /人物按规划路线体验/);
+assert.match(bound[2].purpose, /人物.*规划动线/);
+assert.doesNotMatch(bound[2].visual, /微距|纹理充满全画幅/);
+assert.doesNotMatch(bound[2].composition, /纹理充满全画幅/);
+assert.equal(bound[2].shot_size, 'medium_wide');
 assert.doesNotMatch(bound[2].keyframe_notes, /禁止人物/);
 assert.equal(bound[3].scene_context_role, 'planned_scene_establishing');
 assert.match(bound[3].keyframe_notes, /不得裁成仅剩局部墙面/);
+assert.match(bound[3].title, /完整空间与整面主要展示面/);
+assert.equal(bound[3].subject_type, 'scene_only');
+assert.equal(bound[3].no_person, true);
+assert.equal(bound[3].expected_people, 0);
+assert.doesNotMatch(bound[3].visual, /局部特写|只显示一块|微距/);
+assert.doesNotMatch(bound[3].composition, /单块色板充满全画幅/);
+assert.equal(bound[3].shot_size, 'wide');
+assert.equal(bound[2].scene_performance_contract.version, 2);
+assert.equal(bound[3].scene_performance_contract.version, 2);
 assert.equal(scenePerformance.inspect(bound, assets, ctx).ready, true);
 assert.equal(bound[0].scene_performance_contract, undefined, '已有正确人物覆盖的相邻场景不得被重写');
 const inferredCastCoverage = scenePerformance.ensureCoverage(sourceShots, assets, {});
 assert.equal(inferredCastCoverage[2].expected_people, 1, '结构化场景明确要求人物时不得依赖顶层 context 才执行');
 assert.equal(inferredCastCoverage[2].characters[0].name, '陈默', '顶层人物缺失时应从同一分镜表既有人物合同继承身份');
+
+const legacyCovered = bound.map(shot => shot.scene_id === 'home' ? {
+  ...shot,
+  title: shot.scene_context_role === 'planned_actor_interaction' ? '旧极致特写' : '旧局部墙面',
+  composition: shot.scene_context_role === 'planned_actor_interaction' ? '纹理充满全画幅' : '单块色板充满全画幅',
+  scene_performance_contract: { ...shot.scene_performance_contract, version: 1 },
+} : shot);
+const upgradedCoverage = scenePerformance.ensureCoverage(legacyCovered, assets, ctx);
+assert.equal(upgradedCoverage[2].scene_performance_contract.version, 2, '旧空间表演合同必须升级');
+assert.equal(upgradedCoverage[3].scene_performance_contract.version, 2, '旧空间建立合同必须升级');
+assert.doesNotMatch(upgradedCoverage[2].composition, /纹理充满全画幅/);
+assert.doesNotMatch(upgradedCoverage[3].composition, /单块色板充满全画幅/);
 
 const baseFingerprint = lineage.shotContractFingerprint(bound[2], 2);
 for (const patch of [
