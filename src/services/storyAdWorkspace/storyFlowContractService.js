@@ -305,8 +305,9 @@ function persistConfirmation(taskId, supplied = [], actor = {}, options = {}) {
     content_revision: Number(task.content_revision || 1) || 1,
     snapshot_id: task.current_snapshot_id || `story-flow:${taskId}`,
   });
-  if (changed) storage.deleteOutputs(taskId, DOWNSTREAM_KINDS);
-  return { contract, gate: inspect(taskId), model_call_count: contract.model_call_count, downstream_invalidated: changed };
+  const downstreamInvalidated = changed && options.preserveDownstream !== true;
+  if (downstreamInvalidated) storage.deleteOutputs(taskId, DOWNSTREAM_KINDS);
+  return { contract, gate: inspect(taskId), model_call_count: contract.model_call_count, downstream_invalidated: downstreamInvalidated };
 }
 
 function confirm(taskId, supplied = [], actor = {}) {
@@ -319,6 +320,22 @@ function confirmSystem(taskId, supplied = [], modelMeta = {}) {
     requireExact: true,
     model_call_count: 1,
     planning_model: modelMeta.used_model || '',
+  });
+}
+
+function rebindSystemAuthority(taskId) {
+  const stored = storage.getOutput(taskId, OUTPUT_KIND) || {};
+  const base = draft(taskId);
+  if (stored.status !== 'system_confirmed' || stored.blueprint_fingerprint !== base.blueprint_fingerprint) {
+    throw Object.assign(new Error('只有剧本未变化的系统确认绑定合同才能零模型升级权威指纹'), {
+      code: 'STORY_FLOW_AUTHORITY_REBIND_BLOCKED', status: 409, retryable: false,
+    });
+  }
+  return persistConfirmation(taskId, stored.units, { id: 'system_authority_rebind' }, {
+    status: 'system_confirmed', requireExact: true,
+    model_call_count: Number(stored.model_call_count || 0),
+    planning_model: stored.planning_model || '',
+    preserveDownstream: true,
   });
 }
 
@@ -358,5 +375,5 @@ function assertReady(taskId) {
 }
 
 module.exports = {
-  CONTRACT_VERSION, DOWNSTREAM_KINDS, OUTPUT_KIND, assertReady, authoritySnapshot, confirm, confirmSystem, draft, inspect, validateUnits,
+  CONTRACT_VERSION, DOWNSTREAM_KINDS, OUTPUT_KIND, assertReady, authoritySnapshot, confirm, confirmSystem, draft, inspect, rebindSystemAuthority, validateUnits,
 };

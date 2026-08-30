@@ -17,15 +17,17 @@ const soundDesignAssets = require('./soundDesignAssetService');
 const keyframeContractFreshness = require('./keyframeContractFreshnessService');
 const stageProgress = require('./stageProgressService');
 const diagnostics = require('./diagnosticsService');
+const storyFlowAuthority = require('../storyAdWorkspace/storyFlowContractService');
 
 function fail(message, code, status = 409, extra = {}) {
   return Object.assign(new Error(message), { code, status, ...extra });
 }
 
-function recover(taskId, options = {}) {
+function recoverAtomic(taskId, options = {}) {
   const task = storage.getTask(taskId);
   if (!task) throw fail('任务不存在', 'TASK_NOT_FOUND', 404);
   if (task.active_generation_id) throw fail('当前仍有生成任务执行，不能恢复分镜断点', 'GENERATION_ACTIVE_EDIT_BLOCKED');
+  if (!storyFlowAuthority.inspect(taskId).ready) storyFlowAuthority.rebindSystemAuthority(taskId);
   const sceneVerificationOptions = {
     acceptance: storage.getOutput(taskId, sceneVisualAcceptance.OUTPUT_KIND) || null,
   };
@@ -102,6 +104,10 @@ function recover(taskId, options = {}) {
     });
   });
   return { shots, review, keyframe_contracts: contracts, recovered_at: recoveredAt, provider_calls: 0 };
+}
+
+function recover(taskId, options = {}) {
+  return storage.withWriteBatch(() => recoverAtomic(taskId, options));
 }
 
 module.exports = { recover };

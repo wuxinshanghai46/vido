@@ -116,6 +116,8 @@ function testCompleteCheckpointRecoversWithoutProvider() {
   storage.saveOutput(taskId, 'blueprint', blueprint);
   const drafted = flow.draft(taskId);
   flow.confirmSystem(taskId, drafted.units, { used_model: 'fixture' });
+  const legacyFlow = storage.getOutput(taskId, flow.OUTPUT_KIND);
+  storage.saveOutput(taskId, flow.OUTPUT_KIND, { ...legacyFlow, authority_fingerprint: 'legacy-authority-without-look-catalog' });
   storage.saveOutput(taskId, 'storyboard_checkpoint', {
     status: 'running', phase: 'reviewing', blueprint_revision: 1,
     blueprint_fingerprint: blueprint.fingerprint, expected_total: shots.length,
@@ -130,6 +132,7 @@ function testCompleteCheckpointRecoversWithoutProvider() {
   assert.equal(storage.listModelCalls(taskId).length, modelCallsBefore);
   assert.equal(storage.getOutput(taskId, 'storyboard_checkpoint'), null);
   assert.equal(storage.getTask(taskId).stage, 'keyframe_contract_ready');
+  assert.equal(flow.inspect(taskId).ready, true);
 }
 
 function testSourceRedlines() {
