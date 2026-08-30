@@ -1,5 +1,5 @@
-import { request } from '../api.js?v=20260830-production-v293';
-import { escapeHtml } from '../components/ui.js?v=20260830-production-v293';
+import { request } from '../api.js?v=20260830-production-v295';
+import { escapeHtml } from '../components/ui.js?v=20260830-production-v295';
 
 export function generationModelDisplayName(model = {}) {
   return String(model.public_name || model.model_name || model.model_id || 'Image')
@@ -14,16 +14,6 @@ export function generationModelOptionLabel(model = {}) {
 
 function storageKey(taskId, stage) {
   return `story-ad-generation-model:${taskId}:${stage}`;
-}
-
-export function generationModelPickerPlaceholder(taskId, stage, options = {}) {
-  const label = options.label || '图片模型';
-  return {
-    taskId, stage, selected: '', pending: true,
-    html: `<label class="generation-model-picker is-loading" data-generation-model-picker="${escapeHtml(stage)}">
-      <span>${escapeHtml(label)}</span><select aria-label="${escapeHtml(label)}" disabled><option>正在载入…</option></select>
-    </label>`,
-  };
 }
 
 export async function loadGenerationModelPicker(taskId, stage, options = {}) {

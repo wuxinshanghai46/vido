@@ -1,13 +1,13 @@
-import { request, uploadAsset, uploadReferenceVideo } from '../api.js?v=20260830-production-v293';
-import { beginReferenceReplacement, referenceSyncInterrupted, replacementCurrent, removeProjectReference, restoreReferenceReplacement } from './referenceReplacementState.js?v=20260830-production-v292';
-import { cancelReferenceAnalysisRequest, retryReferenceAnalysisRequest, retryReferenceImportRequest } from './referenceRetryStore.js?v=20260830-production-v292';
-import { loadProjectList } from './projectListStore.js?v=20260830-production-v292';
-import { loadProjectBundle, prefetchProjectBundle, refreshProjectBundle } from './projectBundleStore.js?v=20260830-production-v292';
-import { beginStageSubmissionState } from './stageSubmissionState.js?v=20260830-production-v293';
-import { createStoryboardLiveRefresh } from './storyboardLiveRefresh.js?v=20260830-production-v293';
+import { request, uploadAsset, uploadReferenceVideo } from '../api.js?v=20260830-production-v295';
+import { beginReferenceReplacement, referenceSyncInterrupted, replacementCurrent, removeProjectReference, restoreReferenceReplacement } from './referenceReplacementState.js?v=20260830-production-v295';
+import { cancelReferenceAnalysisRequest, retryReferenceAnalysisRequest, retryReferenceImportRequest } from './referenceRetryStore.js?v=20260830-production-v295';
+import { loadProjectList } from './projectListStore.js?v=20260830-production-v295';
+import { loadProjectBundle, prefetchProjectBundle, refreshProjectBundle } from './projectBundleStore.js?v=20260830-production-v295';
+import { beginStageSubmissionState } from './stageSubmissionState.js?v=20260830-production-v295';
+import { createStoryboardLiveRefresh } from './storyboardLiveRefresh.js?v=20260830-production-v295';
+import { retainActiveGenerationProgress } from './progressProjection.js?v=20260830-production-v295';
 export function createProjectStore() {
-  const state = {
-    projects: [],
+  const state = { projects: [],
     stats: {},
     bundle: null,
     bundleSections: [],
@@ -25,7 +25,6 @@ export function createProjectStore() {
   }; const listeners = new Set(), refreshLiveStoryboard = createStoryboardLiveRefresh();
   let requestMutationChain = Promise.resolve();
   const notify = () => listeners.forEach(listener => listener(state)); const set = patch => { Object.assign(state, patch); notify(); };
-
   async function loadProjects(options = {}) {
     return loadProjectList({ request, set }, options);
   }
@@ -40,7 +39,6 @@ export function createProjectStore() {
       throw error;
     }
   }
-
   async function deleteProject(taskId) {
     const data = await request(`/api/new-story-ad/tasks/${encodeURIComponent(taskId)}`, { method: 'DELETE', timeoutMs: 120000 });
     await loadProjects();
@@ -53,7 +51,7 @@ export function createProjectStore() {
     hydrateReferenceFailure();
     return bundle;
   }
-  const mediaStore = () => import('./mediaCatalogStore.js?v=20260830-production-v292'), loadMediaPage = async options => (await mediaStore()).loadMediaPage({ request, state }, options);
+  const mediaStore = () => import('./mediaCatalogStore.js?v=20260830-production-v295'), loadMediaPage = async options => (await mediaStore()).loadMediaPage({ request, state }, options);
   const loadMoreMedia = async (kind = 'keyframes', limit = 24) => (await mediaStore()).loadMoreMedia({ request, state, set }, kind, limit);
   async function refreshSections(sections) {
     return refreshProjectBundle({ request, set, state, sections });
@@ -144,8 +142,6 @@ export function createProjectStore() {
     const taskId = state.bundle?.project?.id;
     if (!taskId) throw new Error('请先创建项目。');
     set({ saving: true, error: '' });
-    // The optimistic state is already visible at this point; begin observing the
-    // server immediately instead of waiting for the submission response.
     syncProgressPolling(true);
     try {
       const data = await request(`/api/new-story-ad/tasks/${encodeURIComponent(taskId)}/${path}`, {
@@ -519,6 +515,7 @@ export function createProjectStore() {
         const data = await request(`/api/new-story-ad/tasks/${encodeURIComponent(taskId)}/progress?since=${encodeURIComponent(since)}`);
         state.progressRevision = String(data.revision || state.progressRevision || '');
         const progressTask = data.task || {};
+        const retainedProgress = retainActiveGenerationProgress(progressTask, state.bundle);
         const project = {
           ...(state.bundle?.project || {}),
           status: progressTask.status || state.bundle?.project?.status || '',
@@ -528,16 +525,14 @@ export function createProjectStore() {
           generation_queued_at: progressTask.generation_queued_at || state.bundle?.project?.generation_queued_at || '',
           generation_started_at: progressTask.generation_started_at || state.bundle?.project?.generation_started_at || '',
           generation_finished_at: progressTask.generation_finished_at || state.bundle?.project?.generation_finished_at || '',
-          generation_progress: progressTask.generation_progress
-            || (progressTask.active_generation_id ? state.bundle?.project?.generation_progress : null),
+          generation_progress: retainedProgress.project,
           error: progressTask.error || '',
           error_code: progressTask.error_code || '',
           retryable: progressTask.retryable === true,
         };
         const generation = {
           ...(state.bundle?.generation || {}),
-          progress: progressTask.generation_progress
-            || (progressTask.active_generation_id ? state.bundle?.generation?.progress : null),
+          progress: retainedProgress.generation,
         };
         const bundle = { ...(state.bundle || {}), project, generation };
         set({ bundle, progressRevision: state.progressRevision });
@@ -582,7 +577,7 @@ export function createProjectStore() {
     updateRequest,
     beginStageSubmission: (stage, total, message, details) => beginStageSubmissionState({ state, set }, stage, total, message, details),
     runStage,
-    saveScenePrompt: async (scene, prompt) => (await import('./scenePromptConfirmationStore.js?v=20260830-production-v292')).saveScenePrompt({ state, request }, scene, prompt),
+    saveScenePrompt: async (scene, prompt) => (await import('./scenePromptConfirmationStore.js?v=20260830-production-v295')).saveScenePrompt({ state, request }, scene, prompt),
     saveBlueprint,
     saveStoryboard,
     saveStoryboardImages,
@@ -597,7 +592,7 @@ export function createProjectStore() {
     videoPreflight,
     startVideo,
     cancelGeneration,
-    acceptCurrentScenes: async () => (await import('./sceneAcceptanceStore.js?v=20260830-production-v292')).acceptCurrentScenes({ state, request, refreshSections }),
+    acceptCurrentScenes: async () => (await import('./sceneAcceptanceStore.js?v=20260830-production-v295')).acceptCurrentScenes({ state, request, refreshSections }),
     clearProject,
     syncProgressPolling,
     stopProgressPolling,

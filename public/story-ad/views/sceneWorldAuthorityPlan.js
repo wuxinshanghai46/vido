@@ -1,5 +1,5 @@
-import { escapeHtml as esc } from '../components/ui.js?v=20260830-production-v293';
-import { list } from './sceneWorldData.js?v=20260830-production-v293';
+import { escapeHtml as esc } from '../components/ui.js?v=20260830-production-v295';
+import { list } from './sceneWorldData.js?v=20260830-production-v295';
 
 const value = (row, keys) => keys.map(key => row?.[key]).find(item => item !== undefined && item !== null && item !== '');
 export function normalizedLayoutPoint(input) {
@@ -45,12 +45,10 @@ export function sceneSubjectRows(bundle = {}, world = {}) {
       kind: row.kind || 'person',
       gender: String(row.gender || person.gender || person.profile?.gender || '').toLowerCase(),
       species: row.species || '',
-      presence: cell.presence,
       position: normalizedLayoutPoint(value(cell, ['blocking_position', 'position_on_layout', 'position'])),
       entryPoint: normalizedLayoutPoint(value(cell, ['entry_point', 'entry_position'])),
       exitPoint: normalizedLayoutPoint(value(cell, ['exit_point', 'exit_position'])),
       routePoints: normalizedLayoutPath(value(cell, ['route_points', 'path_points'])),
-      camera_id: cell.camera_id || '',
     };
   }).filter(Boolean);
 }
