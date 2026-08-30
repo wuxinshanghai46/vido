@@ -1,5 +1,5 @@
-import { request } from '../api.js?v=20260830-production-v305';
-import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260830-production-v305';
+import { request } from '../api.js?v=20260830-production-v306';
+import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260830-production-v306';
 
 function personChecks(unit = {}, people = []) {
   const selected = new Set(Array.isArray(unit.character_ids) ? unit.character_ids : []);
