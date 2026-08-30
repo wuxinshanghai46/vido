@@ -1,8 +1,8 @@
-import { request } from '../api.js?v=20260830-production-v291e';
-import { escapeHtml, mediaPreview, toast } from '../components/ui.js?v=20260830-production-v291e';
-import { list, worldById } from './sceneWorldData.js?v=20260830-production-v291e';
-import { runPanoramaGeneration } from './panoramaGeneration.js?v=20260830-production-v291e';
-import { capabilityChips } from './sceneWorldCapabilities.js?v=20260830-production-v291e';
+import { request } from '../api.js?v=20260830-production-v292';
+import { escapeHtml, mediaPreview, toast } from '../components/ui.js?v=20260830-production-v292';
+import { list, worldById } from './sceneWorldData.js?v=20260830-production-v292';
+import { runPanoramaGeneration } from './panoramaGeneration.js?v=20260830-production-v292';
+import { capabilityChips } from './sceneWorldCapabilities.js?v=20260830-production-v292';
 function photoNodes(world = {}) {
   const seen = new Set();
   const panoramaRows = [
@@ -357,7 +357,7 @@ function initSceneWorldViewer({ overlay, bundle, world, authority }) {
     const requestToken = activation;
     activateModeButton(mode);
     currentNode = node;
-    const { mountSceneWorldLayoutViewer } = await import('./sceneWorldLayoutViewer.js?v=20260830-production-v291e');
+    const { mountSceneWorldLayoutViewer } = await import('./sceneWorldLayoutViewer.js?v=20260830-production-v292');
     if (requestToken !== activation) return;
     viewer = mountSceneWorldLayoutViewer({ host, bundle, world, authority, node, nodes, mode, previewUrl, photoStrip, onSelectPhoto: showPhoto });
     if (help) help.textContent = viewer.helpText;
@@ -370,7 +370,7 @@ function initSceneWorldViewer({ overlay, bundle, world, authority }) {
     host.innerHTML = '<div class="scene-world-canvas-loading">正在按需加载3DoF球形全景查看器…</div>';
     if (help) help.textContent = '3DoF原地环视：可改变观看方向与FOV，不支持摄像机前后左右位移';
     try {
-      const module = await import('./panoramaViewer.js?v=20260830-production-v291e');
+      const module = await import('./panoramaViewer.js?v=20260830-production-v292');
       if (requestToken !== activation) return;
       host.replaceChildren();
       viewer = module.mountPanoramaViewer({ host, source: node.image_url, label: node.name || world.name });
@@ -439,7 +439,7 @@ function initSceneWorldViewer({ overlay, bundle, world, authority }) {
 }
 
 async function openSceneWorldStudio(bundle, world, store = null) {
-  const authority = await import('./sceneWorldAuthorityPlan.js?v=20260830-production-v291e');
+  const authority = await import('./sceneWorldAuthorityPlan.js?v=20260830-production-v292');
   const realPhotoNodes = photoNodes(world);
   const hasRealPhotos = realPhotoNodes.length > 0;
   const worlds = list(bundle.scene_worlds);
@@ -477,7 +477,7 @@ async function openSceneWorldStudio(bundle, world, store = null) {
   overlay.querySelector('[data-close-scene-world]').addEventListener('click', close);
   overlay.querySelector('[data-open-full-director]')?.addEventListener('click', async () => {
     close();
-    const { openDirectorStudio } = await import('./directorStudioView.js?v=20260830-production-v291e');
+    const { openDirectorStudio } = await import('./directorStudioView.js?v=20260830-production-v292');
     await openDirectorStudio({ taskId: bundle.project.id, world });
   });
   overlay.querySelector('[data-scene-world-switch]')?.addEventListener('change', event => {
@@ -515,7 +515,7 @@ export function bindSceneWorldWorkspace(host, bundle = {}, store = null) {
   root.querySelectorAll('[data-plan-scene-experience]').forEach(button => button.addEventListener('click', async () => {
     const world = worldById(bundle, button.dataset.planSceneExperience);
     if (!world) return;
-    const { openSceneExperiencePlanner } = await import('./sceneWorldExperiencePlanner.js?v=20260830-production-v291e');
+    const { openSceneExperiencePlanner } = await import('./sceneWorldExperiencePlanner.js?v=20260830-production-v292');
     openSceneExperiencePlanner({ bundle, world, onOpenDirector: () => openSceneWorldStudio(bundle, world, store) });
   }));
   root.querySelector('[data-save-world-assignments]')?.addEventListener('click', async event => {
