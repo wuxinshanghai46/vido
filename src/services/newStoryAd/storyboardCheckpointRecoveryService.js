@@ -18,6 +18,7 @@ const keyframeContractFreshness = require('./keyframeContractFreshnessService');
 const stageProgress = require('./stageProgressService');
 const diagnostics = require('./diagnosticsService');
 const storyFlowAuthority = require('../storyAdWorkspace/storyFlowContractService');
+const { bindShotsToScenes } = require('./sceneBindingService');
 
 function fail(message, code, status = 409, extra = {}) {
   return Object.assign(new Error(message), { code, status, ...extra });
@@ -55,11 +56,12 @@ function recoverAtomic(taskId, options = {}) {
       `${ctx.request_id || taskId}|${ctx.brief || ''}|${ctx.product_subject || ''}`,
     ),
   };
-  const review = storyboardReviewPolicy.publishableReview(localReview(stageCtx, checkpointShots));
+  const reboundShots = bindShotsToScenes(checkpointShots, stageCtx.scene_assets);
+  const review = storyboardReviewPolicy.publishableReview(localReview(stageCtx, reboundShots));
   if (review.blocking_issues.length) {
     throw fail(`分镜断点仍有硬阻断，不能自动恢复：${review.blocking_issues.join('；')}`, 'STORYBOARD_CHECKPOINT_REVIEW_BLOCKED', 409, { review });
   }
-  const compiled = temporalEvidenceLifecycle.compileForTask({ storage, taskId, ctx: stageCtx, blueprint, shots: checkpointShots });
+  const compiled = temporalEvidenceLifecycle.compileForTask({ storage, taskId, ctx: stageCtx, blueprint, shots: reboundShots });
   const shots = contentDomainArtifacts.tagShots(ctx, compiled.shots);
   const contracts = buildKeyframeContracts({
     ...stageCtx,

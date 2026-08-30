@@ -41,6 +41,7 @@ assert.strictEqual(reboundZoneShot.scene_zone_id, undefined, 'a selected scene m
 assert.deepStrictEqual(reboundZoneShot.zone_ids, [], 'a scene with no structured zones must publish no machine zone ids');
 assert.strictEqual(reboundZoneShot.scene_zone_label_zh, '现代高端家居展示厅主体区域', 'a missing zone authority must use a neutral current-scene label');
 assert.deepStrictEqual(sceneBinding.sceneContractForShot({ scene_assets: [zoneLessScene] }, foreignZoneShot).zone_ids, [], 'generation contracts must not reintroduce foreign zone ids');
+assert.match(source('src/services/newStoryAd/storyboardCheckpointRecoveryService.js'), /bindShotsToScenes\(checkpointShots, stageCtx\.scene_assets\)/, 'checkpoint recovery must rebind current scene authority before review');
 
 assert.strictEqual(personLooks.personProfile({ id: 'p1', name: '林女士', gender: 'female' }).gender, 'female');
 const world = {
@@ -82,4 +83,4 @@ assert.match(source('public/story-ad/views/directorStudioView.js'), /sceneImages
 const releaseConfig = JSON.parse(source('config/story-ad-release.json'));
 assert.match(source('public/story-ad/release.js'), new RegExp(releaseConfig.build_id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')), 'the browser release must use the configured immutable build id');
 
-console.log('story-ad v293 interaction/performance regression passed: 24 assertions');
+console.log('story-ad v293 interaction/performance regression passed: 25 assertions');
