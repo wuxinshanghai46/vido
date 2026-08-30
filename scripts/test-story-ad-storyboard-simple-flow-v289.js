@@ -16,6 +16,7 @@ const storyAd = require('../src/services/newStoryAd/storyAdService');
 const flow = require('../src/services/storyAdWorkspace/storyFlowContractService');
 const planning = require('../src/services/storyAdWorkspace/storyFlowPlanningService');
 const sketches = require('../src/services/storyAdWorkspace/storyboardSketchService');
+const lineage = require('../src/services/newStoryAd/storyboardImageLineageService');
 const imageGate = require('../src/services/storyAdWorkspace/storyboardImageConfirmationGateService');
 const quality = require('../src/services/newStoryAd/qualityReviewService');
 
@@ -63,7 +64,7 @@ function testGeneratedImageNeedsNoSecondConfirmation() {
   createReadyTask(taskId, shots);
   storage.saveOutput(taskId, 'storyboard_images', [{
     shot_index: 1, status: 'draft', image_url: '/storyboard-1.png',
-    shot_contract_fingerprint: sketches.shotContractFingerprint(shots[0], 0),
+    shot_contract_fingerprint: lineage.legacyShotContractFingerprint(shots[0], 0),
   }]);
   const gate = imageGate.inspect(taskId);
   assert.equal(gate.ready, true);

@@ -3,7 +3,9 @@
 
 const storage = require('../src/services/newStoryAd/storageService');
 const freshness = require('../src/services/newStoryAd/keyframeContractFreshnessService');
+const { buildKeyframeContracts } = require('../src/services/newStoryAd/keyframeContractService');
 const performance = require('../src/services/newStoryAd/scenePerformanceCoverageContractService');
+const lineage = require('../src/services/newStoryAd/storyboardImageLineageService');
 const imageGate = require('../src/services/storyAdWorkspace/storyboardImageConfirmationGateService');
 
 const taskId = String(process.argv[2] || process.env.STORY_AD_TASK_ID || '').trim();
@@ -15,15 +17,29 @@ if (!task) throw Object.assign(new Error('TASK_NOT_FOUND'), { code: 'TASK_NOT_FO
 const beforeShots = storage.getOutput(taskId, 'storyboard_table') || [];
 const compiled = freshness.compileCurrentTask(taskId);
 const changedIndexes = compiled.shots.map((shot, index) => (
-  storage.canonicalFingerprint(shot) === storage.canonicalFingerprint(beforeShots[index] || {}) ? -1 : index
+  storage.canonicalFingerprint(shot.scene_performance_contract || null)
+    === storage.canonicalFingerprint(beforeShots[index]?.scene_performance_contract || null) ? -1 : index
 )).filter(index => index >= 0);
+const changed = new Set(changedIndexes);
+const migratedShots = beforeShots.map((shot, index) => changed.has(index) ? compiled.shots[index] : shot);
+const migratedContracts = buildKeyframeContracts(compiled.ctx, migratedShots);
 const beforePerformance = performance.inspect(beforeShots, compiled.ctx.scene_assets, compiled.ctx);
-const afterPerformance = performance.inspect(compiled.shots, compiled.ctx.scene_assets, compiled.ctx);
+const afterPerformance = performance.inspect(migratedShots, compiled.ctx.scene_assets, compiled.ctx);
+const imagesByShot = new Map((storage.getOutput(taskId, 'storyboard_images') || []).map(image => [Number(image.shot_index), image]));
+const projectedStaleIndexes = migratedShots.map((shot, index) => {
+  const image = imagesByShot.get(index + 1);
+  if (!image?.image_url) return -1;
+  const expected = Number(image.lineage_schema_version || 0) >= 2
+    ? lineage.shotContractFingerprint(shot, index)
+    : lineage.legacyShotContractFingerprint(shot, index);
+  return image.shot_contract_fingerprint === expected ? -1 : index + 1;
+}).filter(index => index > 0);
 const report = {
   ok: afterPerformance.ready,
   task_id: taskId,
   mode: apply ? 'apply' : 'dry_run',
   changed_shot_indexes: changedIndexes.map(index => index + 1),
+  projected_stale_indexes: projectedStaleIndexes,
   before_performance: beforePerformance,
   after_performance: afterPerformance,
   provider_calls: 0,
@@ -35,8 +51,8 @@ if (!apply || !changedIndexes.length) {
 }
 
 storage.withWriteBatch(() => {
-  storage.saveOutput(taskId, 'storyboard_table', compiled.shots);
-  freshness.persist(taskId, compiled.contracts, { changedIndexes, clearDownstream: false });
+  storage.saveOutput(taskId, 'storyboard_table', migratedShots);
+  freshness.persist(taskId, migratedContracts, { changedIndexes, clearDownstream: false });
   const meta = storage.getOutput(taskId, 'storyboard_meta') || {};
   storage.saveOutput(taskId, 'storyboard_meta', {
     ...meta,

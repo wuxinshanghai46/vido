@@ -5,6 +5,24 @@ const storage = require('./storageService');
 const list = value => Array.isArray(value) ? value.filter(Boolean) : [];
 const clean = (value = '', max = 1600) => String(value || '').replace(/\s+/g, ' ').trim().slice(0, max);
 
+// V301 及更早图片使用的不可变兼容口径。旧图只按生成当时已经存在的
+// 字段比较；升级到 schema 2 后才启用机位、锚点、站位等完整空间血缘。
+function legacyShotContractFingerprint(shot = {}, index = 0) {
+  return storage.canonicalFingerprint({
+    shot_id: clean(shot.shot_id || `shot_${index + 1}`, 160),
+    source_beat_id: clean(shot.source_beat_id, 160),
+    scene_id: clean(shot.scene_id || shot.scene_asset_id, 160),
+    character_ids: list(shot.character_ids).map(value => clean(value, 160)),
+    look_bindings: shot.look_bindings || {},
+    visual: clean(shot.visual || shot.visual_description),
+    action: clean(shot.action, 800),
+    shot_size: clean(shot.shot_size, 80),
+    camera_angle: clean(shot.camera_angle, 80),
+    camera_movement: clean(shot.camera_movement, 120),
+    lens_mm: Number(shot.lens_mm || 0) || 0,
+  });
+}
+
 function shotContractFingerprint(shot = {}, index = 0) {
   return storage.canonicalFingerprint({
     shot_id: clean(shot.shot_id || `shot_${index + 1}`, 160),
@@ -34,4 +52,4 @@ function shotContractFingerprint(shot = {}, index = 0) {
   });
 }
 
-module.exports = { shotContractFingerprint };
+module.exports = { legacyShotContractFingerprint, shotContractFingerprint };

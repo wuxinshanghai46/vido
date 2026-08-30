@@ -84,6 +84,9 @@ assert.equal(bound[3].scene_context_role, 'planned_scene_establishing');
 assert.match(bound[3].keyframe_notes, /不得裁成仅剩局部墙面/);
 assert.equal(scenePerformance.inspect(bound, assets, ctx).ready, true);
 assert.equal(bound[0].scene_performance_contract, undefined, '已有正确人物覆盖的相邻场景不得被重写');
+const inferredCastCoverage = scenePerformance.ensureCoverage(sourceShots, assets, {});
+assert.equal(inferredCastCoverage[2].expected_people, 1, '结构化场景明确要求人物时不得依赖顶层 context 才执行');
+assert.equal(inferredCastCoverage[2].characters[0].name, '陈默', '顶层人物缺失时应从同一分镜表既有人物合同继承身份');
 
 const baseFingerprint = lineage.shotContractFingerprint(bound[2], 2);
 for (const patch of [
@@ -115,6 +118,36 @@ storage.saveOutput(taskId, 'storyboard_images', bound.map((shot, index) => {
   };
 }));
 assert.equal(imageGate.inspect(taskId).ready, true, '空间和镜头血缘一致时允许继续');
+
+const legacyTaskId = 'spatial-storyboard-v302-legacy-gate';
+storage.createTask({ id: legacyTaskId, title: '旧图兼容门禁', brief: '旧图兼容门禁', content_revision: 1, request: ctx });
+storage.saveOutput(legacyTaskId, 'context', ctx);
+storage.saveOutput(legacyTaskId, 'scene_config', plan);
+storage.saveOutput(legacyTaskId, 'scene_assets', rawAssets);
+storage.saveOutput(legacyTaskId, 'storyboard_table', bound);
+storage.saveOutput(legacyTaskId, 'shot_reference_packs', bound.map((_, index) => ({ fingerprint: `legacy_pack_${index + 1}` })));
+storage.saveOutput(legacyTaskId, 'storyboard_images', bound.map((shot, index) => {
+  const asset = assets.find(item => item.scene_id === shot.scene_id);
+  const master = asset.view_images.find(view => view.key === 'master');
+  const selected = asset.view_images.find(view => view.key === shot.scene_view) || master;
+  return {
+    shot_index: index + 1,
+    image_url: `/legacy_${index + 1}.png`,
+    lineage_schema_version: index === 3 ? 1 : 0,
+    shot_contract_fingerprint: lineage.legacyShotContractFingerprint(shot, index),
+    ...(index === 3 ? {
+      scene_id: shot.scene_id,
+      scene_revision: 1,
+      scene_reference_url: master.image_url,
+      scene_view_reference_url: selected.image_url === master.image_url ? '' : selected.image_url,
+      reference_pack_fingerprint: `legacy_pack_${index + 1}`,
+    } : {}),
+  };
+}));
+assert.equal(imageGate.inspect(legacyTaskId).ready, true, 'V301 旧图应按生成时指纹口径兼容，不能升级后全量误伤');
+storage.saveOutput(legacyTaskId, 'storyboard_table', bound.map((shot, index) => index === 2 ? { ...shot, action: `${shot.action}并停留确认` } : shot));
+assert.deepEqual(imageGate.inspect(legacyTaskId).stale_indexes, [3], '旧图内容真正变化时仍必须精准失效');
+
 storage.saveOutput(taskId, 'scene_world_overrides', {
   assignment_revision: 2,
   assignments: [{ character_id: 'person_1', world_id: 'home', presence: 'confirmed', blocking_position: [0.75, 0.35], route_points: [[0.1, 0.8], [0.75, 0.35]] }],

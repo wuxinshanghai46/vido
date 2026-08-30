@@ -9,7 +9,6 @@ const clean = (value = '', max = 1600) => String(value || '').replace(/\s+/g, ' 
 function idOf(value = {}) { return clean(value.scene_id || value.scene_asset_id || value.id, 120); }
 
 function actorPlan(asset = {}, ctx = {}) {
-  if (!personIdentity.personRequired(ctx)) return null;
   const spec = asset.scene_spec || {};
   const experience = spec.sceneExperienceContract || spec.scene_experience_contract || {};
   const interaction = clean(spec.interactionText || spec.interaction_text, 1400);
@@ -28,8 +27,10 @@ function hasPerson(shot = {}) {
   return personIdentity.shotPersonPresence(shot, {}).required;
 }
 
-function castForShot(ctx = {}, action = '') {
-  const rows = list(ctx.characters).length ? list(ctx.characters) : list(ctx.cast_profiles);
+function castForShot(ctx = {}, action = '', shots = []) {
+  const plannedRows = list(ctx.characters).length ? list(ctx.characters) : list(ctx.cast_profiles);
+  const existingRows = list(shots).flatMap(shot => list(shot.characters)).filter(item => clean(item?.name || item, 120));
+  const rows = plannedRows.length ? plannedRows : existingRows;
   if (rows.length) return rows.slice(0, Math.max(1, Number(ctx.expected_people || 1) || 1)).map(item => ({
     ...(item && typeof item === 'object' ? item : { name: clean(item, 120) }),
     name: clean(item?.name || item?.displayName || item?.roleName || item, 120),
@@ -66,7 +67,7 @@ function ensureCoverage(shots = [], sceneAssets = [], ctx = {}) {
       camera.id, camera.view_id, camera.label, camera.role, camera.movement_type,
     ].join(' '), 600))) || plan.cameras.find(camera => clean(camera.view_id, 80) === 'interaction') || plan.cameras[0] || {};
     const action = plan.interaction || clean(route.label || route.continuity || anchor.purpose, 1000);
-    const personCharacters = castForShot(ctx, action);
+    const personCharacters = castForShot(ctx, action, result);
     const anchorLabel = clean(anchor.label || anchor.name, 200);
     const routeLabel = clean(route.label || route.continuity, 300);
     const visualAuthority = [

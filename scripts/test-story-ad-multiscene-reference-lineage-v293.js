@@ -14,6 +14,7 @@ process.env.DB_DUAL_WRITE = '0';
 process.env.DB_JSON_FALLBACK = '1';
 
 const storage = require('../src/services/newStoryAd/storageService');
+const lineage = require('../src/services/newStoryAd/storyboardImageLineageService');
 const storyFlow = require('../src/services/storyAdWorkspace/storyFlowContractService');
 const sketchGate = require('../src/services/storyAdWorkspace/storyboardSketchGateService');
 const sketches = require('../src/services/storyAdWorkspace/storyboardSketchService');
@@ -294,12 +295,13 @@ async function testModernImageInvalidatesWhenSceneAuthorityChanges() {
     shot_index: 5,
     status: 'ready',
     image_url: '/fixtures/generated/modern-shot-5.png',
-    lineage_schema_version: 1,
+    lineage_schema_version: 2,
     scene_id: 'scene_showroom',
     scene_revision: 2,
     scene_reference_url: prepared.sceneReference,
     scene_view_reference_url: prepared.sceneViewReference,
     reference_pack_fingerprint: prepared.referencePack.fingerprint,
+    scene_planning_fingerprint: prepared.sceneAsset.scene_planning_fingerprint,
     shot_contract_fingerprint: sketches.shotContractFingerprint(prepared.shot, 4),
     source_content_revision: 1,
   }]);
@@ -336,7 +338,7 @@ async function testLegacyImageCompatibilityAndChangeInvalidation() {
     shot_index: 1,
     status: 'ready',
     image_url: '/fixtures/generated/legacy-image-1.png',
-    shot_contract_fingerprint: sketches.shotContractFingerprint(legacyShot, 0),
+    shot_contract_fingerprint: lineage.legacyShotContractFingerprint(legacyShot, 0),
     source_content_revision: 1,
   }]);
   const compatible = imageGate.inspect(taskId);

@@ -7,7 +7,7 @@ const storyboardImageLineage = require('../newStoryAd/storyboardImageLineageServ
 
 function list(value) { return Array.isArray(value) ? value.filter(Boolean) : []; }
 function clean(value = '', max = 1600) { return String(value || '').replace(/\s+/g, ' ').trim().slice(0, max); }
-const { shotContractFingerprint } = storyboardImageLineage;
+const { legacyShotContractFingerprint, shotContractFingerprint } = storyboardImageLineage;
 
 function inspect(taskId) {
   const task = storage.getTask(taskId);
@@ -33,7 +33,11 @@ function inspect(taskId) {
     const image = byIndex.get(shotIndex);
     if (!image?.image_url) missing.push(shotIndex);
     else {
-      const legacyContractStale = image.shot_contract_fingerprint !== shotContractFingerprint(shot, index);
+      const lineageVersion = Number(image.lineage_schema_version || 0);
+      const expectedShotFingerprint = lineageVersion >= 2
+        ? shotContractFingerprint(shot, index)
+        : legacyShotContractFingerprint(shot, index);
+      const legacyContractStale = image.shot_contract_fingerprint !== expectedShotFingerprint;
       const pack = referencePacks[index] || null;
       const currentSceneId = clean(shot.scene_id || shot.scene_asset_id, 160);
       const currentScene = sceneById.get(currentSceneId) || null;
@@ -43,7 +47,7 @@ function inspect(taskId) {
       const wantedView = clean(shot.scene_view || shot.sceneView, 80);
       const selectedView = list(currentScene?.view_images).find(view => clean(view.key || view.view || view.view_id, 80) === wantedView) || identityView;
       const selectedReference = clean(selectedView?.image_url || selectedView?.url, 1200);
-      const modernLineage = Number(image.lineage_schema_version || 0) >= 1;
+      const modernLineage = lineageVersion >= 1;
       const reasons = [];
       if (legacyContractStale) reasons.push('SHOT_CONTRACT_CHANGED');
       if (Number(image.source_content_revision || 0) > 0
