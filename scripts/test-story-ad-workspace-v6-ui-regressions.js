@@ -1059,7 +1059,9 @@ assert.equal(busyButton.textContent, '生成人物');
 assert.equal(busyButton.disabled, false);
 
 const storeSource = read('public/story-ad/store/projectStore.js');
-assert.match(storeSource, /generation_progress:\s*progressTask\.generation_progress/, '轻量轮询必须把完整进度合并回 V6 bundle');
+const progressProjectionSource = read('public/story-ad/store/progressProjection.js');
+assert.match(storeSource, /retainActiveGenerationProgress\(progressTask, state\.bundle\)/, '轻量轮询必须通过独立投影合并完整进度');
+assert.match(progressProjectionSource, /project:\s*reported[\s\S]+generation:\s*reported/, '进度投影必须同时保留项目与生成视图的服务端进度');
 assert.match(storeSource, /progressRevision/, '轮询必须使用独立进度 revision，不能误用内容 revision');
 const appSource = read('public/story-ad/app.js');
 assert.match(appSource, /setInterval\(\(\) => refreshElapsedLabels\(document\), 1000\)/, '页面必须每秒刷新活动任务耗时');
