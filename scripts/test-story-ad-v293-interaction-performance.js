@@ -9,6 +9,7 @@ const personLooks = require('../src/services/storyAdWorkspace/personLookProjecti
 const sceneWorlds = require('../src/services/storyAdWorkspace/sceneWorldService');
 const directorScenes = require('../src/services/storyAdWorkspace/directorSceneService');
 const productionLimits = require('../src/services/newStoryAd/productionLimitsService');
+const sceneBinding = require('../src/services/newStoryAd/sceneBindingService');
 
 const root = path.resolve(__dirname, '..');
 const source = file => fs.readFileSync(path.join(root, file), 'utf8');
@@ -32,6 +33,14 @@ assert.match(
   'a foreign scene name and multiple persisted physical labels must still block publication',
 );
 assert.strictEqual(productionLimits.requiredStoryboardShotCount(60, 9), 9, 'current story-flow units must determine a new shot count');
+
+const zoneLessScene = { id: 'home', name: '现代高端家居展示厅', scene_revision: 1, scene_contract: { zones: [], anchors: [], cameras: [] } };
+const foreignZoneShot = { scene_id: 'home', scene_view: 'detail', scene_zone_id: 'Z2', zone_ids: ['Z2'], scene_zone: '背景展示墙区', scene_zone_label_zh: '背景展示墙区' };
+const reboundZoneShot = sceneBinding.bindShotToScene(foreignZoneShot, [zoneLessScene]);
+assert.strictEqual(reboundZoneShot.scene_zone_id, undefined, 'a selected scene must not inherit a foreign zone id');
+assert.deepStrictEqual(reboundZoneShot.zone_ids, [], 'a scene with no structured zones must publish no machine zone ids');
+assert.strictEqual(reboundZoneShot.scene_zone_label_zh, '现代高端家居展示厅主体区域', 'a missing zone authority must use a neutral current-scene label');
+assert.deepStrictEqual(sceneBinding.sceneContractForShot({ scene_assets: [zoneLessScene] }, foreignZoneShot).zone_ids, [], 'generation contracts must not reintroduce foreign zone ids');
 
 assert.strictEqual(personLooks.personProfile({ id: 'p1', name: '林女士', gender: 'female' }).gender, 'female');
 const world = {
@@ -73,4 +82,4 @@ assert.match(source('public/story-ad/views/directorStudioView.js'), /sceneImages
 const releaseConfig = JSON.parse(source('config/story-ad-release.json'));
 assert.match(source('public/story-ad/release.js'), new RegExp(releaseConfig.build_id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')), 'the browser release must use the configured immutable build id');
 
-console.log('story-ad v293 interaction/performance regression passed: 20 assertions');
+console.log('story-ad v293 interaction/performance regression passed: 24 assertions');

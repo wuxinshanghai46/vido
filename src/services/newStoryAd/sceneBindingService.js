@@ -168,10 +168,10 @@ function spatialBindingForShot(shot = {}, asset = {}, sceneView = 'master') {
     .find(item => item.view_id === sceneView) || null;
   return {
     camera_id: camera?.id || 'camera_' + sceneView,
-    zone_id: selectedZone?.id || cleanText(shot.scene_zone_id || shot.zone_id || (Array.isArray(shot.zone_ids) ? shot.zone_ids[0] : ''), 100),
+    zone_id: selectedZone?.id || '',
     zone_ids: selectedZone?.id ? [selectedZone.id] : [],
     anchor_ids: anchors,
-    zone_label: selectedZone?.label_zh || selectedZone?.label || cleanText(shot.scene_zone_label_zh || shot.scene_zone || shot.sceneZone || shot.zone || shot.purpose || shot.title || '', 160),
+    zone_label: selectedZone?.label_zh || selectedZone?.label || cleanText(`${asset.name || asset.scene_name || '场景'}主体区域`, 160),
   };
 }
 
@@ -556,14 +556,13 @@ function bindShotToScene(shot = {}, sceneAssets = [], index = 0, previousShot = 
   }
   const sceneView = resolveSceneView(shot, matched);
   const spatial = spatialBindingForShot(shot, matched, sceneView);
-  const requestedLabel = cleanText(shot.scene_zone_label_zh || shot.zone_label_zh || '', 160);
-  const displayLabelZh = hasChinese(requestedLabel) ? requestedLabel : cleanText(spatial.zone_label || requestedLabel, 160);
+  const displayLabelZh = cleanText(spatial.zone_label, 160);
 
   return {
     ...shot,
     scene_id: sceneId,
     scene_asset_id: sceneId,
-    scene_name: cleanText(shot.scene_name || shot.sceneName || matched.name || `任务场景 ${matchedIndex + 1}`, 120),
+    scene_name: cleanText(matched.name || shot.scene_name || shot.sceneName || `任务场景 ${matchedIndex + 1}`, 120),
     scene_revision: actualRevision,
     scene_view: sceneView,
     camera_id: spatial.camera_id,
@@ -626,12 +625,12 @@ function sceneContractForShot(ctx = {}, shot = {}, index = 0) {
     scene_name: cleanText(shot.scene_name || asset.name || `任务场景 ${assetIndex + 1}`, 120),
     scene_revision: Math.max(1, Number(asset.scene_revision || asset.scene_contract?.scene_revision || 1) || 1),
     scene_view: sceneView,
-    camera_id: cleanText(shot.camera_id || spatial.camera_id, 100),
-    scene_zone_id: cleanText(shot.scene_zone_id || shot.zone_id || (Array.isArray(shot.zone_ids) ? shot.zone_ids[0] : '') || spatial.zone_id || '', 100),
-    scene_zone_label_zh: cleanText(shot.scene_zone_label_zh || shot.zone_label_zh || shot.scene_zone || spatial.zone_label || '', 160),
-    zone_ids: Array.isArray(shot.zone_ids) && shot.zone_ids.length ? shot.zone_ids : spatial.zone_ids,
-    anchor_ids: Array.isArray(shot.anchor_ids) && shot.anchor_ids.length ? shot.anchor_ids : spatial.anchor_ids,
-    scene_zone: cleanText(shot.scene_zone || '', 160),
+    camera_id: cleanText(spatial.camera_id, 100),
+    scene_zone_id: cleanText(spatial.zone_id || '', 100),
+    scene_zone_label_zh: cleanText(spatial.zone_label || '', 160),
+    zone_ids: spatial.zone_ids,
+    anchor_ids: spatial.anchor_ids,
+    scene_zone: cleanText(spatial.zone_label || '', 160),
     transition_from: cleanText(shot.transition_from || '', 120),
     transition_reason: cleanText(shot.transition_reason || '', 240),
     lock_strength: cleanText(asset.lock_strength || 'standard', 40),
