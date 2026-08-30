@@ -1,4 +1,4 @@
-import { personPlanTechnicalDetails } from './assetCenterTechnicalDetails.js?v=20260830-production-v290a';
+import { personPlanTechnicalDetails } from './assetCenterTechnicalDetails.js?v=20260830-production-v290b';
 
 export function assetPlanStageView({ generationActive = false, counts = {}, missingSubjectCount = 0, project = {}, isAdmin = false } = {}) {
   const completed = Number(missingSubjectCount || 0) === 0;

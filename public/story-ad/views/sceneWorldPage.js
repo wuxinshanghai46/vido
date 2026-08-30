@@ -1,11 +1,11 @@
-import { bindSceneWorldWorkspace } from './sceneWorldView.js?v=20260830-production-v290a';
-import { bindScenePlanUpdate, scenePlanBlockedView } from './scenePlanStatus.js?v=20260830-production-v290a';
-import { renderSceneProductionCard, scenePromptPreviewMarkup, scenePromptPreviewState, startInitialScenePlan } from './scenePromptPreview.js?v=20260830-production-v290a';
-import { bindMediaLightbox } from './mediaLightbox.js?v=20260830-production-v290a';
-import { buildSceneBatchActionPlan } from './sceneBatchActionPlan.js?v=20260830-production-v290a';
-import { bindGenerationModelPicker, loadGenerationModelPicker } from './generationModelPicker.js?v=20260830-production-v290a';
-import { normalizeSceneDossier } from './sceneDossierCard.js?v=20260830-production-v290a';
-import { bindSceneConfirmAction } from './sceneQaPublicState.js?v=20260830-production-v290a';
+import { bindSceneWorldWorkspace } from './sceneWorldView.js?v=20260830-production-v290b';
+import { bindScenePlanUpdate, scenePlanBlockedView } from './scenePlanStatus.js?v=20260830-production-v290b';
+import { renderSceneProductionCard, scenePromptPreviewMarkup, scenePromptPreviewState, startInitialScenePlan } from './scenePromptPreview.js?v=20260830-production-v290b';
+import { bindMediaLightbox } from './mediaLightbox.js?v=20260830-production-v290b';
+import { buildSceneBatchActionPlan } from './sceneBatchActionPlan.js?v=20260830-production-v290b';
+import { bindGenerationModelPicker, loadGenerationModelPicker } from './generationModelPicker.js?v=20260830-production-v290b';
+import { normalizeSceneDossier } from './sceneDossierCard.js?v=20260830-production-v290b';
+import { bindSceneConfirmAction } from './sceneQaPublicState.js?v=20260830-production-v290b';
 
 export function latestSceneTargetProgress(progress = {}, sceneId = '', generationId = '') {
   const rows = Object.values(progress).filter(item => String(item?.stage || '') === 'scene_asset'
@@ -70,7 +70,7 @@ export async function mount(host, context) {
 
   bindScenePlanUpdate(host, context);
   bindMediaLightbox(host);
-  const sceneInteractions = await import('./sceneCardInteractions.js?v=20260830-production-v290a');
+  const sceneInteractions = await import('./sceneCardInteractions.js?v=20260830-production-v290b');
   const cleanupSceneCards = sceneInteractions.bindSceneCards(host, context);
   sceneInteractions.bindSceneCompletionActions(host, context);
   bindSceneConfirmAction(host, context);

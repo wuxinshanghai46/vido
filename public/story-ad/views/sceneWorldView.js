@@ -1,8 +1,8 @@
-import { request } from '../api.js?v=20260830-production-v290a';
-import { escapeHtml, mediaPreview, toast } from '../components/ui.js?v=20260830-production-v290a';
-import { list, worldById } from './sceneWorldData.js?v=20260830-production-v290a';
-import { runPanoramaGeneration } from './panoramaGeneration.js?v=20260830-production-v290a';
-import { capabilityChips } from './sceneWorldCapabilities.js?v=20260830-production-v290a';
+import { request } from '../api.js?v=20260830-production-v290b';
+import { escapeHtml, mediaPreview, toast } from '../components/ui.js?v=20260830-production-v290b';
+import { list, worldById } from './sceneWorldData.js?v=20260830-production-v290b';
+import { runPanoramaGeneration } from './panoramaGeneration.js?v=20260830-production-v290b';
+import { capabilityChips } from './sceneWorldCapabilities.js?v=20260830-production-v290b';
 function photoNodes(world = {}) {
   const seen = new Set();
   const panoramaRows = [
@@ -327,7 +327,7 @@ function initSceneWorldViewer({ overlay, bundle, world, authority }) {
     const requestToken = activation;
     activateModeButton(mode);
     currentNode = node;
-    const { mountSceneWorldLayoutViewer } = await import('./sceneWorldLayoutViewer.js?v=20260830-production-v290a');
+    const { mountSceneWorldLayoutViewer } = await import('./sceneWorldLayoutViewer.js?v=20260830-production-v290b');
     if (requestToken !== activation) return;
     viewer = mountSceneWorldLayoutViewer({ host, bundle, world, authority, node, nodes, mode, previewUrl, photoStrip, onSelectPhoto: showPhoto });
     if (help) help.textContent = viewer.helpText;
@@ -340,7 +340,7 @@ function initSceneWorldViewer({ overlay, bundle, world, authority }) {
     host.innerHTML = '<div class="scene-world-canvas-loading">正在按需加载3DoF球形全景查看器…</div>';
     if (help) help.textContent = '3DoF原地环视：可改变观看方向与FOV，不支持摄像机前后左右位移';
     try {
-      const module = await import('./panoramaViewer.js?v=20260830-production-v290a');
+      const module = await import('./panoramaViewer.js?v=20260830-production-v290b');
       if (requestToken !== activation) return;
       host.replaceChildren();
       viewer = module.mountPanoramaViewer({ host, source: node.image_url, label: node.name || world.name });
@@ -409,7 +409,7 @@ function initSceneWorldViewer({ overlay, bundle, world, authority }) {
 }
 
 async function openSceneWorldStudio(bundle, world, store = null) {
-  const authority = await import('./sceneWorldAuthorityPlan.js?v=20260830-production-v290a');
+  const authority = await import('./sceneWorldAuthorityPlan.js?v=20260830-production-v290b');
   const realPhotoNodes = photoNodes(world);
   const hasRealPhotos = realPhotoNodes.length > 0;
   const worlds = list(bundle.scene_worlds);
@@ -480,7 +480,7 @@ export function bindSceneWorldWorkspace(host, bundle = {}, store = null) {
   root.querySelectorAll('[data-plan-scene-experience]').forEach(button => button.addEventListener('click', async () => {
     const world = worldById(bundle, button.dataset.planSceneExperience);
     if (!world) return;
-    const { openSceneExperiencePlanner } = await import('./sceneWorldExperiencePlanner.js?v=20260830-production-v290a');
+    const { openSceneExperiencePlanner } = await import('./sceneWorldExperiencePlanner.js?v=20260830-production-v290b');
     openSceneExperiencePlanner({ bundle, world, onOpenDirector: () => openSceneWorldStudio(bundle, world, store) });
   }));
   root.querySelector('[data-save-world-assignments]')?.addEventListener('click', async event => {
