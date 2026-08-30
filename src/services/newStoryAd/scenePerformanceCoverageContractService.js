@@ -65,6 +65,18 @@ function cameraAngle(camera = {}, fallback = 'eye_level') {
   return clean(camera.angle || camera.camera_angle || fallback, 160);
 }
 
+function stripInternalPlanningNotes(value = '') {
+  return clean(value, 1600).split(/[。；;]/u)
+    .filter(clause => !/^\s*(?:AI|系统|自动)补齐[:：]/iu.test(clause))
+    .join('；');
+}
+
+function sceneOnlyLayout(value = '') {
+  return clean(value, 1800).split(/[。；;]/u)
+    .filter(clause => !/(?:人物|角色|演员|模特|顾客|客户|真人|person|actor|model|customer)/iu.test(clause))
+    .join('；');
+}
+
 function ensureCoverage(shots = [], sceneAssets = [], ctx = {}) {
   const result = list(shots).map(shot => ({ ...shot }));
   const assets = new Map(list(sceneAssets).map(asset => [idOf(asset), asset]));
@@ -89,7 +101,7 @@ function ensureCoverage(shots = [], sceneAssets = [], ctx = {}) {
     const route = plan.routes[0] || {};
     const interactionCamera = cameraFor(plan, 'interaction', plan.cameras[0]);
     const masterCamera = cameraFor(plan, 'master', plan.cameras[0]);
-    const action = plan.interaction || clean(route.label || route.continuity || anchor.purpose, 1000);
+    const action = stripInternalPlanningNotes(plan.interaction || clean(route.label || route.continuity || anchor.purpose, 1000));
     const personCharacters = castForShot(ctx, action, result);
     const anchorLabel = clean(anchor.label || anchor.name, 200);
     const routeLabel = clean(route.label || route.continuity, 300);
@@ -131,8 +143,8 @@ function ensureCoverage(shots = [], sceneAssets = [], ctx = {}) {
     const establishing = plannedEstablishing || entries.find(entry => entry.index !== selected.index) || null;
     if (establishing) {
       const establishingAuthority = [
-        `空间建立镜必须清楚呈现当前场景的完整边界、整面主要展示面和人物行动所依赖的空间关系`,
-        plan.layout ? `空间布局：${plan.layout}` : '',
+        `空间建立镜必须清楚呈现当前场景的完整边界、整面主要展示面以及入口至互动点的空间动线关系`,
+        sceneOnlyLayout(plan.layout) ? `空间布局：${sceneOnlyLayout(plan.layout)}` : '',
         anchorLabel ? `保留互动点“${anchorLabel}”所在位置` : '',
       ].filter(Boolean).join('；');
       if (!contractCurrent(establishing.shot, 'planned_scene_establishing')) {
