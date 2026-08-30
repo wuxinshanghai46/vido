@@ -34,10 +34,10 @@ function inspect(taskId) {
     if (!image?.image_url) missing.push(shotIndex);
     else {
       const lineageVersion = Number(image.lineage_schema_version || 0);
-      const expectedShotFingerprint = lineageVersion >= 2
-        ? shotContractFingerprint(shot, index)
-        : legacyShotContractFingerprint(shot, index);
-      const legacyContractStale = image.shot_contract_fingerprint !== expectedShotFingerprint;
+      const expectedShotFingerprints = lineageVersion >= 2
+        ? [shotContractFingerprint(shot, index)]
+        : [legacyShotContractFingerprint(shot, index), shotContractFingerprint(shot, index)];
+      const legacyContractStale = !expectedShotFingerprints.includes(image.shot_contract_fingerprint);
       const pack = referencePacks[index] || null;
       const currentSceneId = clean(shot.scene_id || shot.scene_asset_id, 160);
       const currentScene = sceneById.get(currentSceneId) || null;
