@@ -109,6 +109,7 @@ function testCompleteCheckpointRecoversWithoutProvider() {
     shot_size: sizes[index], camera_angle: angles[index], camera_movement: movements[index],
     lens_mm: 24 + index * 8, depth_of_field: index % 2 ? 'shallow' : 'deep',
     composition: `composition-${index + 1}`, subject_position: `position-${index + 1}`,
+    ...(index === 1 ? { temporal_evidence: { shot_state: { relation_refs: ['人物右手与金属板的接触关系'] } } } : {}),
   }));
   storyAd.createTask({ task_id: taskId, brief: '完整分镜断点无付费恢复', cast_mode: 'no_human', shot_count: 7, content_mode: 'narrative_story', content_mode_source: 'user' }, { id: 'v289-owner', role: 'user' });
   storage.saveOutput(taskId, 'context', { brief: '完整分镜断点无付费恢复', cast_mode: 'no_human', shot_count: 7, content_mode: 'narrative_story', content_mode_source: 'user', scene_setup_confirmed: true, scene_assets: [] });

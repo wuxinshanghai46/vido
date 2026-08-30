@@ -194,6 +194,21 @@ function explicitShotReferenceEntities(shots = []) {
   }).filter(row => clean(row.name));
 }
 
+function explicitShotReferenceRelations(shots = [], authored = {}) {
+  const embeddedRefs = (Array.isArray(shots) ? shots : []).flatMap(shot => {
+    const outer = object(shot?.temporal_state || shot?.temporal_evidence || shot?.evidence_state);
+    const state = Object.keys(object(outer.shot_state)).length ? object(outer.shot_state) : outer;
+    return list(state.relation_refs, 32, 100);
+  });
+  const authoredRefs = (Array.isArray(authored.shot_states) ? authored.shot_states : [])
+    .flatMap(state => list(state?.relation_refs, 32, 100));
+  return [...new Set([...authoredRefs, ...embeddedRefs])].map(ref => ({
+    id: ref,
+    name: ref,
+    attributes: { provenance: 'legacy_explicit_shot_reference' },
+  }));
+}
+
 function mergeById(primary = [], secondary = []) {
   const result = [];
   const seen = new Set();
@@ -244,7 +259,10 @@ function buildGraph({ ctx = {}, blueprint = {}, shots = [], existingGraph = null
   ].map(normalizeEntity);
   const entities = mergeById(authoredEntities, derivedEntities);
 
-  const relations = (Array.isArray(authored.relations) ? authored.relations : []).map(normalizeRelation).map(relation => ({
+  const relations = mergeById(
+    (Array.isArray(authored.relations) ? authored.relations : []).map(normalizeRelation),
+    explicitShotReferenceRelations(shots, authored).map(normalizeRelation),
+  ).map(relation => ({
     ...relation,
     from: resolveRef(relation.from, entities),
     to: resolveRef(relation.to, entities),
