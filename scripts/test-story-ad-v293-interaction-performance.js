@@ -70,6 +70,7 @@ assert.match(source('src/routes/newStoryAd.js'), /user_resume_complete_checkpoin
 assert.match(source('src/services/newStoryAd/storyAdService.js'), /storyFlowContract\.units\?\.length/, 'regeneration must not reuse a stale stored shot count');
 assert.match(source('public/story-ad/views/sceneWorldView.js'), /🎥|cameraNode\.lookAt/, 'scene preview must render camera direction semantics');
 assert.match(source('public/story-ad/views/directorStudioView.js'), /sceneImages\(world\)/, 'DirectorScene must resolve real layout and master images');
-assert.match(source('public/story-ad/release.js'), /production-v293/, 'the browser release must use the new immutable build id');
+const releaseConfig = JSON.parse(source('config/story-ad-release.json'));
+assert.match(source('public/story-ad/release.js'), new RegExp(releaseConfig.build_id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')), 'the browser release must use the configured immutable build id');
 
 console.log('story-ad v293 interaction/performance regression passed: 20 assertions');
