@@ -67,7 +67,7 @@ function testDirectGenerationUxContract() {
   assert.match(storyboard, /liveGenerationShotCard/);
   assert.match(storyboard, /data-storyboard-live-results/);
   assert.match(storyboard, /startedAt: progress\.started_at/);
-  assert.match(storyboard, /acknowledge_billing_unknown: true/);
+  assert.doesNotMatch(storyboard, /acknowledge_billing_unknown: true/);
   assert.match(storyboard, /user_initiated_direct_generation: true/);
   assert.doesNotMatch(storyboard, /确认可能重复计费|我接受风险|confirmDialog/);
   assert.match(storyboardCss, /generation-model-picker,[^{]+\.btn \{ width:220px;min-width:220px;max-width:220px/);
