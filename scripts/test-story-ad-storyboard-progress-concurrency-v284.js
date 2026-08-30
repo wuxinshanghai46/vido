@@ -154,8 +154,9 @@ async function testImageBatchParallelPersistenceAndRetry() {
       return { image_url: `/generated/storyboard-${shotIndex}.png`, provider_used: 'fixture-image-provider' };
     },
   };
+  const subjectQaService = { assert: async () => ({ pass: true, policy_version: 2, used_model: 'fixture-subject-qa' }) };
   await assert.rejects(
-    () => storyboardImages.generateSketchBatch(taskId, { confirmed: true }, { mediaAdapter }),
+    () => storyboardImages.generateSketchBatch(taskId, { confirmed: true }, { mediaAdapter, subjectQaService }),
     error => error?.code === 'IMAGE_FIXTURE_FAILED',
   );
   const failedBatch = storyboardImages.getSketchBatch(taskId);
@@ -167,8 +168,8 @@ async function testImageBatchParallelPersistenceAndRetry() {
 
   failThird = false;
   called.length = 0;
-  const retried = await storyboardImages.generateSketchBatch(taskId, { confirmed: true }, { mediaAdapter });
-  assert.deepEqual(called, [3], '图片重试必须只补缺失镜头');
+  const retried = await storyboardImages.generateSketchBatch(taskId, { confirmed: true, target_indexes: [3] }, { mediaAdapter, subjectQaService });
+  assert.deepEqual(called, [3], '明确指定失败镜头时只能补该镜，不能重复提交已完成镜头');
   assert.equal(retried.sketches.length, 4);
   assert.equal(retried.completed, 1);
 }

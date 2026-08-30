@@ -265,6 +265,21 @@ verify('主体 QA 拒绝同一身份重复实例', () => {
   assert.deepEqual(result.count_mismatches, []);
 });
 
+verify('主体 QA 即使模型错误报告一人，也按同身份实例数拒绝重复人物', () => {
+  const result = subjectQa.evaluate({
+    pass: true,
+    visible_people: 1,
+    visible_animals: 0,
+    visible_vehicles: 0,
+    visible_products: 0,
+    duplicated_identity: false,
+    same_identity_multiple_instances: false,
+    same_identity_instance_count: 2,
+  }, onePersonExpected);
+  assert.equal(result.pass, false);
+  assert.equal(result.duplicated_identity, true);
+});
+
 verify('主体 QA 在数量、身份和模型判定均匹配时通过', () => {
   const result = subjectQa.evaluate({
     pass: true,
@@ -279,6 +294,12 @@ verify('主体 QA 在数量、身份和模型判定均匹配时通过', () => {
   assert.deepEqual(result.count_mismatches, []);
   assert.equal(result.duplicated_identity, false);
   assert.deepEqual(result.actual, { people: 1, animals: 0, vehicles: 0, products: 0 });
+});
+
+verify('旧版主体 QA 结果必须失效，不能继续进入视频生成', () => {
+  const imageGateSource = fs.readFileSync(path.join(__dirname, '../src/services/storyAdWorkspace/storyboardImageConfirmationGateService.js'), 'utf8');
+  assert.match(imageGateSource, /subject_qa_policy_version[\s\S]*storyboardSubjectQa\.QA_POLICY_VERSION/);
+  assert.match(imageGateSource, /SUBJECT_COUNT_QA_POLICY_OUTDATED/);
 });
 
 function cssRule(source, selector) {

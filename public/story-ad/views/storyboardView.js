@@ -3,7 +3,7 @@ import { elapsedTimeTag, emptyState, escapeHtml, mediaPreview, setButtonBusy, to
 import { bindMediaLightbox } from './mediaLightbox.js?v=20260830-production-v313';
 import { bindGenerationModelPicker, loadGenerationModelPicker } from './generationModelPicker.js?v=20260830-production-v313';
 import { generationModelPickerPlaceholder } from './generationModelPlaceholder.js?v=20260830-production-v313';
-
+import { openStoryboardPromptEditor, referenceItemsFor, sketchReferenceMarkup } from './storyboardPromptEditorDialog.js?v=20260830-production-v313';
 export function friendlyBindings(bundle = {}, shot = {}) {
   const assets = bundle.assets || {};
   const scenes = Array.isArray(assets.scenes) ? assets.scenes : [];
@@ -35,7 +35,6 @@ export function friendlyBindings(bundle = {}, shot = {}) {
     shot.sound_profile_id ? { id: shot.sound_profile_id, label: `声音档案：${shot.sound_profile_id}` } : null,
   ].filter(Boolean);
 }
-
 function compactBindingSummary(bundle = {}, shot = {}) {
   const bindings = friendlyBindings(bundle, shot)
     .map(item => item.label)
@@ -43,7 +42,6 @@ function compactBindingSummary(bundle = {}, shot = {}) {
     .map(label => label.replace(/ · r\d+$/u, ''));
   return bindings.length ? bindings.join(' · ') : '人物与场景由系统自动匹配';
 }
-
 function sceneSequenceMarkup(bundle = {}, shots = []) {
   const scenes = Array.isArray(bundle?.assets?.scenes) ? bundle.assets.scenes : [];
   const groups = [];
@@ -69,25 +67,6 @@ function sceneSequenceMarkup(bundle = {}, shots = []) {
   }).join('');
   return `<section class="storyboard-scene-sequence" aria-label="分镜场景顺序"><div><b>场景顺序</b><span title="系统已按剧情固定地点；切换发生在相邻场景节点之间">按剧情固定地点</span></div><ol>${nodes}</ol></section>`;
 }
-
-const REFERENCE_ROLE_META = [
-  [/^person_identity_/u, ['人物', '人物身份参考']], [/^cast_identity_board$/u, ['人物', '人物组合身份板']],
-  [/^pet_identity_/u, ['动物', '动物身份参考']], [/^scene_identity$/u, ['场景', '场景主视图']],
-  [/^scene_view$/u, ['机位视图', '当前镜头机位视图']], [/^director_composition$/u, ['机位视图', '导演台构图截图']],
-  [/^scene_layout$/u, ['布局', '空间布局参考']], [/^product_identity$/u, ['商品', '商品身份参考']],
-  [/^prop_/u, ['道具', '镜头道具参考']], [/^action_pose$/u, ['人物', '人物动作姿态参考']],
-  [/^previous_accepted_frame$/u, ['上一镜', '上一镜连续性参考']], [/^storyboard_composition$/u, ['分镜', '已确认分镜构图']],
-];
-function referenceRoleMeta(role = '') {
-  return REFERENCE_ROLE_META.find(([pattern]) => pattern.test(String(role || '').trim().toLowerCase()))?.[1] || ['其他', '其他生成参考'];
-}
-function referencePackFor(bundle = {}, index = 0, shotIndex = 0) {
-  const packs = Array.isArray(bundle?.storyboard?.reference_packs) ? bundle.storyboard.reference_packs : [];
-  return packs.find(item => Number(item?.shot_index) === index)
-    || packs.find(item => Number(item?.shot_index) === shotIndex)
-    || packs[index] || null;
-}
-
 function promptOverrideFor(bundle = {}, shot = {}, index = 0, shotIndex = 0) {
   const overrides = bundle?.storyboard?.prompt_overrides;
   if (Array.isArray(overrides)) {
@@ -127,22 +106,6 @@ function storyboardPromptFor(bundle = {}, shot = {}, index = 0, shotIndex = 0) {
   return String(promptText || generatedDefault || '').trim() || defaultStoryboardPrompt(shot);
 }
 
-function sketchReferenceMarkup(bundle = {}, index = 0, shotIndex = 0) {
-  const pack = referencePackFor(bundle, index, shotIndex);
-  const references = Array.isArray(pack?.references) ? pack.references.filter(reference => reference?.url) : [];
-  if (!references.length) return '<div class="sketch-reference-empty" role="status">本镜暂无已编译引用资产。</div>';
-  return `<div class="sketch-reference-strip" aria-label="镜头 ${shotIndex} 引用资产">${references.map((reference, referenceIndex) => {
-    const [label, source] = referenceRoleMeta(reference.role);
-    const order = Number(reference.order || referenceIndex + 1) || referenceIndex + 1;
-    return `<figure class="sketch-reference-thumb">${mediaPreview({ image_url: reference.url }, {
-      label: `镜头 ${shotIndex} · ${label} · ${source}`,
-      width: 320,
-      zoomable: true,
-      zoomGroup: `storyboard-reference-${shotIndex}`,
-    })}<figcaption><b>${escapeHtml(`${order}. ${label}`)}</b><small>${escapeHtml(`${source} · ${reference.required === true ? '生成必需' : '辅助参考'}`)}</small></figcaption></figure>`;
-  }).join('')}</div>`;
-}
-
 function sketchCard(shot, sketch = {}, index = 0, gate = {}, bundle = {}, generationActive = false, needsGeneration = false) {
   const shotIndex = Number(shot.shot_index || shot.index || index + 1) || index + 1;
   const disabled = gate.ready === false ? 'disabled' : '';
@@ -150,15 +113,18 @@ function sketchCard(shot, sketch = {}, index = 0, gate = {}, bundle = {}, genera
   const waiting = generationActive && (!imageReady || needsGeneration);
   const promptId = `storyboard-prompt-${shotIndex}`;
   const promptText = storyboardPromptFor(bundle, shot, index, shotIndex);
+  const references = referenceItemsFor(bundle, index, shotIndex);
   return `<article class="card sketch-card sketch-tile ${gate.ready === false ? 'is-gated' : ''} ${waiting ? 'is-waiting' : ''}" data-sketch-shot="${shotIndex}"${waiting ? ' aria-busy="true"' : ''}>
     <div class="sketch-tile-media" data-sketch-image-host="${shotIndex}">${mediaPreview(sketch, { label: `SH${String(shotIndex).padStart(2, '0')} · ${shot.title || `镜头 ${shotIndex}`}`, width: 960, symbol: '分镜图', zoomable: true, zoomGroup: 'storyboard-images' })}<span class="sketch-shot-number">SH${String(shotIndex).padStart(2, '0')}</span></div>
     <div class="sketch-tile-copy"><div><h2>${escapeHtml(shot.title || `镜头 ${shotIndex}`)}</h2><p>${escapeHtml(compactBindingSummary(bundle, shot))}</p></div></div>
+    <div class="sketch-shot-progress-host" data-sketch-shot-progress hidden></div>
     <details class="sketch-tile-editor"><summary>调整</summary><div class="sketch-editor-body">
-      <section class="sketch-reference-panel" aria-labelledby="sketch-reference-title-${shotIndex}"><header><b id="sketch-reference-title-${shotIndex}">本镜引用资产</b><span>生成时按此顺序参考</span></header>${sketchReferenceMarkup(bundle, index, shotIndex)}</section>
-      <label class="sketch-prompt-field" for="${promptId}"><span>分镜提示词</span><textarea id="${promptId}" name="storyboard_prompt_${shotIndex}" rows="6" data-sketch-prompt aria-describedby="${promptId}-help">${escapeHtml(promptText)}</textarea><small id="${promptId}-help">保存后仅本镜标记为需要重新生成；不会自动开始生成。</small></label>
+      <section class="sketch-reference-panel" aria-labelledby="sketch-reference-title-${shotIndex}"><header><b id="sketch-reference-title-${shotIndex}">本镜引用资产</b><span>生成时按此顺序参考</span></header>${sketchReferenceMarkup(references, shotIndex)}</section>
+      <div class="sketch-prompt-field"><div class="sketch-prompt-heading"><label for="${promptId}">分镜提示词</label><button class="btn small" type="button" data-expand-sketch-prompt aria-label="放大编辑镜头 ${shotIndex} 的分镜提示词">⛶ 放大编辑</button></div><textarea id="${promptId}" name="storyboard_prompt_${shotIndex}" rows="6" data-sketch-prompt aria-describedby="${promptId}-help">${escapeHtml(promptText)}</textarea><small id="${promptId}-help">保存后仅本镜标记为需要重新生成；不会自动开始生成。</small></div>
     </div><div class="sketch-action-bar">
       <input class="hidden-input" type="file" accept="image/png,image/jpeg,image/webp" data-sketch-file aria-label="为镜头 ${shotIndex} 选择替换图片">
       <div class="sketch-actions" role="group" aria-label="镜头 ${shotIndex} 分镜调整">
+        <button class="btn" type="button" data-ai-assist-sketch-prompt>AI 帮写</button>
         <button class="btn" type="button" data-save-sketch-prompt>保存提示词</button>
         <button class="btn ${sketch.image_url ? '' : 'primary'}" type="button" data-generate-sketch ${disabled}>${sketch.image_url ? '重新生成本镜' : '生成本镜'}</button>
         <button class="btn" type="button" data-upload-sketch ${disabled}>上传替换</button>
@@ -202,6 +168,13 @@ function sketchBatchMarkup(batch = null, total = 0) {
   </div>`;
 }
 
+function sketchShotProgressMarkup(batch = {}, ready = false) {
+  const active = ['queued', 'running'].includes(String(batch.status || ''));
+  const failed = String(batch.status || '') === 'failed';
+  const percent = ready ? 100 : 0;
+  const indeterminate = active && !ready && percent === 0;
+  return `<div class="sketch-shot-progress ${indeterminate ? 'is-indeterminate' : ''} ${failed ? 'is-failed' : ''}" role="${failed ? 'alert' : 'status'}"><div><b>${failed ? '本镜生成停止' : (ready ? '本镜已完成' : '本镜生成中')}</b><span>${ready ? '100%' : (percent ? `${percent}%` : '处理中')}</span></div><div class="project-progress-track ${indeterminate ? 'is-indeterminate' : ''}" aria-hidden="true"><i style="width:${percent}%"></i></div><small>${elapsedTimeTag({ startedAt: batch.started_at, finishedAt: batch.finished_at, active })}</small></div>`;
+}
 function progressPhaseLabel(progress = {}, failed = false) {
   if (failed) return '镜头结构生成已停止';
   const phase = String(progress.phase || '').toLowerCase();
@@ -438,27 +411,37 @@ export async function mount(host, context) {
   let disposed = false;
   let sketchBatchPollTimer = null;
   let batchFinalizing = false;
+  let activeSketchTargets = new Set((Array.isArray(sketchBatch?.target_indexes) ? sketchBatch.target_indexes : [...pendingSketchIndexes]).map(Number));
   const batchButton = host.querySelector('[data-generate-sketch-batch]');
   const batchButtonLabel = () => regenerateAllSketches
     ? `全部重新生成（${shots.length}）`
     : `继续生成分镜（${missingSketchCount}）`;
   const renderSketchBatch = progress => {
     sketchBatch = progress || null;
+    if (Array.isArray(sketchBatch?.target_indexes) && sketchBatch.target_indexes.length) activeSketchTargets = new Set(sketchBatch.target_indexes.map(Number));
     const batchHost = host.querySelector('[data-sketch-batch-host]');
     if (batchHost) batchHost.innerHTML = sketchBatchMarkup(sketchBatch, sketchBatchTargetCount || generatedSketchCount);
     const active = ['queued', 'running'].includes(String(sketchBatch?.status || ''));
     host.querySelectorAll('[data-sketch-shot]').forEach(card => {
       const shotIndex = Number(card.dataset.sketchShot || 0);
       const ready = Boolean(sketchByShot.get(shotIndex)?.image_url) && !pendingSketchIndexes.has(shotIndex);
-      card.classList.toggle('is-waiting', active && !ready);
-      if (active && !ready) card.setAttribute('aria-busy', 'true');
+      const targeted = activeSketchTargets.has(shotIndex);
+      const waiting = active && targeted && !ready;
+      card.classList.toggle('is-waiting', waiting);
+      if (waiting) card.setAttribute('aria-busy', 'true');
       else card.removeAttribute('aria-busy');
+      const progressHost = card.querySelector('[data-sketch-shot-progress]');
+      if (progressHost) {
+        progressHost.hidden = !targeted || (!active && !ready && String(sketchBatch?.status || '') !== 'failed');
+        if (!progressHost.hidden) progressHost.innerHTML = sketchShotProgressMarkup(sketchBatch, ready);
+      }
     });
     if (batchButton) {
       batchButton.dataset.processed = String(sketchBatch.processed ?? sketchBatch.completed ?? 0);
       batchButton.disabled = active;
       batchButton.textContent = active ? '生成中' : batchButtonLabel();
     }
+    host.querySelectorAll('[data-generate-sketch]').forEach(button => { button.disabled = active || sketchGate.ready === false; });
   };
   const renderSketchResults = rows => {
     (Array.isArray(rows) ? rows : []).forEach(sketch => {
@@ -499,23 +482,25 @@ export async function mount(host, context) {
 
   const startSketchBatch = async (button, options = {}) => {
     const regenerateAll = options.regenerateAll === true || button?.dataset.regenerateAll === 'true';
-    const targetCount = regenerateAll ? shots.length : missingSketchCount;
+    const targetIndexes = (Array.isArray(options.targetIndexes) && options.targetIndexes.length ? options.targetIndexes : (regenerateAll ? shots.map((shot, index) => Number(shot.shot_index || shot.index || index + 1)) : [...pendingSketchIndexes])).map(Number);
+    const targetCount = targetIndexes.length || (regenerateAll ? shots.length : missingSketchCount);
     try {
       batchFinalizing = false;
+      activeSketchTargets = new Set(targetIndexes);
+      targetIndexes.forEach(index => pendingSketchIndexes.add(index));
       setButtonBusy(button, true, '正在提交…');
-      renderSketchBatch({ status: 'running', requested: targetCount, completed: 0, message: '批次已提交，生成结果会逐镜保存到下方镜头卡片。' });
-      sketchBatchPollTimer = setTimeout(pollSketchBatch, 500);
+      renderSketchBatch({ status: 'queued', requested: targetCount, completed: 0, target_indexes: targetIndexes, started_at: new Date().toISOString(), message: '批次已提交，生成结果会逐镜保存到下方镜头卡片。' });
       const data = await request(`/api/story-ad/projects/${encodeURIComponent(bundle.project.id)}/storyboard-images/generate-batch`, {
         method: 'POST',
-        body: { confirmed: true, regenerate_all: regenerateAll, image_model: options.imageModel || selectedSketchModel(), client_request_id: options.clientRequestId || globalThis.crypto?.randomUUID?.() || `${Date.now()}` },
-        timeoutMs: 45 * 60 * 1000,
+        body: { confirmed: true, async_start: true, target_indexes: targetIndexes, regenerate_all: regenerateAll, image_model: options.imageModel || selectedSketchModel(), client_request_id: options.clientRequestId || globalThis.crypto?.randomUUID?.() || `${Date.now()}` },
+        timeoutMs: 30000,
       });
-      await finishSketchBatch(data.progress || {
-        status: 'succeeded', requested: data.requested, completed: data.completed,
-      });
+      renderSketchBatch(data.progress || { status: 'queued', requested: targetCount, completed: 0, target_indexes: targetIndexes, started_at: new Date().toISOString() });
+      sketchBatchPollTimer = setTimeout(pollSketchBatch, 100);
     } catch (error) {
       toast(error.code === 'SKETCH_BATCH_IN_PROGRESS' ? '已连接正在执行的分镜图批次。' : error.message, error.code === 'SKETCH_BATCH_IN_PROGRESS' ? 'warning' : 'danger');
-      sketchBatchPollTimer = setTimeout(pollSketchBatch, 100);
+      if (error.code === 'SKETCH_BATCH_IN_PROGRESS') sketchBatchPollTimer = setTimeout(pollSketchBatch, 100);
+      else renderSketchBatch({ ...sketchBatch, status: 'failed', finished_at: new Date().toISOString() });
     } finally {
       if (!disposed && !['queued', 'running'].includes(String(sketchBatch?.status || ''))) setButtonBusy(button, false);
     }
@@ -534,11 +519,25 @@ export async function mount(host, context) {
     await context.refreshShell();
   }
 
+  async function saveStoryboardPrompt(shotIndex, promptText) {
+    const value = String(promptText || '').trim();
+    if (!value) throw new Error(`镜头 ${shotIndex} 的提示词不能为空。`);
+    await request(`/api/story-ad/projects/${encodeURIComponent(bundle.project.id)}/storyboard-images/${shotIndex}/prompt`, { method: 'PUT', body: { prompt_text: value } });
+    toast(`镜头 ${shotIndex} 的提示词已保存，仅本镜需重新生成。`, 'success');
+    await context.refreshShell();
+  }
+  async function assistStoryboardPrompt(shotIndex, promptText) {
+    const data = await request(`/api/story-ad/projects/${encodeURIComponent(bundle.project.id)}/storyboard-images/${shotIndex}/prompt-assist`, { method: 'POST', body: { prompt_text: String(promptText || '') }, timeoutMs: 120000 });
+    const value = String(data?.prompt_text || '').trim();
+    if (!value) throw new Error('AI 没有返回可用的分镜提示词，请稍后重试。');
+    return value;
+  }
+
   host.querySelectorAll('[data-sketch-shot]').forEach(card => {
     const shotIndex = Number(card.dataset.sketchShot);
+    const promptField = card.querySelector('[data-sketch-prompt]');
     card.querySelector('[data-save-sketch-prompt]')?.addEventListener('click', async event => {
       const button = event.currentTarget;
-      const promptField = card.querySelector('[data-sketch-prompt]');
       const promptText = String(promptField?.value || '').trim();
       if (!promptText) {
         promptField?.focus();
@@ -546,17 +545,32 @@ export async function mount(host, context) {
       }
       try {
         setButtonBusy(button, true, '保存中…');
-        await request(`/api/story-ad/projects/${encodeURIComponent(bundle.project.id)}/storyboard-images/${shotIndex}/prompt`, {
-          method: 'PUT',
-          body: { prompt_text: promptText },
-        });
-        await context.refreshShell();
-        toast(`镜头 ${shotIndex} 的提示词已保存，仅本镜需重新生成。`, 'success');
+        await saveStoryboardPrompt(shotIndex, promptText);
       } catch (error) {
         toast(error.message, 'danger');
       } finally {
         setButtonBusy(button, false);
       }
+    });
+    card.querySelector('[data-ai-assist-sketch-prompt]')?.addEventListener('click', async event => {
+      const button = event.currentTarget;
+      try {
+        setButtonBusy(button, true, 'AI 正在完善…', { elapsed: true });
+        promptField.value = await assistStoryboardPrompt(shotIndex, promptField.value);
+        toast(`镜头 ${shotIndex} 的 AI 建议已写入草稿，请确认后再保存。`, 'success');
+      } catch (error) {
+        toast(error.message, 'danger');
+      } finally {
+        setButtonBusy(button, false);
+      }
+    });
+    card.querySelector('[data-expand-sketch-prompt]')?.addEventListener('click', () => {
+      const shotPosition = shots.findIndex((shot, index) => Number(shot.shot_index || shot.index || index + 1) === shotIndex);
+      openStoryboardPromptEditor({
+        shotIndex, promptText: promptField.value, sourceField: promptField, references: referenceItemsFor(bundle, Math.max(0, shotPosition), shotIndex),
+        onAssist: value => assistStoryboardPrompt(shotIndex, value),
+        onSave: value => saveStoryboardPrompt(shotIndex, value),
+      });
     });
     card.querySelector('[data-upload-sketch]').addEventListener('click', () => card.querySelector('[data-sketch-file]').click());
     card.querySelector('[data-sketch-file]').addEventListener('change', async event => {
@@ -573,23 +587,9 @@ export async function mount(host, context) {
     });
     card.querySelector('[data-generate-sketch]').addEventListener('click', async event => {
       const button = event.currentTarget;
-      try {
-        const imageModel = selectedSketchModel();
-        if (!imageModel) return toast('请先选择本次分镜生成模型。', 'danger');
-        setButtonBusy(button, true, '生成中…', { elapsed: true });
-        const data = await request(`/api/story-ad/projects/${encodeURIComponent(bundle.project.id)}/storyboard-images/${shotIndex}/generate`, {
-          method: 'POST',
-          body: { confirmed: true, image_model: imageModel },
-          timeoutMs: 360000,
-        });
-        sketchByShot.set(shotIndex, data.sketch);
-        toast(`镜头 ${shotIndex} 已生成。`, 'success');
-        await context.refreshShell();
-      } catch (error) {
-        toast(error.message, 'danger');
-      } finally {
-        setButtonBusy(button, false);
-      }
+      const imageModel = selectedSketchModel();
+      if (!imageModel) return toast('请先选择本次分镜生成模型。', 'danger');
+      await startSketchBatch(button, { imageModel, targetIndexes: [shotIndex] });
     });
   });
   return () => {

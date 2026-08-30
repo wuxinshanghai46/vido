@@ -1,0 +1,71 @@
+#!/usr/bin/env node
+'use strict';
+
+const assert = require('assert/strict');
+const fs = require('fs');
+const path = require('path');
+
+const root = path.resolve(__dirname, '..');
+const read = file => fs.readFileSync(path.join(root, file), 'utf8');
+const view = read('public/story-ad/views/storyboardView.js');
+const dialog = read('public/story-ad/views/storyboardPromptEditorDialog.js');
+const css = read('public/story-ad/storyboard-simple.css');
+let checks = 0;
+const check = (value, message) => { assert.ok(value, message); checks += 1; };
+
+function loadDialogModule() {
+  const executable = dialog
+    .replace(/^import[^\n]+\n/u, '')
+    .replaceAll('export function ', 'function ');
+  return Function('escapeHtml', 'mediaPreview', 'setButtonBusy', 'toast', `${executable}\nreturn { referenceItemsFor, sketchReferenceMarkup };`)(
+    value => String(value ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('"', '&quot;'),
+    item => `<img src="${item.image_url}">`,
+    () => {},
+    () => {},
+  );
+}
+
+async function main() {
+  check(view.trimEnd().split(/\r?\n/).length <= 600, 'storyboardView 必须保持 600 行以内');
+  check(view.includes('data-expand-sketch-prompt'), '每镜必须有明显的放大编辑入口');
+  check(view.includes('openStoryboardPromptEditor'), '放大入口必须打开独立提示词弹层');
+  check(view.includes('data-ai-assist-sketch-prompt'), '卡片必须提供 AI 帮写按钮');
+  check(view.includes('/prompt-assist'), 'AI 帮写必须调用逐镜 prompt-assist 接口');
+  check(/promptField\.value\s*=\s*await assistStoryboardPrompt/.test(view), 'AI 返回值必须只写入当前提示词草稿');
+  const assistHandler = view.slice(view.indexOf("card.querySelector('[data-ai-assist-sketch-prompt]')"), view.indexOf("card.querySelector('[data-expand-sketch-prompt]')"));
+  check(!assistHandler.includes('saveStoryboardPrompt'), 'AI 帮写不得自动保存');
+  check(view.includes('async_start: true'), '单镜和批量生成必须异步启动');
+  check(view.includes('target_indexes: targetIndexes'), '批次请求必须提交明确目标镜头');
+  check(!view.includes(`/storyboard-images/${'${shotIndex}'}/generate`), '前端不得再调用旧同步单镜生成接口');
+  const batchStart = view.slice(view.indexOf('const startSketchBatch'), view.indexOf('batchButton?.addEventListener'));
+  check(batchStart.indexOf("method: 'POST'") < batchStart.indexOf('sketchBatchPollTimer = setTimeout(pollSketchBatch, 100)'), 'POST 启动后必须进入 GET 轮询');
+  check(view.includes('data-sketch-shot-progress'), '每张镜头卡必须有独立进度宿主');
+  check(view.includes('sketchShotProgressMarkup'), '卡片进度必须投影进度条与耗时');
+  check(css.includes('.storyboard-prompt-dialog-backdrop'), '必须提供全屏弹层样式');
+  check(/width:min\(1040px,94vw\)/.test(css), '弹层必须接近竞品的大尺寸编辑体验');
+  check(css.includes('.storyboard-prompt-dialog-reference-grid'), '弹层必须完整展示引用缩略图');
+  check(css.includes('.sketch-shot-progress'), '卡片必须有可见进度条样式');
+  check(/\.sketch-actions\s*\{[^}]*justify-content:flex-end/.test(css), '卡片按钮必须紧凑靠右');
+  check(dialog.includes('AI 帮写只会更新当前草稿'), '弹层必须明确 AI 帮写不自动保存和生成');
+  check(dialog.includes('data-dialog-save-prompt'), '弹层必须提供保存入口');
+  check(dialog.includes('data-close-prompt-dialog'), '弹层必须提供关闭入口');
+
+  const namespace = loadDialogModule();
+  const references = namespace.referenceItemsFor({ storyboard: { reference_packs: [{ shot_index: 5, references: [
+    { role: 'scene_identity', url: '/scene.png', required: true },
+    { role: 'person_identity_actor', url: '/person.png', required: false },
+  ] }] } }, 0, 5);
+  assert.deepEqual(JSON.parse(JSON.stringify(references.map(item => [item.label, item.source, item.order]))), [
+    ['场景', '场景主视图', 1], ['人物', '人物身份参考', 2],
+  ]);
+  checks += 1;
+  const markup = namespace.sketchReferenceMarkup(references, 5);
+  check(markup.includes('场景主视图 · 生成必需'), '卡片引用必须显示中文角色和必需状态');
+  check(markup.includes('人物身份参考 · 辅助参考'), '卡片引用必须显示辅助参考状态');
+  console.log(`STORYBOARD_PROMPT_EDITOR_UI_V314_OK checks=${checks} model_calls=0 paid_calls=0`);
+}
+
+main().catch(error => {
+  console.error(error.stack || error);
+  process.exitCode = 1;
+});

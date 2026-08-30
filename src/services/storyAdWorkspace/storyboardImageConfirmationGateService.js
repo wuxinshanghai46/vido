@@ -4,6 +4,7 @@ const storage = require('../newStoryAd/storageService');
 const sceneReadability = require('../newStoryAd/sceneReadabilityContractService');
 const scenePlanningAuthority = require('../newStoryAd/scenePlanningAuthorityService');
 const storyboardImageLineage = require('../newStoryAd/storyboardImageLineageService');
+const storyboardSubjectQa = require('../newStoryAd/storyboardSubjectQaService');
 
 function list(value) { return Array.isArray(value) ? value.filter(Boolean) : []; }
 function clean(value = '', max = 1600) { return String(value || '').replace(/\s+/g, ' ').trim().slice(0, max); }
@@ -66,7 +67,8 @@ function inspect(taskId) {
       if (Number(image.lineage_schema_version || 0) >= 2 && !image.scene_planning_fingerprint) reasons.push('SCENE_PLANNING_LINEAGE_MISSING');
       if (image.scene_planning_fingerprint && currentScene?.scene_planning_fingerprint
         && clean(image.scene_planning_fingerprint, 160) !== clean(currentScene.scene_planning_fingerprint, 160)) reasons.push('SCENE_PLANNING_CHANGED');
-      if (Number(image.subject_qa_policy_version || 0) >= 1 && image.subject_count_qa?.pass !== true) reasons.push('SUBJECT_COUNT_QA_FAILED');
+      if (Number(image.subject_qa_policy_version || 0) < storyboardSubjectQa.QA_POLICY_VERSION) reasons.push('SUBJECT_COUNT_QA_POLICY_OUTDATED');
+      else if (image.subject_count_qa?.pass !== true) reasons.push('SUBJECT_COUNT_QA_FAILED');
       if (reasons.length) {
         stale.push(shotIndex);
         staleReasons[shotIndex] = [...new Set(reasons)];

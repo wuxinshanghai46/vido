@@ -6,6 +6,8 @@ const graphProjection = require('../services/storyAdWorkspace/graphProjectionSer
 const graphLayouts = require('../services/storyAdWorkspace/graphLayoutService');
 const storyboardSketches = require('../services/storyAdWorkspace/storyboardSketchService');
 const storyboardImageConfirmation = require('../services/storyAdWorkspace/storyboardImageConfirmationGateService');
+const storyboardPromptAssist = require('../services/storyAdWorkspace/storyboardPromptAssistService');
+const storyboardAsyncLaunch = require('../services/storyAdWorkspace/storyboardAsyncLaunchService');
 const sceneWorlds = require('../services/storyAdWorkspace/sceneWorldService');
 const directorScenes = require('../services/storyAdWorkspace/directorSceneService');
 const referenceUnderstandingConfirmations = require('../services/storyAdWorkspace/referenceUnderstandingConfirmationService');
@@ -462,13 +464,25 @@ router.put('/projects/:taskId/storyboard-images/:shotIndex/prompt', asyncRoute(a
   res.json({ success: true, task_id: req.params.taskId, ...result, image_gate: storyboardImageConfirmation.inspect(req.params.taskId) });
 }));
 
+router.post('/projects/:taskId/storyboard-images/:shotIndex/prompt-assist', asyncRoute(async (req, res) => {
+  projectForRequest(req);
+  const result = await storyboardPromptAssist.suggest(req.params.taskId, req.params.shotIndex, req.body || {});
+  res.json({ success: true, task_id: req.params.taskId, ...result });
+}));
+
 router.post('/projects/:taskId/storyboard-images/generate-batch', asyncRoute(async (req, res) => {
   projectForRequest(req);
   const body = mediaModelSelection.applySelection('new_story_ad.storyboard_image', req.body || {});
-  const result = await storyboardSketches.generateSketchBatch(
+  const execution = storyboardSketches.generateSketchBatch(
     req.params.taskId,
     body,
   );
+  if (body.async_start === true) {
+    const launch = await storyboardAsyncLaunch.resolve(execution, () => storyboardSketches.getSketchBatch(req.params.taskId));
+    if (launch.completed) return res.json({ success: true, task_id: req.params.taskId, ...launch.result });
+    return res.status(202).json({ success: true, task_id: req.params.taskId, accepted: true, ...launch.result });
+  }
+  const result = await execution;
   res.json({ success: true, task_id: req.params.taskId, ...result });
 }));
 

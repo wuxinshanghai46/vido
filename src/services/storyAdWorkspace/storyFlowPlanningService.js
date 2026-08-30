@@ -13,6 +13,7 @@ function promptPayload(draft = {}) {
     task: '把每个剧情节点绑定到已经确认的人物与场景，并建立有剧情依据的场景切换。只允许使用下列 ID，不得创造人物、场景或剧情节点。',
     rules: [
       '必须原样返回每一个 beat_id，且每个只出现一次。',
+      'narrative_scene_sequence 来自用户已确认的剧情种子，是场景首次访问、切换和回访的硬顺序；不得为了平均覆盖场景而改写该顺序。',
       'scene_id 必须从 scenes 中选择；不得根据数组顺序猜测。',
       '必须优先根据 scene.story_purpose、layout、interaction 与当前剧情动作选择场景；description 只作补充，不能让其他地点词覆盖所选场景。',
       'required_in_story=true 的每个已确认场景必须至少承载一个剧情节点；covered_beat_ids 指定的节点必须使用对应场景。',
@@ -27,6 +28,8 @@ function promptPayload(draft = {}) {
     ],
     people: list(draft.people),
     scenes: list(draft.scenes),
+    narrative_scene_sequence: list(draft.narrative_scene_sequence),
+    story_seed: draft.story_seed || {},
     beats: list(draft.units).map(unit => ({
       beat_id: unit.beat_id,
       title: unit.title,

@@ -108,17 +108,20 @@ function sceneAuthority(scene = {}, index = 0, sceneConfig = {}) {
 function authoritySnapshot(state) {
   const people = state.cast.map(personAuthority);
   const scenes = state.sceneAssets.map((scene, index) => sceneAuthority(scene, index, state.sceneConfig));
+  const narrativeSceneSequence = declaredSceneSequence(state, scenes);
   const blueprintFingerprint = clean(state.blueprint.fingerprint, 220) || storage.canonicalFingerprint({
     title: state.blueprint.story_title || state.blueprint.title || '',
     logline: state.blueprint.logline || '',
     beats: state.beats,
   });
-  const authorityFingerprint = storage.canonicalFingerprint({
+  const authoritySource = {
     blueprint_fingerprint: blueprintFingerprint,
     people,
     scenes,
-  });
-  return { people, scenes, blueprint_fingerprint: blueprintFingerprint, authority_fingerprint: authorityFingerprint };
+  };
+  if (narrativeSceneSequence.length) authoritySource.narrative_scene_sequence = narrativeSceneSequence;
+  const authorityFingerprint = storage.canonicalFingerprint(authoritySource);
+  return { people, scenes, narrative_scene_sequence: narrativeSceneSequence, blueprint_fingerprint: blueprintFingerprint, authority_fingerprint: authorityFingerprint };
 }
 
 function tokens(value = '') {
@@ -134,6 +137,29 @@ function overlapScore(left = '', right = '') {
   let score = 0;
   a.forEach(value => { if (b.has(value)) score += 1; });
   return score;
+}
+
+function declaredSceneSequence(state = {}, scenes = []) {
+  const seed = state.context?.story_seed && typeof state.context.story_seed === 'object' ? state.context.story_seed : {};
+  const phaseKeys = ['opening', 'setup', 'development', 'turning_point', 'progression', 'resolution', 'ending', 'closing'];
+  const segments = [
+    ...phaseKeys.map(key => seed[key]),
+    ...list(seed.plot_beats || seed.plotBeats).map(beat => [beat.location, beat.summary, beat.content, beat.description].filter(Boolean).join(' ')),
+  ].map(value => clean(typeof value === 'object' ? JSON.stringify(value) : value, 1800)).filter(Boolean);
+  const sequence = [];
+  segments.forEach((segment) => {
+    const exactMatches = scenes.map(scene => ({ scene, position: scene.name ? segment.indexOf(scene.name) : -1 }))
+      .filter(item => item.position >= 0).sort((a, b) => a.position - b.position);
+    const ranked = scenes.map(scene => ({ scene, score: overlapScore(segment, `${scene.name} ${scene.story_purpose || ''}`) }))
+      .sort((a, b) => b.score - a.score);
+    const selected = exactMatches.length
+      ? exactMatches.map(item => item.scene)
+      : (ranked[0]?.score >= 4 && ranked[0].score >= (ranked[1]?.score || 0) + 2 ? [ranked[0].scene] : []);
+    selected.forEach((scene) => {
+      if (scene?.scene_id && sequence[sequence.length - 1] !== scene.scene_id) sequence.push(scene.scene_id);
+    });
+  });
+  return sequence;
 }
 
 function plannedSceneForBeat(state, beat, index, scenes) {
@@ -230,6 +256,8 @@ function draft(taskId) {
     authority_fingerprint: authority.authority_fingerprint,
     people: authority.people,
     scenes: authority.scenes,
+    narrative_scene_sequence: authority.narrative_scene_sequence,
+    story_seed: state.context.story_seed && typeof state.context.story_seed === 'object' ? state.context.story_seed : {},
     units,
     historical_flow_sketch_count: list(storage.getOutput(taskId, 'story_flow_sketches')).length,
     created_at: current ? clean(stored.created_at, 80) : '',
@@ -309,6 +337,11 @@ function validateUnits(base, supplied = [], options = {}) {
       errors.push(`${unit.title} 没有切换场景，不应填写 transition_from`);
     }
   });
+  const declared = list(base.narrative_scene_sequence).map(stableId).filter(Boolean);
+  const actual = units.map(unit => unit.scene_id).filter((id, index, rows) => id && id !== rows[index - 1]);
+  if (declared.length > 1 && actual.join('|') !== declared.join('|')) {
+    errors.push(`场景访问顺序必须继承剧情种子：${declared.join(' → ')}；当前为：${actual.join(' → ')}`);
+  }
   if (errors.length) throw Object.assign(new Error(`剧情流向尚不能确认：${errors.join('；')}`), {
     code: 'STORY_FLOW_CONTRACT_INVALID', status: 422, retryable: false, issues: errors,
   });
@@ -426,5 +459,5 @@ function assertReady(taskId) {
 }
 
 module.exports = {
-  CONTRACT_VERSION, DOWNSTREAM_KINDS, OUTPUT_KIND, assertReady, authoritySnapshot, confirm, confirmSystem, draft, inspect, rebindSystemAuthority, validateUnits,
+  CONTRACT_VERSION, DOWNSTREAM_KINDS, OUTPUT_KIND, assertReady, authoritySnapshot, confirm, confirmSystem, declaredSceneSequence, draft, inspect, rebindSystemAuthority, validateUnits,
 };

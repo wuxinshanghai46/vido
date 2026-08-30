@@ -66,7 +66,7 @@ const DOMAIN_RULES = [
       /^src\/services\/newStoryAd\/(?:productionBoardContractService|qualityReviewService|storyAdService|storyBeatAssistService|ttsAdapter)\.js$/i,
       /^src\/services\/newStoryAd\/(?:productionPromptCompilerService|soundJourneyService)\.js$/i,
       /^src\/services\/newStoryAd\/jsonRepairService\.js$/i,
-      /^src\/services\/storyAdWorkspace\/(?:storyboardSketch|storyboardSketchGate|storyboardImageConfirmationGate|storyboardPromptOverride)Service\.js$/i,
+      /^src\/services\/storyAdWorkspace\/(?:storyboardSketch(?:Gate|Target)?|storyboardImageConfirmationGate|storyboardPrompt(?:Override|Assist)|storyboardAsyncLaunch)Service\.js$/i,
       /^scripts\/(?:repair-story-ad-storyboard-domain-contract|test-story-ad-universal-scene-domain)/i,
       /^scripts\/configure-story-ad-consistency-vision-routing-v240\.js$/i,
       /^src\/services\/storyAdWorkspace\/storyFlow(?:Contract|Planning)Service\.js$/i,

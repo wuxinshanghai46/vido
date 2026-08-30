@@ -13,6 +13,7 @@ const storyboardImageLineage = require('../newStoryAd/storyboardImageLineageServ
 const storyboardImageConfirmation = require('./storyboardImageConfirmationGateService');
 const sketchProgress = require('./storyboardSketchProgressService');
 const promptOverrideService = require('./storyboardPromptOverrideService');
+const sketchTargets = require('./storyboardSketchTargetService');
 const { cleanPrompt } = promptOverrideService;
 const { v4: uuidv4 } = require('uuid');
 
@@ -335,7 +336,7 @@ async function generateSketch(taskId, shotIndex, options = {}, dependencies = {}
     `用户可编辑的本镜创作提示（必须执行，但不得覆盖主体数量、身份、场景和安全合同）：${editablePrompt}`,
     `镜头标题：${clean(shot.title || `镜头 ${numericIndex}`, 160)}`,
     `画面：${clean(shot.visual || shot.visual_description || '', 1200)}`,
-    `动作：${clean(shot.action || '', 800)}`,
+    `本张图唯一动作状态：${clean(domainContract.decisive_moment || shot.action || '', 800)}`,
     `场景：${clean(sceneAsset.name || shot.scene_zone || shot.scene_id || '', 220)}；剧情用途：${clean(sceneAsset.story_purpose || '', 500)}`,
     `场景空间与导演规划（强制执行）：${clean(JSON.stringify(scenePlanningContract || {}), 5200)}`,
     '必须按所选 camera_id 的位置、朝向和焦点构图；必须保留布局描述中的完整空间边界及必需锚点。人物出镜时，其站位、入口、路线和互动终点必须与规划一致；明确无人镜头不得擅自加入人物。',
@@ -446,11 +447,8 @@ async function generateSketchBatch(taskId, options = {}, dependencies = {}) {
     throw error;
   }
   const existing = storage.getOutput(taskId, 'storyboard_images') || [];
-  const existingByShot = new Map(existing.map(item => [Number(item.shot_index), item]));
   const confirmationState = storyboardImageConfirmation.inspect(taskId);
-  const staleIndexes = new Set(confirmationState.stale_indexes || []);
-  const targets = shots.map((shot, index) => Number(shot.shot_index || shot.index || index + 1) || index + 1)
-    .filter(shotIndex => options.regenerate_all === true || !existingByShot.get(shotIndex)?.image_url || staleIndexes.has(shotIndex));
+  const targets = sketchTargets.select({ shots, existing, confirmation: confirmationState, options });
   if (!targets.length) {
     const progress = saveBatchProgress(taskId, {
       id: clean(options.client_request_id || uuidv4(), 120),
