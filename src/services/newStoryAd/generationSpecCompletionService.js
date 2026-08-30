@@ -116,8 +116,8 @@ function defaultSceneSupplement(name = '当前场景', spec = {}, sceneId = '', 
       : '明确人物或商品的起点、移动路线、互动位置、终点、主机位、反向机位和细节特写焦点，保证动作与镜头方向连续',
     negativeText: '禁止无关人物和物件；禁止文字、水印、Logo、结构变形、材质漂移、光向矛盾和不可到达的互动路线',
     storyStates: [{ id: `state_${token}_main`, label: `${name}${narrativeOnly ? '主要叙事状态' : '主要展示状态'}`, state_before: ['主体进入前空间与物件位置固定'], visible_change: [routeEvidence], state_after: ['互动完成后保留已发生的物件状态'], shot_refs: [] }],
-    interactionAnchors: [{ id: `anchor_${token}_main`, label: `${name}主要互动点`, purpose: routeEvidence, contact_rules: ['手部、视线、物件朝向和接触位置连续'] }],
-    routes: [{ id: `route_${token}_main`, label: `${name}主要拍摄行动路线`, from: '已确认入口或画面外起点', to: '已确认核心互动位置', actor: narrativeOnly ? '场景中的故事人物或叙事主体' : '场景中的主要人物或展示主体', continuity: `${routeEvidence}；保持运动方向、视线和物件状态连续` }],
+    interactionAnchors: [{ id: `anchor_${token}_main`, label: `${name}主要互动点`, purpose: routeEvidence, normalized_position: [0.58, 0.46], contact_rules: ['手部、视线、物件朝向和接触位置连续'] }],
+    routes: [{ id: `route_${token}_main`, label: `${name}主要拍摄行动路线`, from: '已确认入口或画面外起点', to: '已确认核心互动位置', actor: narrativeOnly ? '场景中的故事人物或叙事主体' : '场景中的主要人物或展示主体', from_position: [0.12, 0.82], to_position: [0.58, 0.46], path_points: [[0.12, 0.82], [0.28, 0.7], [0.58, 0.46]], continuity: `${routeEvidence}；保持运动方向、视线和物件状态连续` }],
   };
 }
 
@@ -133,7 +133,6 @@ function defaultCameraPlan(sceneId = '', sceneName = '') {
 
 function closeSceneSpec(spec = {}, input = {}) {
   const missing = sceneMissingComponents(spec);
-  if (!missing.length) return { scene_spec: spec, completed_components: [] };
   const fallback = defaultSceneSupplement(input.scene_name || '当前场景', spec, input.scene_id, input);
   fallback.cameraPlan = defaultCameraPlan(input.scene_id, input.scene_name);
   const closed = { ...spec };
@@ -144,7 +143,49 @@ function closeSceneSpec(spec = {}, input = {}) {
   ['storyStates', 'interactionAnchors', 'routes', 'cameraPlan'].forEach(key => {
     if (missing.includes(key)) closed[key] = fallback[key];
   });
-  return { scene_spec: closed, completed_components: missing };
+  const point = value => Array.isArray(value) && value.length >= 2 ? value.slice(0, 2).map(Number) : [];
+  const fallbackCameras = fallback.cameraPlan;
+  const sourceCameras = Array.isArray(closed.cameraPlan || closed.camera_plan) ? (closed.cameraPlan || closed.camera_plan) : [];
+  if (sourceCameras.length) {
+    closed.cameraPlan = sourceCameras.map((camera, index) => {
+      const planned = fallbackCameras.find(item => item.view_id === camera?.view_id)
+        || fallbackCameras.find(item => item.label === camera?.label)
+        || fallbackCameras[index] || {};
+      return {
+        ...camera,
+        view_id: camera?.view_id || planned.view_id,
+        normalized_position: point(camera?.normalized_position || camera?.position_on_layout).length
+          ? point(camera?.normalized_position || camera?.position_on_layout)
+          : planned.normalized_position,
+        look_at: point(camera?.look_at || camera?.target_on_layout).length
+          ? point(camera?.look_at || camera?.target_on_layout)
+          : planned.look_at,
+        coordinate_source: camera?.coordinate_source || 'deterministic_director_plan',
+      };
+    });
+  }
+  const fallbackAnchor = fallback.interactionAnchors[0];
+  const sourceAnchors = Array.isArray(closed.interactionAnchors || closed.interaction_anchors) ? (closed.interactionAnchors || closed.interaction_anchors) : [];
+  if (sourceAnchors.length) closed.interactionAnchors = sourceAnchors.map(anchor => ({
+    ...anchor,
+    normalized_position: point(anchor?.normalized_position || anchor?.position_on_layout).length
+      ? point(anchor?.normalized_position || anchor?.position_on_layout)
+      : fallbackAnchor.normalized_position,
+    coordinate_source: anchor?.coordinate_source || 'deterministic_director_plan',
+  }));
+  const fallbackRoute = fallback.routes[0];
+  const sourceRoutes = Array.isArray(closed.routes || closed.movement_routes) ? (closed.routes || closed.movement_routes) : [];
+  if (sourceRoutes.length) closed.routes = sourceRoutes.map(route => ({
+    ...route,
+    from_position: point(route?.from_position || route?.start_position).length ? point(route?.from_position || route?.start_position) : fallbackRoute.from_position,
+    to_position: point(route?.to_position || route?.end_position).length ? point(route?.to_position || route?.end_position) : fallbackRoute.to_position,
+    path_points: Array.isArray(route?.path_points || route?.route_points) && (route.path_points || route.route_points).length
+      ? (route.path_points || route.route_points) : fallbackRoute.path_points,
+    coordinate_source: route?.coordinate_source || 'deterministic_director_plan',
+  }));
+  const completed = [...missing];
+  if (JSON.stringify(closed) !== JSON.stringify(spec)) completed.push('director_coordinates');
+  return { scene_spec: closed, completed_components: [...new Set(completed)] };
 }
 
 async function parsedModelJson({ taskId, systemPrompt, userPrompt, maxTokens = 3600 } = {}, deps = {}) {

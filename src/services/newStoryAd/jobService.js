@@ -468,6 +468,8 @@ function queueStage({
   idempotencyKey = '',
   authorityContext = null,
   scopeId = '',
+  explicitUserRetry = true,
+  acknowledgeBillingUnknown = false,
 }) {
   if (!taskId || !stage || typeof execute !== 'function') throw new Error('剧情广告后台任务参数不完整');
   if (stage === 'scene_qa') {
@@ -540,7 +542,10 @@ function queueStage({
     model_id: queuedRelease.bundle_id,
     authority_id: authority?.authority_id || '',
     execution_identity: authority?.execution_identity || '',
-  }, { explicit_user_retry: true });
+  }, {
+    explicit_user_retry: explicitUserRetry === true,
+    acknowledge_billing_unknown: acknowledgeBillingUnknown === true,
+  });
   if (!unitClaim.claimed) {
     const prior = unitClaim.unit || {};
     return {

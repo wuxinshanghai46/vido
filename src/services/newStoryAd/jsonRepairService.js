@@ -46,6 +46,23 @@ function removeTrailingCommas(text = '') {
   return String(text || '').replace(/,\s*([}\]])/g, '$1');
 }
 
+function escapeControlCharsInStrings(text = '') {
+  const raw = String(text || '');
+  let inString = false;
+  let escaped = false;
+  let out = '';
+  for (const ch of raw) {
+    if (escaped) { out += ch; escaped = false; continue; }
+    if (ch === '\\') { out += ch; escaped = true; continue; }
+    if (ch === '"') { out += ch; inString = !inString; continue; }
+    if (inString && ch === '\n') { out += '\\n'; continue; }
+    if (inString && ch === '\r') { out += '\\r'; continue; }
+    if (inString && ch === '\t') { out += '\\t'; continue; }
+    out += ch;
+  }
+  return out;
+}
+
 function firstJsonTail(text = '', expected = 'any') {
   const raw = String(text || '');
   const arrayIdx = raw.indexOf('[');
@@ -89,7 +106,8 @@ function closeOpenJson(raw = '', expected = 'any') {
 
 function parseJson(raw, expected = 'any') {
   const text = stripMarkdown(raw);
-  const attempts = [text, removeTrailingCommas(text), closeOpenJson(text, expected)];
+  const escaped = escapeControlCharsInStrings(text);
+  const attempts = [text, removeTrailingCommas(text), escaped, removeTrailingCommas(escaped), closeOpenJson(escaped, expected)];
   if (expected === 'array' || expected === 'any') {
     const arr = extractBalanced(text, '[', ']');
     if (arr) attempts.push(arr, removeTrailingCommas(arr));
@@ -154,6 +172,7 @@ module.exports = {
   stripMarkdown,
   extractBalanced,
   closeOpenJson,
+  escapeControlCharsInStrings,
   parseJson,
   parseOrRepair,
 };

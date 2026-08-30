@@ -27,15 +27,17 @@ function metadata(plan = {}, fallback = {}) {
   };
 }
 
-function checkpointWriter({ storage, stageProgress, taskId, blueprint, blueprintRevision, blueprintFingerprint, expectedPlan, expectedTotal, generationId, startedAt }) {
-  return async ({ phase = 'running', shots = [], completed_indexes = [], expected_total = 0, coverage_plan = null } = {}) => {
+function checkpointWriter({ storage, stageProgress, taskId, blueprint, blueprintRevision, blueprintFingerprint, storyFlowContractFingerprint = '', expectedPlan, expectedTotal, generationId, startedAt }) {
+  return async ({ phase = 'running', shots = [], completed_indexes = [], expected_total = 0, coverage_plan = null, blocked_units = [] } = {}) => {
     storage.saveOutput(taskId, 'storyboard_checkpoint', {
       schema_version: 1, status: 'running', phase,
       blueprint_revision: blueprintRevision,
       blueprint_fingerprint: blueprintFingerprint,
+      story_flow_contract_fingerprint: storyFlowContractFingerprint,
+      generation_id: generationId,
       expected_total: Number(expected_total || blueprint.beats?.length || 0),
       completed_count: completed_indexes.length || shots.length,
-      completed_indexes, shots, coverage_plan: coverage_plan || expectedPlan,
+      completed_indexes, shots, blocked_units, coverage_plan: coverage_plan || expectedPlan,
       updated_at: new Date().toISOString(),
     });
     const processed = Math.min(Number(expected_total || expectedTotal), completed_indexes.length || shots.length);

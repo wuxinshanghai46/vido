@@ -210,7 +210,19 @@ function normalizeZones(scene = {}) {
 }
 
 function normalizeCameras(scene = {}) {
-  const rows = list(scene.cameras).length ? list(scene.cameras) : list(scene.camera_plan);
+  const planned = list(scene.camera_plan);
+  const generated = list(scene.cameras);
+  const rows = generated.length ? generated.map((camera, index) => {
+    const key = clean(camera.view_id || camera.view || camera.key, 100);
+    const plan = planned.find(item => clean(item.view_id || item.view || item.key, 100) === key) || planned[index] || {};
+    return {
+      ...plan,
+      ...camera,
+      normalized_position: camera.normalized_position || camera.position_on_layout || camera.position || plan.normalized_position || plan.position,
+      look_at: camera.look_at || camera.target_on_layout || plan.look_at,
+      coordinate_source: camera.coordinate_source || plan.coordinate_source || '',
+    };
+  }) : planned;
   return rows.map((camera, index) => ({
     id: clean(camera.id || camera.view_id || camera.camera_id || `${scene.id}:camera:${index + 1}`, 120),
     name: clean(camera.label || camera.name || camera.role || `机位 ${index + 1}`, 120),
@@ -220,6 +232,7 @@ function normalizeCameras(scene = {}) {
     lens: clean(camera.lens || camera.lens_class, 80),
     movement: clean(camera.movement, 220),
     pose: cameraPose(camera),
+    coordinate_source: clean(camera.coordinate_source, 80),
     image_url: clean(camera.image_url || camera.reference_image_url, 1000),
   }));
 }
@@ -415,6 +428,19 @@ function characterWorldMatrix(bundle = {}, worlds = [], options = {}) {
       const interactionCamera = list(world.cameras).find(camera => /interaction|actor|character|follow|人物|互动|跟随/u.test(clean([
         camera.id, camera.name, camera.role, camera.movement,
       ].join(' '), 600)));
+      const plannedRoutes = list(plannedSpec.routes || plannedSpec.movement_routes);
+      const plannedRoute = plannedRoutes.find(route => normalizedPoint(route?.to_position || route?.end_position).length) || plannedRoutes[0] || {};
+      const plannedBlocking = normalizedPoint(
+        list(plannedSpec.interactionAnchors || plannedSpec.interaction_anchors).find(anchor => normalizedPoint(anchor?.normalized_position || anchor?.position_on_layout).length)?.normalized_position
+          || plannedRoute.to_position
+          || plannedRoute.end_position,
+        interactionCamera?.pose?.look_at?.length
+          ? [interactionCamera.pose.look_at[0] / 12 + 0.5, interactionCamera.pose.look_at[2] / 8 + 0.5]
+          : [],
+      );
+      const plannedEntry = normalizedPoint(plannedRoute.from_position || plannedRoute.start_position);
+      const plannedExit = normalizedPoint(plannedRoute.to_position || plannedRoute.end_position);
+      const plannedPath = list(plannedRoute.path_points || plannedRoute.route_points).map(point => normalizedPoint(point)).filter(point => point.length);
       return {
         world_id: world.id,
         presence,
@@ -428,10 +454,12 @@ function characterWorldMatrix(bundle = {}, worlds = [], options = {}) {
         appearance_order: Math.max(0, finite(explicit?.appearance_order, 0)),
         entry_direction: clean(explicit?.entry_direction, 80), exit_direction: clean(explicit?.exit_direction, 80),
         blocking: clean(explicit?.blocking || (interactionPlanMatch ? plannedInteraction : ''), 260),
-        blocking_position: normalizedPoint(explicit?.blocking_position || explicit?.position_on_layout || explicit?.position),
-        entry_point: normalizedPoint(explicit?.entry_point || explicit?.entry_position),
-        exit_point: normalizedPoint(explicit?.exit_point || explicit?.exit_position),
-        route_points: list(explicit?.route_points || explicit?.path_points).map(point => normalizedPoint(point)).filter(point => point.length),
+        blocking_position: normalizedPoint(explicit?.blocking_position || explicit?.position_on_layout || explicit?.position, interactionPlanMatch ? plannedBlocking : []),
+        entry_point: normalizedPoint(explicit?.entry_point || explicit?.entry_position, interactionPlanMatch ? plannedEntry : []),
+        exit_point: normalizedPoint(explicit?.exit_point || explicit?.exit_position, interactionPlanMatch ? plannedExit : []),
+        route_points: list(explicit?.route_points || explicit?.path_points).length
+          ? list(explicit?.route_points || explicit?.path_points).map(point => normalizedPoint(point)).filter(point => point.length)
+          : (interactionPlanMatch ? plannedPath : []),
         camera_id: clean(explicit?.camera_id || (interactionPlanMatch ? interactionCamera?.id : '') || world.cameras?.[0]?.id, 120),
         source: explicitPresence ? 'manual' : (matched.length ? shotSource
           : (interactionPlanMatch ? 'scene_plan_interaction'

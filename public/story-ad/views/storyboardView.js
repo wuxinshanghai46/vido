@@ -1,7 +1,7 @@
-import { request } from '../api.js?v=20260830-production-v290c';
-import { elapsedTimeTag, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260830-production-v290c';
-import { bindMediaLightbox } from './mediaLightbox.js?v=20260830-production-v290c';
-import { bindGenerationModelPicker, loadGenerationModelPicker } from './generationModelPicker.js?v=20260830-production-v290c';
+import { request } from '../api.js?v=20260830-production-v291';
+import { elapsedTimeTag, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260830-production-v291';
+import { bindMediaLightbox } from './mediaLightbox.js?v=20260830-production-v291';
+import { bindGenerationModelPicker, loadGenerationModelPicker } from './generationModelPicker.js?v=20260830-production-v291';
 
 export function friendlyBindings(bundle = {}, shot = {}) {
   const assets = bundle.assets || {};
@@ -66,8 +66,10 @@ function sceneSequenceMarkup(bundle = {}, shots = []) {
 function sketchCard(shot, sketch = {}, index = 0, gate = {}, bundle = {}) {
   const shotIndex = Number(shot.shot_index || shot.index || index + 1) || index + 1;
   const disabled = gate.ready === false ? 'disabled' : '';
+  const ratio = String(bundle?.brief?.output_ratio || bundle?.brief?.ratio || '16:9').match(/^(\d+(?:\.\d+)?)\s*[:/]\s*(\d+(?:\.\d+)?)$/);
+  const aspectStyle = ratio ? ` style="aspect-ratio:${Number(ratio[1])} / ${Number(ratio[2])}"` : '';
   return `<article class="card sketch-card sketch-tile ${gate.ready === false ? 'is-gated' : ''}" data-sketch-shot="${shotIndex}">
-    <div class="sketch-tile-media" data-sketch-image-host="${shotIndex}">${mediaPreview(sketch, { label: `SH${String(shotIndex).padStart(2, '0')} · ${shot.title || `镜头 ${shotIndex}`}`, width: 960, symbol: '分镜图', zoomable: true, zoomGroup: 'storyboard-images' })}<span class="sketch-shot-number">SH${String(shotIndex).padStart(2, '0')}</span></div>
+    <div class="sketch-tile-media" data-sketch-image-host="${shotIndex}"${aspectStyle}>${mediaPreview(sketch, { label: `SH${String(shotIndex).padStart(2, '0')} · ${shot.title || `镜头 ${shotIndex}`}`, width: 960, symbol: '分镜图', zoomable: true, zoomGroup: 'storyboard-images' })}<span class="sketch-shot-number">SH${String(shotIndex).padStart(2, '0')}</span></div>
     <div class="sketch-tile-copy"><div><h2>${escapeHtml(shot.title || `镜头 ${shotIndex}`)}</h2><p>${escapeHtml(compactBindingSummary(bundle, shot))}</p></div></div>
     <details class="sketch-tile-editor"><summary>调整</summary><div class="sketch-action-bar">
       <input class="hidden-input" type="file" accept="image/png,image/jpeg,image/webp" data-sketch-file>
@@ -103,15 +105,15 @@ function storyboardProgressMarkup({ batch = null, active = false, failed = false
   const processed = Math.max(0, Math.min(requested, Number(completed) || 0));
   const percent = Math.round((processed / requested) * 100);
   return `<div class="sketch-batch-progress is-${failed ? 'failed' : 'running'}" role="${failed ? 'alert' : 'status'}" aria-live="polite">
-    <div class="sketch-batch-progress-head"><b>${failed ? '分镜生成已停止' : '正在生成分镜'}</b><span>已完成 ${processed}/${requested} · ${percent}%</span></div>
+    <div class="sketch-batch-progress-head"><b>${failed ? '镜头结构生成已停止' : '正在整理镜头结构'}</b><span>已完成 ${processed}/${requested} · ${percent}%</span></div>
     ${active ? `<div class="project-progress-track" aria-hidden="true"><i style="width:${percent}%"></i></div>` : ''}
-    <small>${failed ? '已完成的内容会保留；继续后只处理未完成镜头。' : '系统正在自动匹配人物与场景，完成的画面会逐镜显示。'}</small>
+    <small>${failed ? '已完成的镜头结构会保留；分镜图片尚未开始，继续后只处理未完成镜头。' : '系统正在按剧情核对人物、场景、机位和站位；结构完成后才开始生成分镜图片。'}</small>
   </div>`;
 }
 
 export async function mount(host, context) {
   if (context.route?.params?.get('stage') === 'shot') {
-    const shotDesigner = await import('./shotDesignerView.js?v=20260830-production-v290c');
+    const shotDesigner = await import('./shotDesignerView.js?v=20260830-production-v291');
     return shotDesigner.mount(host, context);
   }
   const { bundle, store } = context;
@@ -139,9 +141,11 @@ export async function mount(host, context) {
     || bundle?.navigation?.steps?.final?.completed === true,
   );
   let sketchBatch = bundle?.storyboard?.image_batch || null;
-  const sketchModelPicker = await loadGenerationModelPicker(bundle.project.id, 'new_story_ad.storyboard_image', { label: '分镜模型' });
   const sketchBatchActive = ['queued', 'running'].includes(String(sketchBatch?.status || ''));
   const storyboardActive = bundle?.project?.active_stage === 'storyboard' && !!bundle?.project?.active_generation_id;
+  const sketchModelPicker = storyboardActive
+    ? { taskId: bundle.project.id, stage: 'new_story_ad.storyboard_image', selected: '', html: '' }
+    : await loadGenerationModelPicker(bundle.project.id, 'new_story_ad.storyboard_image', { label: '分镜模型' });
   const storyboardFailed = !shots.length && !storyboardActive
     && String(bundle?.project?.status || '').toLowerCase() === 'failed'
     && String(bundle?.project?.stage || '').toLowerCase().includes('storyboard');
@@ -171,7 +175,7 @@ export async function mount(host, context) {
       ${primaryAction ? `<div class="storyboard-primary-actions">${primaryAction}</div>` : ''}
       ${sceneSequenceMarkup(bundle, shots)}
       <div data-sketch-batch-host>${storyboardProgressMarkup({
-        batch: sketchBatch,
+        batch: storyboardActive ? null : sketchBatch,
         active: storyboardActive || sketchBatchActive,
         failed: storyboardFailed || gateBlocked,
         completed: shots.length ? generatedSketchCount : checkpointShots.length,
@@ -182,6 +186,19 @@ export async function mount(host, context) {
 
   bindMediaLightbox(host);
   const selectedSketchModel = bindGenerationModelPicker(host, sketchModelPicker);
+  const renderStoryboardStageProgress = currentBundle => {
+    const project = currentBundle?.project || {};
+    const progress = project.generation_progress || currentBundle?.generation?.progress || {};
+    const active = project.active_stage === 'storyboard' && !!project.active_generation_id;
+    if (!active) return;
+    const total = Math.max(1, Number(progress.target_total || progress.total || checkpointTotal || 1));
+    const completed = Math.max(0, Number(progress.completed ?? progress.processed ?? checkpointShots.length) || 0);
+    const batchHost = host.querySelector('[data-sketch-batch-host]');
+    if (batchHost) batchHost.innerHTML = storyboardProgressMarkup({ active: true, completed, total });
+    const action = host.querySelector('[data-prepare-storyboard-sketch]');
+    if (action) { action.disabled = true; action.textContent = '正在整理镜头结构…'; }
+  };
+  const unsubscribeProgress = store.subscribe?.(state => renderStoryboardStageProgress(state.bundle));
 
   host.querySelectorAll('[data-storyboard-page]').forEach(button => button.addEventListener('click', () => {
     const targetPage = Math.max(1, Math.min(pageCount, Number(button.dataset.storyboardPage) || 1));
@@ -189,6 +206,7 @@ export async function mount(host, context) {
   }));
 
   const generateStoryboard = async (button, options = {}) => {
+    let accepted = false;
     try {
       setButtonBusy(button, true, '正在提交…', { elapsed: true });
       const optimisticTotal = Math.max(1, checkpointTotal || bundle?.story_flow?.contract?.units?.length || 1);
@@ -200,14 +218,19 @@ export async function mount(host, context) {
         current_index: Math.min(optimisticTotal, checkpointShots.length + 1),
       });
       await store.runStage('storyboard', options);
+      accepted = true;
       toast('分镜生成已开始，画面会逐镜保存并显示。', 'success');
       return true;
     } catch (error) {
+      if (error.code === 'GENERATION_BILLING_REVIEW_REQUIRED' && options.acknowledge_billing_unknown !== true) {
+        const confirmed = window.confirm('上一次有一个镜头请求已提交但计费状态未知。继续可能重复产生这一个镜头的费用；已完成的 4 个镜头不会重复生成。确认仍要继续吗？');
+        if (confirmed) return generateStoryboard(button, { ...options, acknowledge_billing_unknown: true });
+      }
       toast(error.message, 'danger');
       try { await store.refreshSections?.('summary,shots'); } catch {}
       return false;
     } finally {
-      setButtonBusy(button, false);
+      if (!accepted) setButtonBusy(button, false);
     }
   };
   host.querySelector('[data-prepare-storyboard-sketch]')?.addEventListener('click', async event => {
@@ -364,6 +387,7 @@ export async function mount(host, context) {
   });
   return () => {
     disposed = true;
+    unsubscribeProgress?.();
     if (sketchBatchPollTimer) clearTimeout(sketchBatchPollTimer);
   };
 }

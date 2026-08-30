@@ -144,6 +144,8 @@ function queueTaskStage(req, res, stage, execute, options = {}) {
     snapshotId,
     inputFingerprint,
     idempotencyKey,
+    explicitUserRetry: true,
+    acknowledgeBillingUnknown: body.acknowledge_billing_unknown === true,
     scopeId: typeof options.scopeId === 'function'
       ? options.scopeId(task, body)
       : (options.scopeId || ''),

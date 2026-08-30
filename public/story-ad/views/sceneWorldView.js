@@ -1,8 +1,8 @@
-import { request } from '../api.js?v=20260830-production-v290c';
-import { escapeHtml, mediaPreview, toast } from '../components/ui.js?v=20260830-production-v290c';
-import { list, worldById } from './sceneWorldData.js?v=20260830-production-v290c';
-import { runPanoramaGeneration } from './panoramaGeneration.js?v=20260830-production-v290c';
-import { capabilityChips } from './sceneWorldCapabilities.js?v=20260830-production-v290c';
+import { request } from '../api.js?v=20260830-production-v291';
+import { escapeHtml, mediaPreview, toast } from '../components/ui.js?v=20260830-production-v291';
+import { list, worldById } from './sceneWorldData.js?v=20260830-production-v291';
+import { runPanoramaGeneration } from './panoramaGeneration.js?v=20260830-production-v291';
+import { capabilityChips } from './sceneWorldCapabilities.js?v=20260830-production-v291';
 function photoNodes(world = {}) {
   const seen = new Set();
   const panoramaRows = [
@@ -327,7 +327,7 @@ function initSceneWorldViewer({ overlay, bundle, world, authority }) {
     const requestToken = activation;
     activateModeButton(mode);
     currentNode = node;
-    const { mountSceneWorldLayoutViewer } = await import('./sceneWorldLayoutViewer.js?v=20260830-production-v290c');
+    const { mountSceneWorldLayoutViewer } = await import('./sceneWorldLayoutViewer.js?v=20260830-production-v291');
     if (requestToken !== activation) return;
     viewer = mountSceneWorldLayoutViewer({ host, bundle, world, authority, node, nodes, mode, previewUrl, photoStrip, onSelectPhoto: showPhoto });
     if (help) help.textContent = viewer.helpText;
@@ -340,7 +340,7 @@ function initSceneWorldViewer({ overlay, bundle, world, authority }) {
     host.innerHTML = '<div class="scene-world-canvas-loading">正在按需加载3DoF球形全景查看器…</div>';
     if (help) help.textContent = '3DoF原地环视：可改变观看方向与FOV，不支持摄像机前后左右位移';
     try {
-      const module = await import('./panoramaViewer.js?v=20260830-production-v290c');
+      const module = await import('./panoramaViewer.js?v=20260830-production-v291');
       if (requestToken !== activation) return;
       host.replaceChildren();
       viewer = module.mountPanoramaViewer({ host, source: node.image_url, label: node.name || world.name });
@@ -401,7 +401,7 @@ function initSceneWorldViewer({ overlay, bundle, world, authority }) {
   }));
   overlay.querySelectorAll('[data-world-mode]').forEach(button => button.addEventListener('click', () => showMode(button.dataset.worldMode)));
   overlay.querySelector('[data-reset-world-view]')?.addEventListener('click', () => viewer?.reset?.());
-  if (primaryNode) showPhoto(primaryNode); else showInitialNotice();
+  showNative('model', 'director');
 
   return () => {
     clearViewer();
@@ -409,7 +409,7 @@ function initSceneWorldViewer({ overlay, bundle, world, authority }) {
 }
 
 async function openSceneWorldStudio(bundle, world, store = null) {
-  const authority = await import('./sceneWorldAuthorityPlan.js?v=20260830-production-v290c');
+  const authority = await import('./sceneWorldAuthorityPlan.js?v=20260830-production-v291');
   const realPhotoNodes = photoNodes(world);
   const hasRealPhotos = realPhotoNodes.length > 0;
   const worlds = list(bundle.scene_worlds);
@@ -418,10 +418,10 @@ async function openSceneWorldStudio(bundle, world, store = null) {
   const overlay = document.createElement('div');
   overlay.className = 'scene-world-studio';
   overlay.innerHTML = `<section>
-    <header><div><small>场景 ${worldIndex + 1}/${worlds.length} · ${escapeHtml(world.capabilities?.world_mode || 'scene_world')} · 版本 ${world.revision || 1}</small><h2>${escapeHtml(world.name)}</h2><p>${escapeHtml(world.story_purpose || world.description || '场景世界交互预演')}</p></div><label class="scene-world-switcher"><span>切换场景</span><select data-scene-world-switch>${worlds.map(item => `<option value="${escapeHtml(item.id)}" ${String(item.id) === String(world.id) ? 'selected' : ''}>${escapeHtml(item.name)}</option>`).join('')}</select></label><button type="button" data-close-scene-world aria-label="关闭">×</button></header>
+    <header><div><small>场景 ${worldIndex + 1}/${worlds.length} · ${escapeHtml(world.capabilities?.world_mode || 'scene_world')} · 版本 ${world.revision || 1}</small><h2>${escapeHtml(world.name)}</h2><p>${escapeHtml(world.story_purpose || world.description || '场景世界交互预演')}</p></div><label class="scene-world-switcher"><span>切换场景</span><select data-scene-world-switch>${worlds.map(item => `<option value="${escapeHtml(item.id)}" ${String(item.id) === String(world.id) ? 'selected' : ''}>${escapeHtml(item.name)}</option>`).join('')}</select></label><button class="btn" type="button" data-open-full-director>打开完整3D导演台</button><button type="button" data-close-scene-world aria-label="关闭">×</button></header>
     <nav class="scene-world-view-modes">
-      <button class="active" type="button" data-world-mode="model">${hasRealPhotos ? '真实图片' : '场景结构'}</button>
-      <button type="button" data-world-mode="director">3D机位预演（可旋转）</button>
+      <button type="button" data-world-mode="model">${hasRealPhotos ? '真实图片' : '场景结构'}</button>
+      <button class="active" type="button" data-world-mode="director">3D机位预演（可旋转）</button>
       <button type="button" data-world-mode="panorama" ${panoramaReady ? '' : 'disabled title="需先生成并验收2:1等距柱状全景"'}>360原地环视（3DoF）</button>
       ${panoramaReady ? '' : `<button type="button" class="scene-world-generate-panorama" data-generate-panorama="${escapeHtml(world.id)}">生成360全景</button>`}
       <button type="button" data-world-mode="spatial" ${world.capabilities?.supports_spatial_model ? '' : 'disabled title="当前没有深度、几何或空间模型"'}>可移动空间（6DoF）</button>
@@ -445,6 +445,11 @@ async function openSceneWorldStudio(bundle, world, store = null) {
     document.body.classList.remove('modal-open');
   };
   overlay.querySelector('[data-close-scene-world]').addEventListener('click', close);
+  overlay.querySelector('[data-open-full-director]')?.addEventListener('click', async () => {
+    close();
+    const { openDirectorStudio } = await import('./directorStudioView.js?v=20260830-production-v291');
+    await openDirectorStudio({ taskId: bundle.project.id, world });
+  });
   overlay.querySelector('[data-scene-world-switch]')?.addEventListener('change', event => {
     const next = worldById(bundle, event.currentTarget.value);
     if (!next || String(next.id) === String(world.id)) return;
@@ -480,7 +485,7 @@ export function bindSceneWorldWorkspace(host, bundle = {}, store = null) {
   root.querySelectorAll('[data-plan-scene-experience]').forEach(button => button.addEventListener('click', async () => {
     const world = worldById(bundle, button.dataset.planSceneExperience);
     if (!world) return;
-    const { openSceneExperiencePlanner } = await import('./sceneWorldExperiencePlanner.js?v=20260830-production-v290c');
+    const { openSceneExperiencePlanner } = await import('./sceneWorldExperiencePlanner.js?v=20260830-production-v291');
     openSceneExperiencePlanner({ bundle, world, onOpenDirector: () => openSceneWorldStudio(bundle, world, store) });
   }));
   root.querySelector('[data-save-world-assignments]')?.addEventListener('click', async event => {

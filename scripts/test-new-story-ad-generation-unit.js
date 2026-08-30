@@ -75,9 +75,18 @@ try {
     () => units.claim({ ...identity, input_fingerprint: 'input-fingerprint-v2', spec_revision: 2 }),
     claimError => claimError.code === 'GENERATION_BILLING_REVIEW_REQUIRED',
   );
+  assert.throws(
+    () => units.claim(
+      { ...identity, input_fingerprint: 'input-fingerprint-v2', spec_revision: 2 },
+      { explicit_user_retry: true },
+    ),
+    claimError => claimError.code === 'GENERATION_BILLING_REVIEW_REQUIRED'
+      && claimError.requires_billing_acknowledgement === true,
+    '普通重试点击不能越过计费未知门禁',
+  );
   const explicitRetry = units.claim(
     { ...identity, input_fingerprint: 'input-fingerprint-v2', spec_revision: 2 },
-    { explicit_user_retry: true },
+    { explicit_user_retry: true, acknowledge_billing_unknown: true },
   );
   assert.strictEqual(explicitRetry.claimed, true, '用户主动重生成必须创建新的生成单元');
   assert.strictEqual(explicitRetry.unit.explicit_user_retry_of, unknown.id);

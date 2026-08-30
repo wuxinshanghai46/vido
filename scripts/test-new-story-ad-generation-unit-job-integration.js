@@ -111,9 +111,16 @@ const waitFor = async (predicate, timeoutMs = 2500) => {
     assert.strictEqual(unknown.retry_blocked, true);
     assert.strictEqual(unknown.provider_task_id, 'paid-task-unknown');
     let explicitRetryExecutions = 0;
+    assert.throws(() => jobs.queueStage({
+      taskId: 'job-unknown', stage: 'visual_assets', expectedContentRevision: 1,
+      inputFingerprint: 'visual-input-v2', idempotencyKey: 'job-unknown:visual:r1:retry',
+      execute: async () => { explicitRetryExecutions += 1; },
+    }), error => error.code === 'GENERATION_BILLING_REVIEW_REQUIRED'
+      && error.requires_billing_acknowledgement === true);
     const explicitRetry = jobs.queueStage({
       taskId: 'job-unknown', stage: 'visual_assets', expectedContentRevision: 1,
       inputFingerprint: 'visual-input-v2', idempotencyKey: 'job-unknown:visual:r1:retry',
+      acknowledgeBillingUnknown: true,
       execute: async () => { explicitRetryExecutions += 1; },
     });
     assert.strictEqual(explicitRetry.accepted, true, '用户主动重生成必须进入新队列');

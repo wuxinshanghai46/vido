@@ -121,6 +121,7 @@ function claim(input = {}, {
   storage = defaultStorage,
   at = new Date().toISOString(),
   explicit_user_retry = false,
+  acknowledge_billing_unknown = false,
 } = {}) {
   const identity = normalizedIdentity(input);
   const key = buildIdempotencyKey(identity);
@@ -157,6 +158,13 @@ function claim(input = {}, {
       return { claimed: true, duplicate: false, restarted: true, reusable: false, blocked: false, unit: restarted };
     }
     if (existing.state === 'billing_unknown' && explicit_user_retry === true) {
+      if (acknowledge_billing_unknown !== true) {
+        throw fail('该生成记录存在计费未知请求，继续前需要用户明确确认重复调用风险', 'GENERATION_BILLING_REVIEW_REQUIRED', 409, {
+          blocking_unit_id: existing.id,
+          billing_state: existing.billing_state || 'unknown',
+          requires_billing_acknowledgement: true,
+        });
+      }
       return createExplicitRetry(storage, identity, key, existing, at);
     }
     return {
@@ -169,10 +177,11 @@ function claim(input = {}, {
   }
   const blocker = unitsForTarget.find(unit => unit.state === 'billing_unknown') || null;
   if (blocker) {
-    if (explicit_user_retry === true) return createExplicitRetry(storage, identity, key, blocker, at);
+    if (explicit_user_retry === true && acknowledge_billing_unknown === true) return createExplicitRetry(storage, identity, key, blocker, at);
     throw fail('该生成记录需要后台核对', 'GENERATION_BILLING_REVIEW_REQUIRED', 409, {
       blocking_unit_id: blocker.id,
       billing_state: blocker.billing_state || '',
+      requires_billing_acknowledgement: true,
     });
   }
   const id = unitId(key);
