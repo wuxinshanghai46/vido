@@ -91,6 +91,8 @@ function testUiAndBillingContracts() {
   assert.match(storyboard, /storyboardActive \? null : sketchBatch/);
   assert.match(storyboard, /正在整理镜头结构/);
   assert.match(storyboard, /GENERATION_BILLING_REVIEW_REQUIRED/);
+  assert.match(storyboard, /confirmDialog\('上一次有一个镜头请求已提交但计费状态未知/);
+  assert.doesNotMatch(storyboard, /window\.confirm/);
   assert.match(sceneUi, /showNative\('model', 'director'\)/);
   assert.match(sceneUi, /data-open-full-director/);
   assert.match(job, /acknowledge_billing_unknown: acknowledgeBillingUnknown === true/);
@@ -104,4 +106,4 @@ testWorkspaceAndWorldProjection();
 testLocalJsonRecovery();
 testCheckpointStoryFlowFreshness();
 testUiAndBillingContracts();
-console.log(JSON.stringify({ passed: true, checks: 31, paid_model_calls: 0, scene_camera_coordinates: '4/4', person_blocking_coordinates: '1/1', immediate_storyboard_progress: true, billing_unknown_requires_explicit_ack: true }));
+console.log(JSON.stringify({ passed: true, checks: 33, paid_model_calls: 0, scene_camera_coordinates: '4/4', person_blocking_coordinates: '1/1', immediate_storyboard_progress: true, billing_unknown_requires_explicit_ack: true, native_browser_dialogs: 0 }));

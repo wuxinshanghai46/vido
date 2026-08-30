@@ -1,5 +1,6 @@
 import { request } from '../api.js?v=20260830-production-v291c';
 import { elapsedTimeTag, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260830-production-v291c';
+import { confirmDialog } from '../components/dialog.js?v=20260830-production-v291c';
 import { bindMediaLightbox } from './mediaLightbox.js?v=20260830-production-v291c';
 import { bindGenerationModelPicker, loadGenerationModelPicker } from './generationModelPicker.js?v=20260830-production-v291c';
 
@@ -223,7 +224,9 @@ export async function mount(host, context) {
       return true;
     } catch (error) {
       if (error.code === 'GENERATION_BILLING_REVIEW_REQUIRED' && options.acknowledge_billing_unknown !== true) {
-        const confirmed = window.confirm('上一次有一个镜头请求已提交但计费状态未知。继续可能重复产生这一个镜头的费用；已完成的 4 个镜头不会重复生成。确认仍要继续吗？');
+        const confirmed = await confirmDialog('上一次有一个镜头请求已提交但计费状态未知。继续只会补齐缺失镜头，但供应商仍可能同时收取原请求和本次请求的费用。已完成镜头不会重复生成。', {
+          title: '确认可能重复计费', confirmText: '我接受风险，继续补齐', cancelText: '先不重试', danger: true,
+        });
         if (confirmed) return generateStoryboard(button, { ...options, acknowledge_billing_unknown: true });
       }
       toast(error.message, 'danger');

@@ -1,7 +1,7 @@
 const storyAd = require('../newStoryAd'), productAssetResolver = require('../newStoryAd/productAssetResolverService'), knowledgePolicyRuntime = require('../newStoryAd/knowledgePolicyRuntimeService');
 const referenceDrafts = require('./referenceDraftProjectionService'), countProjection = require('./projectCountProjectionService');
 const timingProjection = require('./projectTimingProjectionService'), workflowNavigation = require('./workflowNavigationService');
-const { projectSceneCamera, projectShootingRules } = require('./sceneCameraProjectionService');
+const { projectSceneCamera } = require('./sceneCameraProjectionService');
 const semantic = require('./productionSemanticLocalizationService');
 const storyboardSketchGate = require('./storyboardSketchGateService'), referenceUnderstandingProjection = require('./referenceUnderstandingProjectionService'), authoritativeReference = require('./authoritativeReferenceProjectionService');
 const multilineTextContract = require('../newStoryAd/multilineTextContractService');
@@ -14,7 +14,7 @@ const sceneWorkflowProjection = require('./sceneWorkflowProjectionService'), sce
 const sceneAssetRuntimeProjection = require('./sceneAssetRuntimeProjectionService');
 const sceneAssetAvailability = require('./sceneAssetAvailabilityProjectionService');
 const sceneQaProjection = require('./sceneQaProjectionService');
-const { closeSceneSpec } = require('../newStoryAd/generationSpecCompletionService');
+const sceneSpatialProjection = require('./sceneSpatialProjectionService');
 const MAX_MEDIA_ITEMS = 120;
 function clean(value = '', max = 240) { return String(value || '').replace(/\s+/g, ' ').trim().slice(0, max); }
 function cleanMultiline(value = '', max = 5000) { return multilineTextContract.normalize(value, max); }
@@ -299,11 +299,11 @@ function sceneAssets(outputs = {}, context = {}) {
     const rawSpec = space.scene_spec && typeof space.scene_spec === 'object'
       ? space.scene_spec
       : (asset.scene_spec && typeof asset.scene_spec === 'object' ? asset.scene_spec : {});
-    const spec = closeSceneSpec(rawSpec, {
+    const spec = sceneSpatialProjection.complete(rawSpec, {
       scene_id: id,
       scene_name: space.name || asset.name || asset.scene_name || `场景 ${index + 1}`,
       content_mode: context.content_mode || context.brief?.content_mode || '',
-    }).scene_spec;
+    });
     const rawCameras = list(contract.cameras || contract.camera_positions || asset.camera_positions);
     const rawViews = list(asset.view_images);
     const views = rawViews.slice(0, 24).map((view, viewIndex) => semantic.sceneView({
@@ -321,15 +321,7 @@ function sceneAssets(outputs = {}, context = {}) {
       label: clean(view.label || view.name || view.key || `视角 ${viewIndex + 1}`, 100),
       image_url: mediaUrl(view),
     }, viewIndex)).filter(view => view.image_url);
-    const plannedCameras = list(spec.cameraPlan || spec.camera_plan || space.camera_plan);
-    const cameras = (rawCameras.length ? rawCameras : plannedCameras).slice(0, 30).map((camera, cameraIndex) => {
-      const planned = plannedCameras.find(item => clean(item.view_id || item.view || item.key, 100) === clean(camera.view_id || camera.view || camera.key, 100))
-        || plannedCameras[cameraIndex] || {};
-      return semantic.sceneCamera(projectSceneCamera({ ...planned, ...camera,
-        normalized_position: camera.normalized_position || camera.position_on_layout || planned.normalized_position,
-        look_at: camera.look_at || camera.target_on_layout || planned.look_at,
-      }, views, cameraIndex), cameraIndex);
-    });
+    const cameras = sceneSpatialProjection.cameras(rawCameras, spec, space, views);
     const zones = list(contract.zones || spec.zones || space.zones).slice(0, 30).map((zone, zoneIndex) => ({
       id: clean(zone.id || zone.zone_id || `zone_${zoneIndex + 1}`, 100),
       label: clean(zone.label_zh || zone.label || zone.name || `区域 ${zoneIndex + 1}`, 120),
@@ -375,45 +367,8 @@ function sceneAssets(outputs = {}, context = {}) {
       selected_candidate_id: clean(asset.selected_candidate_id || space.selected_candidate_id, 120),
       generation_prompt: generationPrompt,
       generation_prompt_source: generationPromptSource,
-      scene_spec: {
-        mode: clean(spec.mode || 'auto', 40), layoutText: clean(spec.layoutText || spec.layout_text || spec.layout || spec.spatialLayout, 800), materialLightText: clean(spec.materialLightText || spec.material_light_text || [spec.materialText || spec.materials || spec.material, spec.lightText || spec.lighting || spec.keyLightDirection].filter(Boolean).join('；'), 800), interactionText: clean(spec.interactionText || spec.interaction_text || spec.interaction || spec.actionZone, 500), negativeText: clean(spec.negativeText || spec.negative_text || spec.negative, 500),
-        layout: clean(spec.layoutText || spec.layout || spec.spatialLayout, 800),
-        materials: clean(spec.materialText || spec.materials || spec.material || spec.materialLightText || spec.material_light_text, 600),
-        weather: clean(spec.weather || spec.weatherText, 200), time: clean(spec.time || spec.timeOfDay || spec.timeText, 200),
-        light: clean(spec.lightText || spec.lighting || spec.keyLightDirection || spec.materialLightText || spec.material_light_text, 500),
-        interaction: clean(spec.interactionText || spec.interaction || spec.actionZone, 500),
-        negative: clean(spec.negativeText || spec.negative, 500),
-        storyStates: list(spec.storyStates || spec.story_states),
-        interactionAnchors: list(spec.interactionAnchors || spec.interaction_anchors),
-        routes: list(spec.routes || spec.movement_routes),
-        cameraPlan: list(spec.cameraPlan || spec.camera_plan),
-        sceneExperienceContract: spec.sceneExperienceContract || spec.scene_experience_contract || {},
-      },
-      camera_plan: list(spec.cameraPlan || spec.camera_plan || space.camera_plan).slice(0, 24).map((camera, cameraIndex) => ({
-        id: clean(camera.id || camera.camera_id || `camera_${cameraIndex + 1}`, 100),
-        view_id: clean(camera.view_id || camera.view || camera.key, 100),
-        coordinate_source: clean(camera.coordinate_source, 80),
-        label: clean(camera.label || camera.name || `机位 ${cameraIndex + 1}`, 120),
-        zone: clean(camera.zone || camera.zone_id, 120),
-        framing: clean(camera.framing || camera.shot_size, 100),
-        lens: clean(camera.lens || camera.lens_class || camera.focal_length, 100),
-        height: clean(camera.height || camera.height_class, 80),
-        movement: clean(camera.movement || camera.camera_movement || camera.move, 260),
-        movement_type: clean(camera.movement_type || camera.move_type || camera.rig || camera.support, 100), route: clean(camera.route || camera.camera_path || camera.path, 260), speed: clean(camera.speed || camera.movement_speed || camera.pace, 80),
-        start_state: clean(camera.start_state || camera.start, 220),
-        end_state: clean(camera.end_state || camera.end, 220),
-        duration: Math.max(0, Number(camera.duration || camera.duration_sec || 0) || 0),
-        subject_action: clean(camera.subject_action || camera.action || camera.performance, 260), focus: clean(camera.focus || camera.focus_target || camera.focus_plan, 220),
-        continuity: clean(camera.continuity || camera.transition || camera.axis_rule, 260), stabilization: clean(camera.stabilization || camera.stabilizer || camera.rig_note, 180),
-        notes: clean(camera.notes || camera.purpose, 260),
-        position: Array.isArray(camera.normalized_position || camera.position)
-          ? (camera.normalized_position || camera.position).slice(0, 3).map(Number)
-          : [],
-        look_at: Array.isArray(camera.look_at || camera.lookAt)
-          ? (camera.look_at || camera.lookAt).slice(0, 3).map(Number)
-          : [],
-        ...projectShootingRules(camera, cameraIndex, list(spec.cameraPlan || spec.camera_plan || space.camera_plan)[cameraIndex - 1] || {}),
-      })),
+      scene_spec: sceneSpatialProjection.specContract(spec),
+      camera_plan: sceneSpatialProjection.cameraPlan(spec, space),
       layout: {
         status: clean(layout.status || (layout.reference_image_url ? 'available' : ''), 60),
         image_url: mediaUrl(layout.reference_image_url || layout),
