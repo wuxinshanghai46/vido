@@ -50,6 +50,8 @@ const BASE_FILES = [
   'scripts/migrate-story-ad-platform-v111.js',
   'scripts/migrate-story-ad-v120-checkpoints.js',
   'scripts/migrate-new-story-ad-assist-route-v127.js',
+  'scripts/configure-story-ad-quality-supplier-routing-v327.js',
+  'scripts/test-story-ad-quality-supplier-routing-v327.js',
   'scripts/configure-story-ad-independent-text-routes.js',
   'scripts/configure-story-ad-webang-content-routing-v204.js',
   'scripts/configure-story-ad-reference-vision-routing-v205.js',

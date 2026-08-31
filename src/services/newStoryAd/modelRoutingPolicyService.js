@@ -12,19 +12,19 @@ const PROFILES = Object.freeze({
   structured_reasoning: Object.freeze([
     ['webang-maas', 'gpt-5.6-terra'],
     ['apismile', 'gpt-5.5'],
-    ['deyunai', 'gpt-5.5'],
+    ['deyunai', 'claude-opus-4-7'],
     ['aiapi', 'deepseek-chat'],
   ]),
   fast_language: Object.freeze([
     ['webang-maas', 'gpt-5.6-luna'],
     ['apismile', 'gemini-2.5-flash'],
-    ['deyunai', 'gemini-3.1-flash-lite-preview'],
+    ['deyunai', 'claude-sonnet-4-6'],
     ['aiapi', 'deepseek-chat'],
   ]),
   vision_quality: Object.freeze([
     ['webang-maas', 'gemini-2.5-pro'],
     ['apismile', 'gemini-3.1-pro-preview'],
-    ['deyunai', 'gemini-2.5-pro'],
+    ['deyunai', 'claude-opus-4-7'],
   ]),
 });
 

@@ -234,8 +234,8 @@ async function migrateReleaseState() {
 
 async function migrateAssistRoute() {
   assistRouteMigrationApplied = true;
-  const result = parseJson(await exec(`cd ${quote(releaseDir)} && node ${quote(`${previousTarget}/scripts/run-with-pm2-env.js`)} vido node scripts/migrate-new-story-ad-assist-route-v127.js --apply`));
-  assistRouteMigrationApplied = result.changed === true;
+  const result = parseJson(await exec(`cd ${quote(releaseDir)} && node ${quote(`${previousTarget}/scripts/run-with-pm2-env.js`)} vido node scripts/configure-story-ad-quality-supplier-routing-v327.js --apply`));
+  assistRouteMigrationApplied = result.applied === true;
   return result;
 }
 
@@ -326,12 +326,12 @@ async function restoreSystemicBackup() {
 
 async function rollbackAssistRoute() {
   if (!assistRouteMigrationApplied) return null;
-  return parseJson(await exec(`cd ${quote(releaseDir)} && node scripts/run-with-pm2-env.js vido node scripts/migrate-new-story-ad-assist-route-v127.js --rollback`));
+  return parseJson(await exec(`cd ${quote(releaseDir)} && node scripts/run-with-pm2-env.js vido node scripts/configure-story-ad-quality-supplier-routing-v327.js --rollback`));
 }
 
 async function commitAssistRoute() {
   if (!assistRouteMigrationApplied) return null;
-  return parseJson(await exec(`cd ${quote(releaseDir)} && node scripts/run-with-pm2-env.js vido node scripts/migrate-new-story-ad-assist-route-v127.js --commit`));
+  return parseJson(await exec(`cd ${quote(releaseDir)} && node scripts/run-with-pm2-env.js vido node scripts/configure-story-ad-quality-supplier-routing-v327.js --commit`));
 }
 
 async function rollbackReleaseState() {

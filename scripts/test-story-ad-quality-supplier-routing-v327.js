@@ -2,6 +2,8 @@
 'use strict';
 
 const assert = require('assert');
+const fs = require('fs');
+const path = require('path');
 const policy = require('../src/services/newStoryAd/modelRoutingPolicyService');
 const pipeline = require('../src/services/pipelineModelService');
 const migration = require('./configure-story-ad-quality-supplier-routing-v327');
@@ -15,10 +17,13 @@ assert.deepStrictEqual(routes['new_story_ad.storyboard_table'].map(item => `${it
   'webang-maas/gpt-5.6-sol', 'apismile/claude-opus-4-8', 'deyunai/claude-opus-4-7', 'aiapi/deepseek-chat',
 ]);
 assert.deepStrictEqual(routes['new_story_ad.qa'].map(item => `${item.provider_id}/${item.model_id}`), [
-  'webang-maas/gpt-5.6-terra', 'apismile/gpt-5.5', 'deyunai/gpt-5.5', 'aiapi/deepseek-chat',
+  'webang-maas/gpt-5.6-terra', 'apismile/gpt-5.5', 'deyunai/claude-opus-4-7', 'aiapi/deepseek-chat',
 ]);
 assert.deepStrictEqual(routes['new_story_ad.scene_vision'].map(item => `${item.provider_id}/${item.model_id}`), [
-  'webang-maas/gemini-2.5-pro', 'apismile/gemini-3.1-pro-preview', 'deyunai/gemini-2.5-pro',
+  'webang-maas/gemini-2.5-pro', 'apismile/gemini-3.1-pro-preview', 'deyunai/claude-opus-4-7',
+]);
+assert.deepStrictEqual(routes['new_story_ad.brief_dialogue'].map(item => `${item.provider_id}/${item.model_id}`), [
+  'webang-maas/gpt-5.6-luna', 'apismile/gemini-2.5-flash', 'deyunai/claude-sonnet-4-6', 'aiapi/deepseek-chat',
 ]);
 assert.deepStrictEqual(pipeline.getStageDefaults('new_story_ad.storyboard_table'), routes['new_story_ad.storyboard_table']);
 const configuredOrder = routes['new_story_ad.reference_video_synthesis'].map(item => ({ ...item }));
@@ -27,6 +32,11 @@ assert.deepStrictEqual(
   configuredOrder,
   '历史成功率不得越过模型调用管理中配置的供应商顺序',
 );
+const deploySource = fs.readFileSync(path.join(__dirname, 'deploy-story-ad-immutable-release.js'), 'utf8');
+assert.match(deploySource, /configure-story-ad-quality-supplier-routing-v327\.js --apply/,
+  '不可变发布必须同步完整的供应商/模型质量路由');
+assert.doesNotMatch(deploySource, /migrate-new-story-ad-assist-route-v127\.js --apply/,
+  '旧 assist 单点迁移不得再覆盖完整质量路由');
 
 const contract = {
   contract_fingerprint: 'flow-v327',
