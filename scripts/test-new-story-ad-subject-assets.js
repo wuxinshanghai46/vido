@@ -686,6 +686,14 @@ function harness({ cancelAt = 0 } = {}) {
     () => sceneBindingService.assertSceneModeAssets('multi', multiScenes),
     'every independent space must have a verified scene asset',
   );
+  assert.throws(
+    () => sceneBindingService.assertSceneModeAssets('multi', [
+      multiScenes[0],
+      { ...multiScenes[1], scene_contract: { ...multiScenes[1].scene_contract, status: 'pending' } },
+    ]),
+    error => error.code === 'SCENE_VERIFICATION_REQUIRED',
+    'storyboard must reject an unverified scene asset through the public scene-mode gate',
+  );
   const boundScenes = sceneBindingService.bindShotsToScenes([
     { scene_id: 'home', title: 'Home opening' },
     { scene_id: 'office', title: 'Office ending', transition_reason: 'The story moves from home to work' },
@@ -865,7 +873,7 @@ function harness({ cancelAt = 0 } = {}) {
   const assetLoaderSource = fs.readFileSync(path.join(root, 'public/js/new-story-ad/bootstrap-asset-loader.js'), 'utf8');
   assert(subjectUi.includes('state.petProfiles'), 'generated pet references must be preserved in current subject state');
   assert(sceneBinding.includes('MULTI_SCENE_ASSETS_REQUIRED'), 'multi-scene storyboard must be blocked until independent scene assets exist');
-  assert(sceneBinding.includes('assertVerifiedSceneAssets(assets)'), 'storyboard must reject unverified scene assets');
+  assert(sceneBinding.includes('assertVerifiedSceneAssets(assets, options)'), 'the scene-mode gate must pass verification options into scene-asset validation');
   assert(providerAssets.includes('for (let index = 0; index < cast.length; index += 1)'), 'multi-person video must upload every cast member to the managed person library');
   assert(providerAssets.includes('asset_ids: assets.map'), 'multi-person provider asset ids must be persisted as a complete list');
   assert(storySource.includes('shotReferencePacks.referenceUrls') && referencePackSource.includes('references.keyframeReferenceUrls'), 'keyframes must use the single reference-pack capacity orchestrator');
