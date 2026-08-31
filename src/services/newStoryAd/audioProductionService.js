@@ -24,7 +24,14 @@ function current(taskId) {
     mode: ttsAdapter.speechMode(shot),
     units: ttsAdapter.shotSpeechUnits(shot, voiceId, assignments),
   }));
-  const speakers = [...new Set(speech.flatMap(row => row.units.map(unit => clean(unit.speaker, 100))).filter(Boolean))];
+  // 旁白有独立的 narrator 音色。只有真正的出镜对白才进入说话人列表，
+  // 否则“旁白”会被再次渲染成一个人物，形成两个含义相同的下拉框。
+  const speakers = [...new Set(speech.flatMap(row => row.units
+    .filter(unit => unit.kind === 'dialogue')
+    .map(unit => clean(unit.speaker, 100))).filter(Boolean))];
+  const hasSpeech = speech.some(row => row.units.length > 0);
+  const hasExplicitVoiceoverSetting = Object.prototype.hasOwnProperty.call(plan, 'include_voiceover');
+  const includeVoiceover = hasExplicitVoiceoverSetting ? plan.include_voiceover === true : hasSpeech;
   const sound = soundDesign.compile(taskId);
   const signature = storage.canonicalFingerprint({
     storyboard: shots.map((shot, index) => ({
@@ -33,7 +40,7 @@ function current(taskId) {
       speech_units: ttsAdapter.shotSpeechUnits(shot, voiceId, assignments),
       duration: shot.duration || shot.duration_sec || 0,
     })),
-    include_voiceover: plan.include_voiceover === true,
+    include_voiceover: includeVoiceover,
     voice_id: voiceId,
     voice_assignments: assignments,
     tts_tracks: list(tts.tracks).map(track => ({ audio_url: track.audio_url || track.audioUrl || '', text: track.text || '', voice_signature: track.voice_signature || '' })),
@@ -55,7 +62,8 @@ function current(taskId) {
     speakers,
     voice_id: voiceId,
     voice_assignments: assignments,
-    include_voiceover: plan.include_voiceover === true,
+    include_voiceover: includeVoiceover,
+    has_speech: hasSpeech,
     signature,
     approval,
     approved: approval.signature === signature && approval.confirmed === true,

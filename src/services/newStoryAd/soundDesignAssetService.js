@@ -3,6 +3,7 @@
 const fs = require('fs');
 const crypto = require('crypto');
 const axios = require('axios');
+const { execFileSync } = require('child_process');
 const storage = require('./storageService');
 const mediaAdapter = require('./mediaAdapter');
 
@@ -56,36 +57,132 @@ function normalizeOpenverse(item = {}) {
   };
 }
 
+function generatedSoundKind(query = '') {
+  const value = clean(query, 160).toLowerCase();
+  if (/music|bgm|音乐/.test(value)) return 'ambient_music';
+  if (/metal|金属|不锈钢/.test(value)) return 'metal_touch';
+  if (/footstep|脚步|行走/.test(value)) return 'footsteps';
+  if (/whoosh|transition|转场/.test(value)) return 'soft_whoosh';
+  return 'indoor_ambience';
+}
+
+function ensureGeneratedSound(kind = 'indoor_ambience') {
+  const safeKind = ['ambient_music', 'metal_touch', 'footsteps', 'soft_whoosh', 'indoor_ambience'].includes(kind) ? kind : 'indoor_ambience';
+  const filename = `vido_generated_${safeKind}_v1.mp3`;
+  const destination = mediaAdapter.assetPathFromName(filename);
+  if (fs.existsSync(destination) && fs.statSync(destination).size > 1000) return { filename, destination };
+  fs.mkdirSync(require('path').dirname(destination), { recursive: true });
+  const ffmpeg = require('ffmpeg-static');
+  const argsByKind = {
+    ambient_music: ['-y', '-f', 'lavfi', '-i', 'sine=frequency=220:duration=30:sample_rate=48000', '-f', 'lavfi', '-i', 'sine=frequency=277.18:duration=30:sample_rate=48000', '-f', 'lavfi', '-i', 'sine=frequency=329.63:duration=30:sample_rate=48000', '-filter_complex', '[0:a][1:a][2:a]amix=inputs=3:weights=0.45 0.32 0.23,lowpass=f=1800,volume=0.16,afade=t=in:st=0:d=2,afade=t=out:st=27:d=3[a]', '-map', '[a]', '-c:a', 'libmp3lame', '-q:a', '4', destination],
+    metal_touch: ['-y', '-f', 'lavfi', '-i', 'sine=frequency=920:duration=2.2:sample_rate=48000', '-f', 'lavfi', '-i', 'sine=frequency=1380:duration=2.2:sample_rate=48000', '-filter_complex', '[0:a][1:a]amix=inputs=2:weights=0.7 0.3,volume=0.32,afade=t=out:st=0.05:d=2.1[a]', '-map', '[a]', '-c:a', 'libmp3lame', '-q:a', '4', destination],
+    footsteps: ['-y', '-f', 'lavfi', '-i', 'sine=frequency=78:duration=5:sample_rate=48000', '-af', "volume='if(lt(mod(t,0.75),0.11),0.42,0)':eval=frame,lowpass=f=210,afade=t=out:st=4.7:d=0.3", '-c:a', 'libmp3lame', '-q:a', '4', destination],
+    soft_whoosh: ['-y', '-f', 'lavfi', '-i', 'anoisesrc=color=pink:amplitude=0.18:duration=2.5:sample_rate=48000', '-af', 'highpass=f=180,lowpass=f=4800,afade=t=in:st=0:d=0.45,afade=t=out:st=1.1:d=1.4', '-c:a', 'libmp3lame', '-q:a', '4', destination],
+    indoor_ambience: ['-y', '-f', 'lavfi', '-i', 'anoisesrc=color=pink:amplitude=0.045:duration=12:sample_rate=48000', '-af', 'highpass=f=70,lowpass=f=1400,volume=0.45,afade=t=in:st=0:d=0.4,afade=t=out:st=11:d=1', '-c:a', 'libmp3lame', '-q:a', '4', destination],
+  };
+  execFileSync(ffmpeg, argsByKind[safeKind], { stdio: 'ignore', timeout: 30000 });
+  if (!fs.existsSync(destination) || fs.statSync(destination).size < 1000) throw new Error('本地安全声音生成失败');
+  return { filename, destination };
+}
+
+function generatedSoundSource(queryOrKind = '') {
+  const kind = String(queryOrKind || '').startsWith('vido_generated_')
+    ? String(queryOrKind).replace(/^vido_generated_/, '').replace(/_v1$/, '')
+    : generatedSoundKind(queryOrKind);
+  const generated = ensureGeneratedSound(kind);
+  const titles = { ambient_music: '克制氛围背景音乐', metal_touch: '轻柔金属触碰', footsteps: '室内脚步', soft_whoosh: '柔和转场', indoor_ambience: '安静室内空间底噪' };
+  return {
+    id: `vido_generated_${kind}_v1`, name: titles[kind] || '系统安全声音', creator: 'VIDO', license: 'vido',
+    license_url: '', landing_url: '', audio_url: `/api/new-story-ad/assets/${encodeURIComponent(generated.filename)}`,
+    duration_sec: kind === 'ambient_music' ? 30 : (kind === 'indoor_ambience' ? 12 : 5),
+    filename: generated.filename, file_path: generated.destination,
+  };
+}
+
+function openverseQueryCandidates(query = '') {
+  const original = clean(query, 120);
+  if (!original) return [];
+  const candidates = [original];
+  const rules = [
+    [/showroom|exhibition|gallery/i, ['indoor ambience', 'indoor room tone']],
+    [/room ambience/i, ['indoor ambience', 'indoor room tone']],
+    [/footstep/i, ['indoor footsteps', 'footsteps']],
+    [/metal.*(?:touch|rub|scrape)|(?:touch|rub|scrape).*metal/i, ['metal scrape', 'metal impact']],
+    [/door/i, ['interior door', 'door close']],
+    [/whoosh|transition/i, ['soft whoosh', 'whoosh']],
+    [/cinematic|background music|corporate music/i, ['instrumental music', 'piano music']],
+  ];
+  const fallback = rules.find(([pattern]) => pattern.test(original))?.[1] || [];
+  return [...new Set([...candidates, ...fallback].map(value => clean(value, 120)).filter(Boolean))];
+}
+
+async function searchOpenverseOnce(query = '') {
+  const response = await axios.get('https://api.openverse.org/v1/audio/', {
+    timeout: 6000, headers: { 'User-Agent': 'VIDO/1.0 story-sound-search' },
+    params: { q: query, license: 'cc0,pdm,by', page: 1, page_size: 20, filter_dead: true },
+  });
+  return list(response.data?.results).map(normalizeOpenverse)
+    .filter(item => item.id && OPEN_LICENSES.has(item.license) && allowedOpenAudioUrl(item.audio_url))
+    .slice(0, 20);
+}
+
 async function searchOpenverse(query = '') {
   const q = clean(query, 120);
   if (!q) return { results: [], license_note: '请输入要查找的环境声、拟音或动作音效。' };
-  const response = await axios.get('https://api.openverse.org/v1/audio/', {
-    timeout: 10000, headers: { 'User-Agent': 'VIDO/1.0 story-sound-search' },
-    params: { q, license: 'cc0,pdm,by', page: 1, page_size: 20, filter_dead: true },
-  });
-  const results = list(response.data?.results).map(normalizeOpenverse)
-    .filter(item => item.id && OPEN_LICENSES.has(item.license) && allowedOpenAudioUrl(item.audio_url))
-    .slice(0, 20);
-  return { results, license_note: '仅展示允许商用与修改的 CC0、PDM、CC BY 音频；CC BY 会自动写入署名清单。' };
+  let lastError = null;
+  let completedRequest = false;
+  for (const candidate of openverseQueryCandidates(q)) {
+    try {
+      const results = await searchOpenverseOnce(candidate);
+      completedRequest = true;
+      if (results.length) return {
+        results,
+        requested_query: q,
+        selected_query: candidate,
+        fallback_used: candidate !== q,
+        license_note: `系统按“${candidate}”匹配；仅展示允许商用与修改的 CC0、PDM、CC BY 音频，CC BY 会自动写入署名清单。`,
+      };
+    } catch (error) {
+      lastError = error;
+      // 网络不可用时继续尝试更多关键词只会把同一次页面等待放大数倍；
+      // 立即转入本地可播放声音，关键词回退只处理“请求成功但无结果”。
+      break;
+    }
+  }
+  const generated = generatedSoundSource(q);
+  return {
+    results: [generated], requested_query: q, selected_query: 'VIDO 本地安全声音', fallback_used: true,
+    online_search_error: !completedRequest && lastError ? clean(lastError.code || lastError.message, 80) : '',
+    license_note: '在线声音库暂未返回合规结果，已提供 VIDO 本地程序化声音；未使用第三方采样，可直接试听和合成。',
+  };
+}
+
+function recommendedBgmQuery(shots = []) {
+  const source = list(shots).map(shot => clean(shot.music_cue, 180)).filter(Boolean).join(' ');
+  if (/温暖|治愈|柔和|钢琴/u.test(source)) return 'warm piano background music';
+  if (/紧张|悬念|压迫/u.test(source)) return 'cinematic suspense music';
+  if (/高级|克制|品牌|现代|科技/u.test(source)) return 'elegant cinematic background music';
+  return 'cinematic background music';
 }
 
 async function importOpenverseAsset(taskId, input = {}) {
   const sourceId = clean(input.openverse_id || input.id, 180);
   if (!sourceId) throw Object.assign(new Error('缺少 Openverse 音频 ID'), { code: 'OPENVERSE_AUDIO_ID_REQUIRED', status: 400 });
-  const response = await axios.get(`https://api.openverse.org/v1/audio/${encodeURIComponent(sourceId)}/`, {
+  const generatedSource = sourceId.startsWith('vido_generated_') ? generatedSoundSource(sourceId) : null;
+  const response = generatedSource ? null : await axios.get(`https://api.openverse.org/v1/audio/${encodeURIComponent(sourceId)}/`, {
     timeout: 10000, headers: { 'User-Agent': 'VIDO/1.0 story-sound-import' },
   });
-  const source = normalizeOpenverse(response.data || {});
-  const downloadUrl = allowedOpenAudioUrl(source.audio_url);
-  if (!source.id || !downloadUrl || !OPEN_LICENSES.has(source.license)) {
+  const source = generatedSource || normalizeOpenverse(response?.data || {});
+  const downloadUrl = generatedSource ? null : allowedOpenAudioUrl(source.audio_url);
+  if (!source.id || (!generatedSource && (!downloadUrl || !OPEN_LICENSES.has(source.license)))) {
     throw Object.assign(new Error('该公开音频的下载地址或许可不符合导入规则'), { code: 'OPENVERSE_AUDIO_NOT_IMPORTABLE', status: 422 });
   }
-  const ext = ['.mp3', '.m4a', '.wav', '.ogg', '.flac', '.aac'].includes(require('path').extname(downloadUrl.pathname).toLowerCase())
-    ? require('path').extname(downloadUrl.pathname).toLowerCase() : '.mp3';
-  const filename = `openverse_sound_${crypto.createHash('sha1').update(`${source.id}:${source.audio_url}`).digest('hex').slice(0, 18)}${ext}`;
-  const destination = mediaAdapter.assetPathFromName(filename);
+  const ext = generatedSource ? '.mp3' : (['.mp3', '.m4a', '.wav', '.ogg', '.flac', '.aac'].includes(require('path').extname(downloadUrl.pathname).toLowerCase())
+    ? require('path').extname(downloadUrl.pathname).toLowerCase() : '.mp3');
+  const filename = generatedSource ? source.filename : `openverse_sound_${crypto.createHash('sha1').update(`${source.id}:${source.audio_url}`).digest('hex').slice(0, 18)}${ext}`;
+  const destination = generatedSource ? source.file_path : mediaAdapter.assetPathFromName(filename);
   fs.mkdirSync(require('path').dirname(destination), { recursive: true });
-  if (!fs.existsSync(destination) || fs.statSync(destination).size < 1000) {
+  if (!generatedSource && (!fs.existsSync(destination) || fs.statSync(destination).size < 1000)) {
     const download = await axios.get(source.audio_url, { responseType: 'arraybuffer', timeout: 45000, maxContentLength: 35 * 1024 * 1024, headers: { 'User-Agent': 'VIDO/1.0 story-sound-import' } });
     const contentType = clean(download.headers['content-type'], 120).toLowerCase();
     const buffer = Buffer.from(download.data);
@@ -97,15 +194,15 @@ async function importOpenverseAsset(taskId, input = {}) {
     fs.renameSync(temporary, destination);
   }
   const importedAt = new Date().toISOString();
-  const assetId = `openverse_${source.id}`;
+  const assetId = generatedSource ? source.id : `openverse_${source.id}`;
   const state = compile(taskId);
   const shotIndex = Math.max(1, Number(input.shot_index || 1) || 1);
   const shot = state.shots.find(row => row.shot_index === shotIndex);
   if (!shot) throw Object.assign(new Error('没有找到对应镜头'), { code: 'SOUND_SHOT_NOT_FOUND', status: 404 });
   const trackType = ALLOWED_TRACKS.has(clean(input.track_type, 40)) ? clean(input.track_type, 40) : 'sfx';
   const asset = {
-    asset_id: assetId, name: source.name, track_type: trackType, source: 'openverse', ownership: 'open_license',
-    license: source.license.toUpperCase(), license_url: source.license_url, creator: source.creator, landing_url: source.landing_url,
+    asset_id: assetId, name: source.name, track_type: trackType, source: generatedSource ? 'vido_generated' : 'openverse', ownership: generatedSource ? 'vido_generated' : 'open_license',
+    license: generatedSource ? 'VIDO_GENERATED' : source.license.toUpperCase(), license_url: source.license_url, creator: source.creator, landing_url: source.landing_url,
     filename, file_url: `/api/new-story-ad/assets/${encodeURIComponent(filename)}`, file_path: destination,
     file_sha256: sha256File(destination), imported_at: importedAt, redistributable: true,
   };
@@ -120,10 +217,10 @@ async function importOpenverseAsset(taskId, input = {}) {
   };
   storage.saveOutput(taskId, TIMELINE_KIND, [...state.timeline.filter(item => item.timeline_id !== timeline.timeline_id), timeline]);
   const ledger = {
-    asset_id: assetId, source: 'openverse', creator: source.creator, license: asset.license,
+    asset_id: assetId, source: generatedSource ? 'vido_generated' : 'openverse', creator: source.creator, license: asset.license,
     license_url: source.license_url, landing_url: source.landing_url,
     license_snapshot_sha256: storage.canonicalFingerprint({ id: source.id, creator: source.creator, license: source.license, license_url: source.license_url, landing_url: source.landing_url }),
-    file_sha256: asset.file_sha256, downloaded_at: importedAt, requires_attribution: source.license === 'by', redistributable: true,
+    file_sha256: asset.file_sha256, downloaded_at: importedAt, requires_attribution: !generatedSource && source.license === 'by', redistributable: true,
   };
   storage.saveOutput(taskId, LEDGER_KIND, [...state.ledger.filter(item => item.asset_id !== assetId), ledger]);
   storage.deleteOutput(taskId, 'audio_production_approval');
@@ -156,7 +253,7 @@ function compile(taskId) {
   const assets = list(storage.getOutput(taskId, ASSET_KIND));
   const timeline = list(storage.getOutput(taskId, TIMELINE_KIND));
   const ledger = list(storage.getOutput(taskId, LEDGER_KIND));
-  return { profiles, assets, timeline, ledger, shots: shots.map((shot, index) => ({
+  return { profiles, assets, timeline, ledger, bgm_query: recommendedBgmQuery(shots), shots: shots.map((shot, index) => ({
     shot_id: clean(shot.shot_id || `shot_${index + 1}`, 160),
     shot_index: Number(shot.index || shot.shot_index || index + 1) || index + 1,
     scene_id: clean(shot.scene_id || shot.scene_asset_id, 160),
@@ -263,4 +360,4 @@ function attributionManifest(taskId) {
   }));
 }
 
-module.exports = { ALLOWED_TRACKS, ASSET_KIND, LEDGER_KIND, PROFILE_KIND, TIMELINE_KIND, addUserAsset, attributionManifest, compile, importOpenverseAsset, recommendedQuery, recommendedTrack, resolvedBgm, resolvedTracks, searchOpenverse };
+module.exports = { ALLOWED_TRACKS, ASSET_KIND, LEDGER_KIND, PROFILE_KIND, TIMELINE_KIND, addUserAsset, attributionManifest, compile, generatedSoundKind, generatedSoundSource, importOpenverseAsset, openverseQueryCandidates, recommendedBgmQuery, recommendedQuery, recommendedTrack, resolvedBgm, resolvedTracks, searchOpenverse };

@@ -428,6 +428,7 @@ router.get('/projects/:taskId/sound-design', asyncRoute(async (req, res) => {
     voice_id: production.voice_id,
     voice_assignments: production.voice_assignments,
     include_voiceover: production.include_voiceover,
+    has_speech: production.has_speech,
     tts_tracks: production.tts.tracks || [],
     approved: production.approved,
     approval: production.approval,

@@ -13,7 +13,7 @@ export async function mount(host, context) {
     </section>
     <div class="post-stage-summary"><span class="is-current"><b>1</b><em>声音</em><small>${approved ? '已确认' : '试听确认中'}</small></span><span><b>2</b><em>视频与合成</em><small>声音确认后进入</small></span><span><b>3</b><em>成片剪辑</em><small>初版成片生成后出现</small></span></div>
     ${soundDesignMarkup(soundDesign)}`;
-  bindSoundDesign(host, { bundle, store, refreshShell: context.refreshShell });
+  bindSoundDesign(host, { bundle, store, refreshShell: context.refreshShell, navigate: context.navigate });
   host.querySelector('[data-next-compose]')?.addEventListener('click', () => {
     context.navigate(`/story-ad/projects/${encodeURIComponent(bundle.project.id)}?view=compose`);
   });
