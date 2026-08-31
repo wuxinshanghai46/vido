@@ -1,5 +1,5 @@
-import { escapeHtml as e } from '../components/ui.js?v=20260831-production-v348';
-import { beatDialogueEditor, handleDialogueAction, validateDialogueEditor } from './plotBeatDialoguePopover.js?v=20260831-production-v348';
+import { escapeHtml as e } from '../components/ui.js?v=20260831-production-v349';
+import { beatDialogueEditor, handleDialogueAction, validateDialogueEditor } from './plotBeatDialoguePopover.js?v=20260831-production-v349';
 
 const G={duration:'duration',scene:'scene',visual:'visual',shot_size:'shot_size',lighting_mood:'lighting_mood',sound_design:'sound_design',camera_movement:'camera_movement'};
 const T={duration:'时长',scene:'场景',visual:'画面描述 / 动作',shot_size:'景别',lighting_mood:'光影氛围',spoken_line:'对白 / 旁白',sound_design:'音效与音乐',camera_movement:'运镜与转场',prompt_notes:'镜头提示词'};
