@@ -331,17 +331,10 @@ function textReliabilityTier(model, at = Date.now()) {
   return 3;
 }
 
-/**
- * Reference synthesis is an expensive terminal stage. Prefer endpoints that
- * have actually succeeded recently so three unverified configuration entries
- * cannot consume the complete attempt budget ahead of proven fallbacks.
- */
 function preferReliableTextCandidates(candidates = [], stage = '', at = Date.now()) {
-  if (String(stage || '') !== REFERENCE_SYNTHESIS_STAGE) return candidates.slice();
-  return candidates
-    .map((model, index) => ({ model, index, tier: textReliabilityTier(model, at) }))
-    .sort((left, right) => left.tier - right.tier || left.index - right.index)
-    .map(item => item.model);
+  // 供应商顺序属于模型调用管理的权威合同。健康状态只能剔除当前不可用项，
+  // 不能让历史成功率把 B/C 供应商提升到 A 供应商之前。
+  return candidates.slice();
 }
 
 function providerRetryDelayMs(error = {}, at = Date.now()) {
@@ -487,9 +480,7 @@ function candidatesForStage(stage) {
     : String(stage || '').startsWith('new_story_ad.');
   const defaults = STAGE_FALLBACKS[stage] || FALLBACKS;
   const configuredOrSettings = strictManaged ? configured : (configured.length ? configured : settingsStoryCandidates());
-  const managedRecoveryPool = strictManaged && String(stage || '') === REFERENCE_SYNTHESIS_STAGE
-    ? [...configuredOrSettings, ...defaults]
-    : configuredOrSettings;
+  const managedRecoveryPool = configuredOrSettings;
   const ranked = uniqueModels(strictManaged ? managedRecoveryPool : [...configuredOrSettings, ...defaults])
     .map((m, i) => ({ ...m, fallback_rank: i + 1 }))
     .filter(m => isConfiguredAndUsable(m).ok)

@@ -1368,12 +1368,12 @@ async function main() {
       rejectedTextModel,
       provenTextModel,
     ], 'new_story_ad.reference_video_synthesis').map(item => item.model_id),
-    ['proven-text-model', 'unverified-text-model', 'rejected-text-model'],
-    'reference synthesis must spend its limited attempt budget on recently proven models first',
+    ['unverified-text-model', 'rejected-text-model', 'proven-text-model'],
+    'reference synthesis must preserve the supplier order configured in model call management',
   );
   const modelGatewaySource = fs.readFileSync(path.resolve(__dirname, '../src/services/newStoryAd/modelGateway.js'), 'utf8');
-  assert.match(modelGatewaySource, /REFERENCE_SYNTHESIS_RECOVERY_FALLBACKS[\s\S]*?provider_id: 'aiapi', model_id: 'deepseek-chat'/,
-    'reference synthesis must retain an independent DeepSeek recovery candidate when the managed route is customized');
+  assert.match(modelGatewaySource, /const managedRecoveryPool = configuredOrSettings;/,
+    'reference synthesis must not append a hidden legacy fallback pool after model call management is configured');
   const referenceVideoSource = fs.readFileSync(path.resolve(__dirname, '../src/services/newStoryAd/referenceVideoAnalysisService.js'), 'utf8');
   assert.match(referenceVideoSource, /maxTokens: 4200,[\s\S]*?stageBudgetMs: 180000,[\s\S]*?maxCandidates: 5/,
     'targeted semantic contract repair must reach the fourth DeepSeek candidate instead of overriding the gateway cap with three');
