@@ -42,6 +42,16 @@ function localPath(asset = {}) {
   return filename ? mediaAdapter.assetPathFromName(filename) : '';
 }
 
+function upsertTimelineTrack(rows = [], next = {}) {
+  return [...list(rows).filter(item => item.timeline_id !== next.timeline_id
+    && !(next.track_type === 'bgm' && item.track_type === 'bgm')), next];
+}
+function normalizeTimelineTracks(rows = []) {
+  const values = list(rows);
+  const activeBgm = values.filter(item => item.track_type === 'bgm').at(-1);
+  return [...values.filter(item => item.track_type !== 'bgm'), ...(activeBgm ? [activeBgm] : [])];
+}
+
 function allowedOpenAudioUrl(raw = '') {
   try {
     const url = new URL(String(raw || ''));
@@ -220,7 +230,7 @@ async function importOpenverseAsset(taskId, input = {}) {
       : Math.max(0.1, Math.min(shot.duration_sec, source.duration_sec || shot.duration_sec)),
     volume: Math.max(0, Math.min(1, Number(input.volume ?? 0.35) || 0.35)), status: 'ready',
   };
-  storage.saveOutput(taskId, TIMELINE_KIND, [...state.timeline.filter(item => item.timeline_id !== timeline.timeline_id), timeline]);
+  storage.saveOutput(taskId, TIMELINE_KIND, upsertTimelineTrack(state.timeline, timeline));
   const ledger = {
     asset_id: assetId, source: generatedSource ? 'vido_generated' : 'openverse', creator: source.creator, license: asset.license,
     license_url: source.license_url, landing_url: source.landing_url,
@@ -256,7 +266,7 @@ function compile(taskId) {
     };
   });
   const assets = list(storage.getOutput(taskId, ASSET_KIND));
-  const timeline = list(storage.getOutput(taskId, TIMELINE_KIND));
+  const timeline = normalizeTimelineTracks(storage.getOutput(taskId, TIMELINE_KIND));
   const ledger = list(storage.getOutput(taskId, LEDGER_KIND));
   return { profiles, assets, timeline, ledger, bgm_query: recommendedBgmQuery(shots), shots: shots.map((shot, index) => ({
     shot_id: clean(shot.shot_id || `shot_${index + 1}`, 160),
@@ -322,7 +332,7 @@ function addUserAsset(taskId, input = {}, actor = {}) {
     volume: Math.max(0, Math.min(1, Number(input.volume ?? 0.35) || 0.35)),
     status: 'ready',
   };
-  const timeline = [...state.timeline.filter(item => item.timeline_id !== timelineId), timelineRow];
+  const timeline = upsertTimelineTrack(state.timeline, timelineRow);
   storage.saveOutput(taskId, TIMELINE_KIND, timeline);
   const ledgerRow = {
     asset_id: assetId, source: 'user_upload', creator: row.creator, license: row.license,
@@ -363,9 +373,10 @@ function resolvedBgm(taskId) {
 
 function attributionManifest(taskId) {
   const rows = list(storage.getOutput(taskId, LEDGER_KIND));
-  return rows.filter(row => row.requires_attribution).map(row => ({
+  const activeAssetIds = new Set(compile(taskId).timeline.map(row => row.asset_id).filter(Boolean));
+  return rows.filter(row => row.requires_attribution && activeAssetIds.has(row.asset_id)).map(row => ({
     asset_id: row.asset_id, creator: row.creator, license: row.license, license_url: row.license_url, landing_url: row.landing_url,
   }));
 }
 
-module.exports = { ALLOWED_TRACKS, ASSET_KIND, LEDGER_KIND, PROFILE_KIND, TIMELINE_KIND, addUserAsset, attributionManifest, compile, generatedSoundKind, generatedSoundSource, importOpenverseAsset, openverseQueryCandidates, recommendedBgmQuery, recommendedQuery, recommendedTrack, resolvedBgm, resolvedTracks, searchOpenverse, shouldAutoRecommend };
+module.exports = { ALLOWED_TRACKS, ASSET_KIND, LEDGER_KIND, PROFILE_KIND, TIMELINE_KIND, addUserAsset, attributionManifest, compile, generatedSoundKind, generatedSoundSource, importOpenverseAsset, normalizeTimelineTracks, openverseQueryCandidates, recommendedBgmQuery, recommendedQuery, recommendedTrack, resolvedBgm, resolvedTracks, searchOpenverse, shouldAutoRecommend, upsertTimelineTrack };

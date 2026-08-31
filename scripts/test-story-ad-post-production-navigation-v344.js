@@ -61,10 +61,11 @@ assert.match(editView, /if \(!finalVideo \|\| !videoUrl\(finalVideo\)\)/, '剪�
 assert.match(editView, /data-save-timeline/);
 assert.match(editView, /data-apply-edit/);
 assert.match(editView, /store\.runStage\('compose'\)/, '剪辑应用必须通过重新合成生成新成片');
-assert.match(soundWorkbench, /audio-setup-grid/);
+assert.match(soundWorkbench, /voice-setup-panel/);
 assert.match(soundWorkbench, /sound-primary-actions/);
 assert.match(soundWorkbench, /sound-option-panel/);
-assert.match(css, /\.audio-setup-grid\{[^}]*minmax\(220px,1fr\)/);
+assert.match(soundWorkbench, /bgm-picker/);
+assert.match(css, /\.voice-setup-panel\{[^}]*minmax\(320px/);
 assert.match(css, /\.post-stage-summary\{[^}]*repeat\(3,minmax\(0,1fr\)\)/);
 
 console.log(JSON.stringify({ passed: true, checks: 28, no_video_editor_hidden: true, legacy_final_redirected: true, post_production_views: ['sound', 'compose', 'edit'], upstream_steps_changed: 0 }));

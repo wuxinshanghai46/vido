@@ -41,7 +41,7 @@ const GATES = Object.freeze({
     label: '上传、参考媒体与失败恢复',
   },
   final_media: {
-    command: 'node scripts/test-story-ad-dialogue-lipsync-v348.js && node scripts/test-story-ad-sound-layout-v347.js && node scripts/test-story-ad-sound-confirmation-flow-v345.js && node scripts/test-story-ad-post-production-navigation-v344.js && node scripts/test-story-ad-final-media-flow-v341.js && node scripts/test-story-ad-timeline-render-v341.js && node scripts/test-new-story-ad-keyframe-submission.js && node scripts/test-story-ad-workflow-scene-sound-v197.js && node scripts/test-new-story-ad-video-orchestration.js && node scripts/test-new-story-ad-audio-preflight.js && node scripts/test-new-story-ad-compose-gate-autosave.js && node scripts/test-new-story-ad-video-preflight.js && node scripts/test-new-story-ad-compose-transitions.js && node scripts/test-new-story-ad-video-task-resume.js && node scripts/test-new-story-ad-video-preflight-route-errors.js && node scripts/test-story-ad-audio-realization-v174.js && node scripts/test-new-story-ad-video-ux-semantics.js && node scripts/test-story-ad-workspace-v6-ui-regressions.js && node scripts/check-new-story-ad-dossier-boundaries.js',
+    command: 'node scripts/test-story-ad-sound-picker-v349.js && node scripts/test-story-ad-dialogue-lipsync-v348.js && node scripts/test-story-ad-sound-layout-v347.js && node scripts/test-story-ad-sound-confirmation-flow-v345.js && node scripts/test-story-ad-post-production-navigation-v344.js && node scripts/test-story-ad-final-media-flow-v341.js && node scripts/test-story-ad-timeline-render-v341.js && node scripts/test-new-story-ad-keyframe-submission.js && node scripts/test-story-ad-workflow-scene-sound-v197.js && node scripts/test-new-story-ad-video-orchestration.js && node scripts/test-new-story-ad-audio-preflight.js && node scripts/test-new-story-ad-compose-gate-autosave.js && node scripts/test-new-story-ad-video-preflight.js && node scripts/test-new-story-ad-compose-transitions.js && node scripts/test-new-story-ad-video-task-resume.js && node scripts/test-new-story-ad-video-preflight-route-errors.js && node scripts/test-story-ad-audio-realization-v174.js && node scripts/test-new-story-ad-video-ux-semantics.js && node scripts/test-story-ad-workspace-v6-ui-regressions.js && node scripts/check-new-story-ad-dossier-boundaries.js',
     label: '分镜后的声音确认、视频生成、时间线剪辑与合成',
   },
   targeted_release_core: {
@@ -69,7 +69,7 @@ const DOMAIN_RULES = [
     patterns: [
       /^src\/services\/newStoryAd\/(?:videoInputFrame|audioProduction|storyAdTimeline|compose|soundDesignAsset)Service\.js$/i,
       /^public\/story-ad\/views\/(?:final|finalSound|finalEdit|finalSoundDesign)View\.js$/i,
-      /^scripts\/(?:test-story-ad-(?:final-media-flow|timeline-render)-v341|test-story-ad-sound-confirmation-flow-v345|test-story-ad-sound-layout-v347|test-story-ad-dialogue-lipsync-v348|test-new-story-ad-keyframe-submission|test-story-ad-workflow-scene-sound-v197)\.js$/i,
+      /^scripts\/(?:test-story-ad-(?:final-media-flow|timeline-render)-v341|test-story-ad-sound-confirmation-flow-v345|test-story-ad-sound-layout-v347|test-story-ad-dialogue-lipsync-v348|test-story-ad-sound-picker-v349|test-new-story-ad-keyframe-submission|test-story-ad-workflow-scene-sound-v197)\.js$/i,
     ],
   },
   {
@@ -217,6 +217,7 @@ function scopedDomainFromPatch(file = '', patch = '') {
     'scripts/test-story-ad-sound-confirmation-flow-v345.js',
     'scripts/test-story-ad-sound-layout-v347.js',
     'scripts/test-story-ad-dialogue-lipsync-v348.js',
+    'scripts/test-story-ad-sound-picker-v349.js',
   ].includes(normalized)) return 'final_media';
   if (normalized === 'src/services/storyAdWorkspace/storyboardPromptAssistService.js') return 'workspace_ui';
   if (normalized === 'scripts/test-story-ad-storyboard-progress-concurrency-v284.js') return 'story_content';

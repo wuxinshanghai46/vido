@@ -37,6 +37,9 @@ function soundPreviewMarkup(url = '', duration = 4, label = '试听本镜') {
   const seconds = previewSeconds(duration, label === '试听音乐' ? 8 : 6);
   return `<div class="sound-preview-control"><button class="btn small" type="button" data-play-sound-preview data-preview-seconds="${seconds}">▶ ${label} ${seconds} 秒</button><audio preload="none" src="${escapeHtml(url)}" hidden></audio></div>`;
 }
+function bgmCandidateMarkup(item = {}, index = 0) {
+  return `<article class="bgm-candidate ${index === 0 ? 'is-recommended' : ''}"><div><b>${escapeHtml(item.name || '背景音乐')}</b><small>${escapeHtml(item.creator || 'Unknown')} · ${escapeHtml(String(item.license || '').toUpperCase())}${index === 0 ? ' · 系统首选' : ''}</small></div>${soundPreviewMarkup(item.audio_url || '', 8, '试听音乐')}<button class="btn small" type="button" data-import-bgm="${escapeHtml(item.id || '')}">${index === 0 ? '使用这首' : '切换为这首'}</button></article>`;
+}
 
 export function soundDesignMarkup(soundDesign = {}) {
   const assets = new Map((soundDesign.assets || []).map(item => [item.asset_id, item]));
@@ -50,17 +53,24 @@ export function soundDesignMarkup(soundDesign = {}) {
     <div class="card-head"><div><h2>配音与对白</h2><p>先确认声音效果再进入视频生成。旁白/画外音不做口型；只有人物出镜对白才进行口型同步。</p></div><span class="status-badge ${production.approved ? 'success' : 'warning'}">${production.approved ? '声音已确认' : '待试听确认'}</span></div>
     <div class="card-body">
       <div class="guide"><b>当前主流程：</b>选择音色 → 生成并试听配音 → 从页面顶部确认并进入“视频与合成”。背景音乐和场景音效均为可选，不会改变前 5 步内容。</div>
-      <div class="audio-setup-grid" data-audio-plan>
-        <label class="audio-toggle-field"><span>使用剧情中的旁白 / 对白</span><input type="checkbox" data-include-voiceover ${production.include_voiceover ? 'checked' : ''}></label>
-        ${production.has_speech !== false ? `<label><span>系统推荐旁白音色</span><select data-voice-select data-voice-role="narrator"><option value="${escapeHtml(production.voice_assignments?.narrator || production.voice_id || '')}">${escapeHtml(production.voice_assignments?.narrator || production.voice_id || '正在选择可用音色…')}</option></select><small data-voice-recommendation-status>正在核对可合成的音色…</small></label>` : ''}
-        ${(production.speakers || []).map(speaker => `<label><span>${escapeHtml(speaker)}的对白音色</span><select data-voice-select data-speaker="${escapeHtml(speaker)}"><option value="${escapeHtml(production.voice_assignments?.speakers?.[speaker] || '')}">${escapeHtml(production.voice_assignments?.speakers?.[speaker] || '正在选择可用音色…')}</option></select></label>`).join('')}
-        <label><span>字幕</span><select data-subtitle-enabled><option value="true">显示字幕</option><option value="false">不显示</option></select></label>
+      <div class="voice-setup-panel" data-audio-plan>
+        <fieldset class="voice-mode-selector"><legend>本片是否使用人声</legend>
+          <label class="voice-mode-option ${production.include_voiceover ? 'is-selected' : ''}"><input type="radio" name="story-voice-mode" value="true" data-include-voiceover ${production.include_voiceover ? 'checked' : ''}><span><b>生成剧情配音 <em>推荐</em></b><small>检测到 ${spokenShots} 个分镜包含旁白或对白，因此默认选择；只有点击“生成配音试听”才会执行和计费。</small></span></label>
+          <label class="voice-mode-option ${!production.include_voiceover ? 'is-selected' : ''}"><input type="radio" name="story-voice-mode" value="false" data-include-voiceover ${!production.include_voiceover ? 'checked' : ''}><span><b>本片不使用人声</b><small>保留画面、背景音乐和场景音效，不生成旁白或对白。</small></span></label>
+        </fieldset>
+        <div class="voice-settings-panel" data-voice-settings>
+          <div class="voice-settings-grid">
+            ${production.has_speech !== false ? `<label><span>旁白音色</span><select data-voice-select data-voice-role="narrator"><option value="${escapeHtml(production.voice_assignments?.narrator || production.voice_id || '')}">${escapeHtml(production.voice_assignments?.narrator || production.voice_id || '正在选择可用音色…')}</option></select><small data-voice-recommendation-status>正在核对可合成的音色…</small></label>` : ''}
+            ${(production.speakers || []).map(speaker => `<label><span>${escapeHtml(speaker)}的对白音色</span><select data-voice-select data-speaker="${escapeHtml(speaker)}"><option value="${escapeHtml(production.voice_assignments?.speakers?.[speaker] || '')}">${escapeHtml(production.voice_assignments?.speakers?.[speaker] || '正在选择可用音色…')}</option></select></label>`).join('')}
+            <label><span>字幕</span><select data-subtitle-enabled><option value="true" ${production.subtitle !== false ? 'selected' : ''}>显示字幕</option><option value="false" ${production.subtitle === false ? 'selected' : ''}>不显示字幕</option></select><small>字幕跟随最终确认的旁白与对白。</small></label>
+          </div>
+          <div class="voice-generation-bar"><div><b>生成并逐段试听</b><small>将按上方音色生成 ${spokenShots} 段配音；打开页面和切换设置都不会自动计费。</small></div><div class="sound-primary-actions"><button class="btn" type="button" data-save-audio-plan>保存设置</button><button class="btn primary" type="button" data-generate-audio data-generate-label="生成 ${spokenShots || ''} 段配音试听">生成 ${spokenShots || ''} 段配音试听</button></div></div>
+        </div>
       </div>
-      <div class="sound-primary-flow"><div><b>生成配音试听</b><small>按上方音色生成 ${spokenShots} 个分镜的配音。只有点击按钮才会生成，不会在打开页面时自动计费。</small></div><div class="sound-primary-actions"><button class="btn" type="button" data-save-audio-plan>只保存设置</button><button class="btn primary" type="button" data-generate-audio>生成 ${spokenShots || ''} 段配音试听</button></div></div>
       ${(production.speech || []).length ? `<div class="speech-preview-list">${production.speech.map((row, index) => `<article data-audio-track><header><b>SH${String(row.shot_index).padStart(2, '0')}</b><span>${escapeHtml(row.mode === 'on_camera_dialogue' ? '出镜对白' : row.mode === 'offscreen' ? '旁白 / 画外音' : '无语音')}</span></header><p>${(row.units || []).map(unit => `${escapeHtml(unit.speaker || '旁白')}：${escapeHtml(unit.text)}`).join('<br>') || '本镜无对白'}</p><div>${ttsTracks[index]?.audio_url ? `<audio controls preload="metadata" src="${escapeHtml(ttsTracks[index].audio_url)}"></audio>` : '<em>生成后可在这里试听</em>'}</div></article>`).join('')}</div>` : ''}
       <section class="sound-option-block">
-        <div class="sound-section-heading"><div><span class="optional-badge">可选</span><h2>背景音乐</h2><p>背景音乐服务于整条成片，所以素材通常较长；这里只试听 8 秒，采用后按成片总时长裁切。</p></div></div>
-        ${shots.length ? `<article class="sound-featured-row" data-audio-track data-sound-shot="1" data-sound-query="${escapeHtml(soundDesign.bgm_query || 'cinematic background music')}" data-sound-track="bgm" data-sound-bound="${bgmRows.length ? 'true' : 'false'}" data-auto-recommend="true" data-preview-duration="8"><div><b>全片背景音乐</b><small>不采用也可以继续</small><label class="sound-volume-field"><span>混音音量</span><input type="range" min="0" max="0.35" step="0.01" value="0.16" data-bgm-volume></label></div><div>${bgmRows.map(row => { const asset = assets.get(row.asset_id) || {}; return `<span class="adopted-sound"><b>${escapeHtml(asset.name || '背景音乐')}</b><small>${escapeHtml(asset.license || '许可待核对')}</small>${soundPreviewMarkup(asset.file_url, 8, '试听音乐')}</span>`; }).join('') || '<span class="sound-empty-state">尚未采用</span>'}</div><div class="sound-row-actions"><input type="hidden" data-sound-track-type value="bgm"><div data-auto-sound-recommendation>${bgmRows.length ? '<small>已采用背景音乐</small>' : '<small>正在匹配可试听音乐…</small>'}</div></div></article>` : ''}
+        <div class="sound-section-heading"><div><span class="optional-badge">可选</span><h2>背景音乐</h2><p>先试听多首候选，再选择一首作为全片音乐；重新选择会替换原音乐，不会叠加两条 BGM。</p></div></div>
+        ${shots.length ? `<article class="bgm-picker" data-audio-track data-sound-shot="1" data-sound-query="${escapeHtml(soundDesign.bgm_query || 'cinematic background music')}" data-sound-track="bgm" data-sound-bound="${bgmRows.length ? 'true' : 'false'}" data-auto-recommend="true" data-preview-duration="8"><div class="bgm-current"><div><span>当前使用</span><b>${bgmRows.length ? escapeHtml(assets.get(bgmRows.at(-1)?.asset_id)?.name || '已采用背景音乐') : '尚未选择背景音乐'}</b><small>${bgmRows.length ? '选择其他音乐会直接替换当前音乐' : '不选择也可以继续进入视频与合成'}</small></div><label class="sound-volume-field"><span>混音音量</span><input type="range" min="0" max="0.35" step="0.01" value="${Number(production.bgm_volume ?? 0.16)}" data-bgm-volume></label></div><div class="bgm-recommendations"><div class="bgm-recommendation-head"><div><b>为当前剧情推荐</b><small>每首只试听 8 秒</small></div><button class="btn small" type="button" data-toggle-bgm-library>按风格查找</button></div><div data-auto-sound-recommendation><small>正在匹配多首可试听音乐…</small></div></div><div class="bgm-library-panel" data-bgm-library-panel hidden><div class="bgm-mood-list"><button type="button" data-bgm-query="elegant minimal background music">高级克制</button><button type="button" data-bgm-query="warm piano background music">温暖叙事</button><button type="button" data-bgm-query="upbeat corporate background music">轻快商业</button><button type="button" data-bgm-query="cinematic ambient background music">电影氛围</button></div><div class="bgm-search-bar"><input class="input" type="search" value="${escapeHtml(soundDesign.bgm_query || 'cinematic background music')}" placeholder="输入音乐风格，例如：温暖钢琴" data-bgm-library-query><button class="btn" type="button" data-search-bgm-library>搜索音乐</button></div><div class="sound-library-results bgm-library-results" data-bgm-library-results></div></div></article>` : ''}
       </section>
       <details class="sound-option-panel">
         <summary><span><span class="optional-badge">可选</span><b>场景音效</b><small>当前剧情明确音效 ${keySoundCount} 处；普通环境描述默认不添加</small></span><span>展开设置</span></summary>
@@ -98,8 +108,19 @@ export function bindSoundDesign(host, { bundle, store, refreshShell, navigate })
     const speakers = {};
     host.querySelectorAll('[data-voice-select][data-speaker]').forEach(select => { if (select.value) speakers[select.dataset.speaker] = select.value; });
     const narrator = host.querySelector('[data-voice-select][data-voice-role="narrator"]')?.value || '';
-    return { include_voiceover: host.querySelector('[data-include-voiceover]')?.checked === true, voice_id: narrator, voice_assignments: { narrator, speakers }, bgm_volume: Number(host.querySelector('[data-bgm-volume]')?.value || 0.16), subtitle: host.querySelector('[data-subtitle-enabled]')?.value !== 'false' };
+    return { include_voiceover: host.querySelector('[data-include-voiceover]:checked')?.value === 'true', voice_id: narrator, voice_assignments: { narrator, speakers }, bgm_volume: Number(host.querySelector('[data-bgm-volume]')?.value || 0.16), subtitle: host.querySelector('[data-subtitle-enabled]')?.value !== 'false' };
   };
+  const updateVoiceModeUi = () => {
+    const enabled = host.querySelector('[data-include-voiceover]:checked')?.value === 'true';
+    host.querySelectorAll('.voice-mode-option').forEach(option => option.classList.toggle('is-selected', option.querySelector('input')?.checked === true));
+    const settings = host.querySelector('[data-voice-settings]');
+    if (settings) settings.classList.toggle('is-disabled', !enabled);
+    host.querySelectorAll('[data-voice-select]').forEach(select => { select.disabled = !enabled; });
+    const generate = host.querySelector('[data-generate-audio]');
+    if (generate) { generate.disabled = !enabled; generate.textContent = enabled ? generate.dataset.generateLabel : '已选择不使用人声'; }
+  };
+  host.querySelectorAll('[data-include-voiceover]').forEach(input => input.addEventListener('change', updateVoiceModeUi));
+  updateVoiceModeUi();
   host.querySelector('[data-save-audio-plan]')?.addEventListener('click', async event => {
     try { setButtonBusy(event.currentTarget, true, '保存中…'); await request(`/api/story-ad/projects/${encodeURIComponent(bundle.project.id)}/audio-plan`, { method: 'PUT', body: audioPlanPayload() }); toast('声音设置已保存。', 'success'); await refreshShell(); } catch (error) { toast(error.message, 'danger'); } finally { setButtonBusy(event.currentTarget, false); }
   });
@@ -110,27 +131,37 @@ export function bindSoundDesign(host, { bundle, store, refreshShell, navigate })
     try { setButtonBusy(event.currentTarget, true, '正在确认…'); await request(`/api/story-ad/projects/${encodeURIComponent(bundle.project.id)}/audio-confirm`, { method: 'POST', body: {} }); toast('声音已确认，正在进入视频与合成。', 'success'); navigate(`/story-ad/projects/${encodeURIComponent(bundle.project.id)}?view=compose`); } catch (error) { toast(error.message, 'danger'); } finally { setButtonBusy(event.currentTarget, false); }
   });
 
-  const importRecommendation = async (row, button) => {
-    const id = row.dataset.recommendedSoundId || '';
+  const importSound = async (row, button, id = row.dataset.recommendedSoundId || '') => {
     if (!id) throw new Error('该分镜还没有可采用的推荐声音。');
     setButtonBusy(button, true, '采用中…');
     await request(`/api/story-ad/projects/${encodeURIComponent(bundle.project.id)}/sound-assets/openverse`, { method: 'POST', body: { openverse_id: id, shot_index: Number(row.dataset.soundShot || 1), track_type: row.dataset.soundTrack || row.querySelector('[data-sound-track-type]')?.value || 'sfx' } });
   };
+  const bindBgmImportButtons = (container, row) => {
+    container?.querySelectorAll('[data-import-bgm]').forEach(button => button.addEventListener('click', async event => {
+      try { await importSound(row, event.currentTarget, event.currentTarget.dataset.importBgm); toast('背景音乐已切换，原音乐不会重复叠加。', 'success'); await refreshShell(); } catch (error) { toast(error.message, 'danger'); } finally { setButtonBusy(event.currentTarget, false); }
+    }));
+  };
   const recommendationRequests = new Map();
-  const pendingRows = [...host.querySelectorAll('[data-sound-query][data-sound-bound="false"][data-auto-recommend="true"]')];
+  const pendingRows = [...host.querySelectorAll('[data-sound-query][data-auto-recommend="true"]')].filter(row => row.dataset.soundTrack === 'bgm' || row.dataset.soundBound === 'false');
   pendingRows.forEach(row => {
     const query = row.dataset.soundQuery || '';
     const resultHost = row.querySelector('[data-auto-sound-recommendation]');
     if (!query || !resultHost) return;
     if (!recommendationRequests.has(query)) recommendationRequests.set(query, request(`/api/story-ad/projects/${encodeURIComponent(bundle.project.id)}/sound-library?q=${encodeURIComponent(query)}`));
     recommendationRequests.get(query).then(result => {
-      const item = result.results?.[0];
+      const items = result.results || [];
+      const item = items[0];
       if (!item) { resultHost.innerHTML = '<small>暂未找到合规候选，可搜索其他声音或上传自己的。</small>'; return; }
+      if (row.dataset.soundTrack === 'bgm') {
+        resultHost.innerHTML = `<div class="bgm-candidate-grid">${items.slice(0, 4).map(bgmCandidateMarkup).join('')}</div>`;
+        bindBgmImportButtons(resultHost, row);
+        return;
+      }
       row.dataset.recommendedSoundId = item.id;
       const previewLabel = row.dataset.soundTrack === 'bgm' ? '试听音乐' : '试听本镜';
       resultHost.innerHTML = `<small>系统推荐：${escapeHtml(item.name)} · ${escapeHtml(String(item.license || '').toUpperCase())}${result.fallback_used ? `（已按 ${escapeHtml(result.selected_query)} 扩展匹配）` : ''}</small>${soundPreviewMarkup(item.audio_url || '', Number(row.dataset.previewDuration || 4), previewLabel)}<button class="btn small" type="button" data-use-recommended-sound>采用这个声音</button>`;
       resultHost.querySelector('[data-use-recommended-sound]')?.addEventListener('click', async event => {
-        try { await importRecommendation(row, event.currentTarget); toast('声音已绑定并写入许可账本。', 'success'); await refreshShell(); } catch (error) { toast(error.message, 'danger'); } finally { setButtonBusy(event.currentTarget, false); }
+        try { await importSound(row, event.currentTarget); toast('声音已绑定并写入许可账本。', 'success'); await refreshShell(); } catch (error) { toast(error.message, 'danger'); } finally { setButtonBusy(event.currentTarget, false); }
       });
     }).catch(error => { resultHost.innerHTML = `<small>${escapeHtml(error.message || '声音库暂时不可用，可稍后重试或上传自己的声音。')}</small>`; });
   });
@@ -169,6 +200,32 @@ export function bindSoundDesign(host, { bundle, store, refreshShell, navigate })
       try { setButtonBusy(button, true, '上传中…'); const uploaded = await store.upload(file, 'sound_effect'); await request(`/api/story-ad/projects/${encodeURIComponent(bundle.project.id)}/sound-assets`, { method: 'POST', body: { asset: uploaded.asset || uploaded.data, shot_index: Number(row.dataset.soundShot), track_type: row.querySelector('[data-sound-track-type]')?.value || 'sfx' } }); toast('音频已绑定到当前分镜。', 'success'); await refreshShell(); } catch (error) { toast(error.message, 'danger'); } finally { setButtonBusy(button, false); }
     });
   });
+  const bgmRow = host.querySelector('[data-sound-track="bgm"]');
+  const bgmPanel = host.querySelector('[data-bgm-library-panel]');
+  host.querySelector('[data-toggle-bgm-library]')?.addEventListener('click', event => {
+    if (!bgmPanel) return;
+    bgmPanel.hidden = !bgmPanel.hidden;
+    event.currentTarget.textContent = bgmPanel.hidden ? '按风格查找' : '收起音乐库';
+  });
+  const searchBgm = async (query, button) => {
+    const resultsHost = host.querySelector('[data-bgm-library-results]');
+    if (!query || !resultsHost || !bgmRow) return toast('请先选择或输入一种音乐风格。', 'warning');
+    try {
+      setButtonBusy(button, true, '搜索中…');
+      const result = await request(`/api/story-ad/projects/${encodeURIComponent(bundle.project.id)}/sound-library?q=${encodeURIComponent(query)}`);
+      const items = result.results || [];
+      resultsHost.innerHTML = items.length ? `<div class="bgm-candidate-grid">${items.slice(0, 8).map(bgmCandidateMarkup).join('')}</div>` : `<p>${escapeHtml(result.license_note || '没有找到满足许可规则的音乐。')}</p>`;
+      bindBgmImportButtons(resultsHost, bgmRow);
+    } catch (error) { toast(error.message, 'danger'); } finally { setButtonBusy(button, false); }
+  };
+  host.querySelector('[data-search-bgm-library]')?.addEventListener('click', event => searchBgm(host.querySelector('[data-bgm-library-query]')?.value?.trim(), event.currentTarget));
+  host.querySelectorAll('[data-bgm-query]').forEach(button => button.addEventListener('click', async event => {
+    if (bgmPanel) bgmPanel.hidden = false;
+    const input = host.querySelector('[data-bgm-library-query]');
+    if (input) input.value = event.currentTarget.dataset.bgmQuery;
+    host.querySelectorAll('[data-bgm-query]').forEach(item => item.classList.toggle('is-active', item === event.currentTarget));
+    await searchBgm(event.currentTarget.dataset.bgmQuery, event.currentTarget);
+  }));
   host.querySelector('[data-search-sound-library]')?.addEventListener('click', async event => {
     const query = host.querySelector('[data-sound-library-query]')?.value?.trim();
     if (!query) return toast('请先输入要查找的环境声或音效。', 'warning');
@@ -177,7 +234,7 @@ export function bindSoundDesign(host, { bundle, store, refreshShell, navigate })
       setButtonBusy(event.currentTarget, true, '搜索中…');
       const result = await request(`/api/story-ad/projects/${encodeURIComponent(bundle.project.id)}/sound-library?q=${encodeURIComponent(query)}`);
       const selectedShot = Number(host.querySelector('[data-sound-library-shot]')?.value || 1);
-      const selectedRow = host.querySelector(`[data-sound-shot="${selectedShot}"]`);
+      const selectedRow = host.querySelector(`[data-sound-shot="${selectedShot}"]:not([data-sound-track="bgm"])`);
       const previewDuration = Number(selectedRow?.dataset.previewDuration || 4);
       resultsHost.innerHTML = (result.results || []).length ? result.results.map((item, index) => `<article class="${index === 0 ? 'is-recommended' : ''}"><div><b>${escapeHtml(item.name)}${index === 0 ? '<span class="sound-recommended-tag">系统推荐</span>' : ''}</b><small>${escapeHtml(item.creator)} · ${escapeHtml(String(item.license || '').toUpperCase())}</small></div>${soundPreviewMarkup(item.audio_url || '', previewDuration, '试听本镜')}<button class="btn small" type="button" data-import-openverse="${escapeHtml(item.id)}">采用这个声音</button></article>`).join('') : `<p>${escapeHtml(result.license_note || '没有找到满足许可规则的结果。')}</p>`;
       resultsHost.querySelectorAll('[data-import-openverse]').forEach(button => button.addEventListener('click', async importEvent => {
