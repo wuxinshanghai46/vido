@@ -22,6 +22,31 @@ function plan(files, options = {}) {
   });
 }
 
+const finalMediaPlan = planner.createPlan({
+  root: process.cwd(), baseRevision: 'a'.repeat(40), targetRevision: 'b'.repeat(40), sourceTree: 'c'.repeat(40),
+  files: [
+    'src/services/newStoryAd/storyAdService.js',
+    'src/services/newStoryAd/audioProductionService.js',
+    'src/services/newStoryAd/storyAdTimelineService.js',
+    'src/routes/newStoryAd.js',
+    'src/routes/storyAdWorkspace.js',
+    'src/services/storyAdWorkspace/projectBundleService.js',
+    'public/story-ad/views/finalView.js',
+    'scripts/test-story-ad-final-media-flow-v341.js',
+  ],
+  patches: {
+    'src/routes/newStoryAd.js': '@@ route\n+KEYFRAME_ROUTE_RETIRED',
+    'src/routes/storyAdWorkspace.js': '@@ route\n+audio-plan timeline',
+    'src/services/storyAdWorkspace/projectBundleService.js': '@@ bundle\n+approved_frames confirmed_storyboard',
+  },
+  reliable: true, targetedHome: true,
+});
+assert.equal(finalMediaPlan.profile, 'final_media');
+assert.deepEqual(finalMediaPlan.gates.map(row => row.id), ['final_media', 'targeted_release_core'],
+  '家庭电脑的后半程媒体改造必须只运行最终媒体与定向发布门禁');
+assert(!finalMediaPlan.gates.some(row => ['systemic', 'platform_full', 'release_core'].includes(row.id)),
+  '最终媒体定向门禁不得隐式运行系统级、跨版本或全量发布套件');
+
 assert.equal(plan(['public/story-ad/views/briefView.js']).profile, 'ui');
 assert.deepEqual(plan(['public/story-ad/views/briefView.js']).gates.map(row => row.id), ['workspace_ui', 'release_core']);
 const workspaceUiGate = plan(['public/story-ad/views/briefView.js']).gates.find(row => row.id === 'workspace_ui');

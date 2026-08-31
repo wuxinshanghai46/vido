@@ -58,9 +58,9 @@ const upstreamBefore = storage.canonicalFingerprint(Object.fromEntries(upstreamK
 
 const resolved = videoInputFrames.resolve(taskId, { shots, contracts });
 assert.equal(resolved.frames.length, 2);
-assert(resolved.frames.every(frame => frame.source_type === 'confirmed_colour_storyboard'));
+assert(resolved.frames.every(frame => frame.source_type === 'confirmed_storyboard'));
 assert(resolved.frames.every(frame => frame.qa.status === 'human_confirmed_storyboard'));
-assert(storage.getOutput(taskId, 'keyframes') == null, '彩色分镜适配不得写入或重复生成 keyframes');
+assert(storage.getOutput(taskId, 'keyframes') == null, '分镜适配不得写入或重复生成 keyframes');
 
 audioProduction.savePlan(taskId, { include_voiceover: false, subtitle: true, bgm_volume: 0.12 });
 assert.equal(audioProduction.confirm(taskId, { id: 'tester' }).approved, true, '无语音方案仍需显式确认后才能进入视频');
@@ -86,7 +86,7 @@ const finalView = fs.readFileSync(path.join(root, 'public/story-ad/views/finalVi
 const soundView = fs.readFileSync(path.join(root, 'public/story-ad/views/finalSoundDesignView.js'), 'utf8');
 assert.match(routeSource, /LEGACY_KEYFRAME_GENERATION_DISABLED/);
 assert.doesNotMatch(finalView, /data-generate-keyframes/);
-assert.match(finalView, /已确认彩色分镜 \/ 视频首帧/);
+assert.match(finalView, /已确认分镜 \/ 视频首帧/);
 assert.match(finalView, /智能剪辑时间线/);
 assert.match(soundView, /我已试听并确认声音/);
 assert.match(soundView, /data-speaker/);

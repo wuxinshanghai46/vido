@@ -40,6 +40,14 @@ const GATES = Object.freeze({
     command: 'node scripts/test-story-ad-workspace-reference-intake.js && node scripts/test-new-story-ad-reference-video-analysis.js && node scripts/test-new-story-ad-visual-asset-failure-recovery.js',
     label: '上传、参考媒体与失败恢复',
   },
+  final_media: {
+    command: 'node scripts/test-story-ad-final-media-flow-v341.js && node scripts/test-story-ad-timeline-render-v341.js && node scripts/test-new-story-ad-keyframe-submission.js && node scripts/test-story-ad-workflow-scene-sound-v197.js && node scripts/test-new-story-ad-video-orchestration.js && node scripts/test-new-story-ad-audio-preflight.js && node scripts/test-new-story-ad-compose-gate-autosave.js && node scripts/test-new-story-ad-video-preflight.js && node scripts/test-new-story-ad-compose-transitions.js && node scripts/test-new-story-ad-video-task-resume.js && node scripts/test-new-story-ad-video-preflight-route-errors.js && node scripts/test-story-ad-audio-realization-v174.js && node scripts/test-new-story-ad-video-ux-semantics.js && node scripts/test-story-ad-workspace-v6-ui-regressions.js && node scripts/check-new-story-ad-dossier-boundaries.js',
+    label: '分镜后的声音确认、视频生成、时间线剪辑与合成',
+  },
+  targeted_release_core: {
+    command: 'node scripts/test-story-ad-release-integrity.js && node scripts/test-story-ad-release-source-identity.js && node scripts/test-story-ad-immutable-deploy-transport.js && node scripts/test-story-ad-release-gate-planner.js && node scripts/test-story-ad-release-build-atomicity.js && node scripts/test-story-ad-release-closure.js',
+    label: '家庭电脑定向发布完整性、传输、规划与闭包',
+  },
   systemic: {
     command: 'npm run story-ad:systemic:test',
     label: '任务权威、持久化、计费与系统迁移',
@@ -55,6 +63,15 @@ const GATES = Object.freeze({
 });
 
 const DOMAIN_RULES = [
+  {
+    domain: 'final_media',
+    risk: 'final_media',
+    patterns: [
+      /^src\/services\/newStoryAd\/(?:videoInputFrame|audioProduction|storyAdTimeline|compose|soundDesignAsset)Service\.js$/i,
+      /^public\/story-ad\/views\/(?:final|finalSoundDesign)View\.js$/i,
+      /^scripts\/(?:test-story-ad-(?:final-media-flow|timeline-render)-v341|test-new-story-ad-keyframe-submission|test-story-ad-workflow-scene-sound-v197)\.js$/i,
+    ],
+  },
   {
     domain: 'story_content',
     risk: 'story_content',
@@ -175,6 +192,21 @@ function sha256(value) { return crypto.createHash('sha256').update(String(value)
 
 function scopedDomainFromPatch(file = '', patch = '') {
   const normalized = normalizeFile(file);
+  if ([
+    'src/services/newStoryAd/videoInputFrameService.js',
+    'src/services/newStoryAd/audioProductionService.js',
+    'src/services/newStoryAd/storyAdTimelineService.js',
+    'src/services/newStoryAd/composeService.js',
+    'src/services/newStoryAd/soundDesignAssetService.js',
+    'src/services/newStoryAd/storyAdService.js',
+    'src/services/newStoryAd/revisionService.js',
+    'public/story-ad/views/finalView.js',
+    'public/story-ad/views/finalSoundDesignView.js',
+    'scripts/test-story-ad-final-media-flow-v341.js',
+    'scripts/test-story-ad-timeline-render-v341.js',
+    'scripts/test-new-story-ad-keyframe-submission.js',
+    'scripts/test-story-ad-workflow-scene-sound-v197.js',
+  ].includes(normalized)) return 'final_media';
   if (normalized === 'src/services/storyAdWorkspace/storyboardPromptAssistService.js') return 'workspace_ui';
   if (normalized === 'scripts/test-story-ad-storyboard-progress-concurrency-v284.js') return 'story_content';
   if ([
@@ -188,6 +220,12 @@ function scopedDomainFromPatch(file = '', patch = '') {
   if (['src/services/newStoryAd/personGenerationPromptService.js', 'src/services/newStoryAd/personGenerationRuntimeContractService.js'].includes(normalized)) return 'asset_plan';
   const hunks = String(patch || '').split(/^@@/m).slice(1).filter(Boolean);
   if (!hunks.length) return '';
+  if (normalized === 'src/routes/newStoryAd.js'
+    && hunks.every(hunk => /keyframes|KEYFRAME_ROUTE_RETIRED|confirmed storyboard|confirmed_storyboard/i.test(hunk))) return 'final_media';
+  if (normalized === 'src/routes/storyAdWorkspace.js'
+    && hunks.every(hunk => /sound-design|audio-plan|audio-confirm|timeline|audioProduction|storyAdTimeline/i.test(hunk))) return 'final_media';
+  if (normalized === 'src/services/storyAdWorkspace/projectBundleService.js'
+    && hunks.every(hunk => /approved_frames|confirmed_storyboard|storyboardImageConfirmationGate/i.test(hunk))) return 'final_media';
   if (normalized === 'src/routes/newStoryAd.js'
     && hunks.every(hunk => /reference-video-analyses|referenceVideoAnalyses|extendedAnalysisConfirmed|preflightFingerprint/i.test(hunk))) {
     return 'reference';
@@ -340,6 +378,9 @@ function classifyFiles(files = [], { reliable = true, scopedDomains = {} } = {})
   if (risks.has('systemic')) return {
     profile: 'systemic', domains: [...domains], unknown_files: [], reasons: ['涉及持久化、计费、任务或生成安全'],
   };
+  if (risks.has('final_media')) return {
+    profile: 'final_media', domains: [...domains], unknown_files: [], reasons: ['仅涉及已确认分镜后的媒体生产链路'],
+  };
   if (risks.has('upload_media')) return {
     profile: 'upload_media', domains: [...domains], unknown_files: [], reasons: ['涉及上传或媒体处理链路'],
   };
@@ -371,11 +412,13 @@ function gateIdsForProfile(profile = 'full', { fullPlatform = false, targetedHom
     story_content_asset_plan: ['story_content', 'asset_plan', 'workspace_ui', 'release_core'],
     reference_story_content: ['reference', 'story_content', 'workspace_ui', 'release_core'],
     upload_media: ['upload_media', 'reference', 'workspace_ui', 'release_core'],
+    final_media: ['final_media', 'workspace_ui', 'release_core'],
     systemic: ['systemic', 'workspace_ui', 'narrative_v111', 'release_core'],
     full: ['systemic', 'workspace_ui', 'narrative_v111', 'release_core'],
   };
   if (targetedHome) {
     const scope = new Set(domains);
+    if (scope.has('final_media')) return ['final_media', 'targeted_release_core'];
     const selected = [];
     if (scope.has('systemic_safety')) selected.push('systemic');
     if (scope.has('story_content')) selected.push('story_content');

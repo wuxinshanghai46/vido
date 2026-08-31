@@ -2122,10 +2122,10 @@ function assertVideoInputsReady({ ctx = {}, shots = [], keyframes = [], contract
     const frame = keyframes[index] || {};
     const qa = frame.qa || {};
     if (!isCompleteKeyframe(frame)) {
-      failures.push(`第 ${index + 1} 镜缺少可用的已确认彩色分镜首帧`);
+      failures.push(`第 ${index + 1} 镜缺少可用的已确认分镜首帧`);
       continue;
     }
-    if (frame.source_type === 'confirmed_colour_storyboard') { if (qa.pass !== true || qa.status !== 'human_confirmed_storyboard') failures.push(`第 ${index + 1} 镜彩色分镜尚未确认`); continue; }
+    if (frame.source_type === 'confirmed_storyboard') { if (qa.pass !== true || qa.status !== 'human_confirmed_storyboard') failures.push(`第 ${index + 1} 镜分镜尚未确认`); continue; }
     if (frame.regeneration_error) {
       failures.push(`第 ${index + 1} 镜本轮新版本未通过，当前仅保留上一版画面`);
       continue;

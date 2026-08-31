@@ -581,7 +581,7 @@ function buildProjectBundle(taskId, { sections = '', user = {} } = {}) {
       approved_frames: (context.shot_design_confirmed === true && storyboardImageConfirmation.inspect(taskId).ready
         ? list(outputs.storyboard_images) : []).slice(0, 200).map(item => ({
         ...item,
-        source_type: 'confirmed_colour_storyboard',
+        source_type: 'confirmed_storyboard',
         source_output_kind: 'storyboard_images',
       })),
       clips: clipCatalog.items,

@@ -1908,7 +1908,7 @@ router.post('/tasks/:id/keyframes', asyncRoute(async (req, res) => {
   res.status(410).json({
     success: false,
     code: 'LEGACY_KEYFRAME_GENERATION_DISABLED',
-    error: '整批关键帧生成已停用。已确认的彩色分镜会直接作为视频首帧；需要修改画面时请回到分镜页逐镜重绘。',
+    error: '整批关键帧生成已停用。已确认的分镜会直接作为视频首帧；需要修改画面时请回到分镜页逐镜重绘。',
     retryable: false,
   });
 }));

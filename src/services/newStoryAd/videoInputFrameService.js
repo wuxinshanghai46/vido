@@ -10,7 +10,7 @@ function clean(value = '', max = 1200) { return String(value || '').trim().slice
 /**
  * V341 video-input contract.
  *
- * A confirmed colour storyboard image is already the authored first frame for
+ * A confirmed storyboard image is already the authored first frame for
  * image-to-video.  This adapter is deliberately deterministic: it never calls
  * an image provider and it never writes a duplicate image artifact.
  */
@@ -19,7 +19,7 @@ function resolve(taskId, { shots = [], contracts = [], requireConfirmation = tru
   if (!task) throw Object.assign(new Error('项目不存在'), { code: 'TASK_NOT_FOUND', status: 404 });
   const context = storage.getOutput(taskId, 'context') || task.request || {};
   if (requireConfirmation && context.shot_design_confirmed !== true) {
-    throw Object.assign(new Error('请先在分镜页确认彩色分镜，再进入声音与视频制作。'), {
+    throw Object.assign(new Error('请先在分镜页确认分镜，再进入声音与视频制作。'), {
       code: 'STORYBOARD_CONFIRMATION_REQUIRED', status: 409, retryable: false,
     });
   }
@@ -35,13 +35,13 @@ function resolve(taskId, { shots = [], contracts = [], requireConfirmation = tru
     const shotIndex = Number(shot.shot_index || shot.index || index + 1) || index + 1;
     const image = byIndex.get(shotIndex) || {};
     const imageUrl = clean(image.image_url || image.imageUrl || image.url);
-    if (!imageUrl || !frameState.localAssetExists(imageUrl)) failures.push(`第 ${shotIndex} 镜彩色分镜文件不可用`);
+    if (!imageUrl || !frameState.localAssetExists(imageUrl)) failures.push(`第 ${shotIndex} 镜分镜文件不可用`);
     return {
       ...image,
       shot_index: shotIndex,
       image_url: imageUrl,
       imageUrl,
-      source_type: 'confirmed_colour_storyboard',
+      source_type: 'confirmed_storyboard',
       source_output_kind: 'storyboard_images',
       video_input_contract_version: 1,
       contract: contracts[index] || {},
@@ -58,14 +58,14 @@ function resolve(taskId, { shots = [], contracts = [], requireConfirmation = tru
     };
   });
   if (frames.length !== shotList.length || failures.length) {
-    throw Object.assign(new Error(`视频首帧准备失败：${failures.join('；') || '彩色分镜数量不完整'}`), {
+    throw Object.assign(new Error(`视频首帧准备失败：${failures.join('；') || '分镜数量不完整'}`), {
       code: 'VIDEO_INPUT_FRAME_REQUIRED', status: 422, retryable: false, details: failures,
     });
   }
   return {
     frames,
     gate,
-    source_type: 'confirmed_colour_storyboard',
+    source_type: 'confirmed_storyboard',
     fingerprint: storage.canonicalFingerprint(frames.map(frame => ({
       shot_index: frame.shot_index,
       image_url: frame.image_url,

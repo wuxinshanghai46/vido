@@ -73,13 +73,13 @@ export async function mount(host, context) {
   const videoModelPicker = await loadGenerationModelPicker(bundle.project.id, 'new_story_ad.video', { label: '视频模型' });
   host.innerHTML = `
     <section class="view-head">
-      <div><h1>声音、视频、剪辑与合成</h1><p>彩色分镜直接作为视频首帧；先完成全部声音试听，再生成视频并在时间线完成剪辑与合成。</p></div>
+      <div><h1>声音、视频、剪辑与合成</h1><p>已确认分镜直接作为视频首帧；先完成全部声音试听，再生成视频并在时间线完成剪辑与合成。</p></div>
       <div class="view-actions">
         ${approvedFrames.length ? `${videoModelPicker.html}<button class="btn" type="button" data-generate-video>生成分镜视频</button>` : '<button class="btn" type="button" data-back-storyboard>返回补充分镜</button>'}
         ${clips.length ? '<button class="btn primary" type="button" data-compose>按时间线合成成片</button>' : ''}
       </div>
     </section>
-    <div class="production-lanes" aria-label="生产轨道"><span data-production-lane><b>彩色分镜</b><small>${approvedFrames.length}/${shots.length}</small></span><span data-production-lane><b>声音确认</b><small>${soundDesign.production?.approved ? '已确认' : '待确认'}</small></span><span data-production-lane><b>分镜视频</b><small>${clips.length}/${shots.length}</small></span><span data-production-lane><b>剪辑合成</b><small>${finalVideo ? '已完成' : '待完成'}</small></span></div>
+    <div class="production-lanes" aria-label="生产轨道"><span data-production-lane><b>分镜</b><small>${approvedFrames.length}/${shots.length}</small></span><span data-production-lane><b>声音确认</b><small>${soundDesign.production?.approved ? '已确认' : '待确认'}</small></span><span data-production-lane><b>分镜视频</b><small>${clips.length}/${shots.length}</small></span><span data-production-lane><b>剪辑合成</b><small>${finalVideo ? '已完成' : '待完成'}</small></span></div>
     <div class="guide"><b>怎么操作：</b>无需再次生成关键帧。先在声音工作台完成旁白/多人对白、场景音效和 BGM 的试听确认，再进行视频费用预检；视频完成后可逐镜调整裁剪、速度、原声和转场，最后本地合成导出。</div>
     ${finalVideo ? `<section class="card final-player">
       <div class="card-head"><div><h2>最终成片</h2><p>${escapeHtml(finalVideo.status || '已生成')} · 播放器保持源视频比例</p></div>${finalUrl ? `<a class="btn primary final-download" href="${escapeHtml(downloadUrl)}" download="${escapeHtml(finalVideo.filename || 'vido-final.mp4')}" aria-label="下载原始成片"><span aria-hidden="true">↓</span><span><b>下载原始成片</b><small>保留原始比例和清晰度</small></span></a>` : ''}</div>
@@ -87,8 +87,8 @@ export async function mount(host, context) {
     </section>` : ''}
     ${soundDesignMarkup(soundDesign)}
     <details class="card generation-section generation-details">
-      <summary class="card-head"><div><h2>已确认彩色分镜 / 视频首帧</h2><p>${approvedFrames.length}/${shots.length} · 直接进入图生视频，不产生二次生图费用</p></div><span class="details-chevron" aria-hidden="true">⌄</span></summary>
-      <div class="card-body">${approvedFrames.length ? `<div class="generation-grid">${approvedFrames.map((item, index) => mediaCard(item, index, '首帧')).join('')}</div>` : emptyState({ title: '彩色分镜尚未完整', body: '请返回分镜页逐镜生成或重绘，然后确认镜头设计。' })}</div>
+      <summary class="card-head"><div><h2>已确认分镜 / 视频首帧</h2><p>${approvedFrames.length}/${shots.length} · 直接进入图生视频，不产生二次生图费用</p></div><span class="details-chevron" aria-hidden="true">⌄</span></summary>
+      <div class="card-body">${approvedFrames.length ? `<div class="generation-grid">${approvedFrames.map((item, index) => mediaCard(item, index, '首帧')).join('')}</div>` : emptyState({ title: '分镜尚未完整', body: '请返回分镜页逐镜生成或重绘，然后确认镜头设计。' })}</div>
     </details>
     <section class="card generation-section">
       <div class="card-head"><div><h2>视频片段</h2><p>已加载 ${clips.length}/${clipTotal}</p></div></div>

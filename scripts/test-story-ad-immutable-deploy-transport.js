@@ -81,6 +81,13 @@ assert(source.includes("require('./lib/immutableDeployRecovery')"), '已上线�
 assert(source.includes('await releaseGatePlanner.runPlan(root, plan)'), '发布门禁必须流式执行可缓存的精确测试计划');
 assert(source.includes("mode: targetedHomeGate ? 'targeted' : 'standard'"), '发布输出必须区分家庭定向与标准环境门禁');
 assert(source.includes("process.env.VIDO_DEPLOY_TARGETED_GATE === '1'"), '非标准主机名环境必须支持显式启用定向门禁');
+assert(source.includes("previousContractVersion === 'story-scene-platform-v8'")
+  && source.includes("release.contract_version === 'story-scene-platform-v9'")
+  && source.includes("releaseMigrationMode = 'v9_final_media_contract_isolation'"),
+  'v8 到 v9 必须使用保持前五步数据不变的确定性兼容迁移');
+assert(source.includes('upstream_steps_1_to_5_preserved: 1')
+  && source.includes('model_calls: 0, paid_calls: 0'),
+  'v9 兼容迁移必须明确前五步保持且不产生模型调用或付费调用');
 assert(source.indexOf('recoverAlreadyActiveRelease(preVersion)') < source.indexOf("reportPhase('local_gate'"), '重复部署必须先恢复已上线制品回执，不能先重跑耗时门禁');
 assert(recoverySource.includes('recovered_receipt: true'), '已上线目标制品必须返回明确的恢复回执');
 assert(source.includes("reportPhase('already_active_verify'"), '恢复回执前必须执行生产健康与数据门禁');
