@@ -17,6 +17,7 @@ const generationFlow = read('public/js/new-story-ad/generation-flow.js');
 const stateSync = read('public/js/new-story-ad/state-sync.js');
 const contextBuilder = read('src/services/newStoryAd/contextBuilder.js');
 const routes = read('src/routes/newStoryAd.js');
+const personMediaRoutes = read('src/routes/newStoryAd/personMediaRoutes.js');
 const mediaAdapter = read('src/services/newStoryAd/mediaAdapter.js');
 const personService = read('src/services/newStoryAd/personDossierService.js');
 const dossierComposite = read('src/services/newStoryAd/dossierCompositeService.js');
@@ -127,7 +128,8 @@ assert.ok(routes.includes("router.post('/reference-video-links'"));
 assert.ok(routes.includes("router.post('/reference-video-upload-sessions'"));
 assert.ok(routes.includes("chunks/:index'"));
 assert.ok(routes.includes("router.post('/real-person-sources'"));
-assert.ok(routes.includes("router.post('/tasks/:id/person-action-assets'"));
+assert.ok(routes.includes("require('./newStoryAd/personMediaRoutes')"), '主路由必须注册拆分后的人物媒体路由');
+assert.ok(personMediaRoutes.includes("router.post('/tasks/:id/person-action-assets'"), '人物动作素材入口必须由人物媒体子路由唯一承载');
 assert.ok(routes.includes('MAX_FILE_BYTES'));
 
 assert.ok(mediaAdapter.includes('requireReferences = false'));
