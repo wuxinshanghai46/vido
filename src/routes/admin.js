@@ -1664,7 +1664,7 @@ function _adminUsageDateBoundary(value, endOfDay = false) {
 
 router.get('/token-stats/recent', (req, res) => {
   try {
-    const limit = parseInt(req.query.limit) || 100;
+    const limit = parseInt(req.query.limit) || 20;
     const offset = parseInt(req.query.offset) || 0;
     const result = tracker.listUsage({
       limit,

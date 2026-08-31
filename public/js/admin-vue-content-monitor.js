@@ -294,7 +294,7 @@
           overview: null,
           server: null,
           recent: [],
-          usagePage: { total: 0, limit: 100, offset: 0, summary: null, facets: {} },
+          usagePage: { total: 0, limit: 20, offset: 0, page: 1, summary: null, facets: {} },
           usageFilters: { date_from: '', date_to: '', provider: '', model: '', status: '', agent_id: '' },
           budgetOpen: false,
           budgetSaving: false,
@@ -340,11 +340,11 @@
         alerts() {
           return this.overview?.alerts || [];
         },
-        usageLoadedCount() {
-          return (this.recent || []).length;
+        usagePageCount() {
+          return Math.max(1, Math.ceil(Number(this.usagePage?.total || 0) / Number(this.usagePage?.limit || 20)));
         },
-        usageHasMore() {
-          return this.usageLoadedCount < Number(this.usagePage?.total || 0);
+        usageCurrentPage() {
+          return Math.min(this.usagePageCount, Math.floor(Number(this.usagePage?.offset || 0) / Number(this.usagePage?.limit || 20)) + 1);
         },
         usageProviders() {
           return this.usageFacetValues('providers');
@@ -387,10 +387,11 @@
           this.error = '';
           try {
             this.usagePage.offset = 0;
+            this.usagePage.page = 1;
             const [overview, server, recent] = await Promise.all([
               api.get(`/api/admin/token-stats/overview?days=${this.days}`, { cache: !force, ttl: 8000 }),
               api.get('/api/admin/token-stats/server', { cache: !force, ttl: 8000 }),
-              this.fetchUsageRows({ force, append: false })
+              this.fetchUsageRows({ force, page: 1 })
             ]);
             this.overview = overview;
             this.server = server;
@@ -405,29 +406,30 @@
           const list = this.usagePage?.facets?.[key] || [];
           return Array.isArray(list) ? list.map(item => item.value).filter(Boolean) : [];
         },
-        usageQueryParams(offset = 0) {
+        usageQueryParams(page = 1) {
           const params = new URLSearchParams();
           params.set('format', 'page');
-          params.set('limit', String(this.usagePage.limit || 100));
-          params.set('offset', String(offset));
+          const limit = Number(this.usagePage.limit || 20);
+          params.set('limit', String(limit));
+          params.set('offset', String(Math.max(0, Number(page || 1) - 1) * limit));
           Object.entries(this.usageFilters || {}).forEach(([key, value]) => {
             const text = String(value || '').trim();
             if (text) params.set(key, text);
           });
           return params;
         },
-        async fetchUsageRows({ force = false, append = false } = {}) {
-          const offset = append ? this.usageLoadedCount : 0;
-          return api.get('/api/admin/token-stats/recent?' + this.usageQueryParams(offset).toString(), { cache: false, ttl: force ? 0 : 8000 });
+        async fetchUsageRows({ force = false, page = 1 } = {}) {
+          return api.get('/api/admin/token-stats/recent?' + this.usageQueryParams(page).toString(), { cache: false, ttl: force ? 0 : 8000 });
         },
-        applyUsagePage(page, append = false) {
+        applyUsagePage(page) {
           const items = Array.isArray(page) ? page : (page.items || []);
-          this.recent = append ? [...(this.recent || []), ...items] : items;
+          this.recent = items;
           this.usagePage = {
             ...this.usagePage,
             total: Number(page.total || items.length || 0),
-            limit: Number(page.limit || this.usagePage.limit || 100),
+            limit: Number(page.limit || this.usagePage.limit || 20),
             offset: Number(page.offset || 0),
+            page: Math.floor(Number(page.offset || 0) / Number(page.limit || this.usagePage.limit || 20)) + 1,
             summary: page.summary || null,
             facets: page.facets || this.usagePage.facets || {}
           };
@@ -436,23 +438,24 @@
           this.loading = true;
           this.error = '';
           try {
-            const page = await this.fetchUsageRows({ force: true, append: false });
-            this.applyUsagePage(page, false);
+            const page = await this.fetchUsageRows({ force: true, page: 1 });
+            this.applyUsagePage(page);
           } catch (error) {
             this.error = error.message || '调用记录查询失败';
           } finally {
             this.loading = false;
           }
         },
-        async loadMoreUsage() {
-          if (!this.usageHasMore || this.loading) return;
+        async changeUsagePage(targetPage) {
+          const nextPage = Math.max(1, Math.min(this.usagePageCount, Number(targetPage) || 1));
+          if (this.loading || nextPage === this.usageCurrentPage) return;
           this.loading = true;
           this.error = '';
           try {
-            const page = await this.fetchUsageRows({ force: true, append: true });
-            this.applyUsagePage(page, true);
+            const page = await this.fetchUsageRows({ force: true, page: nextPage });
+            this.applyUsagePage(page);
           } catch (error) {
-            this.error = error.message || '加载更多调用记录失败';
+            this.error = error.message || '调用记录翻页失败';
           } finally {
             this.loading = false;
           }
@@ -684,17 +687,16 @@
                 </label>
                 <label>每页
                   <select v-model.number="usagePage.limit">
+                    <option :value="20">20</option>
+                    <option :value="50">50</option>
                     <option :value="100">100</option>
-                    <option :value="300">300</option>
-                    <option :value="500">500</option>
-                    <option :value="1000">1000</option>
                   </select>
                 </label>
                 <button class="btn-sm" @click="queryUsage" :disabled="loading">查询</button>
                 <button class="btn-sm" @click="resetUsageFilters" :disabled="loading">重置</button>
               </div>
               <div class="monitor-usage-summary">
-                已加载 {{ num(usageLoadedCount) }} / {{ num(usagePage.total) }} 次调用
+                第 {{ num(usageCurrentPage) }} / {{ num(usagePageCount) }} 页 · 本页 {{ num(recent.length) }} / 共 {{ num(usagePage.total) }} 次调用
                 <span v-if="usagePage.summary">成本 {{ cny(usagePage.summary.cost_usd, 4) }} <span class="vue-muted">{{ usd(usagePage.summary.cost_usd) }}</span></span>
               </div>
               <div v-if="!recent.length" class="monitor-empty">暂无调用记录</div>
@@ -715,8 +717,10 @@
                   </tbody>
                 </table>
               </div>
-              <div class="monitor-usage-actions" v-if="usageHasMore">
-                <button class="btn-sm" @click="loadMoreUsage" :disabled="loading">加载更多</button>
+              <div class="monitor-usage-actions" v-if="usagePage.total">
+                <button class="btn-sm" @click="changeUsagePage(usageCurrentPage - 1)" :disabled="loading || usageCurrentPage <= 1">上一页</button>
+                <span>第 {{ num(usageCurrentPage) }} / {{ num(usagePageCount) }} 页</span>
+                <button class="btn-sm" @click="changeUsagePage(usageCurrentPage + 1)" :disabled="loading || usageCurrentPage >= usagePageCount">下一页</button>
               </div>
             </div>
           </template>

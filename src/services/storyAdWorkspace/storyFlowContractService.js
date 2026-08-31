@@ -181,6 +181,47 @@ function plannedSceneForBeat(state, beat, index, scenes) {
   return ranked[0]?.score > 0 && ranked[0].score > (ranked[1]?.score || 0) ? ranked[0].scene.scene_id : '';
 }
 
+function plannedScenesForBeats(state, beats, scenes, declared = []) {
+  const rows = list(beats);
+  const sequence = list(declared).map(stableId).filter(id => scenes.some(scene => scene.scene_id === id));
+  if (sequence.length < 2 || rows.length < sequence.length) {
+    return rows.map((beat, index) => plannedSceneForBeat(state, beat, index, scenes));
+  }
+  const sceneById = new Map(scenes.map(scene => [scene.scene_id, scene]));
+  const score = (beat, sceneId) => {
+    const scene = sceneById.get(sceneId) || {};
+    const beatText = [beat.title, beat.plot, beat.visual, beat.action, beat.location, beat.scene].filter(Boolean).join(' ');
+    const sceneText = `${scene.name || ''} ${scene.story_purpose || ''} ${scene.layout || ''} ${scene.interaction || ''}`;
+    return overlapScore(beatText, sceneText);
+  };
+  const minimum = rows.length >= sequence.length * 2 ? 2 : 1;
+  const memo = new Map();
+  const solve = (beatIndex, sceneIndex) => {
+    const key = `${beatIndex}:${sceneIndex}`;
+    if (memo.has(key)) return memo.get(key);
+    const remainingBeats = rows.length - beatIndex;
+    const remainingScenes = sequence.length - sceneIndex;
+    if (remainingScenes === 1) {
+      const result = {
+        score: rows.slice(beatIndex).reduce((sum, beat) => sum + score(beat, sequence[sceneIndex]), 0),
+        scenes: rows.slice(beatIndex).map(() => sequence[sceneIndex]),
+      };
+      memo.set(key, result); return result;
+    }
+    let best = null;
+    const maxTake = remainingBeats - minimum * (remainingScenes - 1);
+    for (let take = minimum; take <= maxTake; take += 1) {
+      const next = solve(beatIndex + take, sceneIndex + 1);
+      if (!next) continue;
+      const own = rows.slice(beatIndex, beatIndex + take).reduce((sum, beat) => sum + score(beat, sequence[sceneIndex]), 0);
+      const candidate = { score: own + next.score, scenes: [...Array(take).fill(sequence[sceneIndex]), ...next.scenes] };
+      if (!best || candidate.score > best.score) best = candidate;
+    }
+    memo.set(key, best); return best;
+  };
+  return solve(0, 0)?.scenes || rows.map((beat, index) => plannedSceneForBeat(state, beat, index, scenes));
+}
+
 function peopleForBeat(beat, people) {
   const explicit = list(beat.character_ids || beat.characters || beat.people).map(item => (
     typeof item === 'object' ? stableId(item.character_id || item.cast_id || item.id || item.name) : stableId(item)
@@ -229,7 +270,11 @@ function draft(taskId) {
   const current = stored && Number(stored.contract_version || 0) === CONTRACT_VERSION
     && stored.authority_fingerprint === authority.authority_fingerprint
     && stored.blueprint_fingerprint === authority.blueprint_fingerprint;
-  const generatedUnits = state.beats.map((beat, index) => unitFromBeat(state, beat, index, authority));
+  const plannedScenes = plannedScenesForBeats(state, state.beats, authority.scenes, authority.narrative_scene_sequence);
+  const generatedUnits = state.beats.map((beat, index) => ({
+    ...unitFromBeat(state, beat, index, authority),
+    scene_id: plannedScenes[index] || '',
+  }));
   generatedUnits.forEach((unit, index) => {
     const previous = generatedUnits[index - 1];
     if (!previous || !unit.scene_id || unit.scene_id === previous.scene_id) return;
@@ -407,6 +452,15 @@ function confirmSystem(taskId, supplied = [], modelMeta = {}) {
   });
 }
 
+function repairSystem(taskId, supplied = [], repairMeta = {}) {
+  return persistConfirmation(taskId, supplied, { id: clean(repairMeta.repaired_by || 'system_zero_cost_repair', 120) }, {
+    status: 'system_confirmed', requireExact: true,
+    model_call_count: 0,
+    planning_model: clean(repairMeta.reason || 'deterministic_narrative_order_repair', 180),
+    preserveDownstream: true,
+  });
+}
+
 function rebindSystemAuthority(taskId) {
   const stored = storage.getOutput(taskId, OUTPUT_KIND) || {};
   const base = draft(taskId);
@@ -460,5 +514,5 @@ function assertReady(taskId) {
 }
 
 module.exports = {
-  CONTRACT_VERSION, DOWNSTREAM_KINDS, OUTPUT_KIND, assertReady, authoritySnapshot, confirm, confirmSystem, declaredSceneSequence, draft, inspect, rebindSystemAuthority, validateUnits,
+  CONTRACT_VERSION, DOWNSTREAM_KINDS, OUTPUT_KIND, assertReady, authoritySnapshot, confirm, confirmSystem, declaredSceneSequence, draft, inspect, plannedScenesForBeats, rebindSystemAuthority, repairSystem, validateUnits,
 };

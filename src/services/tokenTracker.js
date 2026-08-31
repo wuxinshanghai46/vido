@@ -30,6 +30,7 @@ function findPricing(table, model, fallback) {
  */
 
 const db = require('../models/database');
+const modelUsageLedger = require('./modelUsageLedgerService');
 const { v4: uuidv4 } = require('uuid');
 
 // ═══════════════════════════════════════════════════
@@ -385,7 +386,7 @@ function getStats({ from, to, days } = {}) {
     from = new Date(Date.now() - 7 * 86400000).toISOString();
   }
 
-  const records = db.listTokenUsage({ from, to });
+  const records = modelUsageLedger.listUnified(db.listTokenUsage({ from, to }), { from, to });
 
   const stats = {
     range: { from, to: to || new Date().toISOString() },
@@ -523,7 +524,7 @@ function usageFacet(records = [], field) {
 }
 
 function listUsage({
-  limit = 100,
+  limit = 20,
   offset = 0,
   from,
   to,
@@ -533,7 +534,7 @@ function listUsage({
   agent_id,
   status,
 } = {}) {
-  const pageLimit = Math.max(1, Math.min(5000, Math.round(Number(limit)) || 100));
+  const pageLimit = Math.max(1, Math.min(5000, Math.round(Number(limit)) || 20));
   const pageOffset = Math.max(0, Math.round(Number(offset)) || 0);
   const filter = {};
   if (from) filter.from = from;
@@ -545,7 +546,7 @@ function listUsage({
   if (status) filter.status = status;
 
   // 中文注释：全量调用记录只做查询和分页，不清理、不折叠历史数据，避免管理员看不到真实成本来源。
-  const records = db.listTokenUsage(filter);
+  const records = modelUsageLedger.listUnified(db.listTokenUsage(filter), filter);
   const items = records.slice(pageOffset, pageOffset + pageLimit);
   return {
     total: records.length,

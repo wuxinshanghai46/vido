@@ -4,6 +4,8 @@
 const assert = require('assert/strict');
 const flow = require('../src/services/storyAdWorkspace/storyFlowContractService');
 const planning = require('../src/services/storyAdWorkspace/storyFlowPlanningService');
+const fs = require('fs');
+const path = require('path');
 
 const scenes = [
   { scene_id: 'scene_living', name: '现代高端家居展示厅', story_purpose: '人物进入客厅并体验整面背景墙', required_in_story: true },
@@ -41,4 +43,27 @@ assert.deepEqual(prompt.narrative_scene_sequence, declared);
 assert.match(JSON.stringify(prompt.story_seed), /场景切换至高端商业展台/u);
 assert(prompt.rules.some(rule => rule.includes('不得为了平均覆盖场景而改写该顺序')));
 
-console.log(JSON.stringify({ passed: true, declared_sequence: declared, correct_flow_accepted: true, reversed_flow_blocked: true, unsupported_reentry_blocked: true, provider_calls: 0 }));
+const planned = flow.plannedScenesForBeats({ sceneConfig: {} }, [
+  { title: '家居空间建立', plot: '人物进入客厅并观察整面背景墙' },
+  { title: '触摸墙面', plot: '人物在客厅体验背景墙' },
+  { title: '展台建立', plot: '随后进入商业展台观察样品' },
+  { title: '品牌收束', plot: '在展台完成品牌收束' },
+], scenes, declared);
+assert.deepEqual(planned, ['scene_living', 'scene_living', 'scene_exhibition', 'scene_exhibition']);
+const misleading = flow.plannedScenesForBeats({ sceneConfig: {} }, [
+  { title: '展台字样误导', plot: '展台' },
+  { title: '客厅体验', plot: '人物进入客厅体验背景墙' },
+  { title: '展台观察', plot: '进入展台观察样品' },
+  { title: '展台收束', plot: '展台品牌收束' },
+], scenes, declared);
+assert.deepEqual(misleading, ['scene_living', 'scene_living', 'scene_exhibition', 'scene_exhibition'], '剧情种子顺序必须压过局部关键词造成的反向跳转');
+
+const repairSource = fs.readFileSync(path.resolve(__dirname, 'repair-story-ad-target-narrative-order-v319.js'), 'utf8');
+assert.match(repairSource, /TARGET_TASK_ID = 'b83fa67c-244a-4869-b3cc-df282fad5c59'/);
+assert.match(repairSource, /EXPECTED_OLD_FLOW_FINGERPRINT/);
+assert.match(repairSource, /ACTIVE_GENERATION_BLOCKED/);
+assert.match(repairSource, /const OLD_INDEX_ORDER = \[6, 5, 1, 2, 3, 4, 7\]/);
+assert.match(repairSource, /model_call_delta: afterCalls - beforeCalls/);
+assert.match(repairSource, /provider_calls: 0/);
+
+console.log(JSON.stringify({ passed: true, declared_sequence: declared, correct_flow_accepted: true, reversed_flow_blocked: true, unsupported_reentry_blocked: true, monotonic_draft_planning: true, provider_calls: 0 }));
