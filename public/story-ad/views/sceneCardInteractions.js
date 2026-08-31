@@ -1,7 +1,7 @@
-import { setButtonBusy, toast } from '../components/ui.js?v=20260831-production-v326';
-import { authorizeBillingReviews, confirmBillingAwareAction } from './assetCenterBillingRetry.js?v=20260831-production-v326';
-import { createSceneCardEditorRuntime } from './sceneCardEditorRuntime.js?v=20260831-production-v326';
-import { buildSceneBatchActionPlan } from './sceneBatchActionPlan.js?v=20260831-production-v326';
+import { setButtonBusy, toast } from '../components/ui.js?v=20260831-production-v328';
+import { authorizeBillingReviews, confirmBillingAwareAction } from './assetCenterBillingRetry.js?v=20260831-production-v328';
+import { createSceneCardEditorRuntime } from './sceneCardEditorRuntime.js?v=20260831-production-v328';
+import { buildSceneBatchActionPlan } from './sceneBatchActionPlan.js?v=20260831-production-v328';
 
 export function bindSceneCards(host, context) {
   const editorRuntime = createSceneCardEditorRuntime(host, context);
