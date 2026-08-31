@@ -18,6 +18,8 @@ const graphLayouts = require('../src/services/storyAdWorkspace/graphLayoutServic
 const sketches = require('../src/services/storyAdWorkspace/storyboardSketchService');
 const storyFlowGate = require('../src/services/storyAdWorkspace/storyFlowSketchGateService');
 const productAssets = require('../src/services/newStoryAd/productAssetResolverService');
+const storyboardImageLineage = require('../src/services/newStoryAd/storyboardImageLineageService');
+const storyboardSubjectQa = require('../src/services/newStoryAd/storyboardSubjectQaService');
 
 const owner = { id: 'workspace-owner', role: 'user' };
 const otherUser = { id: 'workspace-other', role: 'user' };
@@ -55,6 +57,7 @@ function seedProject() {
     ...context,
     expected_people: 1,
     expected_animals: 1,
+    scene_setup_confirmed: true,
     cast_profiles: [{
       id: 'cast-current',
       displayName: '主要人物',
@@ -68,6 +71,7 @@ function seedProject() {
       id: 'person-current',
       actor_id: 'cast-current',
       name: '主要人物',
+      subject_board_url: '/api/new-story-ad/assets/current-subject-board.png',
       image_url: '/api/new-story-ad/assets/person-current.png',
       cover_image_url: '/api/new-story-ad/assets/person-current-dossier.png',
       dossier_sheet: {
@@ -103,6 +107,17 @@ function seedProject() {
       status: 'verified',
     },
   });
+  storage.saveOutput(taskId, 'scene_config', {
+    scene_mode: 'single',
+    spaces: [{ id: 'scene-current', scene_id: 'scene-current', name: '当前体验空间', required_in_story: true }],
+  });
+  storage.saveOutput(taskId, 'scene_assets', [{
+    id: 'scene-current',
+    scene_id: 'scene-current',
+    name: '当前体验空间',
+    scene_revision: 1,
+    view_images: [{ key: 'master', url: '/api/new-story-ad/assets/scene-current-master.png' }],
+  }]);
   storage.saveOutput(taskId, 'blueprint', {
     story_title: '真实任务剧情',
     logline: '人物在生活场景中完成一次明确体验。',
@@ -116,6 +131,8 @@ function seedProject() {
       action: '人物走向商品。',
       duration: 4,
       scene_id: 'scene-current',
+      scene_view: 'master',
+      shot_size: 'wide',
       character_ids: ['person-current'],
       camera_movement: '缓慢推进',
     },
@@ -217,6 +234,24 @@ async function main() {
   }, owner);
   assert.equal(assetConfirmation.context.asset_setup_confirmed, true);
   assert.deepEqual(assetConfirmation.changed_domains, [], '纯资产确认不得伪装成创意内容变化');
+  storyAd.updateStoryboardTable(workflowStateTask, [{
+    shot_index: 1,
+    title: '工作流确认镜头',
+    visual: '已完成并保存的人物场景分镜画面。',
+    action: '主体完成一次明确展示。',
+  }], owner, { expected_content_revision: storage.getTask(workflowStateTask).content_revision });
+  const workflowShot = storage.getOutput(workflowStateTask, 'storyboard_table')[0];
+  storage.saveOutput(workflowStateTask, 'shot_reference_packs', [{ fingerprint: 'workflow-confirmation-pack' }]);
+  storage.saveOutput(workflowStateTask, 'storyboard_images', [{
+    shot_index: 1,
+    image_url: '/workflow-confirmation-1.png',
+    lineage_schema_version: 2,
+    shot_contract_fingerprint: storyboardImageLineage.shotContractFingerprint(workflowShot, 0),
+    reference_pack_fingerprint: 'workflow-confirmation-pack',
+    scene_planning_fingerprint: 'workflow-confirmation-scene-plan',
+    subject_qa_policy_version: storyboardSubjectQa.QA_POLICY_VERSION,
+    subject_count_qa: { pass: true },
+  }]);
   const shotConfirmation = storyAd.updateTaskRequest(workflowStateTask, {
     shot_design_confirmed: true,
     base_content_revision: storage.getTask(workflowStateTask).content_revision,
@@ -370,14 +405,10 @@ async function main() {
     '重置后布局版本不得回退形成并发覆盖',
   );
 
-  const flowState = storyFlowGate.blueprintState(taskId);
-  storage.saveOutput(taskId, 'story_flow_sketches', flowState.beats.map((beat, index) => ({
-    beat_index: Number(beat.beat_index || beat.index || index + 1) || index + 1,
-    image_url: `/api/new-story-ad/assets/flow-${index + 1}.png`,
-    status: 'confirmed',
-    source_blueprint_fingerprint: flowState.fingerprint,
-    source_content_revision: Number(flowState.task.content_revision || 1) || 1,
-  })));
+  const flowDraft = storyFlowGate.draft(taskId);
+  const flowRepair = storyFlowGate.repairSystem(taskId, flowDraft.units, { reason: 'workspace_v6_fixture_contract_upgrade' });
+  assert.equal(flowRepair.model_call_count, 0, '工作区夹具必须按现行结构化剧情流向合同零模型升级');
+  assert.equal(storyFlowGate.inspect(taskId).ready, true, '现行剧情流向合同确认后才允许生成分镜图');
 
   const draft = sketches.saveSketches(taskId, [{
     shot_index: 1,
@@ -405,7 +436,7 @@ async function main() {
     confirmed: true,
     client_request_id: 'sketch-test-request',
   }, {
-    subjectQaService: { assert: async () => ({ pass: true, policy_version: 1, status: 'verified' }) },
+    subjectQaService: { assert: async () => ({ pass: true, policy_version: storyboardSubjectQa.QA_POLICY_VERSION, status: 'verified' }) },
     mediaAdapter: {
       generateImage: async options => {
         assert.equal(options.singleAttempt, true, '线稿必须限制为单次图片调用');
@@ -415,7 +446,7 @@ async function main() {
       },
     },
   });
-  assert.equal(generated.sketch.status, 'draft');
+  assert.equal(generated.sketch.status, 'ready');
   assert.equal(generated.sketch.shot_index, 2);
   assert.equal(storage.getOutput(taskId, 'storyboard_images').length, 2);
   await assert.rejects(

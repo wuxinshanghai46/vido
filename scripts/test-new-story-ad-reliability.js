@@ -304,7 +304,8 @@ async function main() {
       { video_url: '/a.mp4', provider_used: 'deyunai/doubao-seedance-2-0-260128' },
       { video_url: '/b.mp4', provider_used: 'zhipu/cogvideox-flash' },
     ]),
-    error => error?.code === 'MIXED_VIDEO_PROVIDER_REQUIRES_RESET',
+    error => error?.code === 'VIDEO_MODEL_CONFIG_REQUIRED',
+    'the current explicit-selection contract must stop at the provider gate when no managed video model is configured',
   );
 
   const verifiedPersonContract = {

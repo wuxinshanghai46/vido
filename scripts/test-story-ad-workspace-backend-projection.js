@@ -209,8 +209,10 @@ function testSceneCameraProjection() {
 
   const bundle = bundles.buildProjectBundle(taskId, { sections: 'assets', user });
   const scene = bundle.assets.scenes[0];
-  assert.equal(scene.scene_spec.materialLightText, '暖灰石材与拉丝金属，左侧窗光配合顶部柔光', '项目投影必须保留服务端规范 materialLightText');
-  assert.equal(scene.scene_spec.layoutText, '入口、主体区和背景形成连续空间边界');
+  assert(scene.scene_spec.materialLightText.startsWith('暖灰石材与拉丝金属，左侧窗光配合顶部柔光'), '项目投影必须原样保留用户提供的 materialLightText 前缀');
+  assert.match(scene.scene_spec.materialLightText, /AI补齐：/, '不完整的材质光线合同必须追加可核验的物理一致性约束');
+  assert(scene.scene_spec.layoutText.startsWith('入口、主体区和背景形成连续空间边界'));
+  assert.match(scene.scene_spec.layoutText, /AI补齐：/, '不完整的空间布局合同必须追加可拍摄的区域与纵深关系');
   assert.equal(scene.scene_spec.materials, scene.scene_spec.materialLightText, '兼容展示字段不得丢失组合材质光线合同');
   assert.equal(scene.scene_spec.light, scene.scene_spec.materialLightText, '兼容展示字段不得丢失组合材质光线合同');
   assert.equal(scene.cameras.length, 4);

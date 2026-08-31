@@ -21,7 +21,8 @@ const referenceVideoAnalyses = require('../src/services/newStoryAd/referenceVide
 const referenceDetach = require('../src/services/newStoryAd/referenceDetachService');
 const referenceConfirmation = require('../src/services/storyAdWorkspace/referenceUnderstandingConfirmationService');
 const bundles = require('../src/services/storyAdWorkspace/projectBundleService');
-const storyFlowGate = require('../src/services/storyAdWorkspace/storyFlowSketchGateService');
+const storyboardImageLineage = require('../src/services/newStoryAd/storyboardImageLineageService');
+const storyboardSubjectQa = require('../src/services/newStoryAd/storyboardSubjectQaService');
 const newStoryAdRouter = require('../src/routes/newStoryAd');
 
 const user = { id: 'reference-intake-owner', role: 'user' };
@@ -286,9 +287,22 @@ async function testTaskPutAwaitsProjection() {
 
 async function testLinkCreationBindsNewReferenceBeforeResponse() {
   const taskId = createTask();
-  storyAd.updateTaskRequest(taskId, { asset_setup_confirmed: true, shot_design_confirmed: true }, user);
+  storyAd.updateTaskRequest(taskId, { asset_setup_confirmed: true }, user);
   storage.saveOutput(taskId, 'blueprint', { story_title: '旧参考剧情', beats: [{ order: 1 }] });
   storage.saveOutput(taskId, 'storyboard_table', [{ shot_index: 1, title: '旧参考分镜' }]);
+  const oldReferenceShot = storage.getOutput(taskId, 'storyboard_table')[0];
+  storage.saveOutput(taskId, 'shot_reference_packs', [{ fingerprint: 'old-reference-confirmed-pack' }]);
+  storage.saveOutput(taskId, 'storyboard_images', [{
+    shot_index: 1,
+    image_url: '/old-reference-confirmed-1.png',
+    lineage_schema_version: 2,
+    shot_contract_fingerprint: storyboardImageLineage.shotContractFingerprint(oldReferenceShot, 0),
+    reference_pack_fingerprint: 'old-reference-confirmed-pack',
+    scene_planning_fingerprint: 'old-reference-confirmed-scene-plan',
+    subject_qa_policy_version: storyboardSubjectQa.QA_POLICY_VERSION,
+    subject_count_qa: { pass: true },
+  }]);
+  storyAd.updateTaskRequest(taskId, { shot_design_confirmed: true }, user);
   const originalCreateFromUrl = referenceVideoAnalyses.createFromUrl;
   const createdAt = '2026-08-01T14:30:00.000Z';
   referenceVideoAnalyses.createFromUrl = async ({ body }) => ({
@@ -750,23 +764,14 @@ async function testFamilyRecognitionAndSequentialWorkflowGates() {
     });
     bundle = bundles.buildProjectBundle(taskId, { sections: 'all', user });
     assert.equal(bundle.navigation.steps.plot.completed, true);
-    assert.equal(bundle.navigation.steps.flow.enabled, false, '场景尚未确认时不得提前开放剧情流向确认');
+    assert.equal(bundle.navigation.steps.flow, undefined, '剧情流向已改为分镜预检自动绑定，不得恢复旧的独立入口');
     assert.equal(bundle.navigation.steps.storyboard.enabled, false, '剧情流向未确认时不得提前开放人物场景分镜');
     assert.equal(bundle.navigation.steps.final.enabled, false);
     assert.equal(bundle.navigation.current, 'scene', '剧情和人物确认后必须先核对场景，再进入分镜');
 
     storyAd.updateTaskRequest(taskId, { scene_setup_confirmed: true }, user);
     bundle = bundles.buildProjectBundle(taskId, { sections: 'all', user });
-    assert.equal(bundle.navigation.steps.flow.enabled, true, '确认场景后才允许进入剧情流向确认');
-    assert.equal(bundle.navigation.steps.storyboard.enabled, false, '剧情流向确认前不得进入人物场景分镜');
-    assert.equal(bundle.navigation.current, 'flow');
-
-    const flowDraft = storyFlowGate.draft(taskId);
-    const flowConfirmed = storyFlowGate.confirm(taskId, flowDraft.units, user);
-    assert.equal(flowConfirmed.model_call_count, 0);
-    bundle = bundles.buildProjectBundle(taskId, { sections: 'all', user });
-    assert.equal(bundle.navigation.steps.flow.completed, true);
-    assert.equal(bundle.navigation.steps.storyboard.enabled, true, '确认全部剧情流向绑定后才允许进入人物场景分镜');
+    assert.equal(bundle.navigation.steps.storyboard.enabled, true, '确认场景后开放分镜入口，生成预检负责自动完成剧情流向绑定');
     assert.equal(bundle.navigation.current, 'storyboard');
 
     storage.saveOutput(taskId, 'storyboard_table', [{
@@ -786,6 +791,19 @@ async function testFamilyRecognitionAndSequentialWorkflowGates() {
     assert.equal(bundle.navigation.steps.final.enabled, false);
     assert.equal(bundle.navigation.current, 'storyboard');
 
+    const confirmedShot = storage.getOutput(taskId, 'storyboard_table')[0];
+    storage.saveOutput(taskId, 'shot_reference_packs', [{ fingerprint: 'reference-intake-confirmed-pack' }]);
+    storage.saveOutput(taskId, 'storyboard_images', [{
+      shot_index: 1,
+      image_url: '/reference-intake-confirmed-1.png',
+      lineage_schema_version: 2,
+      scene_id: confirmedShot.scene_id,
+      shot_contract_fingerprint: storyboardImageLineage.shotContractFingerprint(confirmedShot, 0),
+      reference_pack_fingerprint: 'reference-intake-confirmed-pack',
+      scene_planning_fingerprint: 'reference-intake-confirmed-scene-plan',
+      subject_qa_policy_version: storyboardSubjectQa.QA_POLICY_VERSION,
+      subject_count_qa: { pass: true },
+    }]);
     storyAd.updateTaskRequest(taskId, { shot_design_confirmed: true }, user);
     bundle = bundles.buildProjectBundle(taskId, { sections: 'all', user });
     assert.equal(bundle.navigation.steps.storyboard.completed, true);

@@ -202,13 +202,13 @@ assert.match(briefWorldSettings, /国家 \/ 地区 <em>AI 可识别<\/em>/, '国
 assert.match(briefWorldSettings, /formOwner = settings\.formId/, '移动到右侧的字段必须通过 form owner 参与保存');
 const briefStyles = read('public/story-ad/styles.css');
 const workspaceStyles = read('public/story-ad/workspace.css');
-assert.match(workspaceStyles, /\.reference-recovery-actions \{[^}]*width: min\(760px/,
+assert.match(workspaceStyles, /\.reference-recovery-actions\s*\{[^}]*width:\s*min\(760px/,
   '失败恢复操作必须使用对话式紧凑宽度，不能继续铺满工作区');
-assert.match(workspaceStyles, /\.material-list\[hidden\] \{ display: none; \}/, '选择不使用参考材料时，上传入口不得被 grid 样式重新显示');
-assert.match(briefStyles, /\.brief-form \.field:not\(\.full\) \{ grid-template-rows: auto minmax\(48px, auto\) auto;/, '目标页字段网格必须为中文下拉框保留足够行高');
-assert.match(briefStyles, /\.brief-form \.field:not\(\.full\) > \.select \{[\s\S]*height: 48px;[\s\S]*padding-block: 8px;[\s\S]*line-height: 1\.5;/, '目标页下拉框必须显式避免中文文字下缘裁切');
-assert.match(briefStyles, /\.brief-config-section \{[^}]*grid-column: 1 \/ -1;/, '两个设置分区必须各自占满主表单宽度，不能被挤在同一行');
-assert.match(briefStyles, /@media \(max-width: 760px\)[\s\S]*\.brief-config-grid, \.brief-output-grid \{ grid-template-columns: 1fr;/, '世界观与成片规格在窄屏必须切换为单列');
+assert.match(workspaceStyles, /\.material-list\[hidden\]\s*\{\s*display:\s*none;?\s*\}/, '选择不使用参考材料时，上传入口不得被 grid 样式重新显示');
+assert.match(briefStyles, /\.brief-form \.field:not\(\.full\)\s*\{\s*grid-template-rows:\s*auto minmax\(48px,\s*auto\) auto;/, '目标页字段网格必须为中文下拉框保留足够行高');
+assert.match(briefStyles, /\.brief-form \.field:not\(\.full\)\s*>\s*\.select\s*\{[\s\S]*height:\s*48px;[\s\S]*padding-block:\s*8px;[\s\S]*line-height:\s*1\.5;?/, '目标页下拉框必须显式避免中文文字下缘裁切');
+assert.match(briefStyles, /\.brief-config-section\s*\{[^}]*grid-column:\s*1 \/ -1;/, '两个设置分区必须各自占满主表单宽度，不能被挤在同一行');
+assert.match(briefStyles, /@media\s*\(max-width:\s*760px\)[\s\S]*\.brief-config-grid,\s*\.brief-output-grid\s*\{\s*grid-template-columns:\s*1fr;?/, '世界观与成片规格在窄屏必须切换为单列');
 assert.match(briefView, /<select class="select" name="content_mode" required>[\s\S]*<option value="commercial_subject"[\s\S]*<option value="narrative_story"/, '目标页必须使用下拉框让用户明确选择广告或剧情');
 assert.ok(briefView.indexOf('name="content_mode"') < briefView.indexOf('name="brief"'), '必须先选择广告/剧情，再填写内容目标');
 assert.equal((briefView.match(/name="content_mode"/g) || []).length, 1, '页面只能有一个内容类型下拉框');
@@ -440,10 +440,10 @@ assert.match(projectStore, /referenceSyncInterrupted\(currentReference, error, i
 const referenceReplacementState = read('public/story-ad/store/referenceReplacementState.js');
 const referenceRetryStore = read('public/story-ad/store/referenceRetryStore.js');
 const storyAdStyles = read('public/story-ad/styles.css');
-assert.match(storyAdStyles, /@media \(hover: hover\) and \(pointer: fine\)[\s\S]*\.btn:not\(:disabled\):hover[\s\S]*transform: translateY\(-2px\)/, '可点击按钮必须提供明显且仅限精确指针的悬停位移');
-assert.match(storyAdStyles, /\.btn\.primary:not\(:disabled\):hover[\s\S]*box-shadow: 0 10px 26px/, '主操作悬停必须提供高对比阴影和颜色反馈');
-assert.match(storyAdStyles, /\.btn\[aria-busy="true"\][\s\S]*opacity: 1[\s\S]*cursor: progress/, '执行中按钮必须保持突出并明确显示进度指针');
-assert.match(storyAdStyles, /@media \(prefers-reduced-motion: reduce\)[\s\S]*transform: none/, '明显交互动效必须尊重减少动态效果设置');
+assert.match(storyAdStyles, /@media\s*\(hover:\s*hover\) and \(pointer:\s*fine\)[\s\S]*\.btn:not\(:disabled\):hover[\s\S]*transform:\s*translateY\(-2px\)/, '可点击按钮必须提供明显且仅限精确指针的悬停位移');
+assert.match(storyAdStyles, /\.btn\.primary:not\(:disabled\):hover[\s\S]*box-shadow:\s*0 10px 26px/, '主操作悬停必须提供高对比阴影和颜色反馈');
+assert.match(storyAdStyles, /\.btn\[aria-busy="true"\][\s\S]*opacity:\s*1[\s\S]*cursor:\s*progress/, '执行中按钮必须保持突出并明确显示进度指针');
+assert.match(storyAdStyles, /@media\s*\(prefers-reduced-motion:\s*reduce\)[\s\S]*transform:\s*none/, '明显交互动效必须尊重减少动态效果设置');
 assert.match(referenceReplacementState, /client_pending_reference_\$\{token\}/, '后端返回分析 ID 前必须使用仅限内存的替换占位状态');
 assert.match(referenceReplacementState, /replacement\?\.token === state\.referenceReplacementSeq/, '来源替换状态必须用单调序号阻止乱序覆盖');
 assert.match(referenceReplacementState, /function beginReferenceRetry[\s\S]*phase:\s*'重新识别请求已提交，正在等待服务器受理'/, '重新识别必须立即投影 1% 受理态');
@@ -939,8 +939,8 @@ const dialogueThemeCss = read('public/story-ad/dialogue-theme.css');
 const storyAdPage = read('public/story-ad/index.html');
 assert.match(storyAdPage, /\/story-ad\/reference-progress\.css/, '合同级参考分析状态样式必须由页面入口加载');
 assert.ok(storyAdPage.indexOf('/story-ad/dialogue-theme.css') > storyAdPage.indexOf('/story-ad/workspace.css'), '剧情广告主题交互层必须在所有工作区样式之后加载');
-assert.match(platformCss, /\.btn:not\(:disabled\):hover, \.icon-btn:not\(:disabled\):hover/, '全模块普通按钮悬停不得命中禁用按钮');
-assert.match(platformCss, /\.btn:disabled:not\(\[aria-busy="true"\]\):hover[^}]*background: var\(--surface-2\)/, '禁用按钮悬停时必须保持禁用外观，不能反向变成可点击态');
+assert.match(platformCss, /\.btn:not\(:disabled\):hover,\s*\.icon-btn:not\(:disabled\):hover/, '全模块普通按钮悬停不得命中禁用按钮');
+assert.match(platformCss, /\.btn:disabled:not\(\[aria-busy="true"\]\):hover[^}]*background:\s*var\(--surface-2\)/, '禁用按钮悬停时必须保持禁用外观，不能反向变成可点击态');
 assert.match(dialogueThemeCss, /\.btn\.primary\{[^}]*background:rgb\(121 109 242 \/ 7%\)[^}]*box-shadow:none/, '主按钮默认态必须保持低强调，不能伪装成已选中状态');
 assert.match(dialogueThemeCss, /\.btn\.primary:not\(:disabled\):hover\{[^}]*linear-gradient[^}]*color:#fff/, '主按钮仅在悬停态进入紫色高亮反馈');
 assert.match(dialogueThemeCss, /\.btn\.primary\[aria-pressed="true"\]/, '真实选中态必须与普通默认态分离');

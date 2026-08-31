@@ -226,11 +226,11 @@ assert(html.includes('id="dhNsaAdBgmClear"'), 'BGM must provide an explicit no-m
 
 const currentFinalView = read('public/story-ad/views/finalView.js');
 const currentStore = read('public/story-ad/store/projectStore.js');
-assert(currentFinalView.includes("store.videoPreflight('economy')"), '现行视频入口必须先执行零生成预检');
+assert(currentFinalView.includes("store.videoPreflight('economy', videoModelRoute)"), '现行视频入口必须先执行绑定所选模型的零生成预检');
 assert(currentFinalView.includes('data-cost-confirm'), '现行视频入口必须明确确认费用上限');
 assert(currentFinalView.includes('data-complexity-confirm'), '复杂镜头必须有独立人工复核确认');
 assert(currentStore.includes('confirmed_cost_limit_rmb: Number(cost.maximum_cost_rmb || 0)'), '确认的费用上限必须提交给服务端');
-assert(currentFinalView.indexOf("store.videoPreflight('economy')") < currentFinalView.indexOf('store.startVideo(preflight'), '预检必须发生在付费视频提交之前');
+assert(currentFinalView.indexOf("store.videoPreflight('economy', videoModelRoute)") < currentFinalView.indexOf('store.startVideo(preflight'), '预检必须发生在付费视频提交之前');
 
 const generationFlow = read('public/js/new-story-ad/generation-flow.js');
 assert(generationFlow.includes("return runStage('compose', ctx)"), 'step 5 chain must end in composition only');
