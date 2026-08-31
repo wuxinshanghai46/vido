@@ -45,7 +45,10 @@ async function main() {
   check(view.includes('data-sketch-shot-progress'), '每张镜头卡必须有独立进度宿主');
   check(view.includes('sketchShotProgressMarkup'), '卡片进度必须投影进度条与耗时');
   check(css.includes('.storyboard-prompt-dialog-backdrop'), '必须提供全屏弹层样式');
-  check(/width:min\(1040px,94vw\)/.test(css), '弹层必须接近竞品的大尺寸编辑体验');
+  check(/width:min\(1120px,96vw\)/.test(css), '弹层必须接近竞品的大尺寸编辑体验');
+  check(/\.storyboard-prompt-dialog-content\{[^}]*grid-template-rows:auto minmax\(0,1fr\)[^}]*overflow:hidden/.test(css), '引用资产必须置顶，提示词编辑区必须全宽显示');
+  check(/\.storyboard-prompt-dialog-reference-grid\{[^}]*display:flex[^}]*overflow-x:auto/.test(css), '引用资产必须横向排列，不能挤压提示词编辑区');
+  check(/\.storyboard-prompt-dialog-field textarea\{[^}]*padding:20px 22px[^}]*line-height:1\.95/.test(css), '长提示词必须使用舒适的内边距和行距');
   check(css.includes('.storyboard-prompt-dialog-reference-grid'), '弹层必须完整展示引用缩略图');
   check(css.includes('.sketch-shot-progress'), '卡片必须有可见进度条样式');
   check(/\.storyboard-simple-view \.sketch-actions\s*\{[^}]*display:grid[^}]*grid-template-columns:repeat\(4,minmax\(0,1fr\)\)[^}]*width:100%/.test(css), '四个卡片操作必须同一行平铺');
