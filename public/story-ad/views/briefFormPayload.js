@@ -1,4 +1,4 @@
-import { worldSettingPayload } from './briefWorldSettings.js?v=20260831-production-v344';
+import { worldSettingPayload } from './briefWorldSettings.js?v=20260831-production-v345';
 
 export function formPayload(form) {
   const data = new FormData(form);
