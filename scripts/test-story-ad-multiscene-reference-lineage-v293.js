@@ -408,7 +408,7 @@ function testStoryboardWaitAndCompactLayoutContract() {
   assert.match(view, /image_gate/);
   assert.match(view, /pendingSketchIndexes/);
   assert.match(view, /is-indeterminate/);
-  assert.match(view, /storyboard-stale-notice/);
+  assert.doesNotMatch(view, /storyboard-stale-notice/, '非阻塞的建议复核数量不得继续占用整页横幅');
   assert.match(view, /剧情依据/);
   assert.match(css, /storyboard-simple-view \.sketch-tile-media \.media \{[^}]*object-fit:cover/s);
   assert.match(css, /storyboard-scene-sequence ol\{[^}]*flex:1 1 auto/s);

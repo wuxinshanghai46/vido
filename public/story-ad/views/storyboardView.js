@@ -124,7 +124,7 @@ function sketchCard(shot, sketch = {}, index = 0, gate = {}, bundle = {}, genera
     </div><div class="sketch-action-bar">
       <input class="hidden-input" type="file" accept="image/png,image/jpeg,image/webp" data-sketch-file aria-label="为镜头 ${shotIndex} 选择替换图片">
       <div class="sketch-actions" role="group" aria-label="镜头 ${shotIndex} 分镜调整">
-        <button class="btn" type="button" data-ai-assist-sketch-prompt>AI 帮写</button>
+        <button class="btn" type="button" data-ai-assist-sketch-prompt>AI 修改</button>
         <button class="btn" type="button" data-save-sketch-prompt>保存提示词</button>
         <button class="btn ${sketch.image_url ? '' : 'primary'}" type="button" data-generate-sketch ${disabled}>${sketch.image_url ? '重新生成本镜' : '生成本镜'}</button>
         <button class="btn" type="button" data-upload-sketch ${disabled}>上传替换</button>
@@ -227,7 +227,6 @@ export async function mount(host, context) {
   const missingSketchIndexes = shots.map((shot, index) => Number(shot.shot_index || shot.index || index + 1))
     .filter(shotIndex => !sketchByShot.get(shotIndex)?.image_url);
   const pendingSketchIndexes = new Set(missingSketchIndexes);
-  const staleSketchIndexes = Array.isArray(imageGate?.stale_indexes) ? imageGate.stale_indexes.map(Number) : [];
   const validSketchCount = generatedSketchCount;
   const missingSketchCount = missingSketchIndexes.length;
   const regenerateAllSketches = missingSketchCount === 0 && generatedSketchCount > 0;
@@ -261,7 +260,7 @@ export async function mount(host, context) {
       ? '<span class="status-tag is-neutral">历史完成内容 · 只读</span>'
       : '');
   const primaryAction = !isReferenceDraft && !(completedHistorical && !sketchGate.ready)
-    ? `${sketchModelPicker.html}${mainSketchAction}`
+    ? `${sketchModelPicker.html}${mainSketchAction}${shots.length && generatedSketchCount === shots.length ? '<button class="btn primary" type="button" data-confirm-storyboard>确认分镜，进入视频生成</button>' : ''}`
     : '';
   host.innerHTML = `
     <div class="storyboard-simple-view">
@@ -271,7 +270,6 @@ export async function mount(host, context) {
       </section>
       ${primaryAction ? `<div class="storyboard-primary-actions">${primaryAction}</div>` : ''}
       ${sceneSequenceMarkup(bundle, displayShots)}
-      ${staleSketchIndexes.length ? `<div class="storyboard-stale-notice" role="status"><b>${staleSketchIndexes.length} 镜建议复核</b><span>现有分镜均已保留，可直接确认进入下一步；如某镜有问题，请在对应镜头内单独修改或重新生成。</span></div>` : ''}
       <div data-sketch-batch-host>${storyboardProgressMarkup({
         batch: storyboardActive || (String(sketchBatch?.status || '') === 'succeeded' && missingSketchCount > 0) ? null : sketchBatch,
         progress: bundle?.project?.generation_progress || bundle?.generation?.progress || {},
@@ -285,7 +283,6 @@ export async function mount(host, context) {
       <div data-storyboard-live-results>${displayShots.length ? `<div class="storyboard-sketch-grid">${visibleShots.map((shot, index) => shots.length
         ? sketchCard(shot, sketchByShot.get(Number(shot.shot_index || shot.index || pageStart + index + 1)) || {}, pageStart + index, sketchGate, bundle, sketchBatchActive, pendingSketchIndexes.has(Number(shot.shot_index || shot.index || pageStart + index + 1)))
         : checkpointShotCard(shot, pageStart + index, bundle)).join('')}</div>${pageNav}` : `<div class="card storyboard-empty-card">${emptyState({ title: storyboardActive ? '正在生成分镜' : '还没有分镜画面', body: storyboardActive ? '镜头结构保存后会立即显示在这里。' : '选择模型并点击“生成分镜”即可开始。' })}</div>`}</div>
-      ${shots.length && generatedSketchCount === shots.length ? `<div class="storyboard-next-action"><div><b>分镜画面已完成</b><span>确认当前镜头后，可继续进入声音、视频与合成；单镜问题仍可随时返回修改。</span></div><button class="btn primary" type="button" data-confirm-storyboard>确认分镜，进入视频生成</button></div>` : ''}
     </div>`;
 
   bindMediaLightbox(host);
@@ -416,13 +413,14 @@ export async function mount(host, context) {
   const renderSketchBatch = progress => {
     sketchBatch = progress || null;
     if (Array.isArray(sketchBatch?.target_indexes) && sketchBatch.target_indexes.length) activeSketchTargets = new Set(sketchBatch.target_indexes.map(Number));
+    const completedTargets = new Set((Array.isArray(sketchBatch?.completed_indexes) ? sketchBatch.completed_indexes : []).map(Number));
     const batchHost = host.querySelector('[data-sketch-batch-host]');
     if (batchHost) batchHost.innerHTML = sketchBatchMarkup(sketchBatch, sketchBatchTargetCount || generatedSketchCount);
     const active = ['queued', 'running'].includes(String(sketchBatch?.status || ''));
     host.querySelectorAll('[data-sketch-shot]').forEach(card => {
       const shotIndex = Number(card.dataset.sketchShot || 0);
-      const ready = Boolean(sketchByShot.get(shotIndex)?.image_url) && !pendingSketchIndexes.has(shotIndex);
       const targeted = activeSketchTargets.has(shotIndex);
+      const ready = targeted ? completedTargets.has(shotIndex) : Boolean(sketchByShot.get(shotIndex)?.image_url);
       const waiting = active && targeted && !ready;
       card.classList.toggle('is-waiting', waiting);
       if (waiting) card.setAttribute('aria-busy', 'true');
@@ -440,7 +438,8 @@ export async function mount(host, context) {
     }
     host.querySelectorAll('[data-generate-sketch]').forEach(button => { button.disabled = active || sketchGate.ready === false; });
   };
-  const renderSketchResults = rows => {
+  const renderSketchResults = (rows, progress = {}) => {
+    const completedTargets = new Set((Array.isArray(progress?.completed_indexes) ? progress.completed_indexes : []).map(Number));
     (Array.isArray(rows) ? rows : []).forEach(sketch => {
       const shotIndex = Number(sketch.shot_index || 0);
       if (!shotIndex || !sketch.image_url) return;
@@ -450,7 +449,7 @@ export async function mount(host, context) {
       if (!mediaHost) return;
       mediaHost.innerHTML = `${mediaPreview(sketch, { label: `SH${String(shotIndex).padStart(2, '0')} · ${shot.title || `镜头 ${shotIndex}`}`, width: 960, symbol: '分镜图', zoomable: true, zoomGroup: 'storyboard-images' })}<span class="sketch-shot-number">SH${String(shotIndex).padStart(2, '0')}</span>`;
       const card = mediaHost.closest('[data-sketch-shot]');
-      pendingSketchIndexes.delete(shotIndex);
+      if (!activeSketchTargets.has(shotIndex) || completedTargets.has(shotIndex)) pendingSketchIndexes.delete(shotIndex);
       card?.classList.remove('is-waiting');
       card?.removeAttribute('aria-busy');
     });
@@ -469,8 +468,8 @@ export async function mount(host, context) {
     if (disposed || batchFinalizing) return;
     try {
       const data = await request(`/api/story-ad/projects/${encodeURIComponent(bundle.project.id)}/storyboard-images/generate-batch`);
+      renderSketchResults(data.sketches, data.progress);
       renderSketchBatch(data.progress);
-      renderSketchResults(data.sketches);
       if (['succeeded', 'failed'].includes(data.progress?.status)) return finishSketchBatch(data.progress);
     } catch {}
     if (!disposed) sketchBatchPollTimer = setTimeout(pollSketchBatch, 1500);
@@ -519,15 +518,16 @@ export async function mount(host, context) {
   async function saveStoryboardPrompt(shotIndex, promptText) {
     const value = String(promptText || '').trim();
     if (!value) throw new Error(`镜头 ${shotIndex} 的提示词不能为空。`);
-    await request(`/api/story-ad/projects/${encodeURIComponent(bundle.project.id)}/storyboard-images/${shotIndex}/prompt`, { method: 'PUT', body: { prompt_text: value } });
+    const data = await request(`/api/story-ad/projects/${encodeURIComponent(bundle.project.id)}/storyboard-images/${shotIndex}/prompt`, { method: 'PUT', body: { prompt_text: value } });
     toast(`镜头 ${shotIndex} 的提示词已保存，仅本镜需重新生成。`, 'success');
-    await context.refreshShell();
+    void store.refreshSections?.('summary,shots').catch(() => {});
+    return data;
   }
-  async function assistStoryboardPrompt(shotIndex, promptText) {
-    const data = await request(`/api/story-ad/projects/${encodeURIComponent(bundle.project.id)}/storyboard-images/${shotIndex}/prompt-assist`, { method: 'POST', body: { prompt_text: String(promptText || '') }, timeoutMs: 120000 });
+  async function assistStoryboardPrompt(shotIndex, promptText, instruction = '') {
+    const data = await request(`/api/story-ad/projects/${encodeURIComponent(bundle.project.id)}/storyboard-images/${shotIndex}/prompt-assist`, { method: 'POST', body: { prompt_text: String(promptText || ''), instruction: String(instruction || '') }, timeoutMs: 120000 });
     const value = String(data?.prompt_text || '').trim();
     if (!value) throw new Error('AI 没有返回可用的分镜提示词，请稍后重试。');
-    return value;
+    return { ...data, prompt_text: value };
   }
 
   host.querySelectorAll('[data-sketch-shot]').forEach(card => {
@@ -549,23 +549,12 @@ export async function mount(host, context) {
         setButtonBusy(button, false);
       }
     });
-    card.querySelector('[data-ai-assist-sketch-prompt]')?.addEventListener('click', async event => {
-      const button = event.currentTarget;
-      try {
-        setButtonBusy(button, true, 'AI 正在完善…', { elapsed: true });
-        promptField.value = await assistStoryboardPrompt(shotIndex, promptField.value);
-        toast(`镜头 ${shotIndex} 的 AI 建议已写入草稿，请确认后再保存。`, 'success');
-      } catch (error) {
-        toast(error.message, 'danger');
-      } finally {
-        setButtonBusy(button, false);
-      }
-    });
+    card.querySelector('[data-ai-assist-sketch-prompt]')?.addEventListener('click', () => card.querySelector('[data-expand-sketch-prompt]')?.click());
     card.querySelector('[data-expand-sketch-prompt]')?.addEventListener('click', () => {
       const shotPosition = shots.findIndex((shot, index) => Number(shot.shot_index || shot.index || index + 1) === shotIndex);
       openStoryboardPromptEditor({
         shotIndex, promptText: promptField.value, sourceField: promptField, references: referenceItemsFor(bundle, Math.max(0, shotPosition), shotIndex),
-        onAssist: value => assistStoryboardPrompt(shotIndex, value),
+        onAssist: (value, instruction) => assistStoryboardPrompt(shotIndex, value, instruction),
         onSave: value => saveStoryboardPrompt(shotIndex, value),
       });
     });

@@ -21,7 +21,7 @@ const GATES = Object.freeze({
     label: '发布完整性、传输、闭包与黄金合同',
   },
   workspace_ui: {
-    command: 'node scripts/test-story-ad-new-contract-redline-v275.js && node scripts/test-story-ad-scene-auto-qa-repair-v274.js && node scripts/test-story-ad-scene-submit-feedback-v273.js && node scripts/test-story-ad-dialogue-cast-blueprint-v151.js && node scripts/test-story-ad-workspace-v6-ui-regressions.js && node scripts/test-story-ad-storyboard-prompt-editor-ui-v314.js && node scripts/test-story-ad-public-media-model-catalog-v262.js && node scripts/test-story-ad-scene-qa-actions-v238.js && node scripts/test-story-ad-scene-batch-orchestration-v255.js && node scripts/test-story-ad-scene-batch-image-progress-v258.js && node scripts/test-story-ad-scene-qa-layout-v252.js && node scripts/test-story-ad-page-load-lifecycle-v253.js && node scripts/test-story-ad-dialogue-intake-v100.js && node scripts/test-story-ad-brief-modal-auto-blueprint-v103.js && node scripts/test-story-ad-lightweight-bundle-v100.js && node scripts/check-story-ad-workspace-v6-boundaries.js',
+    command: 'node scripts/test-story-ad-new-contract-redline-v275.js && node scripts/test-story-ad-scene-auto-qa-repair-v274.js && node scripts/test-story-ad-scene-submit-feedback-v273.js && node scripts/test-story-ad-dialogue-cast-blueprint-v151.js && node scripts/test-story-ad-workspace-v6-ui-regressions.js && node scripts/test-story-ad-storyboard-prompt-assist-v313.js && node scripts/test-story-ad-storyboard-prompt-editor-ui-v314.js && node scripts/test-story-ad-public-media-model-catalog-v262.js && node scripts/test-story-ad-scene-qa-actions-v238.js && node scripts/test-story-ad-scene-batch-orchestration-v255.js && node scripts/test-story-ad-scene-batch-image-progress-v258.js && node scripts/test-story-ad-scene-qa-layout-v252.js && node scripts/test-story-ad-page-load-lifecycle-v253.js && node scripts/test-story-ad-dialogue-intake-v100.js && node scripts/test-story-ad-brief-modal-auto-blueprint-v103.js && node scripts/test-story-ad-lightweight-bundle-v100.js && node scripts/check-story-ad-workspace-v6-boundaries.js',
     label: '工作台 UI、对话立项、首屏轻量投影与模块边界',
   },
   story_content: {
@@ -175,6 +175,7 @@ function sha256(value) { return crypto.createHash('sha256').update(String(value)
 
 function scopedDomainFromPatch(file = '', patch = '') {
   const normalized = normalizeFile(file);
+  if (normalized === 'src/services/storyAdWorkspace/storyboardPromptAssistService.js') return 'workspace_ui';
   if (normalized === 'scripts/test-story-ad-storyboard-progress-concurrency-v284.js') return 'story_content';
   if ([
     'scripts/test-story-ad-generation-one-click-v237.js',
@@ -182,6 +183,7 @@ function scopedDomainFromPatch(file = '', patch = '') {
     'scripts/test-story-ad-page-load-lifecycle-v253.js',
     'scripts/test-story-ad-prompt-autosave-navigation-v232.js',
     'scripts/test-story-ad-storyboard-prompt-editor-ui-v314.js',
+    'scripts/test-story-ad-storyboard-prompt-assist-v313.js',
   ].includes(normalized)) return 'workspace_ui';
   if (['src/services/newStoryAd/personGenerationPromptService.js', 'src/services/newStoryAd/personGenerationRuntimeContractService.js'].includes(normalized)) return 'asset_plan';
   const hunks = String(patch || '').split(/^@@/m).slice(1).filter(Boolean);
@@ -194,6 +196,8 @@ function scopedDomainFromPatch(file = '', patch = '') {
     && hunks.every(hunk => /storyboard-images|savePromptOverride|storyboardImageConfirmation/i.test(hunk))) return 'story_content';
   if (normalized === 'src/services/storyAdWorkspace/projectBundleService.js'
     && hunks.every(hunk => /storyboard|prompt_overrides|prompt_defaults|reference_packs|sceneDomainContract/i.test(hunk))) return 'story_content';
+  if (normalized === 'scripts/test-story-ad-multiscene-reference-lineage-v293.js'
+    && hunks.every(hunk => /storyboard-stale-notice|建议复核数量/i.test(hunk))) return 'workspace_ui';
   if (normalized === 'scripts/test-story-ad-multiscene-reference-lineage-v293.js'
     && hunks.every(hunk => /subjectQaService|subject_count_qa|同一身份|决定性瞬间|customPrompt|promptSave|promptStale|STORYBOARD_PROMPT_CHANGED|prompt_override_fingerprint|applied_editable_prompt/i.test(hunk))) {
     return 'story_content';

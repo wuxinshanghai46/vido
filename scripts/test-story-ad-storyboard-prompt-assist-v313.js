@@ -58,7 +58,11 @@ const modelGateway = {
     return {
       parsed_json: {
         prompt_text: '户外草场广角单帧：一只牧羊犬位于画面左侧，羊群整体向右侧围栏移动；只表现追赶过程中的一个决定性瞬间，保持动物身份、数量关系、运动方向和草场空间连续，不出现人物或重复的同一只牧羊犬。',
+        diagnosis: '当前草稿同时描述追赶和停下两个时间阶段。',
+        conflicts: ['单张图包含两个决定性瞬间'],
         improvements: ['收敛为单一追赶瞬间', '锁定动物数量与运动方向'],
+        recommended_action: 'regenerate_current_shot',
+        action_reason: '只修改了第 2 镜提示词。',
       },
       used_model: 'fixture/text', fallback_used: false,
     };
@@ -67,7 +71,10 @@ const modelGateway = {
 
 async function main() {
   const beforeOutputs = storage.listOutputs(taskId).length;
-  const result = await assist.suggest(taskId, 2, {}, { modelGateway });
+  const result = await assist.suggest(taskId, 2, {
+    prompt_text: '未保存草稿：牧羊犬正在追赶，同时已经在围栏前停下。',
+    instruction: '只保留追赶瞬间，并与上一镜草场方向一致。',
+  }, { modelGateway });
   assert.equal(providerCalls, 1);
   assert.equal(result.shot_index, 2);
   assert.equal(result.saved, false);
@@ -76,6 +83,12 @@ async function main() {
   assert.match(captured.userPrompt, /牧羊犬追赶羊群并在围栏前停下/);
   assert.match(captured.userPrompt, /scene_field/);
   assert.match(captured.userPrompt, /pet_identity_1/);
+  assert.match(captured.userPrompt, /未保存草稿/);
+  assert.match(captured.userPrompt, /只保留追赶瞬间/);
+  assert.match(captured.userPrompt, /上一镜头/);
+  assert.match(result.diagnosis, /两个时间阶段/);
+  assert.deepEqual(result.conflicts, ['单张图包含两个决定性瞬间']);
+  assert.equal(result.recommended_action, 'regenerate_current_shot');
   assert.equal(storage.listOutputs(taskId).length, beforeOutputs, 'AI 帮写只返回建议，不得保存提示词或启动图片生成');
   assert.equal(storage.listModelCalls(taskId).length, 0, 'fixture gateway must not create real model calls');
 

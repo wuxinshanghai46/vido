@@ -170,6 +170,9 @@ assert.equal(
   'ui',
   '分镜提示词编辑器回归属于工作台 UI，不得触发剧情生成门禁',
 );
+assert.equal(plan(['src/services/storyAdWorkspace/storyboardPromptAssistService.js']).profile, 'ui',
+  '只返回用户草稿的分镜提示词助手属于工作台编辑器，不得触发媒体或完整剧情生成门禁');
+assert.equal(plan(['scripts/test-story-ad-storyboard-prompt-assist-v313.js']).profile, 'ui');
 assert(plan(['src/services/newStoryAd/unclassifiedAuthority.js']).gates.some(row => row.id === 'systemic'),
   '新剧情广告运行文件必须执行systemic结构与权威门禁');
 assert.equal(plan(['src/shared/unclassifiedAuthority.js']).profile, 'full');

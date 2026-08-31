@@ -44,6 +44,8 @@ function authority(taskId, requestedShotIndex) {
     .find(item => Number(item.shot_index) === numericIndex) || {};
   return {
     task, shots, shot, position, context, scene, planning, domain, flow,
+    previousShot: position > 0 ? shots[position - 1] : null,
+    nextShot: position < shots.length - 1 ? shots[position + 1] : null,
     currentBeat: beatPosition >= 0 ? units[beatPosition] : units[position] || null,
     previousBeat: beatPosition > 0 ? units[beatPosition - 1] : (position > 0 ? units[position - 1] : null),
     nextBeat: beatPosition >= 0 && beatPosition < units.length - 1 ? units[beatPosition + 1] : units[position + 1] || null,
@@ -60,17 +62,20 @@ async function suggest(taskId, requestedShotIndex, options = {}, dependencies = 
   }
   const beforeRevision = Number(source.task.content_revision || 1) || 1;
   const beforeShotFingerprint = storage.canonicalFingerprint(source.shot);
+  const requestedPrompt = clean(options.prompt_text, 3200) || source.currentPrompt;
+  const userInstruction = clean(options.instruction || options.edit_instruction, 1000);
   const gateway = dependencies.modelGateway || modelGateway;
   const response = await gateway.generateText({
     taskId,
     stage: 'new_story_ad.assist',
     systemPrompt: [
       '你是全行业影视分镜提示词编辑器。只输出 JSON 对象，不要 markdown。',
-      '重新阅读当前项目的剧本节拍、当前镜头、前后镜头、权威场景规划和引用角色，为当前这一镜改写可直接用于单张分镜图生成的中文提示词。',
+      '重新阅读用户修改要求、当前草稿、剧本节拍、当前镜头、相邻镜头、权威场景规划和引用角色，先诊断冲突，再为当前这一镜改写可直接用于单张分镜图生成的中文提示词。',
       '只能完善表达，不得更换 scene_id、人物/动物/车辆/商品身份与数量、剧情先后、机位权威或引用资产。',
       '一张图只能呈现一个决定性瞬间；不得把进入、行走、触摸、转身、离开等多个时间阶段同时画入，禁止同一身份重复出现。',
       '提示词必须适用于当前真实行业和主体类型，不得套用家居、展厅、人类或其它固定模板。',
-      '输出结构：{"prompt_text":"完整提示词","improvements":["简短改进点"]}。',
+      '必须明确告诉普通用户原提示词的问题、你实际改了什么，以及保存后应该只重新生成本镜还是需要检查多镜；除非权威场景本身被整体修改，否则默认只重新生成本镜。',
+      '输出结构：{"prompt_text":"完整提示词","diagnosis":"一句话说明根因","conflicts":["具体冲突"],"improvements":["实际修改点"],"recommended_action":"regenerate_current_shot 或 review_multiple_shots","action_reason":"为什么这样操作"}。',
     ].join('\n'),
     userPrompt: [
       `项目需求：${clean(source.task.request?.brief || source.context.brief || source.task.brief, 5000)}`,
@@ -78,11 +83,14 @@ async function suggest(taskId, requestedShotIndex, options = {}, dependencies = 
       `上一节拍：${compact(source.previousBeat, 2400)}`,
       `下一节拍：${compact(source.nextBeat, 2400)}`,
       `当前镜头：${compact(source.shot, 7000)}`,
+      `上一镜头：${compact(source.previousShot, 4200)}`,
+      `下一镜头：${compact(source.nextShot, 4200)}`,
       `权威场景：${compact({ id: source.scene.id || source.scene.scene_id, name: source.scene.name, story_purpose: source.scene.story_purpose }, 2400)}`,
       `场景与机位规划：${compact(source.planning, 6500)}`,
       `不可覆盖的场景域与主体数量合同：${compact(source.domain, 5000)}`,
       `本镜引用角色：${compact(source.referenceRoles, 1600)}`,
-      `当前提示词：${source.currentPrompt}`,
+      `用户本次希望解决的问题：${userInstruction || '未单独填写，请根据当前草稿与权威合同自动诊断'}`,
+      `编辑框当前草稿（以此为改写起点）：${requestedPrompt}`,
     ].join('\n\n'),
     maxTokens: 1800,
     temperature: 0.2,
@@ -107,6 +115,10 @@ async function suggest(taskId, requestedShotIndex, options = {}, dependencies = 
     shot_index: Number(requestedShotIndex),
     prompt_text: promptText,
     improvements: list(parsed.improvements).map(item => clean(item, 160)).filter(Boolean).slice(0, 6),
+    diagnosis: clean(parsed.diagnosis, 500) || '已根据当前镜头、相邻镜头和场景合同检查并收敛提示词。',
+    conflicts: list(parsed.conflicts).map(item => clean(item, 240)).filter(Boolean).slice(0, 6),
+    recommended_action: parsed.recommended_action === 'review_multiple_shots' ? 'review_multiple_shots' : 'regenerate_current_shot',
+    action_reason: clean(parsed.action_reason, 500) || '本次只修改当前镜头提示词，保存后只需重新生成本镜。',
     source_content_revision: beforeRevision,
     saved: false,
     generation_started: false,

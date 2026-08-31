@@ -52,6 +52,13 @@ function dialogReferencesMarkup(references = [], shotIndex = 0) {
   </figure>`).join('');
 }
 
+function assistAdviceMarkup(result = {}) {
+  const conflicts = Array.isArray(result.conflicts) ? result.conflicts.filter(Boolean) : [];
+  const improvements = Array.isArray(result.improvements) ? result.improvements.filter(Boolean) : [];
+  const action = result.recommended_action === 'review_multiple_shots' ? '先检查相关镜头，再按需逐镜生成' : '保存后只重新生成本镜';
+  return `<div><b>AI 修改说明</b><span>${escapeHtml(result.diagnosis || '已完成当前提示词检查。')}</span></div>${conflicts.length ? `<div><b>发现的冲突</b><ul>${conflicts.map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul></div>` : ''}${improvements.length ? `<div><b>已经修改</b><ul>${improvements.map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul></div>` : ''}<div><b>下一步</b><span>${escapeHtml(action)}。${escapeHtml(result.action_reason || '')}</span></div>`;
+}
+
 export function openStoryboardPromptEditor(options = {}) {
   const existing = document.querySelector('[data-storyboard-prompt-dialog]');
   existing?.remove();
@@ -64,13 +71,17 @@ export function openStoryboardPromptEditor(options = {}) {
     <header><div><span>SH${String(shotIndex).padStart(2, '0')}</span><h2 id="storyboard-prompt-dialog-title-${shotIndex}">编辑分镜提示词</h2></div><button class="storyboard-prompt-dialog-close" type="button" data-close-prompt-dialog aria-label="关闭提示词编辑器">×</button></header>
     <div class="storyboard-prompt-dialog-content">
       <section class="storyboard-prompt-dialog-references"><div><b>本镜引用资产</b><span>生成时按以下顺序引用</span></div><div class="storyboard-prompt-dialog-reference-grid">${dialogReferencesMarkup(options.references || [], shotIndex)}</div></section>
+      <label class="storyboard-prompt-dialog-instruction"><span>告诉 AI 你想解决什么（选填）</span><textarea rows="2" data-dialog-ai-instruction placeholder="例如：主墙要和 SHO2 一致，只保留一整面连续墙面，不要多块样板。"></textarea><small>写清楚哪里不一致、希望以哪一镜或哪张参考图为准。</small></label>
+      <section class="storyboard-prompt-dialog-advice" data-dialog-ai-advice hidden aria-live="polite"></section>
       <label class="storyboard-prompt-dialog-field"><span>分镜提示词</span><textarea rows="16" data-dialog-sketch-prompt>${escapeHtml(options.promptText || '')}</textarea><small>AI 帮写只会更新当前草稿；保存后也不会自动生成图片。</small></label>
     </div>
-    <footer><button class="btn" type="button" data-dialog-ai-assist>AI 帮写</button><div><button class="btn" type="button" data-close-prompt-dialog>取消</button><button class="btn primary" type="button" data-dialog-save-prompt>保存提示词</button></div></footer>
+    <footer><button class="btn" type="button" data-dialog-ai-assist>AI 诊断并改写</button><div><button class="btn" type="button" data-close-prompt-dialog>取消</button><button class="btn primary" type="button" data-dialog-save-prompt>保存提示词</button></div></footer>
   </section>`;
   document.body.appendChild(overlay);
   document.body.classList.add('has-storyboard-prompt-dialog');
   const field = overlay.querySelector('[data-dialog-sketch-prompt]');
+  const instructionField = overlay.querySelector('[data-dialog-ai-instruction]');
+  const advice = overlay.querySelector('[data-dialog-ai-advice]');
   const close = () => {
     document.body.classList.remove('has-storyboard-prompt-dialog');
     overlay.remove();
@@ -88,8 +99,13 @@ export function openStoryboardPromptEditor(options = {}) {
     const button = event.currentTarget;
     try {
       setButtonBusy(button, true, 'AI 正在完善…', { elapsed: true });
-      syncDraft(await options.onAssist?.(field.value));
-      toast(`镜头 ${shotIndex} 的 AI 建议已写入草稿，请确认后再保存。`, 'success');
+      const result = await options.onAssist?.(field.value, instructionField?.value || '');
+      syncDraft(result?.prompt_text || result);
+      if (advice && result && typeof result === 'object') {
+        advice.innerHTML = assistAdviceMarkup(result);
+        advice.hidden = false;
+      }
+      toast(`镜头 ${shotIndex} 已完成诊断和改写，请查看修改说明后保存。`, 'success');
     } catch (error) {
       toast(error.message, 'danger');
     } finally {

@@ -34,7 +34,7 @@ async function main() {
   check(view.includes('openStoryboardPromptEditor'), '放大入口必须打开独立提示词弹层');
   check(view.includes('data-ai-assist-sketch-prompt'), '卡片必须提供 AI 帮写按钮');
   check(view.includes('/prompt-assist'), 'AI 帮写必须调用逐镜 prompt-assist 接口');
-  check(/promptField\.value\s*=\s*await assistStoryboardPrompt/.test(view), 'AI 返回值必须只写入当前提示词草稿');
+  check(view.includes("[data-ai-assist-sketch-prompt]')?.addEventListener('click', () => card.querySelector('[data-expand-sketch-prompt]')?.click())"), '卡片 AI 修改必须先打开诊断编辑器，不得直接发起模型调用');
   const assistHandler = view.slice(view.indexOf("card.querySelector('[data-ai-assist-sketch-prompt]')"), view.indexOf("card.querySelector('[data-expand-sketch-prompt]')"));
   check(!assistHandler.includes('saveStoryboardPrompt'), 'AI 帮写不得自动保存');
   check(view.includes('async_start: true'), '单镜和批量生成必须异步启动');
@@ -44,9 +44,16 @@ async function main() {
   check(batchStart.indexOf("method: 'POST'") < batchStart.indexOf('sketchBatchPollTimer = setTimeout(pollSketchBatch, 100)'), 'POST 启动后必须进入 GET 轮询');
   check(view.includes('data-sketch-shot-progress'), '每张镜头卡必须有独立进度宿主');
   check(view.includes('sketchShotProgressMarkup'), '卡片进度必须投影进度条与耗时');
+  check(view.indexOf('renderSketchResults(data.sketches, data.progress)') < view.indexOf('renderSketchBatch(data.progress)'), '轮询必须先合并同一批次的完成镜头，再渲染总进度与单镜进度');
+  check(view.includes('completedTargets.has(shotIndex)'), '单镜完成状态必须来自批次 completed_indexes，不能把旧图片误判为本轮完成');
+  const promptSave = view.slice(view.indexOf('async function saveStoryboardPrompt'), view.indexOf('async function assistStoryboardPrompt'));
+  check(!promptSave.includes('await context.refreshShell()'), '提示词保存成功后不得等待完整页面外壳刷新');
+  check(promptSave.includes("void store.refreshSections?.('summary,shots')"), '保存后必须在后台定向同步提示词与镜头状态');
+  check(/mainSketchAction\}\$\{shots\.length.*data-confirm-storyboard/.test(view), '确认分镜按钮必须紧邻全部重新生成按钮');
+  check(!view.includes('class="storyboard-next-action"'), '页面底部不得重复显示整条确认栏');
   check(css.includes('.storyboard-prompt-dialog-backdrop'), '必须提供全屏弹层样式');
   check(/width:min\(1120px,96vw\)/.test(css), '弹层必须接近竞品的大尺寸编辑体验');
-  check(/\.storyboard-prompt-dialog-content\{[^}]*grid-template-rows:auto minmax\(0,1fr\)[^}]*overflow:hidden/.test(css), '引用资产必须置顶，提示词编辑区必须全宽显示');
+  check(/\.storyboard-prompt-dialog-content\{[^}]*grid-template-rows:auto auto auto minmax\(360px,1fr\)[^}]*overflow:auto/.test(css), 'AI 修改要求、诊断和提示词必须纵向全宽排列，内容过长时独立滚动');
   check(/\.storyboard-prompt-dialog-reference-grid\{[^}]*display:flex[^}]*overflow-x:auto/.test(css), '引用资产必须横向排列，不能挤压提示词编辑区');
   check(/\.storyboard-prompt-dialog-field textarea\{[^}]*padding:20px 22px[^}]*line-height:1\.95/.test(css), '长提示词必须使用舒适的内边距和行距');
   check(css.includes('.storyboard-prompt-dialog-reference-grid'), '弹层必须完整展示引用缩略图');
@@ -54,6 +61,10 @@ async function main() {
   check(/\.storyboard-simple-view \.sketch-actions\s*\{[^}]*display:grid[^}]*grid-template-columns:repeat\(4,minmax\(0,1fr\)\)[^}]*width:100%/.test(css), '四个卡片操作必须同一行平铺');
   check(/\.sketch-prompt-expand\{[^}]*width:27px[^}]*height:27px/.test(css), '放大编辑图标必须保持小尺寸');
   check(dialog.includes('AI 帮写只会更新当前草稿'), '弹层必须明确 AI 帮写不自动保存和生成');
+  check(dialog.includes('data-dialog-ai-instruction'), '弹层必须允许普通用户描述具体不一致问题');
+  check(dialog.includes('data-dialog-ai-advice'), '弹层必须展示诊断、修改点和明确下一步');
+  check(dialog.includes('AI 诊断并改写'), 'AI 操作必须表达先诊断再改写');
+  check(dialog.includes('syncDraft(result?.prompt_text || result)'), 'AI 返回值必须只写入当前提示词草稿');
   check(dialog.includes('data-dialog-save-prompt'), '弹层必须提供保存入口');
   check(dialog.includes('data-close-prompt-dialog'), '弹层必须提供关闭入口');
 
