@@ -249,7 +249,11 @@ function testStep5RenderingPerformanceBoundaries() {
   assert(finalView.includes('preload="none"'), '现行成片播放器不得预取视频流');
   assert(reviewModule.includes('data-nsa-review-media=') && reviewModule.includes("video.preload = 'none'"), '母片与成员片段必须折叠后懒创建且默认不预加载');
   assert(reviewModule.includes("image.loading = 'lazy'"), '边界证据图片必须按需懒加载');
-  assert(!/setInterval|fetch\(|request\(/.test(finalView), '现行成片渲染不得为每个媒体节点建立独立轮询或请求');
+  const mediaRenderer = finalView.slice(finalView.indexOf('function mediaCard'), finalView.indexOf('function preflightDialog'));
+  assert(!/setInterval|fetch\(|request\(/.test(mediaRenderer), '现行成片渲染不得为每个媒体节点建立独立轮询或请求');
+  assert.strictEqual((finalView.match(/\brequest\(/g) || []).length, 1, '成片页只允许一次页面级声音设计聚合请求');
+  assert(finalView.includes('/sound-design`'), '页面级聚合请求必须只读取声音设计合同');
+  assert(!/setInterval|fetch\(/.test(finalView), '成片页不得建立私有轮询或绕过统一请求层');
 }
 
 (async () => {
