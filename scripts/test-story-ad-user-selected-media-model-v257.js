@@ -25,7 +25,7 @@ async function main() {
   assert.strictEqual(sceneCatalog.selection_required, true);
   assert.strictEqual(sceneCatalog.fallback_after_failure, false);
   assert.deepStrictEqual(sceneCatalog.models.map(model => `${model.public_name} · ${model.provider_code}`), [
-    'Image · SZ', 'Image · WB', 'Image · DY',
+    'Image-2 · SZ', 'Image-2 · WB', 'Image-2 · DY',
     'Nano Banana · SZ', 'Nano Banana · WB', 'Nano Banana · DY',
   ]);
   assert.strictEqual(sceneCatalog.default_selection, 'image-sz');
@@ -107,7 +107,7 @@ async function main() {
   const pickerSource = source('public/story-ad/views/generationModelPicker.js');
   assert(pickerSource.includes('data-generation-model-picker'));
   assert(source('public/story-ad/views/sceneCardInteractions.js').includes('image_model: imageModel'));
-  assert(source('public/story-ad/views/storyboardView.js').includes('image_model: selectedSketchModel()'));
+  assert(source('public/story-ad/views/storyboardView.js').includes('image_model: options.imageModel || selectedSketchModel()'));
   assert(source('public/story-ad/views/finalView.js').includes('video_model_route: videoModelRoute'));
 
   console.log(JSON.stringify({

@@ -10,7 +10,7 @@ const sceneLineage = require('../newStoryAd/sceneLineageContractService'), media
 const { projectedDossierItems } = require('./dossierItemProjectionService'), personLookProjection = require('./personLookProjectionService');
 const personOwnedPropProjection = require('./personOwnedPropProjectionService'), personGenerationRuntime = require('../newStoryAd/personGenerationRuntimeContractService'), personGenerationSettingsProjection = require('./personGenerationSettingsProjectionService');
 const { projectSceneWorldAssets } = require('./sceneWorldAssetProjectionService'), { projectSceneDossier } = require('./sceneDossierProjectionService'), subjectCheckpointProjection = require('../newStoryAd/subjectCheckpointProjectionService');
-const sceneWorkflowProjection = require('./sceneWorkflowProjectionService'), scenePromptConfirmation = require('../newStoryAd/scenePromptConfirmationService');
+const sceneWorkflowProjection = require('./sceneWorkflowProjectionService'), scenePromptConfirmation = require('../newStoryAd/scenePromptConfirmationService'), errorPermission = require('../newStoryAd/storyAdErrorPermissionService');
 const sceneAssetRuntimeProjection = require('./sceneAssetRuntimeProjectionService');
 const sceneAssetAvailability = require('./sceneAssetAvailabilityProjectionService');
 const sceneQaProjection = require('./sceneQaProjectionService');
@@ -440,7 +440,7 @@ function buildProjectBundle(taskId, { sections = '', user = {} } = {}) {
     ? outputs.context
     : (raw.context && typeof raw.context === 'object' ? raw.context : (raw.task.request || {})), clean);
   const context = referenceSnapshot.context;
-  const isAdmin = clean(user.role).toLowerCase() === 'admin', failure = failureProjection.project(raw.task, { isAdmin, clean });
+  const isAdmin = clean(user.role).toLowerCase() === 'admin', canViewErrors = errorPermission.canViewErrors(user), failure = failureProjection.project(raw.task, { isAdmin: canViewErrors, clean });
   const project = {
     ...projectSummary({ ...storyAd.taskSummary(raw.task, { detailed: false, lookupOutputs: false }), ...raw.task }),
     name_source: clean(context.project_name ? 'user' : 'legacy_inferred', 40),
@@ -475,6 +475,7 @@ function buildProjectBundle(taskId, { sections = '', user = {} } = {}) {
       can_edit: true,
       can_generate: true,
       can_view_workflow: true,
+      can_view_errors: canViewErrors,
       is_admin: isAdmin,
     },
     revisions: {

@@ -14,7 +14,7 @@ const IMAGE_STAGES = [
   'new_story_ad.storyboard_image', 'new_story_ad.keyframe',
 ];
 const IMAGE_LABELS = [
-  'Image · SZ', 'Image · WB', 'Image · DY',
+  'Image-2 · SZ', 'Image-2 · WB', 'Image-2 · DY',
   'Nano Banana · SZ', 'Nano Banana · WB', 'Nano Banana · DY',
 ];
 const VIDEO_LABELS = ['Seedance · DY', 'Seedance · SZ', 'Seedance · WB'];
@@ -120,6 +120,6 @@ assert(!picker.includes('generationProviderInitials'));
 
 console.log(JSON.stringify({
   passed: true, image_stages: IMAGE_STAGES.length, image_choices: IMAGE_LABELS,
-  default_image: 'Image · SZ', video_choices: VIDEO_LABELS, default_video: 'Seedance · DY',
+  default_image: 'Image-2 · SZ', video_choices: VIDEO_LABELS, default_video: 'Seedance · DY',
   raw_provider_routes_rejected: true, migration_idempotent: true, migration_atomic: true, provider_calls: 0,
 }));

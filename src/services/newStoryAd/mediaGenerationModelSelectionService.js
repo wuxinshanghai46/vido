@@ -19,9 +19,9 @@ const ALLOWED_STAGES = new Set([
 
 const PUBLIC_MEDIA_CHOICES = Object.freeze({
   image: Object.freeze([
-    Object.freeze({ id: 'image-sz', public_name: 'Image', provider_code: 'SZ', execution_route: 'smscrw/gpt-image-2', default: true }),
-    Object.freeze({ id: 'image-wb', public_name: 'Image', provider_code: 'WB', execution_route: 'webang-maas/gpt-image-2' }),
-    Object.freeze({ id: 'image-dy', public_name: 'Image', provider_code: 'DY', execution_route: 'deyunai/gpt-image-2' }),
+    Object.freeze({ id: 'image-sz', public_name: 'Image-2', provider_code: 'SZ', execution_route: 'smscrw/gpt-image-2', default: true }),
+    Object.freeze({ id: 'image-wb', public_name: 'Image-2', provider_code: 'WB', execution_route: 'webang-maas/gpt-image-2' }),
+    Object.freeze({ id: 'image-dy', public_name: 'Image-2', provider_code: 'DY', execution_route: 'deyunai/gpt-image-2' }),
     Object.freeze({ id: 'nano-sz', public_name: 'Nano Banana', provider_code: 'SZ', execution_route: 'smscrw/gemini-3.1-flash-image-preview' }),
     Object.freeze({ id: 'nano-wb', public_name: 'Nano Banana', provider_code: 'WB', execution_route: 'webang-maas/gemini-2.5-flash-image' }),
     Object.freeze({ id: 'nano-dy', public_name: 'Nano Banana', provider_code: 'DY', execution_route: 'deyunai/gemini-2.5-flash-image' }),

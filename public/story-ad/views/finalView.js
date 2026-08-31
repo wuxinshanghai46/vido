@@ -72,14 +72,14 @@ export async function mount(host, context) {
   const videoModelPicker = await loadGenerationModelPicker(bundle.project.id, 'new_story_ad.video', { label: '视频模型' });
   host.innerHTML = `
     <section class="view-head">
-      <div><h1>声音、视频与合成</h1><p>第 7 步统一完成彩色关键帧、配音、场景环境声、拟音、音效、视频片段和最终成片。</p></div>
+      <div><h1>声音、视频与合成</h1><p>第 6 步统一完成彩色关键帧、配音、场景环境声、拟音、音效、视频片段和最终成片。</p></div>
       <div class="view-actions">
         ${keyframes.length ? `${videoModelPicker.html}<button class="btn" type="button" data-generate-video>生成视频</button>` : `${keyframeModelPicker.html}<button class="btn" type="button" data-generate-keyframes>生成关键帧</button>`}
         ${clips.length ? '<button class="btn" type="button" data-generate-tts>生成配音</button><button class="btn primary" type="button" data-compose>合成成片</button>' : ''}
       </div>
     </section>
     <div class="production-lanes" aria-label="生产轨道"><span data-production-lane><b>关键帧</b><small>${keyframes.length}/${shots.length}</small></span><span data-production-lane><b>声音</b><small>${soundDesign.timeline?.length || 0} 条素材</small></span><span data-production-lane><b>视频</b><small>${clips.length}/${shots.length}</small></span><span data-production-lane><b>合成</b><small>${finalVideo ? '已完成' : '待完成'}</small></span></div>
-    <div class="guide">彩色关键帧必须消费第 6 步已确认的黑白分镜构图；视频和声音按 shot_id、character_id、scene_id 绑定，付费提交前仍需核对模型和费用。</div>
+    <div class="guide"><b>怎么操作：</b>系统已默认选择 <b>${escapeHtml(keyframeModelPicker.selectedLabel || 'Image-2 · SZ')}</b>。点击“生成关键帧”，会把第 6 步已确认的黑白分镜逐镜生成彩色画面；下拉框只在你想换供应商时使用。关键帧完成后，页面会切换为视频模型和“生成视频”。</div>
     ${finalVideo ? `<section class="card final-player">
       <div class="card-head"><div><h2>最终成片</h2><p>${escapeHtml(finalVideo.status || '已生成')} · 播放器保持源视频比例</p></div>${finalUrl ? `<a class="btn primary final-download" href="${escapeHtml(downloadUrl)}" download="${escapeHtml(finalVideo.filename || 'vido-final.mp4')}" aria-label="下载原始成片"><span aria-hidden="true">↓</span><span><b>下载原始成片</b><small>保留原始比例和清晰度</small></span></a>` : ''}</div>
       <div class="final-media">${finalVideoPlayer(finalVideo, posterUrl)}</div>

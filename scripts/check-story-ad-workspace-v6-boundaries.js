@@ -116,6 +116,7 @@ function main() {
   const sceneWorldAuthorityLazyJsFiles = allJsFiles.filter(file => /sceneWorldAuthorityPlan/.test(file));
   const dossierLazyJsFiles = allJsFiles.filter(file => /sceneDossier(?:Card|Export)/.test(file));
   const mediaLazyJsFiles = allJsFiles.filter(file => /(?:finalView|mediaCatalogStore|finalMediaPagination)/.test(file));
+  const soundDesignLazyJsFiles = allJsFiles.filter(file => /finalSoundDesignView/.test(file));
   const lightboxLazyJsFiles = allJsFiles.filter(file => /mediaLightbox/.test(file));
   const checkpointRecoveryLazyJsFiles = allJsFiles.filter(file => /assetCheckpointRecovery/.test(file));
   const assetStageLazyJsFiles = allJsFiles.filter(file => /assetCenterStageView/.test(file));
@@ -133,7 +134,7 @@ function main() {
   const plotEditorJsFiles = allJsFiles.filter(file => /plotBeatEditor/.test(file));
   const plotCellLazyJsFiles = allJsFiles.filter(file => /plotBeatCellPopover/.test(file));
   const storyStageLazyJsFiles = allJsFiles.filter(file => /(?:storyFlowSketchView|storyboardView)/.test(file));
-  const coreJsFiles = allJsFiles.filter(file => !lazyJsFiles.includes(file) && !assetEditorLazyJsFiles.includes(file) && !materialReferenceLazyJsFiles.includes(file) && !sceneQaProjectionLazyJsFiles.includes(file) && !promptAutosaveLazyJsFiles.includes(file) && !planMigrationLazyJsFiles.includes(file) && !personFormLazyJsFiles.includes(file) && !personEvolutionLazyJsFiles.includes(file) && !featureLazyJsFiles.includes(file) && !workflowLazyJsFiles.includes(file) && !recognitionLazyJsFiles.includes(file) && !briefLazyJsFiles.includes(file) && !briefMaterialsLazyJsFiles.includes(file) && !briefAdvancedLazyJsFiles.includes(file) && !briefPageLazyJsFiles.includes(file) && !panoramaLazyJsFiles.includes(file) && !sceneWorldLazyJsFiles.includes(file) && !sceneWorldLayoutLazyJsFiles.includes(file) && !sceneWorldAuthorityLazyJsFiles.includes(file) && !dossierLazyJsFiles.includes(file) && !mediaLazyJsFiles.includes(file) && !lightboxLazyJsFiles.includes(file) && !checkpointRecoveryLazyJsFiles.includes(file) && !assetStageLazyJsFiles.includes(file) && !recoveryPreflightLazyJsFiles.includes(file) && !generationModelPickerLazyJsFiles.includes(file) && !dialogueFlowJsFiles.includes(file) && !dialogueDataJsFiles.includes(file) && !dialogueGuidanceLazyJsFiles.includes(file) && !dialogueSupportLazyJsFiles.includes(file) && !dialogueSpecificationLazyJsFiles.includes(file) && !referenceDialogueStateJsFiles.includes(file) && !dialoguePolicyJsFiles.includes(file) && !plotRoomLazyJsFiles.includes(file) && !plotCharacterLazyJsFiles.includes(file) && !plotEditorJsFiles.includes(file) && !plotCellLazyJsFiles.includes(file) && !storyStageLazyJsFiles.includes(file));
+  const coreJsFiles = allJsFiles.filter(file => !lazyJsFiles.includes(file) && !assetEditorLazyJsFiles.includes(file) && !materialReferenceLazyJsFiles.includes(file) && !sceneQaProjectionLazyJsFiles.includes(file) && !promptAutosaveLazyJsFiles.includes(file) && !planMigrationLazyJsFiles.includes(file) && !personFormLazyJsFiles.includes(file) && !personEvolutionLazyJsFiles.includes(file) && !featureLazyJsFiles.includes(file) && !workflowLazyJsFiles.includes(file) && !recognitionLazyJsFiles.includes(file) && !briefLazyJsFiles.includes(file) && !briefMaterialsLazyJsFiles.includes(file) && !briefAdvancedLazyJsFiles.includes(file) && !briefPageLazyJsFiles.includes(file) && !panoramaLazyJsFiles.includes(file) && !sceneWorldLazyJsFiles.includes(file) && !sceneWorldLayoutLazyJsFiles.includes(file) && !sceneWorldAuthorityLazyJsFiles.includes(file) && !dossierLazyJsFiles.includes(file) && !mediaLazyJsFiles.includes(file) && !soundDesignLazyJsFiles.includes(file) && !lightboxLazyJsFiles.includes(file) && !checkpointRecoveryLazyJsFiles.includes(file) && !assetStageLazyJsFiles.includes(file) && !recoveryPreflightLazyJsFiles.includes(file) && !generationModelPickerLazyJsFiles.includes(file) && !dialogueFlowJsFiles.includes(file) && !dialogueDataJsFiles.includes(file) && !dialogueGuidanceLazyJsFiles.includes(file) && !dialogueSupportLazyJsFiles.includes(file) && !dialogueSpecificationLazyJsFiles.includes(file) && !referenceDialogueStateJsFiles.includes(file) && !dialoguePolicyJsFiles.includes(file) && !plotRoomLazyJsFiles.includes(file) && !plotCharacterLazyJsFiles.includes(file) && !plotEditorJsFiles.includes(file) && !plotCellLazyJsFiles.includes(file) && !storyStageLazyJsFiles.includes(file));
   const coreJsBytes = coreJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
   const lazyJsBytes = lazyJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
   const assetEditorLazyJsBytes = assetEditorLazyJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
@@ -156,6 +157,7 @@ function main() {
   const sceneWorldAuthorityLazyJsBytes = sceneWorldAuthorityLazyJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
   const dossierLazyJsBytes = dossierLazyJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
   const mediaLazyJsBytes = mediaLazyJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
+  const soundDesignLazyJsBytes = soundDesignLazyJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
   const lightboxLazyJsBytes = lightboxLazyJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
   const checkpointRecoveryLazyJsBytes = checkpointRecoveryLazyJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
   const assetStageLazyJsBytes = assetStageLazyJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
@@ -196,6 +198,7 @@ function main() {
   const sceneWorldAuthorityLazyJsGzip = gzipBytes(sceneWorldAuthorityLazyJsFiles);
   const dossierLazyJsGzip = gzipBytes(dossierLazyJsFiles);
   const mediaLazyJsGzip = gzipBytes(mediaLazyJsFiles);
+  const soundDesignLazyJsGzip = gzipBytes(soundDesignLazyJsFiles);
   const lightboxLazyJsGzip = gzipBytes(lightboxLazyJsFiles);
   const checkpointRecoveryLazyJsGzip = gzipBytes(checkpointRecoveryLazyJsFiles);
   const assetStageLazyJsGzip = gzipBytes(assetStageLazyJsFiles);
@@ -278,6 +281,8 @@ function main() {
   assert(dossierLazyJsGzip <= 9 * 1024, `场景档案按需模块 gzip ${dossierLazyJsGzip} bytes 超过 9 KiB`);
   assert(mediaLazyJsBytes <= 16 * 1024, `最终成片与媒体分页按需模块 ${mediaLazyJsBytes} bytes 超过 16 KiB`);
   assert(mediaLazyJsGzip <= 6 * 1024, `最终成片与媒体分页按需模块 gzip ${mediaLazyJsGzip} bytes 超过 6 KiB`);
+  assert(soundDesignLazyJsBytes <= 9 * 1024, `声音设计按需模块 ${soundDesignLazyJsBytes} bytes 超过 9 KiB`);
+  assert(soundDesignLazyJsGzip <= 4 * 1024, `声音设计按需模块 gzip ${soundDesignLazyJsGzip} bytes 超过 4 KiB`);
   assert(lightboxLazyJsBytes <= 11 * 1024, `通用大图查看器按需模块 ${lightboxLazyJsBytes} bytes 超过 11 KiB`);
   assert(lightboxLazyJsGzip <= 4 * 1024, `通用大图查看器按需模块 gzip ${lightboxLazyJsGzip} bytes 超过 4 KiB`);
   assert(checkpointRecoveryLazyJsBytes <= 2 * 1024, `资产恢复提示按需模块 ${checkpointRecoveryLazyJsBytes} bytes 超过 2 KiB`);

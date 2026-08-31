@@ -16,6 +16,16 @@ const OPEN_AUDIO_HOSTS = Object.freeze(['cdn.freesound.org', 'upload.wikimedia.o
 
 function list(value) { return Array.isArray(value) ? value.filter(Boolean) : []; }
 function clean(value = '', max = 1000) { return String(value || '').replace(/\s+/g, ' ').trim().slice(0, max); }
+function recommendedTrack(shot = {}) { return list(shot.sfx).length ? 'sfx' : (clean(shot.ambient_sound, 260) ? 'ambient' : 'room_tone'); }
+function recommendedQuery(shot = {}) {
+  const source = clean(list(shot.sfx)[0] || shot.ambient_sound || shot.music_cue || 'room ambience', 260);
+  const rules = [
+    [/脚步|行走|走动/u, 'indoor footsteps'], [/金属|不锈钢|触摸|摩擦/u, 'metal touch'],
+    [/展厅|展示厅|陈列/u, 'showroom ambience'], [/空调|底噪|室内/u, 'indoor room tone'],
+    [/转场|切换/u, 'soft transition whoosh'], [/门|入口/u, 'interior door'],
+  ];
+  return rules.find(([pattern]) => pattern.test(source))?.[1] || source;
+}
 function sha256File(filePath = '') {
   if (!filePath || !fs.existsSync(filePath)) return '';
   return crypto.createHash('sha256').update(fs.readFileSync(filePath)).digest('hex');
@@ -152,6 +162,8 @@ function compile(taskId) {
     sfx: list(shot.sfx).map(value => clean(value, 160)),
     music_cue: clean(shot.music_cue, 260),
     voice_bindings: shot.voice_bindings || {},
+    recommended_track_type: recommendedTrack(shot),
+    recommended_query: recommendedQuery(shot),
   })) };
 }
 
@@ -236,4 +248,4 @@ function attributionManifest(taskId) {
   }));
 }
 
-module.exports = { ALLOWED_TRACKS, ASSET_KIND, LEDGER_KIND, PROFILE_KIND, TIMELINE_KIND, addUserAsset, attributionManifest, compile, importOpenverseAsset, resolvedTracks, searchOpenverse };
+module.exports = { ALLOWED_TRACKS, ASSET_KIND, LEDGER_KIND, PROFILE_KIND, TIMELINE_KIND, addUserAsset, attributionManifest, compile, importOpenverseAsset, recommendedQuery, recommendedTrack, resolvedTracks, searchOpenverse };

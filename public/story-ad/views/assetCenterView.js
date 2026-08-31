@@ -291,7 +291,7 @@ export async function mount(host, context) {
       <div><h1>资产中心</h1><p>${narrative ? '人物、动物、场景与机位独立建档。' : '人物、动物、商品/展示主体、LOGO、场景与机位独立建档。'}</p></div>
       <div class="view-actions asset-primary-actions">${personModelPicker.html}${productModelPicker.html}<button class="btn" type="button" data-select-person ${generationDisabled}>选择已有人物素材</button><button class="btn" type="button" data-upload-real-person ${generationDisabled}>上传真人素材</button></div>
     </section>
-    ${assetPlanStageView({ assetPlanReady, recoveryActive: false, eligibility: personPlanEligibility, generationActive, missingSubjectCount, productionGraph, counts: { people: assets.people?.length, animals: assets.animals?.length, scenes: assets.scenes?.length }, project: bundle.project || {}, isAdmin: bundle.permissions?.is_admin === true })}
+    ${assetPlanStageView({ assetPlanReady, recoveryActive: false, eligibility: personPlanEligibility, generationActive, missingSubjectCount, productionGraph, counts: { people: assets.people?.length, animals: assets.animals?.length, scenes: assets.scenes?.length }, project: bundle.project || {}, isAdmin: bundle.permissions?.can_view_errors === true })}
     <div class="tabs"><button class="tab active" type="button" data-history-safe data-asset-filter="all">全部 ${total}</button>${assetGroups.map(([key, label]) => `<button class="tab" type="button" data-history-safe data-asset-filter="${key}">${label} ${assets[key]?.length || 0}</button>`).join('')}</div>
     <input class="hidden-input" hidden type="file" accept="image/png,image/jpeg,image/webp" data-asset-upload-file>
     <div data-asset-sections>${renderSections(assets, total, contentMode, assetGroups, generationActive ? generationDisabled : contractDisabled)}</div>`;

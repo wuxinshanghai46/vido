@@ -2,7 +2,7 @@ import { request } from '../api.js?v=20260831-production-v339';
 import { escapeHtml } from '../components/ui.js?v=20260831-production-v339';
 
 export function generationModelDisplayName(model = {}) {
-  return String(model.public_name || model.model_name || model.model_id || 'Image')
+  return String(model.public_name || model.model_name || model.model_id || 'Image-2')
     .replace(/\s*[·|｜（(].*$/u, '').replace(/\?+/g, '').trim()
     || 'Image';
 }
@@ -29,6 +29,7 @@ export async function loadGenerationModelPicker(taskId, stage, options = {}) {
     stage,
     mediaType: catalog.media_type,
     selected,
+    selectedLabel: generationModelOptionLabel(models.find(model => model.route === selected) || {}),
     html: `<label class="generation-model-picker" data-generation-model-picker="${escapeHtml(stage)}">
       <span>${escapeHtml(label)}</span>
       <select aria-label="${escapeHtml(label)}" ${available ? '' : 'disabled'}>

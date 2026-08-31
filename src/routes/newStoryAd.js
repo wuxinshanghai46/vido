@@ -37,6 +37,7 @@ const videoCore = require('../services/videoGenerationCore');
 const publicFailure = require('../services/newStoryAd/publicFailureProjectionService');
 const scenePromptConfirmation = require('../services/newStoryAd/scenePromptConfirmationService');
 const mediaModelSelection = require('../services/newStoryAd/mediaGenerationModelSelectionService');
+const storyAdErrorPermission = require('../services/newStoryAd/storyAdErrorPermissionService');
 const db = require('../models/database');
 function userFromReq(req) {
   return req.user || req.auth || {};
@@ -1765,7 +1766,7 @@ router.get('/tasks/:id', asyncRoute(async (req, res) => {
   res.setHeader('Expires', '0');
   taskForReq(req);
   const rawBundle = service.publicTaskBundle(req.params.id);
-  const fullBundle = { ...rawBundle, task: publicFailure.publicTask(rawBundle.task, { isAdmin: String(userFromReq(req).role || '').toLowerCase() === 'admin' }) };
+  const fullBundle = { ...rawBundle, task: publicFailure.publicTask(rawBundle.task, { isAdmin: storyAdErrorPermission.canViewErrors(userFromReq(req)) }) };
   const bundle = String(req.query.compact || '') === '1'
     ? service.compactPublicTaskBundle(fullBundle)
     : fullBundle;
@@ -1800,7 +1801,7 @@ router.post('/tasks/:id/cancel', asyncRoute(async (req, res) => {
 router.get('/tasks/:id/diagnostics', asyncRoute(async (req, res) => {
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
   taskForReq(req);
-  if (String(userFromReq(req).role || '').toLowerCase() !== 'admin') return res.status(403).json({ success: false, error: '仅超管可查看技术详情' });
+  if (!storyAdErrorPermission.canViewErrors(userFromReq(req))) return res.status(403).json({ success: false, error: '当前账号没有查看错误详情的权限' });
   const bundle = service.publicTaskBundle(req.params.id, { diagnostics: true });
   res.json({
     success: true,

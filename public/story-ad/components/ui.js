@@ -288,6 +288,9 @@ export function generationProgressPanel(bundle = {}, currentView = '') {
   }).join('')}</div>` : '';
   const checkpointRows = view.checkpointRecovery ? `<div class="generation-lanes" data-checkpoint-recovery-details>${view.checkpointRecovery.missing.map(unit => `<div><span><b>${escapeHtml(unit.person_name)} · ${escapeHtml(unit.label)}</b><small>${escapeHtml(unit.reason)}</small></span><strong>${unit.retry_blocked ? '平台核账中' : '待处理'}</strong></div>`).join('')}</div>` : '';
   if (view.failed) {
+    const diagnostics = bundle.permissions?.can_view_errors === true ? bundle.project?.technical_diagnostics : null;
+    const rawProgress = diagnostics?.generation_progress || {};
+    const technicalDetails = diagnostics ? `<details class="project-progress-details" data-authorized-error-details><summary>查看具体错误</summary><div class="generation-lanes"><div><span><b>${escapeHtml(diagnostics.error_code || 'GENERATION_FAILED')}</b><small>${escapeHtml(diagnostics.error || '服务器没有返回具体错误说明')}</small></span><strong>${escapeHtml(rawProgress.stage || view.stage || '')}</strong></div>${diagnostics.support_id ? `<div><span><b>支持编号</b><small>${escapeHtml(diagnostics.support_id)}</small></span><strong>${escapeHtml(rawProgress.phase || '已停止')}</strong></div>` : ''}</div></details>` : '';
     const retained = laneRows || checkpointRows || recovery
       ? `<details class="project-progress-details"><summary>查看已保留内容</summary>${checkpointRows}${laneRows}${recovery && !view.checkpointRecovery?.retryBlocked ? `<div class="project-progress-foot">${recovery}</div>` : ''}</details>`
       : '';
@@ -296,7 +299,7 @@ export function generationProgressPanel(bundle = {}, currentView = '') {
       : '';
     return `<section class="project-generation-progress is-failed is-terminal" role="alert">
       <div class="project-progress-head"><div><b>${escapeHtml(view.failureTitle)}</b><span>${escapeHtml(view.liveText)}</span>${terminalCounts}</div><span class="status-tag is-danger">已停止</span></div>
-      ${view.message ? `<p class="project-progress-terminal-message">${escapeHtml(view.message)}</p>` : ''}${retained}
+      ${view.message ? `<p class="project-progress-terminal-message">${escapeHtml(view.message)}</p>` : ''}${technicalDetails}${retained}
     </section>`;
   }
   const outcomeCounts = view.failedCount > 0 ? ` · 成功 ${view.succeededCount}，失败 ${view.failedCount}` : '';

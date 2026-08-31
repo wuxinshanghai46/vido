@@ -5,5 +5,5 @@ export function personPlanTechnicalDetails({ migration=false, failed=false, isAd
   const raw=diagnostics||{};
   const progress=raw.generation_progress||{};
   const progressText=[progress.stage,progress.phase,progress.message].filter(Boolean).join(' · ');
-  return `<section class="asset-plan-admin-diagnostics is-visible" data-admin-failure-details><header><b>具体失败原因（仅超管）</b><span>${escapeHtml(raw.error_code||'GENERATION_FAILED')}</span></header><p>${escapeHtml(raw.error||'服务器没有返回具体错误说明')}</p>${progressText?`<p>失败位置：${escapeHtml(progressText)}</p>`:''}${raw.support_id?`<small>支持编号：${escapeHtml(raw.support_id)}</small>`:''}<small>${copy}</small></section>`;
+  return `<section class="asset-plan-admin-diagnostics is-visible" data-admin-failure-details><header><b>具体失败原因（授权账号可见）</b><span>${escapeHtml(raw.error_code||'GENERATION_FAILED')}</span></header><p>${escapeHtml(raw.error||'服务器没有返回具体错误说明')}</p>${progressText?`<p>失败位置：${escapeHtml(progressText)}</p>`:''}${raw.support_id?`<small>支持编号：${escapeHtml(raw.support_id)}</small>`:''}<small>${copy}</small></section>`;
 }
