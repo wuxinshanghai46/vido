@@ -48,7 +48,7 @@ function main() {
   assert(!view.includes('type="checkbox" data-include-voiceover'), '不得继续显示含义不清的默认勾选框');
   assert(view.includes('检测到 ${spokenShots} 个分镜包含旁白或对白'), '默认建议必须向用户展示实际检测依据');
   assert(view.includes('只有点击“生成配音试听”才会执行和计费'), '必须说明默认选择不会在打开页面时计费');
-  assert(view.includes('data-toggle-bgm-library') && view.includes('data-search-bgm-library'), '背景音乐必须提供独立的风格选择和搜索入口');
+  assert(view.includes('data-open-bgm-library') && view.includes('data-bgm-library-dialog') && view.includes('data-search-bgm-library'), '背景音乐必须通过独立弹窗提供风格选择和搜索入口');
   assert(view.includes('data-import-bgm') && view.includes('切换为这首'), '每个背景音乐候选必须可以试听并切换');
   assert(view.includes("items.slice(0, 4).map(bgmCandidateMarkup)"), '系统推荐不得再丢弃接口返回的其他音乐候选');
   assert(view.includes(':not([data-sound-track="bgm"])'), '场景音效试听时长不得错误读取全片 BGM 行');
