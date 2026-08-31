@@ -165,6 +165,11 @@ assert.equal(
   'upload_media',
   'the visual asset failure recovery test belongs to the upload/media gate instead of unknown full scope',
 );
+assert.equal(
+  plan(['scripts/test-story-ad-storyboard-prompt-editor-ui-v314.js']).profile,
+  'ui',
+  '分镜提示词编辑器回归属于工作台 UI，不得触发剧情生成门禁',
+);
 assert(plan(['src/services/newStoryAd/unclassifiedAuthority.js']).gates.some(row => row.id === 'systemic'),
   '新剧情广告运行文件必须执行systemic结构与权威门禁');
 assert.equal(plan(['src/shared/unclassifiedAuthority.js']).profile, 'full');
