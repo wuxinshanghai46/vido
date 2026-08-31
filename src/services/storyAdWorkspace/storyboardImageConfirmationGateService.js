@@ -75,18 +75,24 @@ function inspect(taskId) {
       }
     }
   });
-  const ready = shots.length > 0 && !missing.length && !stale.length;
+  // A stale lineage marker means the existing image should be reviewed or
+  // regenerated per shot. It is not the same as a missing production result:
+  // explicit user confirmation may accept the current completed storyboard.
+  const ready = shots.length > 0 && !missing.length;
   return {
     ready,
     code: ready ? '' : 'STORYBOARD_IMAGES_REQUIRED',
     reason: ready
-      ? '全部人物场景分镜图已准备好，可以继续生成后续画面。'
-      : `请先生成全部人物场景分镜图（当前有效 ${Math.max(0, shots.length - missing.length - stale.length)}/${shots.length}）。${stale.length ? ` 镜头 ${stale.join('、')} 的人物、场景、动作或机位已变化，需要重新生成。` : ''}`,
+      ? (stale.length
+        ? `全部人物场景分镜图均已生成；镜头 ${stale.join('、')} 建议逐镜复核，确认后仍可进入下一步。`
+        : '全部人物场景分镜图已准备好，可以继续生成后续画面。')
+      : `请先生成全部人物场景分镜图（当前已生成 ${Math.max(0, shots.length - missing.length)}/${shots.length}）。`,
     total: shots.length,
-    confirmed: Math.max(0, shots.length - missing.length - stale.length),
+    confirmed: Math.max(0, shots.length - missing.length),
     missing_indexes: missing,
     unconfirmed_indexes: [],
     stale_indexes: stale,
+    review_indexes: stale,
     stale_reasons: staleReasons,
   };
 }

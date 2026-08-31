@@ -86,7 +86,7 @@ function testSceneTransitionsAndUiContract() {
   assert.match(storyboard, /gateBlocked[\s\S]*data-prepare-storyboard-sketch[\s\S]*重新生成分镜/);
   assert.doesNotMatch(storyboard, /现有画面来自旧版人物与场景绑定|不会续用错误画面/);
   assert.match(storyboard, /user_initiated_direct_generation/);
-  assert.match(storyboardCss, /\.sketch-actions \{ display: flex/);
+  assert.match(storyboardCss, /\.sketch-actions \{ display:grid;grid-template-columns:repeat\(4,minmax\(0,1fr\)\)/);
   assert.match(sceneUi, /3D机位预演（可旋转）/);
   assert.match(sceneUi, /data-scene-world-switch/);
   assert.match(sceneUi, /data-generate-panorama/);

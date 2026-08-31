@@ -315,31 +315,29 @@ const workspaceRoute = fs.readFileSync(path.join(__dirname, '../src/routes/story
 const sketchServiceSource = fs.readFileSync(path.join(__dirname, '../src/services/storyAdWorkspace/storyboardSketchService.js'), 'utf8');
 const projectBundleSource = fs.readFileSync(path.join(__dirname, '../src/services/storyAdWorkspace/projectBundleService.js'), 'utf8');
 
-verify('分镜操作栏保持紧凑并靠右', () => {
+verify('分镜操作栏保持紧凑', () => {
   const actionBar = cssRule(storyboardCss, '.storyboard-simple-view .sketch-tile-editor > .sketch-action-bar');
-  assert.match(actionBar, /display:flex/);
-  assert.match(actionBar, /justify-content:flex-end/);
+  assert.match(actionBar, /display:block/);
   assert.match(actionBar, /margin:0/);
   assert.match(actionBar, /padding:6px10px8px/);
   assert.match(actionBar, /border-top:0/);
 });
 
-verify('分镜操作按钮组宽度随内容收敛并贴右', () => {
+verify('四个分镜操作按钮同一行平铺', () => {
   const actions = cssRule(storyboardCss, '.storyboard-simple-view .sketch-actions');
-  assert.match(actions, /display:flex/);
-  assert.match(actions, /justify-content:flex-end/);
-  assert.match(actions, /width:auto/);
-  assert.match(actions, /margin-left:auto/);
+  assert.match(actions, /display:grid/);
+  assert.match(actions, /grid-template-columns:repeat\(4,minmax\(0,1fr\)\)/);
+  assert.match(actions, /width:100%/);
   assert.match(actions, /gap:6px/);
 });
 
 verify('分镜操作按钮尺寸符合紧凑合同', () => {
   const buttons = cssRule(storyboardCss, '.storyboard-simple-view .sketch-actions .btn');
-  assert.match(buttons, /width:auto/);
-  assert.match(buttons, /min-width:86px/);
+  assert.match(buttons, /width:100%/);
+  assert.match(buttons, /min-width:0/);
   assert.match(buttons, /min-height:30px/);
-  assert.match(buttons, /padding:5px11px/);
-  assert.match(buttons, /font-size:10px/);
+  assert.match(buttons, /padding:5px4px/);
+  assert.match(buttons, /font-size:9px/);
 });
 
 verify('逐镜编辑器展示引用、提示词并通过独立零生成路由保存', () => {

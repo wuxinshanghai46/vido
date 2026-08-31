@@ -27,7 +27,10 @@ function loadDialogModule() {
 
 async function main() {
   check(view.trimEnd().split(/\r?\n/).length <= 600, 'storyboardView 必须保持 600 行以内');
-  check(view.includes('data-expand-sketch-prompt'), '每镜必须有明显的放大编辑入口');
+  check(view.includes('data-expand-sketch-prompt'), '每镜必须有放大编辑入口');
+  check(view.includes('class="sketch-prompt-expand"'), '放大编辑必须使用紧凑图标按钮');
+  check(view.includes('aria-label="放大编辑镜头'), '图标按钮必须保留无障碍名称');
+  check(!view.includes('⛶ 放大编辑</button>'), '卡片不得显示放大的文字按钮');
   check(view.includes('openStoryboardPromptEditor'), '放大入口必须打开独立提示词弹层');
   check(view.includes('data-ai-assist-sketch-prompt'), '卡片必须提供 AI 帮写按钮');
   check(view.includes('/prompt-assist'), 'AI 帮写必须调用逐镜 prompt-assist 接口');
@@ -45,7 +48,8 @@ async function main() {
   check(/width:min\(1040px,94vw\)/.test(css), '弹层必须接近竞品的大尺寸编辑体验');
   check(css.includes('.storyboard-prompt-dialog-reference-grid'), '弹层必须完整展示引用缩略图');
   check(css.includes('.sketch-shot-progress'), '卡片必须有可见进度条样式');
-  check(/\.sketch-actions\s*\{[^}]*justify-content:flex-end/.test(css), '卡片按钮必须紧凑靠右');
+  check(/\.storyboard-simple-view \.sketch-actions\s*\{[^}]*display:grid[^}]*grid-template-columns:repeat\(4,minmax\(0,1fr\)\)[^}]*width:100%/.test(css), '四个卡片操作必须同一行平铺');
+  check(/\.sketch-prompt-expand\{[^}]*width:27px[^}]*height:27px/.test(css), '放大编辑图标必须保持小尺寸');
   check(dialog.includes('AI 帮写只会更新当前草稿'), '弹层必须明确 AI 帮写不自动保存和生成');
   check(dialog.includes('data-dialog-save-prompt'), '弹层必须提供保存入口');
   check(dialog.includes('data-close-prompt-dialog'), '弹层必须提供关闭入口');

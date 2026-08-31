@@ -19,6 +19,7 @@ const sketches = require('../src/services/storyAdWorkspace/storyboardSketchServi
 const lineage = require('../src/services/newStoryAd/storyboardImageLineageService');
 const imageGate = require('../src/services/storyAdWorkspace/storyboardImageConfirmationGateService');
 const quality = require('../src/services/newStoryAd/qualityReviewService');
+const sceneAcceptance = require('../src/services/newStoryAd/sceneVisualAcceptanceService');
 
 function createReadyTask(taskId, shots) {
   storyAd.createTask({ task_id: taskId, brief: '分镜简化回归', cast_mode: 'no_human' }, { id: 'v289-owner', role: 'user' });
@@ -70,6 +71,12 @@ function testGeneratedImageNeedsNoSecondConfirmation() {
   assert.equal(gate.ready, true);
   assert.equal(gate.confirmed, 1);
   assert.deepEqual(gate.unconfirmed_indexes, []);
+  assert.deepEqual(gate.review_indexes, [1], '旧 QA/血缘只应提示逐镜复核，不得把已生成图片当成缺失');
+
+  storage.saveOutput(taskId, 'storyboard_images', []);
+  const missing = imageGate.inspect(taskId);
+  assert.equal(missing.ready, false, '真实缺图仍必须阻止进入下一步');
+  assert.deepEqual(missing.missing_indexes, [1]);
 }
 
 function testAcceptedSceneDoesNotReenterRewrite() {
@@ -103,6 +110,7 @@ function testCompleteCheckpointRecoversWithoutProvider() {
   const angles = ['eye_level', 'low', 'high', 'over_shoulder', 'profile', 'top_down', 'three_quarter'];
   const movements = ['static', 'push_in', 'pull_out', 'pan_left', 'track_right', 'tilt_up', 'orbit'];
   const shots = Array.from({ length: 7 }, (_, index) => baseShot(index + 1, {
+    scene_id: 'scene-a',
     title: `恢复镜头 ${index + 1}`,
     visual: `主体位于明亮室内空间的画面${index + 1}中央，与前景道具和后景结构形成清晰位置关系，侧窗柔光照亮金属与织物材质细节。`,
     action: `主体从画面左侧开始执行第 ${index + 1} 个可拍动作，摄影机采用${movements[index]}运动持续跟随并在动作终点稳定停住。`,
@@ -113,11 +121,20 @@ function testCompleteCheckpointRecoversWithoutProvider() {
     ...(index === 1 ? { temporal_evidence: { shot_state: { relation_refs: ['人物右手与金属板的接触关系'] } } } : {}),
   }));
   storyAd.createTask({ task_id: taskId, brief: '完整分镜断点无付费恢复', cast_mode: 'no_human', shot_count: 7, content_mode: 'narrative_story', content_mode_source: 'user' }, { id: 'v289-owner', role: 'user' });
-  storage.saveOutput(taskId, 'context', { brief: '完整分镜断点无付费恢复', cast_mode: 'no_human', shot_count: 7, content_mode: 'narrative_story', content_mode_source: 'user', scene_setup_confirmed: true, scene_assets: [] });
+  const sceneAssets = [{
+    scene_id: 'scene-a', name: '客厅', image_url: '/scene-a.png', scene_revision: 1,
+    view_images: ['master', 'reverse', 'interaction', 'detail', 'layout'].map(key => ({ key, image_url: `/scene-a-${key}.png` })),
+  }];
+  storage.saveOutput(taskId, 'context', { brief: '完整分镜断点无付费恢复', cast_mode: 'no_human', shot_count: 7, content_mode: 'narrative_story', content_mode_source: 'user', scene_setup_confirmed: true, scene_assets: sceneAssets });
+  storage.saveOutput(taskId, 'scene_assets', sceneAssets);
+  storage.saveOutput(taskId, sceneAcceptance.OUTPUT_KIND, {
+    status: 'accepted', scene_fingerprint: sceneAcceptance.fingerprint(sceneAssets), accepted_at: new Date().toISOString(),
+  });
   const blueprint = { fingerprint: `${taskId}-blueprint`, revision: 1, beats: shots.map((shot, index) => ({ beat_id: `b${index + 1}`, beat_index: index + 1, title: shot.title })) };
   storage.saveOutput(taskId, 'blueprint', blueprint);
   const drafted = flow.draft(taskId);
-  flow.confirmSystem(taskId, drafted.units, { used_model: 'fixture' });
+  const confirmedFlow = flow.confirmSystem(taskId, drafted.units, { used_model: 'fixture' });
+  shots.forEach((shot) => { shot.story_flow_contract_fingerprint = confirmedFlow.contract.contract_fingerprint; });
   const legacyFlow = storage.getOutput(taskId, flow.OUTPUT_KIND);
   storage.saveOutput(taskId, flow.OUTPUT_KIND, { ...legacyFlow, authority_fingerprint: 'legacy-authority-without-look-catalog' });
   storage.saveOutput(taskId, 'storyboard_checkpoint', {

@@ -9,7 +9,7 @@ const outputDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vido-vision-routing-v24
 process.env.OUTPUT_DIR = outputDir;
 process.env.DB_ENABLED = '0';
 fs.writeFileSync(path.join(outputDir, 'settings.json'), JSON.stringify({ providers: [
-  { id: 'apismile', enabled: true, api_key: 'test', api_url: 'https://example.invalid/v1', models: [{ id: 'gemini-3.1-pro-preview', enabled: true, use: 'vision' }] },
+  { id: 'smscrw', enabled: true, api_key: 'test', api_url: 'https://example.invalid/v1', models: [{ id: 'claude-opus-4-8', enabled: true, use: 'vision' }] },
   { id: 'deyunai', preset: 'deyunai', enabled: true, api_key: 'test', api_url: 'https://example.invalid', models: [{ id: 'claude-opus-4-7', enabled: true, use: 'vision', channel: 'overseas' }] },
   { id: 'webang-maas', enabled: true, api_key: 'test', api_url: 'https://example.invalid/v1', models: [{ id: 'gemini-2.5-pro', enabled: true, use: 'vision' }] },
   { id: 'zhipu', enabled: true, api_key: 'test', api_url: 'https://example.invalid/v1', models: [{ id: 'glm-4.6v-flash', enabled: true, use: 'vision' }] },
@@ -20,8 +20,8 @@ const gateway = require('../src/services/newStoryAd/modelGateway');
 const migration = require('./configure-story-ad-consistency-vision-routing-v240');
 
 const expected = [
+  'smscrw/claude-opus-4-8',
   'webang-maas/gemini-2.5-pro',
-  'apismile/gemini-3.1-pro-preview',
   'deyunai/claude-opus-4-7',
 ];
 
@@ -35,7 +35,7 @@ for (const stage of migration.STAGES) {
 
 const settings = {
   providers: [
-    { id: 'apismile', enabled: true, api_key: 'test', models: [{ id: 'gemini-3.1-pro-preview', enabled: true }] },
+    { id: 'smscrw', enabled: true, api_key: 'test', models: [{ id: 'claude-opus-4-8', enabled: true, use: 'vision' }] },
     { id: 'deyunai', enabled: true, api_key: 'test', models: [{ id: 'claude-opus-4-7', enabled: true, use: 'vision', channel: 'overseas' }] },
     { id: 'webang-maas', enabled: true, api_key: 'test', models: [{ id: 'gemini-2.5-pro', enabled: true }] },
     { id: 'zhipu', enabled: true, api_key: 'test', models: [{ id: 'glm-4.6v-flash', enabled: true }] },

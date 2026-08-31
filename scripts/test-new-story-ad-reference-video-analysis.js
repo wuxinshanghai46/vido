@@ -718,15 +718,14 @@ async function main() {
   settingsService.saveSettings({
     providers: [
       {
-        id: 'apismile',
-        preset: 'apismile',
-        name: 'Apismile',
+        id: 'smscrw',
+        preset: 'smscrw',
+        name: 'SZ',
         api_url: 'https://example.invalid/v1',
-        api_key: 'test-apismile-key',
+        api_key: 'test-sz-key',
         enabled: true,
         models: [
-          { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', type: 'chat', use: 'story', enabled: true },
-          { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro', type: 'chat', use: 'story', enabled: true },
+          { id: 'claude-opus-4-8', name: 'Claude Opus 4.8', type: 'chat', use: 'vision', enabled: true },
         ],
       },
       {
@@ -738,7 +737,7 @@ async function main() {
         vendor: 'test-official-vendor',
         enabled: true,
         models: [
-          { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', type: 'chat', use: 'story', channel: 'overseas', enabled: true },
+          { id: 'claude-opus-4-7', name: 'Claude Opus 4.7', type: 'chat', use: 'vision', channel: 'overseas', enabled: true },
         ],
       },
       {
@@ -758,7 +757,7 @@ async function main() {
         api_key: 'test-webang-key',
         enabled: true,
         models: [
-          { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', type: 'chat', use: 'story', enabled: true },
+          { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro', type: 'chat', use: 'vision', enabled: true },
         ],
       },
       {
@@ -780,8 +779,8 @@ async function main() {
     .candidatesForVisionStage('new_story_ad.reference_video_vision')
     .map(item => `${item.provider_id}/${item.model_id}`);
   assert.deepStrictEqual(routedVisionModels, [
+    'smscrw/claude-opus-4-8',
     'webang-maas/gemini-2.5-pro',
-    'apismile/gemini-3.1-pro-preview',
     'deyunai/claude-opus-4-7',
   ], 'reference video analysis must use only its explicit VLM route');
   const routedAvailability = modelGateway.visionAvailability('new_story_ad.reference_video_vision');
@@ -1116,8 +1115,8 @@ async function main() {
   });
   const authError = new Error('test auth failure');
   authError.code = 'AUTH_CONFIG';
+  modelGateway.recordHealth({ provider_id: 'smscrw', model_id: 'claude-opus-4-8' }, { ok: false, error: authError });
   modelGateway.recordHealth({ provider_id: 'webang-maas', model_id: 'gemini-2.5-pro' }, { ok: false, error: authError });
-  modelGateway.recordHealth({ provider_id: 'apismile', model_id: 'gemini-3.1-pro-preview' }, { ok: false, error: authError });
   modelGateway.recordHealth({ provider_id: 'deyunai', model_id: 'claude-opus-4-7' }, { ok: false, error: authError });
   const mockBeforeGuard = process.env.NEW_STORY_AD_MOCK_LLM;
   process.env.NEW_STORY_AD_MOCK_LLM = '0';

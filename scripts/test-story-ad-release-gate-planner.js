@@ -139,7 +139,7 @@ assert.deepEqual(
   ['systemic', 'workspace_ui', 'release_core'],
   '按账号自动注册音色必须执行系统性、UI 与发布门禁，但家庭电脑不得触发跨版本完整回归',
 );
-assert.equal(plan(['src/services/newStoryAd/unclassifiedAuthority.js']).profile, 'full');
+assert.equal(plan(['src/services/newStoryAd/unclassifiedAuthority.js']).profile, 'systemic');
 const scenePromptConfirmationPlan = planner.createPlan({
   root: process.cwd(), baseRevision: 'a'.repeat(40), targetRevision: 'b'.repeat(40), sourceTree: 'c'.repeat(40),
   files: [
@@ -166,10 +166,11 @@ assert.equal(
   'the visual asset failure recovery test belongs to the upload/media gate instead of unknown full scope',
 );
 assert(plan(['src/services/newStoryAd/unclassifiedAuthority.js']).gates.some(row => row.id === 'systemic'),
-  '未知运行文件回退full时必须执行systemic结构与权威门禁');
-assert.equal(plan(['scripts/deploy-story-ad-immutable-release.js']).profile, 'full');
+  '新剧情广告运行文件必须执行systemic结构与权威门禁');
+assert.equal(plan(['src/shared/unclassifiedAuthority.js']).profile, 'full');
+assert.equal(plan(['scripts/deploy-story-ad-immutable-release.js']).profile, 'ui');
 assert.equal(plan(['docs/notes.md'], { reliable: false }).profile, 'full');
-assert.deepEqual(plan(['scripts/deploy-story-ad-immutable-release.js'], { fullPlatform: true }).gates.map(row => row.id), ['systemic', 'platform_full', 'release_core']);
+assert.deepEqual(plan(['scripts/deploy-story-ad-immutable-release.js'], { fullPlatform: true }).gates.map(row => row.id), ['workspace_ui', 'release_core']);
 assert.deepEqual(
   planner.createPlan({
     root: process.cwd(), baseRevision: 'a'.repeat(40), targetRevision: 'b'.repeat(40), sourceTree: 'c'.repeat(40),
@@ -322,11 +323,12 @@ const fakeExecute = async () => { executions += 1; return { duration_ms: 7 }; };
     console.log(JSON.stringify({
       passed: true,
       profiles: 7,
-      unknown_falls_back_full: true,
+      story_ad_unclassified_is_impact_scoped: true,
+      shared_unknown_falls_back_full: true,
       exact_tree_cache: true,
       changed_tree_invalidates: true,
       failed_gate_not_cached: true,
-      non_home_full_platform: true,
+      non_home_full_platform_only_for_shared_or_unreliable_changes: true,
       recovered_receipt_requires_health_and_idle_state: true,
     }));
   } finally {

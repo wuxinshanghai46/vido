@@ -6,9 +6,9 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
-const CONTRACT_VERSION = 'story-ad-release-gates-v2';
+const CONTRACT_VERSION = 'story-ad-release-gates-v3';
 const CACHE_DIRECTORY = path.join('.runtime', 'story-ad-release-gates');
-const TARGETED_HOME_PLANNER_FILES = new Set([
+const STORY_AD_PLANNER_FILES = new Set([
   'scripts/deploy-story-ad-immutable-release.js',
   'scripts/lib/storyAdReleaseGatePlanner.js',
   'scripts/test-story-ad-release-gate-planner.js',
@@ -77,15 +77,19 @@ const DOMAIN_RULES = [
   },
   {
     domain: 'release_infrastructure',
-    risk: 'full',
+    risk: 'systemic',
     patterns: [
       /^config\/story-ad-release\.json$/,
-      /^package(?:-lock)?\.json$/,
       /^scripts\/(?:build|deploy)-story-ad-/,
       /^scripts\/story-ad-pm2-release\.js$/,
       /^scripts\/lib\/(?:storyAdReleaseFiles|releaseSourceIdentity|immutableDeployOptions|storyAdReleaseGatePlanner)\.js$/,
       /^src\/services\/storyAdRelease(?:Bundle|Integrity)Service\.js$/,
     ],
+  },
+  {
+    domain: 'platform_runtime',
+    risk: 'full',
+    patterns: [/^package(?:-lock)?\.json$/],
   },
   {
     domain: 'systemic_safety',
@@ -312,6 +316,13 @@ function classifyFiles(files = [], { reliable = true, scopedDomains = {} } = {})
       continue;
     }
     if (!matches.length) {
+      if (/^src\/services\/(?:newStoryAd|storyAdWorkspace)\//i.test(file)
+        || /^src\/routes\/newStoryAd(?:\/|\.js$)/i.test(file)
+        || /^scripts\/(?:test|configure|migrate|audit|repair)-(?:new-)?story-ad/i.test(file)) {
+        domains.add('story_ad_module');
+        risks.add('systemic');
+        continue;
+      }
       unknownFiles.push(file);
       continue;
     }
@@ -397,20 +408,16 @@ function createPlan({
     file,
     patches[file] || (!Array.isArray(files) ? diffPatch(root, effectiveBaseRevision, targetRevision, file) : ''),
   ]));
-  if (targetedHome) {
-    const generatedFiles = runtimeFiles.filter(file => generatedReleaseOnlyChange(file, patchByFile[file]));
-    metadataFiles.push(...generatedFiles);
-    runtimeFiles = runtimeFiles.filter(file => !generatedFiles.includes(file));
-  }
+  const generatedFiles = runtimeFiles.filter(file => generatedReleaseOnlyChange(file, patchByFile[file]));
+  metadataFiles.push(...generatedFiles);
+  runtimeFiles = runtimeFiles.filter(file => !generatedFiles.includes(file));
   const scopedDomains = Object.fromEntries(runtimeFiles.map(file => [
     file,
     scopedDomainFromPatch(file, patchByFile[file]),
   ]).filter(([, domain]) => domain));
-  const targetedPlannerFiles = targetedHome
-    ? runtimeFiles.filter(file => TARGETED_HOME_PLANNER_FILES.has(file))
-    : [];
+  const targetedPlannerFiles = runtimeFiles.filter(file => STORY_AD_PLANNER_FILES.has(file));
   const classifiedRuntimeFiles = targetedPlannerFiles.length
-    ? runtimeFiles.filter(file => !TARGETED_HOME_PLANNER_FILES.has(file))
+    ? runtimeFiles.filter(file => !STORY_AD_PLANNER_FILES.has(file))
     : runtimeFiles;
   const classification = classifiedRuntimeFiles.length
     ? classifyFiles(classifiedRuntimeFiles, { reliable: delta.reliable, scopedDomains })
@@ -419,7 +426,7 @@ function createPlan({
       : classifyFiles(classifiedRuntimeFiles, { reliable: delta.reliable, scopedDomains }));
   if (targetedPlannerFiles.length && classification.profile !== 'full') {
     classification.domains = unique([...classification.domains, 'release_infrastructure']);
-    classification.reasons = [...classification.reasons, '家庭电脑仅对发布规划器变更追加发布核心门禁'];
+    classification.reasons = [...classification.reasons, '剧情广告发布规划器变更仅追加发布核心门禁'];
   }
   const gateIds = gateIdsForProfile(classification.profile, { fullPlatform, targetedHome, domains: classification.domains });
   return {

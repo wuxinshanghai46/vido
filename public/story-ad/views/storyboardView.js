@@ -120,7 +120,7 @@ function sketchCard(shot, sketch = {}, index = 0, gate = {}, bundle = {}, genera
     <div class="sketch-shot-progress-host" data-sketch-shot-progress hidden></div>
     <details class="sketch-tile-editor"><summary>调整</summary><div class="sketch-editor-body">
       <section class="sketch-reference-panel" aria-labelledby="sketch-reference-title-${shotIndex}"><header><b id="sketch-reference-title-${shotIndex}">本镜引用资产</b><span>生成时按此顺序参考</span></header>${sketchReferenceMarkup(references, shotIndex)}</section>
-      <div class="sketch-prompt-field"><div class="sketch-prompt-heading"><label for="${promptId}">分镜提示词</label><button class="btn small" type="button" data-expand-sketch-prompt aria-label="放大编辑镜头 ${shotIndex} 的分镜提示词">⛶ 放大编辑</button></div><textarea id="${promptId}" name="storyboard_prompt_${shotIndex}" rows="6" data-sketch-prompt aria-describedby="${promptId}-help">${escapeHtml(promptText)}</textarea><small id="${promptId}-help">保存后仅本镜标记为需要重新生成；不会自动开始生成。</small></div>
+      <div class="sketch-prompt-field"><div class="sketch-prompt-heading"><label for="${promptId}">分镜提示词</label><button class="sketch-prompt-expand" type="button" data-expand-sketch-prompt aria-label="放大编辑镜头 ${shotIndex} 的分镜提示词" title="放大编辑">⛶</button></div><textarea id="${promptId}" name="storyboard_prompt_${shotIndex}" rows="6" data-sketch-prompt aria-describedby="${promptId}-help">${escapeHtml(promptText)}</textarea><small id="${promptId}-help">保存后仅本镜标记为需要重新生成；不会自动开始生成。</small></div>
     </div><div class="sketch-action-bar">
       <input class="hidden-input" type="file" accept="image/png,image/jpeg,image/webp" data-sketch-file aria-label="为镜头 ${shotIndex} 选择替换图片">
       <div class="sketch-actions" role="group" aria-label="镜头 ${shotIndex} 分镜调整">
@@ -224,15 +224,12 @@ export async function mount(host, context) {
   const sketchByShot = new Map(sketches.map(item => [Number(item.shot_index), item]));
   const generatedSketchCount = shots.filter((shot, index) => sketchByShot.get(Number(shot.shot_index || shot.index || index + 1))?.image_url).length;
   const imageGate = bundle?.storyboard?.image_gate || null;
-  const pendingSketchIndexes = new Set([
-    ...(Array.isArray(imageGate?.missing_indexes) ? imageGate.missing_indexes : []),
-    ...(Array.isArray(imageGate?.stale_indexes) ? imageGate.stale_indexes : []),
-  ].map(Number));
+  const missingSketchIndexes = shots.map((shot, index) => Number(shot.shot_index || shot.index || index + 1))
+    .filter(shotIndex => !sketchByShot.get(shotIndex)?.image_url);
+  const pendingSketchIndexes = new Set(missingSketchIndexes);
   const staleSketchIndexes = Array.isArray(imageGate?.stale_indexes) ? imageGate.stale_indexes.map(Number) : [];
-  const validSketchCount = imageGate && Number(imageGate.total) === shots.length
-    ? Math.max(0, Number(imageGate.confirmed || 0) || 0)
-    : generatedSketchCount;
-  const missingSketchCount = Math.max(0, shots.length - validSketchCount);
+  const validSketchCount = generatedSketchCount;
+  const missingSketchCount = missingSketchIndexes.length;
   const regenerateAllSketches = missingSketchCount === 0 && generatedSketchCount > 0;
   const sketchBatchTargetCount = regenerateAllSketches ? shots.length : missingSketchCount;
   const sketchGate = bundle?.storyboard?.sketch_gate || { ready: false, reason: '镜头结构状态尚未核对，请刷新页面。', issues: [] };
@@ -274,7 +271,7 @@ export async function mount(host, context) {
       </section>
       ${primaryAction ? `<div class="storyboard-primary-actions">${primaryAction}</div>` : ''}
       ${sceneSequenceMarkup(bundle, displayShots)}
-      ${staleSketchIndexes.length ? `<div class="storyboard-stale-notice" role="status"><b>${staleSketchIndexes.length} 镜需更新</b><span>镜头或场景参考已变化；其他 ${Math.max(0, shots.length - staleSketchIndexes.length)} 镜会保留，继续生成只处理失效镜头。</span></div>` : ''}
+      ${staleSketchIndexes.length ? `<div class="storyboard-stale-notice" role="status"><b>${staleSketchIndexes.length} 镜建议复核</b><span>现有分镜均已保留，可直接确认进入下一步；如某镜有问题，请在对应镜头内单独修改或重新生成。</span></div>` : ''}
       <div data-sketch-batch-host>${storyboardProgressMarkup({
         batch: storyboardActive || (String(sketchBatch?.status || '') === 'succeeded' && missingSketchCount > 0) ? null : sketchBatch,
         progress: bundle?.project?.generation_progress || bundle?.generation?.progress || {},
@@ -288,7 +285,7 @@ export async function mount(host, context) {
       <div data-storyboard-live-results>${displayShots.length ? `<div class="storyboard-sketch-grid">${visibleShots.map((shot, index) => shots.length
         ? sketchCard(shot, sketchByShot.get(Number(shot.shot_index || shot.index || pageStart + index + 1)) || {}, pageStart + index, sketchGate, bundle, sketchBatchActive, pendingSketchIndexes.has(Number(shot.shot_index || shot.index || pageStart + index + 1)))
         : checkpointShotCard(shot, pageStart + index, bundle)).join('')}</div>${pageNav}` : `<div class="card storyboard-empty-card">${emptyState({ title: storyboardActive ? '正在生成分镜' : '还没有分镜画面', body: storyboardActive ? '镜头结构保存后会立即显示在这里。' : '选择模型并点击“生成分镜”即可开始。' })}</div>`}</div>
-      ${shots.length && missingSketchCount === 0 ? `<div class="storyboard-next-action"><div><b>分镜画面已完成</b><span>确认当前镜头后，可继续进入声音、视频与合成。</span></div><button class="btn primary" type="button" data-confirm-storyboard>确认分镜，进入视频生成</button></div>` : ''}
+      ${shots.length && generatedSketchCount === shots.length ? `<div class="storyboard-next-action"><div><b>分镜画面已完成</b><span>确认当前镜头后，可继续进入声音、视频与合成；单镜问题仍可随时返回修改。</span></div><button class="btn primary" type="button" data-confirm-storyboard>确认分镜，进入视频生成</button></div>` : ''}
     </div>`;
 
   bindMediaLightbox(host);

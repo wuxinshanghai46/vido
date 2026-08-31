@@ -1,29 +1,29 @@
 'use strict';
 
-const SUPPLIER_ORDER = Object.freeze(['webang-maas', 'apismile', 'deyunai', 'aiapi']);
+const SUPPLIER_ORDER = Object.freeze(['smscrw', 'webang-maas', 'deyunai', 'aiapi']);
 
 const PROFILES = Object.freeze({
   creative_reasoning: Object.freeze([
+    ['smscrw', 'claude-opus-4-8'],
     ['webang-maas', 'gpt-5.6-sol'],
-    ['apismile', 'claude-opus-4-8'],
     ['deyunai', 'claude-opus-4-7'],
     ['aiapi', 'deepseek-chat'],
   ]),
   structured_reasoning: Object.freeze([
+    ['smscrw', 'claude-opus-4-8'],
     ['webang-maas', 'gpt-5.6-terra'],
-    ['apismile', 'gpt-5.5'],
     ['deyunai', 'claude-opus-4-7'],
     ['aiapi', 'deepseek-chat'],
   ]),
   fast_language: Object.freeze([
+    ['smscrw', 'gemini-2.5-flash'],
     ['webang-maas', 'gpt-5.6-luna'],
-    ['apismile', 'gemini-2.5-flash'],
     ['deyunai', 'claude-sonnet-4-6'],
     ['aiapi', 'deepseek-chat'],
   ]),
   vision_quality: Object.freeze([
+    ['smscrw', 'claude-opus-4-8'],
     ['webang-maas', 'gemini-2.5-pro'],
-    ['apismile', 'gemini-3.1-pro-preview'],
     ['deyunai', 'claude-opus-4-7'],
   ]),
 });
