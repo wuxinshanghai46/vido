@@ -40,7 +40,7 @@ function isTtsBillingError(error) {
  * @param {object} options - { gender: 'female'|'male', speed: 1.0, voiceId: null }
  * @returns {string|null} 生成的音频文件路径，失败返回 null
  */
-async function generateSpeech(text, outputPath, { gender = 'female', speed = 1.0, pitch = 1.0, voiceId = null, instruction = '', signal = null, userId = '', requestBaseUrl = '' } = {}) {
+async function generateSpeech(text, outputPath, { gender = 'female', speed = 1.0, pitch = 1.0, voiceId = null, providerId = '', strictProvider = false, instruction = '', signal = null, userId = '', requestBaseUrl = '' } = {}) {
   if (!text || !text.trim()) return null;
   if (signal?.aborted) throw signal.reason || Object.assign(new Error('TTS request aborted'), { code: 'ABORT_ERR' });
 
@@ -90,10 +90,15 @@ async function generateSpeech(text, outputPath, { gender = 'female', speed = 1.0
 
   // 供应商链（2026-04-26 精简）：只用阿里 — CosyVoice → NLS
   // 不再回退到火山豆包/MiniMax/讯飞/百度/OpenAI/SAPI，这些会用默认女声替代用户期望的克隆/选定音色
+  const selectedProvider = String(providerId || voiceProviderForId(voiceId) || '').toLowerCase();
   const chain = [
     { id: 'aliyun-tts',  name: '阿里 CosyVoice', fn: generateWithAliyunTTS,   opts: { gender, speed, pitch, voiceId, instruction, signal } },
     { id: 'aliyun-nls',  name: '阿里 NLS',       fn: generateWithAliyunNLS,   opts: { gender, speed, pitch, voiceId, signal } },
-  ];
+  ].filter(item => !selectedProvider || !strictProvider || item.id === selectedProvider);
+
+  if (strictProvider && selectedProvider && !chain.length) {
+    throw new Error(`所选音色的供应商 ${selectedProvider} 当前不支持独立试听`);
+  }
 
   const errors = [];
   for (const { id, name, fn, opts } of chain) {
@@ -130,6 +135,14 @@ async function generateSpeech(text, outputPath, { gender = 'female', speed = 1.0
   }
 
   console.warn('[TTS] 阿里 TTS 全部失败：' + errors.join(' | '));
+  if (strictProvider) {
+    const detail = errors.join(' | ');
+    const error = new Error(detail || '所选语音供应商当前不可用');
+    if (/Arrearage|account is in good standing|余额|欠费/i.test(detail)) error.code = 'TTS_PROVIDER_BILLING';
+    else if (/未配置 API Key/i.test(detail)) error.code = 'TTS_PROVIDER_NOT_CONFIGURED';
+    else error.code = 'TTS_PROVIDER_UNAVAILABLE';
+    throw error;
+  }
   // 返回 null 让上游决定是 throw 还是 fallback；不再用 SAPI/默认女声替代
   return null;
 }

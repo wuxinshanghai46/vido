@@ -33,6 +33,9 @@ function recommendedVoice(voices = [], currentId = '', role = 'narrator') {
     return { voice, index, score };
   }).sort((a, b) => b.score - a.score || a.index - b.index)[0]?.voice || null;
 }
+function voicePickerMarkup({ value = '', role = '', speaker = '', label = '音色', sample = '' } = {}) {
+  return `<label><span>${escapeHtml(label)}</span><div class="voice-picker-summary"><select data-voice-select ${role ? `data-voice-role="${escapeHtml(role)}"` : ''} ${speaker ? `data-speaker="${escapeHtml(speaker)}"` : ''} hidden><option value="${escapeHtml(value)}">${escapeHtml(value)}</option></select><button class="voice-picker-trigger" type="button" data-open-voice-library data-preview-text="${escapeHtml(sample)}"><span><b data-selected-voice-name>${escapeHtml(value || '正在选择可用音色…')}</b><small data-selected-voice-provider>点击打开音色库，可在弹窗内搜索、试听和选择</small></span><em>选择音色</em></button></div>${role === 'narrator' ? '<small data-voice-recommendation-status>正在核对可合成的音色…</small>' : ''}</label>`;
+}
 
 function previewSeconds(value = 4, cap = 6) {
   return Math.max(1, Math.min(cap, Math.round((Number(value) || 4) * 10) / 10));
@@ -65,11 +68,12 @@ export function soundDesignMarkup(soundDesign = {}) {
         </fieldset>
         <div class="voice-settings-panel" data-voice-settings>
           <div class="voice-settings-grid">
-            ${production.has_speech !== false ? `<label><span>旁白音色</span><div class="voice-select-preview"><select data-voice-select data-voice-role="narrator"><option value="${escapeHtml(production.voice_assignments?.narrator || production.voice_id || '')}">${escapeHtml(production.voice_assignments?.narrator || production.voice_id || '正在选择可用音色…')}</option></select><button class="btn small" type="button" data-preview-selected-voice data-preview-text="${escapeHtml(voiceSampleText(production))}">▶ 试听音色</button><audio preload="none" hidden></audio></div><small data-voice-recommendation-status>正在核对可合成的音色…</small></label>` : ''}
-            ${(production.speakers || []).map(speaker => `<label><span>${escapeHtml(speaker)}的对白音色</span><div class="voice-select-preview"><select data-voice-select data-speaker="${escapeHtml(speaker)}"><option value="${escapeHtml(production.voice_assignments?.speakers?.[speaker] || '')}">${escapeHtml(production.voice_assignments?.speakers?.[speaker] || '正在选择可用音色…')}</option></select><button class="btn small" type="button" data-preview-selected-voice data-preview-text="${escapeHtml(voiceSampleText(production, speaker))}">▶ 试听音色</button><audio preload="none" hidden></audio></div></label>`).join('')}
+            ${production.has_speech !== false ? voicePickerMarkup({ value: production.voice_assignments?.narrator || production.voice_id || '', role: 'narrator', label: '旁白音色', sample: voiceSampleText(production) }) : ''}
+            ${(production.speakers || []).map(speaker => voicePickerMarkup({ value: production.voice_assignments?.speakers?.[speaker] || '', speaker, label: `${speaker}的对白音色`, sample: voiceSampleText(production, speaker) })).join('')}
             <label><span>字幕</span><select data-subtitle-enabled><option value="true" ${production.subtitle !== false ? 'selected' : ''}>显示字幕</option><option value="false" ${production.subtitle === false ? 'selected' : ''}>不显示字幕</option></select><small>字幕跟随最终确认的旁白与对白。</small></label>
           </div>
           <div class="voice-generation-bar"><div><b>生成并逐段试听</b><small>将按上方音色生成 ${spokenShots} 段配音；打开页面和切换设置都不会自动计费。</small></div><div class="sound-primary-actions"><button class="btn" type="button" data-save-audio-plan>保存设置</button><button class="btn primary" type="button" data-generate-audio data-generate-label="生成 ${spokenShots || ''} 段配音试听">生成 ${spokenShots || ''} 段配音试听</button></div></div>
+          <dialog class="voice-library-dialog" data-voice-library-dialog aria-labelledby="voiceLibraryTitle"><header><div><small>试听后再选择</small><h2 id="voiceLibraryTitle">选择配音音色</h2><p>搜索和试听都在这里完成；选择后才会更新页面上的音色。</p></div><button class="icon-btn" type="button" data-close-voice-library aria-label="关闭音色库">×</button></header><div class="voice-library-dialog-body"><div class="voice-library-toolbar"><input class="input" type="search" placeholder="搜索音色、风格或供应商" data-voice-library-query><select data-voice-library-provider><option value="">全部供应商</option></select></div><div class="voice-library-results" data-voice-library-results><p>正在加载可试听音色…</p></div><audio data-voice-library-audio preload="none" hidden></audio></div></dialog>
         </div>
       </div>
       ${(production.speech || []).length ? `<div class="speech-preview-list">${production.speech.map((row, index) => `<article data-audio-track><header><b>SH${String(row.shot_index).padStart(2, '0')}</b><span>${escapeHtml(row.mode === 'on_camera_dialogue' ? '出镜对白' : row.mode === 'offscreen' ? '旁白 / 画外音' : '无语音')}</span></header><p>${(row.units || []).map(unit => `${escapeHtml(unit.speaker || '旁白')}：${escapeHtml(unit.text)}`).join('<br>') || '本镜无对白'}</p><div>${ttsTracks[index]?.audio_url ? `<audio controls preload="metadata" src="${escapeHtml(ttsTracks[index].audio_url)}"></audio>` : '<em>生成后可在这里试听</em>'}</div></article>`).join('')}</div>` : ''}
@@ -95,6 +99,28 @@ export function soundDesignMarkup(soundDesign = {}) {
 
 export function bindSoundDesign(host, { bundle, store, refreshShell, navigate }) {
   let availableVoices = [];
+  let activeVoiceSelect = null;
+  const voiceDialog = host.querySelector('[data-voice-library-dialog]');
+  const voiceResults = host.querySelector('[data-voice-library-results]');
+  const voiceAudio = host.querySelector('[data-voice-library-audio]');
+  const syncVoiceSummary = select => {
+    const voice = availableVoices.find(item => String(item.id || '') === String(select?.value || ''));
+    const trigger = select?.parentElement?.querySelector('[data-open-voice-library]');
+    if (!trigger) return;
+    trigger.querySelector('[data-selected-voice-name]').textContent = voice?.name || '尚未选择可用音色';
+    trigger.querySelector('[data-selected-voice-provider]').textContent = voice ? `${voice.provider || voice.providerId || '语音服务'} · 点击更换` : '点击打开音色库，可在弹窗内搜索、试听和选择';
+  };
+  const stopVoicePreview = () => {
+    if (voiceAudio) { voiceAudio.pause(); voiceAudio.currentTime = 0; voiceAudio.removeAttribute('src'); }
+    host.querySelectorAll('[data-preview-library-voice]').forEach(button => { button.textContent = '▶ 试听'; button.classList.remove('is-playing'); });
+  };
+  const renderVoiceLibrary = () => {
+    if (!voiceResults) return;
+    const query = String(host.querySelector('[data-voice-library-query]')?.value || '').trim().toLowerCase();
+    const provider = String(host.querySelector('[data-voice-library-provider]')?.value || '');
+    const filtered = availableVoices.filter(voice => (!provider || (voice.providerId || voice.provider) === provider) && (!query || `${voice.name} ${voice.provider} ${voice.tag || ''}`.toLowerCase().includes(query)));
+    voiceResults.innerHTML = filtered.length ? filtered.map(voice => `<article class="voice-library-item ${String(voice.id) === String(activeVoiceSelect?.value) ? 'is-selected' : ''}"><div><b>${escapeHtml(voice.name || voice.id)}</b><small>${escapeHtml(voice.provider || voice.providerId || '')}${voice.tag ? ` · ${escapeHtml(voice.tag)}` : ''}</small></div><div><button class="btn small" type="button" data-preview-library-voice="${escapeHtml(voice.id)}">▶ 试听</button><button class="btn small ${String(voice.id) === String(activeVoiceSelect?.value) ? '' : 'primary'}" type="button" data-choose-library-voice="${escapeHtml(voice.id)}">${String(voice.id) === String(activeVoiceSelect?.value) ? '已选择' : '选择'}</button></div></article>`).join('') : '<p>没有匹配且通过可用性检查的音色。</p>';
+  };
   request('/api/avatar/voice-list').then(result => {
     const voices = (result.voices || []).filter(usableStoryVoice);
     availableVoices = voices;
@@ -103,7 +129,10 @@ export function bindSoundDesign(host, { bundle, store, refreshShell, navigate })
       const role = select.dataset.voiceRole || 'speaker';
       const recommended = recommendedVoice(voices, current, role);
       select.innerHTML = voices.map(voice => `<option value="${escapeHtml(voice.id || '')}" ${String(voice.id || '') === String(recommended?.id || '') ? 'selected' : ''}>${escapeHtml(voice.name || voice.id)} · ${escapeHtml(voice.provider || voice.providerId || '')}${String(voice.id) === String(recommended?.id) ? '（系统推荐）' : ''}</option>`).join('');
+      syncVoiceSummary(select);
     });
+    const providerSelect = host.querySelector('[data-voice-library-provider]');
+    if (providerSelect) providerSelect.innerHTML = '<option value="">全部供应商</option>' + [...new Map(voices.map(v => [v.providerId || v.provider, v.provider || v.providerId])).entries()].map(([id, name]) => `<option value="${escapeHtml(id)}">${escapeHtml(name)}</option>`).join('');
     const status = host.querySelector('[data-voice-recommendation-status]');
     if (status) status.textContent = voices.length ? '已按剧情推荐真实音色；点击试听会生成一段短样音，可能产生少量语音费用，同一内容会优先使用缓存。' : '当前没有通过健康检查的可合成音色，请先检查声音供应商。';
   }).catch(() => {
@@ -123,52 +152,37 @@ export function bindSoundDesign(host, { bundle, store, refreshShell, navigate })
     const settings = host.querySelector('[data-voice-settings]');
     if (settings) settings.classList.toggle('is-disabled', !enabled);
     host.querySelectorAll('[data-voice-select]').forEach(select => { select.disabled = !enabled; });
-    host.querySelectorAll('[data-preview-selected-voice]').forEach(button => { button.disabled = !enabled; });
+    host.querySelectorAll('[data-open-voice-library]').forEach(button => { button.disabled = !enabled; });
     const generate = host.querySelector('[data-generate-audio]');
     if (generate) { generate.disabled = !enabled; generate.textContent = enabled ? generate.dataset.generateLabel : '已选择不使用人声'; }
   };
   host.querySelectorAll('[data-include-voiceover]').forEach(input => input.addEventListener('change', updateVoiceModeUi));
   updateVoiceModeUi();
-  let voicePreviewUrl = '';
-  let voicePreviewAudio = null;
-  const stopVoicePreview = () => {
-    if (voicePreviewAudio) { voicePreviewAudio.pause(); voicePreviewAudio.currentTime = 0; }
-    host.querySelectorAll('[data-preview-selected-voice]').forEach(button => {
-      if (button.dataset.idleText) button.textContent = button.dataset.idleText;
-      button.classList.remove('is-playing');
-    });
-    if (voicePreviewUrl) URL.revokeObjectURL(voicePreviewUrl);
-    voicePreviewUrl = '';
-    voicePreviewAudio = null;
-  };
-  host.querySelectorAll('[data-preview-selected-voice]').forEach(button => button.addEventListener('click', async event => {
-    const currentButton = event.currentTarget;
-    if (currentButton.classList.contains('is-playing')) return stopVoicePreview();
-    stopVoicePreview();
-    const select = currentButton.closest('.voice-select-preview')?.querySelector('[data-voice-select]');
-    const voice = availableVoices.find(item => String(item.id || '') === String(select?.value || ''));
-    if (!voice?.id) return toast('请先选择一个可以合成的音色。', 'warning');
-    try {
-      currentButton.dataset.idleText ||= currentButton.textContent;
-      setButtonBusy(currentButton, true, '正在生成短试听…');
-      const blob = await request('/api/avatar/preview-voice', { method: 'POST', responseType: 'blob', timeoutMs: 120000, body: { voiceId: voice.id, gender: voice.gender || '', providerId: voice.providerId || '', provider: voice.provider || '', text: currentButton.dataset.previewText || '' } });
-      if (!blob?.size) throw new Error('试听音频为空，请更换音色。');
-      voicePreviewUrl = URL.createObjectURL(blob);
-      voicePreviewAudio = currentButton.parentElement?.querySelector('audio');
-      if (!voicePreviewAudio) throw new Error('试听播放器未就绪。');
-      voicePreviewAudio.src = voicePreviewUrl;
-      await voicePreviewAudio.play();
-      currentButton.classList.add('is-playing');
-      currentButton.textContent = '■ 停止试听';
-      voicePreviewAudio.addEventListener('ended', stopVoicePreview, { once: true });
-    } catch (error) {
-      stopVoicePreview();
-      toast(error.message || '音色暂时无法试听，请更换后重试。', 'danger');
-    } finally {
-      setButtonBusy(currentButton, false);
-      if (currentButton.classList.contains('is-playing')) currentButton.textContent = '■ 停止试听';
-    }
+  host.querySelectorAll('[data-open-voice-library]').forEach(button => button.addEventListener('click', () => {
+    activeVoiceSelect = button.parentElement?.querySelector('[data-voice-select]');
+    renderVoiceLibrary();
+    voiceDialog?.showModal();
   }));
+  host.querySelector('[data-close-voice-library]')?.addEventListener('click', () => { stopVoicePreview(); voiceDialog?.close(); });
+  host.querySelector('[data-voice-library-query]')?.addEventListener('input', renderVoiceLibrary);
+  host.querySelector('[data-voice-library-provider]')?.addEventListener('change', renderVoiceLibrary);
+  voiceResults?.addEventListener('click', async event => {
+    const choose = event.target.closest('[data-choose-library-voice]');
+    if (choose && activeVoiceSelect) { activeVoiceSelect.value = choose.dataset.chooseLibraryVoice; syncVoiceSummary(activeVoiceSelect); stopVoicePreview(); voiceDialog?.close(); return; }
+    const button = event.target.closest('[data-preview-library-voice]');
+    if (!button) return;
+    if (button.classList.contains('is-playing')) return stopVoicePreview();
+    stopVoicePreview();
+    const voice = availableVoices.find(item => String(item.id) === String(button.dataset.previewLibraryVoice));
+    if (!voice) return;
+    try {
+      setButtonBusy(button, true, '生成试听…');
+      const blob = await request('/api/avatar/preview-voice', { method: 'POST', responseType: 'blob', timeoutMs: 120000, body: { voiceId: voice.id, gender: voice.gender || '', providerId: voice.providerId || '', provider: voice.provider || '', text: activeVoiceSelect?.parentElement?.querySelector('[data-open-voice-library]')?.dataset.previewText || '' } });
+      if (!blob?.size) throw new Error('试听音频为空。');
+      voiceAudio.src = URL.createObjectURL(blob); await voiceAudio.play(); button.classList.add('is-playing'); button.textContent = '■ 停止'; voiceAudio.addEventListener('ended', stopVoicePreview, { once: true });
+    } catch (error) { stopVoicePreview(); toast(error.message || '该音色暂时无法试听。', 'danger'); availableVoices = availableVoices.filter(item => item.id !== voice.id); renderVoiceLibrary(); }
+    finally { setButtonBusy(button, false); if (button.classList.contains('is-playing')) button.textContent = '■ 停止'; }
+  });
   host.querySelector('[data-save-audio-plan]')?.addEventListener('click', async event => {
     try { setButtonBusy(event.currentTarget, true, '保存中…'); await request(`/api/story-ad/projects/${encodeURIComponent(bundle.project.id)}/audio-plan`, { method: 'PUT', body: audioPlanPayload() }); toast('声音设置已保存。', 'success'); await refreshShell(); } catch (error) { toast(error.message, 'danger'); } finally { setButtonBusy(event.currentTarget, false); }
   });

@@ -11,7 +11,8 @@ function main() {
   const css = fs.readFileSync(path.join(root, 'public/story-ad/workspace-ux.css'), 'utf8');
   const avatar = fs.readFileSync(path.join(root, 'src/routes/avatar.js'), 'utf8');
 
-  assert(view.includes('data-preview-selected-voice'), '每个旁白或对白音色选择器旁必须提供试听入口');
+  assert(view.includes('data-voice-library-dialog') && view.includes('data-preview-library-voice'), '音色必须在弹窗内提供搜索、试听和选择');
+  assert(!view.includes('data-preview-selected-voice'), '页面主表单不得继续把试听按钮放在下拉框旁边');
   assert(view.includes("request('/api/avatar/preview-voice'"), '音色试听必须调用现有真实 TTS 试听接口');
   assert(view.includes("responseType: 'blob'"), '音色试听必须读取真实音频流而不是展示假状态');
   assert(view.includes('可能产生少量语音费用') && view.includes('优先使用缓存'), '音色试听必须说明费用和缓存边界');
@@ -24,7 +25,7 @@ function main() {
   assert(view.includes('data-play-sound-preview') && view.includes('data-import-bgm'), '弹窗候选必须同时具备试听和采用动作');
   assert(!view.includes('data-toggle-bgm-library'), '旧的页面内展开音乐库入口必须退出当前合同');
   assert(css.includes('v350 voice preview and background-music library dialog'));
-  assert(css.includes('.voice-select-preview') && css.includes('.bgm-library-dialog::backdrop'));
+  assert(css.includes('.voice-library-dialog::backdrop') && css.includes('.bgm-library-dialog::backdrop'));
   assert(avatar.includes("router.post('/preview-voice'") && avatar.includes('previewVoiceCacheDir'), '真实音色试听接口与缓存必须仍然存在');
 
   console.log(JSON.stringify({ ok: true, voice_preview: true, clear_no_voice_copy: true, bgm_dialog: true, bgm_preview_and_select: true, upstream_changed: 0 }));

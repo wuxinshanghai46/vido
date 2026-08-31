@@ -1675,7 +1675,9 @@ router.post('/preview-voice', async (req, res) => {
   const safeVoiceId = voiceId || null;
   const voiceHay = String(voiceId || '');
   const safeGender = gender || (/child|kid|童|儿童/i.test(voiceHay) ? 'child' : /(^|[^a-z])male([^a-z]|$)|boy|男/i.test(voiceHay) ? 'male' : /(^|[^a-z])female([^a-z]|$)|girl|女/i.test(voiceHay) ? 'female' : 'female');
-  const providerKey = String(providerId || provider || '').toLowerCase();
+  const providerAliases = { '阿里云': 'aliyun-tts', '阿里 cosyvoice': 'aliyun-tts', '智谱': 'zhipu', '智谱ai': 'zhipu', '飞影 hifly': 'hifly' };
+  const rawProviderKey = String(providerId || provider || '').trim().toLowerCase();
+  const providerKey = providerAliases[rawProviderKey] || rawProviderKey;
   const isTopviewVoice = providerKey.includes('topview');
 
   try {
@@ -1708,6 +1710,8 @@ router.post('/preview-voice', async (req, res) => {
       gender: safeGender,
       speed: speed || 1.0,
       voiceId: safeVoiceId || null,
+      providerId: providerKey,
+      strictProvider: true,
     });
 
     if (!result) {
@@ -1730,7 +1734,12 @@ router.post('/preview-voice', async (req, res) => {
   } catch (err) {
     console.error('[preview-voice] error:', err.message);
     if (!isTopviewVoice) _markBadPreviewVoice(safeVoiceId, err.message);
-    res.status(500).json({ success: false, error: err.message });
+    const message = err.code === 'TTS_PROVIDER_BILLING'
+      ? '该音色所属语音服务当前余额不足或账户状态异常，已从可选列表移除；请充值后重新检测，或改选其他可用供应商。'
+      : err.code === 'TTS_PROVIDER_NOT_CONFIGURED'
+      ? '该音色所属语音服务尚未配置可用 API Key，已从可选列表移除。'
+      : err.message;
+    res.status(err.code === 'TTS_PROVIDER_BILLING' ? 402 : 503).json({ success: false, code: err.code || 'TTS_PREVIEW_FAILED', error: message });
   }
 });
 
@@ -1771,7 +1780,7 @@ router.get('/voice-list', async (req, res) => {
       if (v.provider === 'Windows') return true;
       const pid = nameToId[v.provider] || (v.provider || '').toLowerCase();
       return trustedProviders.has(pid);
-    });
+    }).map(v => ({ ...v, providerId: nameToId[v.provider] || (v.provider || '').toLowerCase() }));
 
     // 用户已在「声音克隆」工作台克隆过的自定义音色（db.listVoices）
     // 只返回"真克隆 ready"的：aliyun_voice_id 有 / volc_speaker_id 有且 status!=volc_failed / fish_ref_id 有
