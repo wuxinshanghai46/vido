@@ -1,4 +1,4 @@
-import { escapeHtml } from '../components/ui.js?v=20260831-production-v345';
+import { escapeHtml } from '../components/ui.js?v=20260831-production-v346';
 
 export function mountSceneWorldLayoutViewer({ host, bundle, world, authority, node, nodes, mode, previewUrl, photoStrip, onSelectPhoto }) {
   const people = authority.sceneSubjectRows(bundle, world);
