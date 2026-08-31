@@ -55,8 +55,8 @@ function dialogReferencesMarkup(references = [], shotIndex = 0) {
 function assistAdviceMarkup(result = {}) {
   const conflicts = Array.isArray(result.conflicts) ? result.conflicts.filter(Boolean) : [];
   const improvements = Array.isArray(result.improvements) ? result.improvements.filter(Boolean) : [];
-  const action = result.recommended_action === 'review_multiple_shots' ? '先检查相关镜头，再按需逐镜生成' : '保存后只重新生成本镜';
-  return `<div><b>AI 修改说明</b><span>${escapeHtml(result.diagnosis || '已完成当前提示词检查。')}</span></div>${conflicts.length ? `<div><b>发现的冲突</b><ul>${conflicts.map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul></div>` : ''}${improvements.length ? `<div><b>已经修改</b><ul>${improvements.map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul></div>` : ''}<div><b>下一步</b><span>${escapeHtml(action)}。${escapeHtml(result.action_reason || '')}</span></div>`;
+  const action = result.recommended_action === 'review_multiple_shots' ? '检查相关镜头，再逐镜生成' : '保存后重生成本镜';
+  return `<b>诊断</b><p>${escapeHtml(result.diagnosis || '提示词已检查。')}</p>${conflicts.length ? `<b>冲突</b><ul>${conflicts.map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul>` : ''}${improvements.length ? `<b>修改点</b><ul>${improvements.map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul>` : ''}<b>下一步</b><p>${escapeHtml(action)}。${escapeHtml(result.action_reason || '')}</p>`;
 }
 
 export function openStoryboardPromptEditor(options = {}) {
@@ -71,7 +71,7 @@ export function openStoryboardPromptEditor(options = {}) {
     <header><div><span>SH${String(shotIndex).padStart(2, '0')}</span><h2 id="storyboard-prompt-dialog-title-${shotIndex}">编辑分镜提示词</h2></div><button class="storyboard-prompt-dialog-close" type="button" data-close-prompt-dialog aria-label="关闭提示词编辑器">×</button></header>
     <div class="storyboard-prompt-dialog-content">
       <section class="storyboard-prompt-dialog-references"><div><b>本镜引用资产</b><span>生成时按以下顺序引用</span></div><div class="storyboard-prompt-dialog-reference-grid">${dialogReferencesMarkup(options.references || [], shotIndex)}</div></section>
-      <label class="storyboard-prompt-dialog-instruction"><span>告诉 AI 你想解决什么（选填）</span><textarea rows="2" data-dialog-ai-instruction placeholder="例如：主墙要和 SHO2 一致，只保留一整面连续墙面，不要多块样板。"></textarea><small>写清楚哪里不一致、希望以哪一镜或哪张参考图为准。</small></label>
+      <label class="storyboard-prompt-dialog-instruction"><span>AI 修改要求（选填）</span><textarea rows="2" data-dialog-ai-instruction></textarea></label>
       <section class="storyboard-prompt-dialog-advice" data-dialog-ai-advice hidden aria-live="polite"></section>
       <label class="storyboard-prompt-dialog-field"><span>分镜提示词</span><textarea rows="16" data-dialog-sketch-prompt>${escapeHtml(options.promptText || '')}</textarea><small>AI 帮写只会更新当前草稿；保存后也不会自动生成图片。</small></label>
     </div>
@@ -105,7 +105,7 @@ export function openStoryboardPromptEditor(options = {}) {
         advice.innerHTML = assistAdviceMarkup(result);
         advice.hidden = false;
       }
-      toast(`镜头 ${shotIndex} 已完成诊断和改写，请查看修改说明后保存。`, 'success');
+      toast(`SH${shotIndex} 已改写，请确认后保存。`, 'success');
     } catch (error) {
       toast(error.message, 'danger');
     } finally {
