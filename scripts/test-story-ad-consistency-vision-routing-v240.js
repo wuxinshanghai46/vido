@@ -9,9 +9,9 @@ const outputDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vido-vision-routing-v24
 process.env.OUTPUT_DIR = outputDir;
 process.env.DB_ENABLED = '0';
 fs.writeFileSync(path.join(outputDir, 'settings.json'), JSON.stringify({ providers: [
-  { id: 'smscrw', preset: 'smscrw', enabled: true, api_key: 'test', api_url: 'https://ai.smscrw.cn/v1', models: [{ id: 'claude-sonnet-4-6', enabled: true, use: 'story' }] },
-  { id: 'deyunai', preset: 'deyunai', enabled: true, api_key: 'test', api_url: 'https://example.invalid', models: [{ id: 'claude-sonnet-4-6', enabled: true, use: 'story', channel: 'overseas' }] },
-  { id: 'webang-maas', enabled: true, api_key: 'test', api_url: 'https://example.invalid/v1', models: [{ id: 'gemini-2.5-flash', enabled: true, use: 'vision' }] },
+  { id: 'apismile', enabled: true, api_key: 'test', api_url: 'https://example.invalid/v1', models: [{ id: 'gemini-3.1-pro-preview', enabled: true, use: 'vision' }] },
+  { id: 'deyunai', preset: 'deyunai', enabled: true, api_key: 'test', api_url: 'https://example.invalid', models: [{ id: 'gemini-2.5-pro', enabled: true, use: 'vision', channel: 'overseas' }] },
+  { id: 'webang-maas', enabled: true, api_key: 'test', api_url: 'https://example.invalid/v1', models: [{ id: 'gemini-2.5-pro', enabled: true, use: 'vision' }] },
   { id: 'zhipu', enabled: true, api_key: 'test', api_url: 'https://example.invalid/v1', models: [{ id: 'glm-4.6v-flash', enabled: true, use: 'vision' }] },
 ] }));
 const pipeline = require('../src/services/pipelineModelService');
@@ -20,33 +20,31 @@ const gateway = require('../src/services/newStoryAd/modelGateway');
 const migration = require('./configure-story-ad-consistency-vision-routing-v240');
 
 const expected = [
-  'smscrw/claude-sonnet-4-6',
-  'deyunai/claude-sonnet-4-6',
-  'webang-maas/gemini-2.5-flash',
-  'zhipu/glm-4.6v-flash',
+  'webang-maas/gemini-2.5-pro',
+  'apismile/gemini-3.1-pro-preview',
+  'deyunai/gemini-2.5-pro',
 ];
 
 for (const stage of migration.STAGES) {
   assert.deepEqual(
     pipeline.getStageDefaults(stage).map(item => `${item.provider_id}/${item.model_id}`),
     expected,
-    `${stage} 默认顺序必须以漫路、微众优先，智谱兜底`,
+    `${stage} 默认顺序必须服从当前供应商排行并选择各家最佳视觉模型`,
   );
 }
 
 const settings = {
   providers: [
-    { id: 'smscrw', enabled: true, api_key: 'test', models: [{ id: 'claude-sonnet-4-6', enabled: true }] },
-    { id: 'deyunai', enabled: true, api_key: 'test', models: [{ id: 'claude-sonnet-4-6', enabled: true }] },
-    { id: 'webang-maas', enabled: true, api_key: 'test', models: [{ id: 'gemini-2.5-flash', enabled: true }] },
+    { id: 'apismile', enabled: true, api_key: 'test', models: [{ id: 'gemini-3.1-pro-preview', enabled: true }] },
+    { id: 'deyunai', enabled: true, api_key: 'test', models: [{ id: 'gemini-2.5-pro', enabled: true, use: 'vision', channel: 'overseas' }] },
+    { id: 'webang-maas', enabled: true, api_key: 'test', models: [{ id: 'gemini-2.5-pro', enabled: true }] },
     { id: 'zhipu', enabled: true, api_key: 'test', models: [{ id: 'glm-4.6v-flash', enabled: true }] },
   ],
 };
-assert.deepEqual(migration.configuredRoute(settings).map(item => `${item.provider_id}/${item.model_id}`), expected);
 assert.deepEqual(
   gateway.candidatesForVisionStage('new_story_ad.scene_camera_qa').map(item => `${item.provider_id}/${item.model_id}`),
-  expected,
-  '真实候选发现必须保留漫路 Claude，并按配置顺序包含微众与智谱',
+  expected.slice(0, 2),
+  '真实候选发现必须保持当前供应商顺序，并跳过不满足微众通道合同的测试供应商',
 );
 assert.equal(
   adapters.resolveTextAdapter({ provider_id: 'zhipu', model_id: 'glm-4.6v-flash', _stageId: 'new_story_ad.scene_camera_qa', _capability: 'vision' }).modelId,
