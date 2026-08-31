@@ -780,15 +780,13 @@ async function main() {
     .candidatesForVisionStage('new_story_ad.reference_video_vision')
     .map(item => `${item.provider_id}/${item.model_id}`);
   assert.deepStrictEqual(routedVisionModels, [
-    'deyunai/gemini-2.5-flash',
-    'zhipu/glm-4.6v-flash',
-    'apismile/gemini-2.5-flash',
-    'webang-maas/gemini-2.5-flash',
-    'apismile/gemini-2.5-pro',
+    'webang-maas/gemini-2.5-pro',
+    'apismile/gemini-3.1-pro-preview',
+    'deyunai/gemini-2.5-pro',
   ], 'reference video analysis must use only its explicit VLM route');
   const routedAvailability = modelGateway.visionAvailability('new_story_ad.reference_video_vision');
   assert.strictEqual(routedAvailability.source, 'model_call_management');
-  assert.strictEqual(routedAvailability.available_count, 5);
+  assert.strictEqual(routedAvailability.available_count, 3);
   assert.ok(!routedAvailability.models.some(item => item.provider_id === 'openai'));
   assert.strictEqual(modelGateway.classifyError(new Error('401 该令牌已过期')).code, 'AUTH_CONFIG');
   assert.strictEqual(modelGateway.classifyError(new Error('Connection error.')).code, 'TIMEOUT_OR_NETWORK');
@@ -1118,11 +1116,9 @@ async function main() {
   });
   const authError = new Error('test auth failure');
   authError.code = 'AUTH_CONFIG';
-  modelGateway.recordHealth({ provider_id: 'apismile', model_id: 'gemini-2.5-flash' }, { ok: false, error: authError });
-  modelGateway.recordHealth({ provider_id: 'apismile', model_id: 'gemini-2.5-pro' }, { ok: false, error: authError });
-  modelGateway.recordHealth({ provider_id: 'deyunai', model_id: 'gemini-2.5-flash' }, { ok: false, error: authError });
-  modelGateway.recordHealth({ provider_id: 'zhipu', model_id: 'glm-4.6v-flash' }, { ok: false, error: authError });
-  modelGateway.recordHealth({ provider_id: 'webang-maas', model_id: 'gemini-2.5-flash' }, { ok: false, error: authError });
+  modelGateway.recordHealth({ provider_id: 'webang-maas', model_id: 'gemini-2.5-pro' }, { ok: false, error: authError });
+  modelGateway.recordHealth({ provider_id: 'apismile', model_id: 'gemini-3.1-pro-preview' }, { ok: false, error: authError });
+  modelGateway.recordHealth({ provider_id: 'deyunai', model_id: 'gemini-2.5-pro' }, { ok: false, error: authError });
   const mockBeforeGuard = process.env.NEW_STORY_AD_MOCK_LLM;
   process.env.NEW_STORY_AD_MOCK_LLM = '0';
   assert.throws(

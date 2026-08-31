@@ -5,7 +5,7 @@ const modelGateway = require('./modelGateway'), jsonRepair = require('./jsonRepa
 const { buildContext, contextPrompt, cleanText, normalizeCharacters, assertContextConsistent, taskTitle } = require('./contextBuilder');
 const sceneExperienceAssist = require('./sceneExperienceAssistService'), assistKnowledgePolicy = require('./assistKnowledgePolicyService'), blueprintLifecycle = require('./blueprintLifecycleService');
 const { generateStoryboardTable, rewriteStoryboard } = require('./storyboardTableService');
-const storyboardReviewPolicy = require('./storyboardReviewPolicyService');
+const storyboardReviewPolicy = require('./storyboardReviewPolicyService'), storyboardFlowConsistency = require('./storyboardFlowConsistencyService');
 const storyboardCoverageLifecycle = require('./storyboardCoverageLifecycleService'), storyboardGenerationPreflight = require('./storyboardGenerationPreflightService'), storyboardImageConfirmationGate = require('../storyAdWorkspace/storyboardImageConfirmationGateService'), storyFlowPlanning = require('../storyAdWorkspace/storyFlowPlanningService');
 const { reviewStoryboard } = require('./qualityReviewService'), storyboardContinuityGate = require('./storyboardContinuityGateService'), storyboardCheckpointRecovery = require('./storyboardCheckpointRecoveryService');
 const { buildKeyframeContracts } = require('./keyframeContractService'), knowledgePolicyRuntime = require('./knowledgePolicyRuntimeService');
@@ -757,7 +757,7 @@ function updateStoryboardTable(taskId, shots = [], user = {}, options = {}) {
   const normalizedRaw = contentDomainArtifacts.tagShots(ctx, source
     .map((shot, index) => normalizeStoryboardShot(shot, index, current[index] || {}))
     .filter(shot => shot.visual || shot.action || shot.voiceover || shot.title));
-  const continuityShots = withContinuityContracts(bindShotsToScenes(normalizedRaw, Array.isArray(sceneAssets) ? sceneAssets : []));
+  const continuityShots = withContinuityContracts(bindShotsToScenes(normalizedRaw, Array.isArray(sceneAssets) ? sceneAssets : [])); storyboardFlowConsistency.assertWhenPresent(continuityShots, storage.getOutput(taskId, 'story_flow_contract') || {}, { boundary: 'manual_storyboard_save' });
   const blueprint = storage.getOutput(taskId, 'blueprint') || {};
   const compiled = temporalEvidenceLifecycle.compileForTask({ storage, taskId, ctx, blueprint, shots: continuityShots }), normalized = compiled.shots;
   const storyboardChanged = workflowTransition.storyboardFingerprint(current) !== workflowTransition.storyboardFingerprint(normalized);
@@ -888,7 +888,7 @@ async function generateStoryboardStage(taskId, options = {}) {
   const coverageCurrent = storyboardCoverageLifecycle.cacheCurrent(existingMeta, existingCoveragePlan, expectedCoveragePlan);
   if (existingMeta.status === 'ready' && existingMeta.blueprint_fingerprint === sourceFingerprint && existingMeta.story_flow_contract_fingerprint === storyFlowContract.contract_fingerprint
     && coverageCurrent && existingShots.length && existingContracts.length === existingShots.length) {
-    storage.saveStage(taskId, 'storyboard', { status: 'done', output_summary: `${existingShots.length} 个镜头（蓝图未变化，已复用）`, diagnostics: { cache_hit: true, blueprint_fingerprint: sourceFingerprint } });
+    storyboardFlowConsistency.assertMatches(existingShots, storyFlowContract, { boundary: 'storyboard_cache_reuse' }); storage.saveStage(taskId, 'storyboard', { status: 'done', output_summary: `${existingShots.length} 个镜头（蓝图未变化，已复用）`, diagnostics: { cache_hit: true, blueprint_fingerprint: sourceFingerprint } });
     stageProgress.update(taskId, { stage: 'storyboard', status: 'done', phase: 'fingerprint_reused', completed: existingShots.length, total: existingShots.length, processed: existingShots.length, percent: 100, generationId, message: '蓝图指纹一致，已复用完整分镜和关键帧合同' });
     return { shots: existingShots, review: storage.getOutput(taskId, 'quality_review') || {}, keyframe_contracts: existingContracts, model_meta: { cache_hit: true } };
   }
@@ -937,7 +937,7 @@ async function generateStoryboardStage(taskId, options = {}) {
     resumeShots,
     onCheckpoint: saveCheckpoint,
   });
-  let shots = generated.shots;
+  let shots = generated.shots; storyboardFlowConsistency.assertMatches(shots, storyFlowContract, { boundary: 'storyboard_generated' });
   storage.saveOutput(taskId, 'storyboard_coverage_plan', generated.coverage_plan || expectedCoveragePlan);
   await saveCheckpoint({ phase: 'reviewing', shots, completed_indexes: shots.map(shot => Number(shot.index || 0)), expected_total: shots.length });
   assertBlueprintUnchanged();
@@ -947,7 +947,7 @@ async function generateStoryboardStage(taskId, options = {}) {
     // 只有硬问题才定向重写；软建议随合同发布，禁止成为串行付费门禁。
     const issues = storyboardReviewPolicy.blockingRewriteIssues(review);
     if (!shots.length || !issues.length) break;
-    shots = await rewriteStoryboard(stageCtx, blueprint, shots, issues, { taskId });
+    shots = await rewriteStoryboard(stageCtx, blueprint, shots, issues, { taskId }); storyboardFlowConsistency.assertMatches(shots, storyFlowContract, { boundary: `storyboard_rewrite_${attempt}` });
     await saveCheckpoint({ phase: `rewrite_${attempt}_reviewing`, shots, completed_indexes: shots.map(shot => Number(shot.index || 0)), expected_total: shots.length });
     assertBlueprintUnchanged();
     const nextReview = await reviewStoryboard(stageCtx, shots, { taskId });
@@ -1011,7 +1011,7 @@ async function buildKeyframeContractStage(taskId) {
   let ctx = { ...baseCtx, scene_assets: Array.isArray(sceneAssets) ? sceneAssets : [], production_graph: storage.getOutput(taskId, 'production_graph_v1') || null, knowledge_policy_snapshot: knowledgePolicyRuntime.pinTaskPolicy(storage, taskId) };
   let shots = storage.getOutput(taskId, 'storyboard_table');
   if (!Array.isArray(shots) || !shots.length) throw new Error('请先生成分镜表');
-  shots = bindShotsToScenes(shots, ctx.scene_assets);
+  shots = bindShotsToScenes(shots, ctx.scene_assets); storyboardFlowConsistency.assertWhenPresent(shots, storage.getOutput(taskId, 'story_flow_contract') || {}, { boundary: 'keyframe_contract_build' });
   const blueprint = storage.getOutput(taskId, 'blueprint') || {};
   const compiled = temporalEvidenceLifecycle.compileForTask({ storage, taskId, ctx, blueprint, shots });
   shots = compiled.shots; ctx = { ...ctx, temporal_evidence_graph: compiled.graph };
@@ -1383,7 +1383,7 @@ function previewShotPrompts(taskId, options = {}) {
   const draft = options.shot && typeof options.shot === 'object' ? options.shot : {};
   const merged = normalizeStoryboardShot({ ...stored[index], ...draft }, index, stored[index - 1] || {});
   const shots = stored.map((shot, shotIndex) => shotIndex === index ? merged : shot);
-  let boundShots = bindShotsToScenes(shots, ctx.scene_assets);
+  let boundShots = bindShotsToScenes(shots, ctx.scene_assets); storyboardFlowConsistency.assertWhenPresent(boundShots, storage.getOutput(taskId, 'story_flow_contract') || {}, { boundary: 'prompt_preview' });
   const previewCompiled = temporalEvidenceLifecycle.compileForTask({ storage, taskId, ctx, blueprint, shots: boundShots, persist: false });
   boundShots = previewCompiled.shots; ctx = { ...ctx, temporal_evidence_graph: previewCompiled.graph };
   const contracts = buildKeyframeContracts(ctx, boundShots);
@@ -1423,7 +1423,7 @@ async function generateKeyframesStage(taskId, options = {}) {
     shots = generated.shots || [];
   }
   if (!Array.isArray(shots) || !shots.length) throw new Error('当前项目没有可用分镜表，请先生成分镜。'); storyboardImageConfirmationGate.assertReady(taskId);
-  const boundShots = bindShotsToScenes(shots, ctx.scene_assets);
+  const boundShots = bindShotsToScenes(shots, ctx.scene_assets); storyboardFlowConsistency.assertWhenPresent(boundShots, storage.getOutput(taskId, 'story_flow_contract') || {}, { boundary: 'keyframe_generation' });
   if (JSON.stringify(boundShots) !== JSON.stringify(shots)) {
     shots = boundShots;
     storage.saveOutput(taskId, 'storyboard_table', shots);

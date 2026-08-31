@@ -207,6 +207,7 @@ const NEW_STORY_AD_CONSISTENCY_VISION_DEFAULTS = [
   { provider_id: 'webang-maas', model_id: 'gemini-2.5-flash', priority: 3, enabled: true },
   { provider_id: 'zhipu', model_id: 'glm-4.6v-flash', priority: 4, enabled: true },
 ];
+const newStoryAdModelRoutingPolicy = require('./newStoryAd/modelRoutingPolicyService');
 const NEW_STORY_AD_IMAGE_STAGE_IDS = new Set([
   'new_story_ad.person_sheet',
   'new_story_ad.person_dossier_atlas',
@@ -666,6 +667,9 @@ function preferDeyunaiForNonVideoStages(stages = {}, defaults = {}) {
 }
 
 Object.assign(STAGE_DEFAULTS, preferDeyunaiForNonVideoStages(STAGE_DEFAULTS));
+// 新剧情广告文本/VLM 统一服从“供应商顺序 + 环节内最佳模型”策略。
+// 管理后台没有保存过自定义值时展示该策略；保存后仍由同一策略迁移写入模型调用管理。
+Object.assign(STAGE_DEFAULTS, newStoryAdModelRoutingPolicy.managedStageRoutes());
 
 function loadConfig() {
   const dbConfig = sqliteConfig.getDbConfig();

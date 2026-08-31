@@ -409,6 +409,11 @@ async function main() {
   const flowRepair = storyFlowGate.repairSystem(taskId, flowDraft.units, { reason: 'workspace_v6_fixture_contract_upgrade' });
   assert.equal(flowRepair.model_call_count, 0, '工作区夹具必须按现行结构化剧情流向合同零模型升级');
   assert.equal(storyFlowGate.inspect(taskId).ready, true, '现行剧情流向合同确认后才允许生成分镜图');
+  storage.saveOutput(taskId, 'storyboard_table', (storage.getOutput(taskId, 'storyboard_table') || []).map(row => ({
+    ...row,
+    source_beat_id: flowRepair.contract.units[0].beat_id,
+    story_flow_contract_fingerprint: flowRepair.contract.contract_fingerprint,
+  })));
 
   const draft = sketches.saveSketches(taskId, [{
     shot_index: 1,

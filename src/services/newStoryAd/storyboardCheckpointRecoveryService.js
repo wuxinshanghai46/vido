@@ -19,6 +19,7 @@ const stageProgress = require('./stageProgressService');
 const diagnostics = require('./diagnosticsService');
 const storyFlowAuthority = require('../storyAdWorkspace/storyFlowContractService');
 const { bindShotsToScenes } = require('./sceneBindingService');
+const storyboardFlowConsistency = require('./storyboardFlowConsistencyService');
 
 function fail(message, code, status = 409, extra = {}) {
   return Object.assign(new Error(message), { code, status, ...extra });
@@ -57,6 +58,7 @@ function recoverAtomic(taskId, options = {}) {
     ),
   };
   const reboundShots = bindShotsToScenes(checkpointShots, stageCtx.scene_assets);
+  storyboardFlowConsistency.assertMatches(reboundShots, storyFlowContract, { boundary: 'storyboard_checkpoint_recovery' });
   const review = storyboardReviewPolicy.publishableReview(localReview(stageCtx, reboundShots));
   if (review.blocking_issues.length) {
     throw fail(`分镜断点仍有硬阻断，不能自动恢复：${review.blocking_issues.join('；')}`, 'STORYBOARD_CHECKPOINT_REVIEW_BLOCKED', 409, { review });
