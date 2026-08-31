@@ -85,7 +85,6 @@
         });
         observer.observe({ type, buffered: true, ...options });
       } catch {
-        // Some browsers expose PerformanceObserver but not every entry type.
       }
     };
     register('largest-contentful-paint', entries => {

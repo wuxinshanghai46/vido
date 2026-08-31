@@ -216,9 +216,6 @@ export function createProjectStore() {
       if (created.task_mutation) applyMutationResult(created.task_mutation);
       let analysis = created.analysis || {};
       applyReferenceLiveState(analysis);
-      // Poll the analysis identity immediately. Task projection and section
-      // refresh can be slower than the link/upload worker and must not hold the
-      // visible progress at the initial response.
       syncReferencePolling(true);
       if (!created.task_bound) await bindReferenceAnalysis(analysis);
       if (analysis.id || analysis.analysis_id) {
@@ -253,8 +250,6 @@ export function createProjectStore() {
       if (!replacementCurrent(state, replacement)) return data.analysis;
       if (data.task_mutation) applyMutationResult(data.task_mutation);
       applyReferenceLiveState(data.analysis || {});
-      // Start before bind/refresh so a fast worker terminal state cannot be
-      // hidden behind a slower workspace projection request.
       syncReferencePolling(true);
       if (!data.task_bound) await bindReferenceAnalysis(data.analysis || {});
       if (taskId) {
@@ -438,9 +433,6 @@ export function createProjectStore() {
         }
         terminal = ['completed', 'failed', 'cancelled'].includes(String(analysis.status || '').toLowerCase());
         applyReferenceLiveState(analysis);
-        // Terminal projection belongs to the server. Stop polling first, then
-        // refresh the server-owned workspace once. The direct analysis response
-        // remains authoritative if that broader projection is slow or fails.
         if (terminal) stopReferencePolling();
         if (terminal) {
           try {

@@ -1,8 +1,1 @@
-.reference-contract-breakdown { display: flex; flex-wrap: wrap; gap: 7px; }
-.reference-contract-state { display: grid; min-width: 126px; gap: 2px; padding: 7px 9px; border: 1px solid var(--line); border-radius: 9px; background: color-mix(in srgb, var(--surface-2) 84%, transparent); }
-.reference-contract-state b { color: var(--text); font-size: 11px; }
-.reference-contract-state small { color: var(--muted); font-size: 10px; }
-.reference-contract-state.is-complete { border-color: color-mix(in srgb, var(--mint) 45%, var(--line)); background: color-mix(in srgb, var(--mint-2) 76%, var(--surface)); }
-.reference-contract-state.is-complete small { color: var(--mint); }
-.reference-contract-state.is-missing { border-color: color-mix(in srgb, var(--amber) 52%, var(--line)); }
-.reference-contract-state.is-missing small { color: var(--amber); }
+.reference-contract-breakdown{display:flex;flex-wrap:wrap;gap:7px }.reference-contract-state{display:grid;min-width:126px;gap:2px;padding:7px 9px;border:1px solid var(--line);border-radius:9px;background:color-mix(in srgb, var(--surface-2) 84%, transparent) }.reference-contract-state b{color:var(--text);font-size:11px }.reference-contract-state small{color:var(--muted);font-size:10px }.reference-contract-state.is-complete{border-color:color-mix(in srgb, var(--mint) 45%, var(--line));background:color-mix(in srgb, var(--mint-2) 76%, var(--surface)) }.reference-contract-state.is-complete small{color:var(--mint) }.reference-contract-state.is-missing{border-color:color-mix(in srgb, var(--amber) 52%, var(--line)) }.reference-contract-state.is-missing small{color:var(--amber) }
