@@ -1,4 +1,4 @@
-import { escapeHtml } from '../components/ui.js?v=20260831-production-v340';
+import { escapeHtml } from '../components/ui.js?v=20260831-production-v341';
 
 export function uniqueLightboxEntries(nodes = [], group = 'media') {
   return [...nodes].filter(node => (node.dataset?.mediaZoomGroup || 'media') === group)
