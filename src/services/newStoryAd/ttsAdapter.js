@@ -203,6 +203,17 @@ function writeSilenceWav(outputPath, durationSec = 2) {
   return outputPath;
 }
 
+function concatGeneratedUnits(units = [], outputPath = '', { muteNarration = false } = {}) {
+  if (!units.length || !outputPath) return '';
+  if (units.length === 1 && (!muteNarration || units[0].kind === 'dialogue')) return units[0].file_path;
+  const args = units.flatMap(unit => ['-i', unit.file_path]);
+  const filters = units.map((unit, index) => `[${index}:a]${muteNarration && unit.kind !== 'dialogue' ? 'volume=0' : 'anull'}[unit${index}]`);
+  filters.push(`${units.map((_, index) => `[unit${index}]`).join('')}concat=n=${units.length}:v=0:a=1[outa]`);
+  args.push('-filter_complex', filters.join(';'), '-map', '[outa]', '-ac', '1', '-ar', '24000', '-b:a', '128k', '-y', outputPath);
+  execFileSync(ffmpegPath, args, { timeout: 120000, stdio: 'pipe' });
+  return outputPath;
+}
+
 function publicResult(filePath, extra = {}) {
   const filename = path.basename(filePath);
   return {
@@ -250,6 +261,7 @@ async function generateShotAudio({
   if (process.env.NEW_STORY_AD_MOCK_TTS === '1') {
     const out = path.join(AUDIO_DIR, `${base}.wav`);
     writeSilenceWav(out, estimatedDuration);
+    const hasDialogue = units.some(unit => unit.kind === 'dialogue');
     return publicResult(out, {
       shot_index: index,
       index: index + 1,
@@ -260,6 +272,10 @@ async function generateShotAudio({
       speech_mode: mode,
       voice_signature: signature,
       speech_units: units,
+      lip_sync_audio_url: mode === 'on_camera_dialogue' && hasDialogue ? publicAudioUrl(path.basename(out)) : '',
+      lip_sync_file_path: mode === 'on_camera_dialogue' && hasDialogue ? out : '',
+      lip_sync_unit_count: units.filter(unit => unit.kind === 'dialogue').length,
+      narration_unit_count: units.filter(unit => unit.kind === 'narration').length,
     });
   }
   if (units.some(unit => !unit.voice_id)) {
@@ -284,14 +300,13 @@ async function generateShotAudio({
       if (!actualUnit || !fs.existsSync(actualUnit)) throw new Error(`说话人 ${unit.speaker || unitIndex + 1} 的音色 ${unit.voice_id} 未生成有效文件`);
       generatedUnits.push({ ...unit, file_path: actualUnit });
     }
-    let actual = generatedUnits[0]?.file_path || '';
-    if (generatedUnits.length > 1) {
-      const args = generatedUnits.flatMap(unit => ['-i', unit.file_path]);
-      const inputs = generatedUnits.map((_, i) => `[${i}:a]`).join('');
-      args.push('-filter_complex', `${inputs}concat=n=${generatedUnits.length}:v=0:a=1[outa]`, '-map', '[outa]', '-ac', '1', '-ar', '24000', '-b:a', '128k', '-y', outBase);
-      execFileSync(ffmpegPath, args, { timeout: 120000, stdio: 'pipe' });
-      actual = outBase;
-    }
+    const actual = concatGeneratedUnits(generatedUnits, outBase);
+    const dialogueUnits = generatedUnits.filter(unit => unit.kind === 'dialogue');
+    const narrationUnits = generatedUnits.filter(unit => unit.kind === 'narration');
+    const mixedSpeech = dialogueUnits.length > 0 && narrationUnits.length > 0;
+    const lipSyncPath = mode === 'on_camera_dialogue' && dialogueUnits.length
+      ? (mixedSpeech ? concatGeneratedUnits(generatedUnits, path.join(AUDIO_DIR, `${base}_lip_sync.mp3`), { muteNarration: true }) : actual)
+      : '';
     cancellation.throwIfCancelled(taskId);
     if (!actual || !fs.existsSync(actual)) throw new Error(`所选音色 ${voiceId} 未生成有效配音文件`);
     return publicResult(actual, {
@@ -303,6 +318,10 @@ async function generateShotAudio({
       speech_mode: mode,
       voice_signature: signature,
       speech_units: units,
+      lip_sync_audio_url: lipSyncPath ? publicAudioUrl(path.basename(lipSyncPath)) : '',
+      lip_sync_file_path: lipSyncPath,
+      lip_sync_unit_count: dialogueUnits.length,
+      narration_unit_count: narrationUnits.length,
     });
   } catch (err) {
     if (err?.code === 'USER_CANCELLED' || err?.cancelled === true) throw err;

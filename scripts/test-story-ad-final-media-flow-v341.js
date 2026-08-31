@@ -92,10 +92,11 @@ assert.match(finalView, /已确认分镜 \/ 视频首帧/);
 assert.doesNotMatch(finalView, /data-save-timeline|data-trim-start/);
 assert.match(soundPage, /<h1>声音<\/h1>/);
 assert.match(editView, /镜头时间线/);
-assert.match(soundView, /确认声音并进入视频与合成/);
+assert.match(soundPage, /确认声音并进入视频与合成/);
 assert.match(soundView, /navigate\(`\/story-ad\/projects/);
 assert.match(soundView, /data-speaker/);
 assert.match(soundView, /背景音乐/);
+assert.match(soundView, /场景音效均为可选/);
 
 console.log(JSON.stringify({
   passed: true,

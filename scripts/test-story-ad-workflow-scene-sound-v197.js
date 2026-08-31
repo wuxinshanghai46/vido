@@ -50,6 +50,6 @@ assert(finalSoundDesignView.includes('配音与对白'));
 assert(finalSoundDesignView.includes('背景音乐'));
 assert(finalSoundDesignView.includes('data-speaker'), '真实对白人物必须保留独立音色绑定');
 assert(finalSoundDesignView.includes('data-auto-sound-recommendation'), '逐分镜必须加载真实可试听声音');
-assert(finalSoundDesignView.includes('系统才会下载、绑定'), '试听与采用必须保持明确边界');
-assert(finalSoundDesignView.includes('<audio controls'));
+assert(finalSoundDesignView.includes('data-use-recommended-sound'), '试听与采用必须保持明确边界');
+assert(finalSoundDesignView.includes('data-play-sound-preview'));
 console.log('story-ad seven-step workflow, scene planning and sound projection: ok');

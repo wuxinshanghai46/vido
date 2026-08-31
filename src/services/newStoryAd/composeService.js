@@ -211,13 +211,13 @@ function buildVisualComposeUnits(clips = []) {
   return units;
 }
 
-async function muxTimelineVoiceTracks(videoPath = '', placements = [], outputPath = '', durationSec = 0, voiceVolume = 1, ensureAudio = false) {
+async function muxTimelineVoiceTracks(videoPath = '', placements = [], outputPath = '', durationSec = 0, voiceVolume = 1, ensureAudio = false, preserveSourceAudio = true) {
   const duration = Math.max(0.2, Number(durationSec) || await videoAdapter.probeDuration(videoPath));
   const valid = placements.filter(item => item.audio_path && fs.existsSync(item.audio_path));
   if (!valid.length && !ensureAudio) return videoPath;
   const args = ['-y', '-i', videoPath];
   valid.forEach(item => args.push('-i', item.audio_path));
-  const sourceHasAudio = await hasAudioStream(videoPath);
+  const sourceHasAudio = preserveSourceAudio && await hasAudioStream(videoPath);
   const filters = [sourceHasAudio
     ? `[0:a]aresample=44100,aformat=sample_fmts=fltp:channel_layouts=stereo,atrim=0:${duration.toFixed(3)},asetpts=PTS-STARTPTS[abase]`
     : `anullsrc=r=44100:cl=stereo,atrim=0:${duration.toFixed(3)}[abase]`];
@@ -624,7 +624,8 @@ async function concatVideos({
     }).filter(item => item.audio_path);
     const voiceFilename = `${safeBase(`voice_${taskId || 'task'}_unit_${index + 1}_${Date.now()}`)}.mp4`;
     const voicedPath = path.join(COMPOSE_DIR, voiceFilename);
-    inputs.push(await muxTimelineVoiceTracks(unit.file_path, placements, voicedPath, duration, voiceVolume, anyVoiceTrack || authoredAudioTransitions));
+    const preserveSourceAudio = !unit.clips.some(clip => clip?.lip_sync_applied === true && clip?.audio_muxed === true);
+    inputs.push(await muxTimelineVoiceTracks(unit.file_path, placements, voicedPath, duration, voiceVolume, anyVoiceTrack || authoredAudioTransitions, preserveSourceAudio));
     durations.push(duration);
   }
   const filename = `${safeBase(`nsa_final_${taskId || 'task'}_${Date.now()}`)}.mp4`;

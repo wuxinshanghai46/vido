@@ -18,6 +18,11 @@ const OPEN_AUDIO_HOSTS = Object.freeze(['cdn.freesound.org', 'upload.wikimedia.o
 function list(value) { return Array.isArray(value) ? value.filter(Boolean) : []; }
 function clean(value = '', max = 1000) { return String(value || '').replace(/\s+/g, ' ').trim().slice(0, max); }
 function recommendedTrack(shot = {}) { return list(shot.sfx).length ? 'sfx' : (clean(shot.ambient_sound, 260) ? 'ambient' : 'room_tone'); }
+function shouldAutoRecommend(shot = {}) {
+  // ambient_sound 是分镜的声音设计参考，不代表每镜都必须铺环境声。
+  // 只有剧情明确写出的动作/拟音才主动推荐，普通环境底噪保持可选。
+  return list(shot.sfx).some(value => clean(value, 160));
+}
 function recommendedQuery(shot = {}) {
   const source = clean(list(shot.sfx)[0] || shot.ambient_sound || shot.music_cue || 'room ambience', 260);
   const rules = [
@@ -264,6 +269,9 @@ function compile(taskId) {
     voice_bindings: shot.voice_bindings || {},
     recommended_track_type: recommendedTrack(shot),
     recommended_query: recommendedQuery(shot),
+    auto_recommend_sound: shouldAutoRecommend(shot),
+    sound_optional: true,
+    preview_duration_sec: Math.max(0.1, Math.min(6, Number(shot.duration || shot.duration_sec || 3) || 3)),
   })) };
 }
 
@@ -360,4 +368,4 @@ function attributionManifest(taskId) {
   }));
 }
 
-module.exports = { ALLOWED_TRACKS, ASSET_KIND, LEDGER_KIND, PROFILE_KIND, TIMELINE_KIND, addUserAsset, attributionManifest, compile, generatedSoundKind, generatedSoundSource, importOpenverseAsset, openverseQueryCandidates, recommendedBgmQuery, recommendedQuery, recommendedTrack, resolvedBgm, resolvedTracks, searchOpenverse };
+module.exports = { ALLOWED_TRACKS, ASSET_KIND, LEDGER_KIND, PROFILE_KIND, TIMELINE_KIND, addUserAsset, attributionManifest, compile, generatedSoundKind, generatedSoundSource, importOpenverseAsset, openverseQueryCandidates, recommendedBgmQuery, recommendedQuery, recommendedTrack, resolvedBgm, resolvedTracks, searchOpenverse, shouldAutoRecommend };

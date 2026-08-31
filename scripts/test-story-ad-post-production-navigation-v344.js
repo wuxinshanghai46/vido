@@ -62,7 +62,8 @@ assert.match(editView, /data-save-timeline/);
 assert.match(editView, /data-apply-edit/);
 assert.match(editView, /store\.runStage\('compose'\)/, '剪辑应用必须通过重新合成生成新成片');
 assert.match(soundWorkbench, /audio-setup-grid/);
-assert.match(soundWorkbench, /audio-action-bar/);
+assert.match(soundWorkbench, /sound-primary-actions/);
+assert.match(soundWorkbench, /sound-option-panel/);
 assert.match(css, /\.audio-setup-grid\{[^}]*minmax\(220px,1fr\)/);
 assert.match(css, /\.post-stage-summary\{[^}]*repeat\(3,minmax\(0,1fr\)\)/);
 

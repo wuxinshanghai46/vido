@@ -129,7 +129,7 @@ function confirm(taskId, actor = {}) {
 function assertApproved(taskId) {
   const state = current(taskId);
   if (state.approved) return state;
-  throw Object.assign(new Error('请先试听并确认旁白/对白、场景音效和背景音乐；声音发生变化后需要重新确认。'), {
+  throw Object.assign(new Error('请先试听并确认旁白/对白；背景音乐和场景音效可按剧情需要选用，声音发生变化后需要重新确认。'), {
     code: 'AUDIO_PRODUCTION_APPROVAL_REQUIRED', status: 409, retryable: false,
   });
 }

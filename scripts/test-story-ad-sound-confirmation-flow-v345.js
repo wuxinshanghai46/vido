@@ -73,7 +73,7 @@ async function main() {
   const shellView = fs.readFileSync(path.join(root, 'public/story-ad/views/finalSoundView.js'), 'utf8');
   assert(!soundView.includes('自动（按可用链回退）'), '页面不得再展示没有落到真实音色的自动选项');
   assert(!soundView.includes('data-preview-sound'), '搜索按钮不得再伪装成已经存在的试听声音');
-  assert(soundView.includes('确认声音并进入视频与合成'));
+  assert(shellView.includes('确认声音并进入视频与合成'));
   assert(soundView.includes('data-auto-sound-recommendation'));
   assert(shellView.includes('navigate: context.navigate'));
 

@@ -54,6 +54,22 @@ function explicitShotSpeechMode(shot = {}, contract = {}) {
   return 'offscreen_voiceover';
 }
 
+function requiresLipSyncForAudio(shot = {}, contract = {}, audio = {}) {
+  if (explicitShotSpeechMode(shot, contract) !== 'on_camera_dialogue') return false;
+  const units = Array.isArray(audio?.speech_units) ? audio.speech_units : [];
+  // 旧音轨没有 unit 元数据时维持原合同；新音轨只允许真实人物对白进入口型阶段。
+  return !units.length || units.some(unit => String(unit?.kind || '').toLowerCase() === 'dialogue');
+}
+
+function lipSyncAudioSource(audio = {}) {
+  const units = Array.isArray(audio?.speech_units) ? audio.speech_units : [];
+  const hasDialogue = units.some(unit => String(unit?.kind || '').toLowerCase() === 'dialogue');
+  const hasNarration = units.some(unit => String(unit?.kind || '').toLowerCase() === 'narration');
+  const dedicated = audio.lip_sync_audio_url || audio.lipSyncAudioUrl || '';
+  if (hasDialogue && hasNarration) return dedicated;
+  return dedicated || audio.audio_url || audio.audioUrl || audio.url || '';
+}
+
 function speechPrompt(shot = {}, contract = {}) {
   const mode = explicitShotSpeechMode(shot, contract);
   if (mode === 'on_camera_dialogue') {
@@ -541,14 +557,20 @@ function updateGenerationUnitStatus(taskId = '', index = 0, patch = {}, total = 
 
 /** 提交一个已经通过费用授权的供应商生成单元，不执行隐式模型回退。 */
 async function generateProviderClip({ taskId, shot, previousShot, keyframe, audio, contract, ctx, index, duration, options }) {
-  const speechMode = explicitShotSpeechMode(shot, contract);
-  if (speechMode === 'on_camera_dialogue') {
+  const authoredSpeechMode = explicitShotSpeechMode(shot, contract);
+  const lipSyncRequired = requiresLipSyncForAudio(shot, contract, audio);
+  const speechMode = authoredSpeechMode === 'on_camera_dialogue' && !lipSyncRequired ? 'offscreen_voiceover' : authoredSpeechMode;
+  if (lipSyncRequired) {
     const imageUrl = absoluteAssetUrl(keyframe.image_url || keyframe.imageUrl || keyframe.url || '', options);
-    const audioPath = localAudioPath(audio?.audio_url || audio?.audioUrl || audio?.url || '');
-    const audioUrl = absoluteAssetUrl(audio?.audio_url || audio?.audioUrl || audio?.url || '', options);
+    const driverAudio = lipSyncAudioSource(audio);
+    const audioPath = localAudioPath(driverAudio);
+    const audioUrl = absoluteAssetUrl(driverAudio, options);
     if (!audioPath || !fs.existsSync(audioPath)) {
-      const error = new Error(`第 ${index + 1} 镜是出镜对白，但没有可用的真实配音音轨，已停止视频生成`);
-      error.code = 'LIP_SYNC_AUDIO_REQUIRED'; error.retryable = false; throw error;
+      const mixed = Array.isArray(audio?.speech_units) && audio.speech_units.some(unit => unit?.kind === 'dialogue') && audio.speech_units.some(unit => unit?.kind === 'narration');
+      const error = new Error(mixed
+        ? `第 ${index + 1} 镜同时含对白和旁白，但缺少只驱动对白的口型音轨，请重新生成配音试听`
+        : `第 ${index + 1} 镜是出镜对白，但没有可用的真实配音音轨，已停止视频生成`);
+      error.code = mixed ? 'LIP_SYNC_DIALOGUE_TRACK_REQUIRED' : 'LIP_SYNC_AUDIO_REQUIRED'; error.retryable = false; throw error;
     }
     const audioDuration = await probeDuration(audioPath);
     if (audioDuration > duration + 0.35) {
@@ -1321,6 +1343,8 @@ module.exports = {
   updateVideoProgress,
   resumableProviderTaskId,
   explicitShotSpeechMode,
+  requiresLipSyncForAudio,
+  lipSyncAudioSource,
   expectedModelForShot,
   shotNeedsNativeAudio,
   hardVideoDependency,
