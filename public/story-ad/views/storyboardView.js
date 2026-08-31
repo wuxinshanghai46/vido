@@ -352,7 +352,7 @@ export async function mount(host, context) {
   const generateStoryboard = async (button, options = {}) => {
     let accepted = false;
     try {
-      setButtonBusy(button, true, '正在提交…');
+      setButtonBusy(button, true, '正在提交…', { elapsed: true });
       const optimisticTotal = Math.max(1, checkpointTotal || bundle?.story_flow?.contract?.units?.length || 1);
       store.beginStageSubmission?.('storyboard', optimisticTotal, checkpointShots.length
         ? `正在继续生成分镜；已完成 ${checkpointShots.length}/${optimisticTotal}，只处理未完成镜头。`
@@ -484,7 +484,7 @@ export async function mount(host, context) {
       batchFinalizing = false;
       activeSketchTargets = new Set(targetIndexes);
       targetIndexes.forEach(index => pendingSketchIndexes.add(index));
-      setButtonBusy(button, true, '正在提交…');
+      setButtonBusy(button, true, '正在提交…', { elapsed: true });
       renderSketchBatch({ status: 'queued', requested: targetCount, completed: 0, target_indexes: targetIndexes, started_at: new Date().toISOString(), message: '批次已提交，生成结果会逐镜保存到下方镜头卡片。' });
       const data = await request(`/api/story-ad/projects/${encodeURIComponent(bundle.project.id)}/storyboard-images/generate-batch`, {
         method: 'POST',
