@@ -16,6 +16,7 @@ const personKeyframeQa = require('../src/services/newStoryAd/personConsistencyQa
 const productKeyframeQa = require('../src/services/newStoryAd/productConsistencyQaService');
 const continuity = require('../src/services/newStoryAd/continuityService');
 const storyboardImages = require('../src/services/storyAdWorkspace/storyboardSketchService');
+const storyboardSubjectQa = require('../src/services/newStoryAd/storyboardSubjectQaService');
 
 function delay(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -26,7 +27,11 @@ function confirmStoryboardImages(taskId) {
   storage.saveOutput(taskId, 'storyboard_images', storyboardImages.normalizeSketches(taskId, shots.map((shot, index) => ({
     shot_index: Number(shot.shot_index || shot.index || index + 1) || index + 1,
     status: 'confirmed', image_url: `https://example.test/storyboard-${taskId}-${index + 1}.png`,
-  }))));
+  }))).map(image => ({
+    ...image,
+    subject_qa_policy_version: storyboardSubjectQa.QA_POLICY_VERSION,
+    subject_count_qa: { pass: true, status: 'verified', policy_version: storyboardSubjectQa.QA_POLICY_VERSION },
+  })));
 }
 
 function verifiedSceneAsset(sceneId = 'verified-scene') {
