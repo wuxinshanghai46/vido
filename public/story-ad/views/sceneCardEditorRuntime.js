@@ -15,7 +15,7 @@ export function createSceneCardEditorRuntime(host, context) {
   };
   host.querySelectorAll('[data-scene-card]').forEach(card => {
     switchTab(card, recalledTab(tabKey(card.dataset.sceneId || '')) || card.dataset.defaultSceneTab || 'prompt', false);
-    const promise = import('./scenePromptEditor.js?v=20260831-production-v333').then(module => {
+    const promise = import('./scenePromptEditor.js?v=20260831-production-v334').then(module => {
       const controller = module.bindScenePromptEditor(card, context);
       if (controller) editorControllers.set(card.dataset.sceneId || '', controller);
       return controller;
