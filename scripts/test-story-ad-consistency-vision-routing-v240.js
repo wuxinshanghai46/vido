@@ -10,7 +10,7 @@ process.env.OUTPUT_DIR = outputDir;
 process.env.DB_ENABLED = '0';
 fs.writeFileSync(path.join(outputDir, 'settings.json'), JSON.stringify({ providers: [
   { id: 'apismile', enabled: true, api_key: 'test', api_url: 'https://example.invalid/v1', models: [{ id: 'gemini-3.1-pro-preview', enabled: true, use: 'vision' }] },
-  { id: 'deyunai', preset: 'deyunai', enabled: true, api_key: 'test', api_url: 'https://example.invalid', models: [{ id: 'gemini-2.5-pro', enabled: true, use: 'vision', channel: 'overseas' }] },
+  { id: 'deyunai', preset: 'deyunai', enabled: true, api_key: 'test', api_url: 'https://example.invalid', models: [{ id: 'claude-opus-4-7', enabled: true, use: 'vision', channel: 'overseas' }] },
   { id: 'webang-maas', enabled: true, api_key: 'test', api_url: 'https://example.invalid/v1', models: [{ id: 'gemini-2.5-pro', enabled: true, use: 'vision' }] },
   { id: 'zhipu', enabled: true, api_key: 'test', api_url: 'https://example.invalid/v1', models: [{ id: 'glm-4.6v-flash', enabled: true, use: 'vision' }] },
 ] }));
@@ -22,7 +22,7 @@ const migration = require('./configure-story-ad-consistency-vision-routing-v240'
 const expected = [
   'webang-maas/gemini-2.5-pro',
   'apismile/gemini-3.1-pro-preview',
-  'deyunai/gemini-2.5-pro',
+  'deyunai/claude-opus-4-7',
 ];
 
 for (const stage of migration.STAGES) {
@@ -36,15 +36,15 @@ for (const stage of migration.STAGES) {
 const settings = {
   providers: [
     { id: 'apismile', enabled: true, api_key: 'test', models: [{ id: 'gemini-3.1-pro-preview', enabled: true }] },
-    { id: 'deyunai', enabled: true, api_key: 'test', models: [{ id: 'gemini-2.5-pro', enabled: true, use: 'vision', channel: 'overseas' }] },
+    { id: 'deyunai', enabled: true, api_key: 'test', models: [{ id: 'claude-opus-4-7', enabled: true, use: 'vision', channel: 'overseas' }] },
     { id: 'webang-maas', enabled: true, api_key: 'test', models: [{ id: 'gemini-2.5-pro', enabled: true }] },
     { id: 'zhipu', enabled: true, api_key: 'test', models: [{ id: 'glm-4.6v-flash', enabled: true }] },
   ],
 };
 assert.deepEqual(
   gateway.candidatesForVisionStage('new_story_ad.scene_camera_qa').map(item => `${item.provider_id}/${item.model_id}`),
-  expected.slice(0, 2),
-  '真实候选发现必须保持当前供应商顺序，并跳过不满足微众通道合同的测试供应商',
+  expected,
+  '真实候选发现必须保持当前供应商顺序，并保留满足适配器合同的供应商模型',
 );
 assert.equal(
   adapters.resolveTextAdapter({ provider_id: 'zhipu', model_id: 'glm-4.6v-flash', _stageId: 'new_story_ad.scene_camera_qa', _capability: 'vision' }).modelId,
