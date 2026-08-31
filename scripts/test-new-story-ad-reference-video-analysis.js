@@ -782,7 +782,7 @@ async function main() {
   assert.deepStrictEqual(routedVisionModels, [
     'webang-maas/gemini-2.5-pro',
     'apismile/gemini-3.1-pro-preview',
-    'deyunai/gemini-2.5-pro',
+    'deyunai/claude-opus-4-7',
   ], 'reference video analysis must use only its explicit VLM route');
   const routedAvailability = modelGateway.visionAvailability('new_story_ad.reference_video_vision');
   assert.strictEqual(routedAvailability.source, 'model_call_management');
@@ -1118,7 +1118,7 @@ async function main() {
   authError.code = 'AUTH_CONFIG';
   modelGateway.recordHealth({ provider_id: 'webang-maas', model_id: 'gemini-2.5-pro' }, { ok: false, error: authError });
   modelGateway.recordHealth({ provider_id: 'apismile', model_id: 'gemini-3.1-pro-preview' }, { ok: false, error: authError });
-  modelGateway.recordHealth({ provider_id: 'deyunai', model_id: 'gemini-2.5-pro' }, { ok: false, error: authError });
+  modelGateway.recordHealth({ provider_id: 'deyunai', model_id: 'claude-opus-4-7' }, { ok: false, error: authError });
   const mockBeforeGuard = process.env.NEW_STORY_AD_MOCK_LLM;
   process.env.NEW_STORY_AD_MOCK_LLM = '0';
   assert.throws(
