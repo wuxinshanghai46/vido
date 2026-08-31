@@ -71,8 +71,8 @@ function testCurrentUiContract() {
   assert.match(person, /hasPersonMedia \|\| generationActive/u);
   assert.match(person, /personAutosave\?\.flush/u, '人物切页和关闭前必须刷新保存');
   assert.doesNotMatch(personForm, /type="submit"|保存提示词/u);
-  assert.match(navigation, /return VIEW_ORDER\.map/u, '六个流程阶段必须始终显示');
-  assert.doesNotMatch(navigation, /VIEW_ORDER\.filter/u, '导航不得按锁定状态删除阶段');
+  assert.match(navigation, /VIEW_ORDER\.filter\(view => view !== 'edit'/u, '成片剪辑必须在初版成片存在后才显示');
+  assert.match(navigation, /counts\.final_videos/u, '剪辑入口显隐必须来自持久化成片计数');
   assert.match(bundleStore, /requestSeq !== state\.bundleRequestSeq/u, '过期 bundle 响应必须丢弃');
   assert.match(bundleStore, /incomingRevision !== currentRevision \? \[\]/u, '内容版本变化必须重置分区缓存');
 }

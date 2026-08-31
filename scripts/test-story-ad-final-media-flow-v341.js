@@ -83,11 +83,15 @@ assert.equal(upstreamAfter, upstreamBefore, '声音方案和剪辑时间线不�
 const root = path.resolve(__dirname, '..');
 const routeSource = fs.readFileSync(path.join(root, 'src/routes/newStoryAd.js'), 'utf8');
 const finalView = fs.readFileSync(path.join(root, 'public/story-ad/views/finalView.js'), 'utf8');
+const soundPage = fs.readFileSync(path.join(root, 'public/story-ad/views/finalSoundView.js'), 'utf8');
+const editView = fs.readFileSync(path.join(root, 'public/story-ad/views/finalEditView.js'), 'utf8');
 const soundView = fs.readFileSync(path.join(root, 'public/story-ad/views/finalSoundDesignView.js'), 'utf8');
 assert.match(routeSource, /LEGACY_KEYFRAME_GENERATION_DISABLED/);
 assert.doesNotMatch(finalView, /data-generate-keyframes/);
 assert.match(finalView, /已确认分镜 \/ 视频首帧/);
-assert.match(finalView, /智能剪辑时间线/);
+assert.doesNotMatch(finalView, /data-save-timeline|data-trim-start/);
+assert.match(soundPage, /<h1>声音<\/h1>/);
+assert.match(editView, /镜头时间线/);
 assert.match(soundView, /我已试听并确认声音/);
 assert.match(soundView, /data-speaker/);
 assert.match(soundView, /背景音乐/);

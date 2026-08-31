@@ -339,7 +339,7 @@ export async function mount(host, context) {
       const updated = await store.updateRequest({ shot_design_confirmed: true }, { refreshSections: 'summary' });
       const nextStep = updated?.navigation?.steps?.final;
       if (nextStep?.enabled === false) throw new Error(nextStep.blocker || '视频生成尚未解锁。');
-      context.navigate(`/story-ad/projects/${encodeURIComponent(bundle.project.id)}?view=final`);
+      context.navigate(`/story-ad/projects/${encodeURIComponent(bundle.project.id)}?view=sound`);
     } catch (error) {
       toast(error.message, 'danger');
       setButtonBusy(button, false);

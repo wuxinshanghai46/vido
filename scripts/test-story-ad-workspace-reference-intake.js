@@ -808,7 +808,9 @@ async function testFamilyRecognitionAndSequentialWorkflowGates() {
     bundle = bundles.buildProjectBundle(taskId, { sections: 'all', user });
     assert.equal(bundle.navigation.steps.storyboard.completed, true);
     assert.equal(bundle.navigation.steps.final.enabled, true);
-    assert.equal(bundle.navigation.current, 'final');
+    assert.equal(bundle.navigation.steps.sound.enabled, true);
+    assert.equal(bundle.navigation.steps.compose.enabled, false);
+    assert.equal(bundle.navigation.current, 'sound');
   } finally {
     modelGateway.generateText = originalGenerateText;
     modelGateway.generateVision = originalGenerateVision;

@@ -323,8 +323,8 @@ export async function mount(host, context) {
     }
     try {
       await store.updateRequest({ shot_design_confirmed: true });
-      toast('全部镜头设计已确认，可以进入关键帧与视频生成。', 'success');
-      context.navigate(`/story-ad/projects/${encodeURIComponent(bundle.project.id)}?view=final`);
+      toast('全部镜头设计已确认，可以进入声音制作。', 'success');
+      context.navigate(`/story-ad/projects/${encodeURIComponent(bundle.project.id)}?view=sound`);
     } catch (error) {
       toast(error.message, 'danger');
       setButtonBusy(button, false);

@@ -102,7 +102,7 @@ let modelCalls = 0;
   const deploy = read('scripts/deploy-story-ad-immutable-release.js');
   const storyboardView = read('public/story-ad/views/storyboardView.js');
   const workspaceCss = read('public/story-ad/workspace.css');
-  assert.match(app, /const VIEW_ORDER = \['brief', 'plot', 'assets', 'scene', 'storyboard', 'final', 'workflow'\]/);
+  assert.match(app, /const VIEW_ORDER = \['brief', 'plot', 'assets', 'scene', 'storyboard', 'sound', 'compose', 'edit', 'workflow'\]/);
   assert.doesNotMatch(app, /storyFlowSketchView/);
   assert.match(app, /prefetchBundle\(route\.taskId, 'all'\)/);
   assert.match(store, /function mergedBundle/);

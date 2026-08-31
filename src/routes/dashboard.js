@@ -201,7 +201,7 @@ function collectVideos({ projects, avatars, i2v, storyAds }) {
       duration: finalVideo.duration || record.duration,
       aspectRatio: record.aspect_ratio || record.ratio,
       updatedAt: finalVideo.created_at || record.updated_at,
-      resumeUrl: `/story-ad/projects/${encodeURIComponent(record.id)}?view=final`
+      resumeUrl: `/story-ad/projects/${encodeURIComponent(record.id)}?view=edit`
     }));
   });
 

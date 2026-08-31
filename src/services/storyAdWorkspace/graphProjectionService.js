@@ -505,7 +505,7 @@ function projectGraph(bundle = {}) {
       subtitle: clip.qa?.pass === true ? '审核通过' : (clip.status || clip.lifecycle || ''),
       status: clip.qa?.pass === true ? 'passed' : (clip.status || clip.lifecycle || 'ready'),
       media: clip,
-      target: `/story-ad/projects/${encodeURIComponent(projectId)}?view=final&shot=${shotIndex}`,
+      target: `/story-ad/projects/${encodeURIComponent(projectId)}?view=compose&shot=${shotIndex}`,
       detail: { duration: Number(clip.duration || clip.duration_sec || 0) || 0 },
     });
     mediaIds.push(clipId);
@@ -528,7 +528,7 @@ function projectGraph(bundle = {}) {
       subtitle: finalVideo.status || '已生成',
       status: finalVideo.status || 'ready',
       media: finalVideo,
-      target: `/story-ad/projects/${encodeURIComponent(projectId)}?view=final`,
+      target: `/story-ad/projects/${encodeURIComponent(projectId)}?view=edit`,
       detail: { duration: Number(finalVideo.duration || finalVideo.duration_sec || 0) || 0 },
     });
     const sources = mediaIds.filter(id => id.startsWith('clip:'));

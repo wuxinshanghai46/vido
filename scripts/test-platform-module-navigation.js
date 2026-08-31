@@ -45,7 +45,7 @@ assert(dashboardStyle.includes('#page-dashboard.dashboard-workbench-page{visibil
 assert(dashboardStyle.includes('#page-dashboard.dashboard-workbench-page.active{visibility:visible!important;display:block!important;'), '只有激活首页才允许显示');
 assert(!dashboardStyle.includes('@media(max-width:680px){#page-dashboard.dashboard-workbench-page{'), '移动端样式也不得绕过首页激活状态');
 
-assert(dashboardRoute.includes('`/story-ad/projects/${encodeURIComponent(record.id)}?view=final`'), '已完成剧情广告必须返回独立成片页');
+assert(dashboardRoute.includes('`/story-ad/projects/${encodeURIComponent(record.id)}?view=edit`'), '已完成剧情广告必须返回独立成片剪辑页');
 assert(dashboardRoute.includes('`/story-ad/projects/${encodeURIComponent(x.id)}?view=${storyAdView(x.stage)}`'), '进行中剧情广告必须返回与当前阶段对应的独立项目页');
 assert(dashboardRoute.includes("if (/storyboard/.test(value)) return 'storyboard';"), '剧情广告分镜阶段必须返回分镜页');
 assert(dashboardRoute.includes("if (/scene|asset|character|product/.test(value)) return 'assets';"), '剧情广告资产阶段必须返回资产页');

@@ -920,15 +920,18 @@ assert.match(shot, /data-finish-shot-design/, '镜头设计必须提供明确完
 assert.match(shot, /shot_design_confirmed:\s*true/, '全部镜头通过校验后必须持久化完成状态');
 assert.match(shot, /const persistedShots = Array\.isArray\(saved\?\.shots\)/, '保存并继续必须校验服务端规范化后的分镜，不能继续使用保存前的旧对象');
 assert.match(shot, /hasEditableChange[\s\S]*return shots;/, '镜头没有可编辑字段变化时不得重建整份分镜与关键帧合同');
-assert.match(shot, /view=final/, '镜头设计完成后才能进入生成环节');
+assert.match(shot, /view=sound/, '镜头设计完成后必须先进入声音环节');
 
 const finalView = read('public/story-ad/views/finalView.js');
+const finalEditView = read('public/story-ad/views/finalEditView.js');
 assert.match(finalView, /class="final-video"[^>]*controls/);
-assert.match(finalView, /下载原始成片/);
+assert.match(finalEditView, /下载当前成片/);
 assert.match(finalView, /preload="none"/, '最终成片首屏不得默认拉取视频流');
 assert.match(finalView, /poster=/, '最终成片应优先展示轻量封面');
 assert.match(finalView, /<details class="card generation-section generation-details">/);
 assert.doesNotMatch(finalView, /mediaPreview\(finalVideo/);
+assert.doesNotMatch(finalView, /data-save-timeline|data-trim-start/, '视频与合成页不得提前出现剪辑控件');
+assert.match(finalEditView, /data-save-timeline/);
 
 const workspaceCss = read('public/story-ad/workspace.css');
 assert.match(workspaceCss, /\.drawer\s*\{[^}]*grid-template-rows:\s*auto minmax\(0,\s*1fr\) auto;[^}]*overflow:\s*hidden;/s, '抽屉必须只滚动正文，底部操作栏不得遮挡表单');

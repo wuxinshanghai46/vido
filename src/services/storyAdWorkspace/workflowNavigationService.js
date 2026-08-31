@@ -32,6 +32,8 @@ function build({ task = {}, context = {}, outputs = {}, counts = {}, clean, list
   const keyframesReady = list(outputs.keyframes).length > 0;
   const clipsReady = list(outputs.video_clips).length > 0;
   const finalReady = Boolean(outputs.final_video?.video_url || outputs.final_video?.videoUrl);
+  const soundApproval = outputs.audio_production_approval || {};
+  const soundReady = soundApproval.confirmed === true && Boolean(soundApproval.signature);
   const assetSetupComplete = context.asset_setup_confirmed === true
     || storyboardReady || keyframesReady || clipsReady || finalReady;
   const acceptance = outputs[sceneVisualAcceptance.OUTPUT_KIND];
@@ -52,6 +54,7 @@ function build({ task = {}, context = {}, outputs = {}, counts = {}, clean, list
       shots: list(outputs.storyboard_table).length,
       keyframes: list(outputs.keyframes).length,
       clips: list(outputs.video_clips).length,
+      final_videos: finalReady ? 1 : 0,
     },
     asset_plan_eligibility: planEligibility,
     steps: {
@@ -61,13 +64,16 @@ function build({ task = {}, context = {}, outputs = {}, counts = {}, clean, list
         : '请先通过对话确认项目名称、内容类型和核心设想。', 'assets'),
       assets: step(blueprintReady || assetPlanReady, assetSetupComplete, '请先生成并确认详细剧情与对白。', 'scene'),
       scene: step(assetSetupComplete, sceneSetupComplete, '请先确认人物资产。', 'storyboard'),
-      storyboard: step(sceneSetupComplete && blueprintReady, storyboardReady && shotDesignComplete, '请先生成并确认全部场景。', 'final'),
+      storyboard: step(sceneSetupComplete && blueprintReady, storyboardReady && shotDesignComplete, '请先生成并确认全部场景。', 'sound'),
+      sound: step(shotDesignComplete, soundReady, '请先完成并确认全部镜头设计。', 'compose'),
+      compose: step(soundReady, finalReady, '请先试听并确认声音方案。', 'edit'),
+      edit: step(finalReady, Boolean(outputs.edit_timeline), '请先生成视频片段并合成初版成片。', ''),
       final: step(shotDesignComplete, finalReady, '请先完成并确认全部镜头设计。', ''),
       workflow: step(true, finalReady, '', ''),
     },
   };
-  result.current = ['brief', 'plot', 'assets', 'scene', 'storyboard', 'final']
-    .find(view => result.steps[view].enabled && !result.steps[view].completed) || 'final';
+  result.current = ['brief', 'plot', 'assets', 'scene', 'storyboard', 'sound', 'compose', 'edit']
+    .find(view => result.steps[view].enabled && !result.steps[view].completed) || 'edit';
   return result;
 }
 

@@ -15,14 +15,16 @@ await assertCurrentRelease().then(() => startReleaseHeartbeat()).catch(error => 
 
 const app = document.querySelector('#storyAdApp');
 const store = createProjectStore();
-const VIEW_ORDER = ['brief', 'plot', 'assets', 'scene', 'storyboard', 'final', 'workflow'];
+const VIEW_ORDER = ['brief', 'plot', 'assets', 'scene', 'storyboard', 'sound', 'compose', 'edit', 'workflow'];
 const VIEW_META = {
   brief: ['1', '对话立项'],
   plot: ['2', '剧情与对白'],
   assets: ['3', '人物资产'],
   scene: ['4', '场景世界'],
   storyboard: ['5', '人物场景分镜'],
-  final: ['6', '声音、视频与合成'],
+  sound: ['6', '声音'],
+  compose: ['7', '视频与合成'],
+  edit: ['8', '成片剪辑'],
   workflow: ['⌘', '工作流画布'],
 };
 const VIEW_MODULES = {
@@ -31,7 +33,9 @@ const VIEW_MODULES = {
   scene: () => import('./views/sceneWorldPage.js?v=20260831-production-v343'),
   plot: () => import('./views/plotRoomView.js?v=20260831-production-v343'),
   storyboard: () => import('./views/storyboardView.js?v=20260831-production-v343'),
-  final: () => import('./views/finalView.js?v=20260831-production-v343'),
+  sound: () => import('./views/finalSoundView.js?v=20260831-production-v343'),
+  compose: () => import('./views/finalView.js?v=20260831-production-v343'),
+  edit: () => import('./views/finalEditView.js?v=20260831-production-v343'),
   workflow: () => import('./views/workflowView.js?v=20260831-production-v343'),
 };
 const VIEW_SECTIONS = Object.freeze({
@@ -40,7 +44,9 @@ const VIEW_SECTIONS = Object.freeze({
   scene: 'summary,assets,shots',
   plot: 'summary,story',
   storyboard: 'summary,assets,story,shots',
-  final: 'summary,shots,media',
+  sound: 'summary,shots,media',
+  compose: 'summary,shots,media',
+  edit: 'summary,shots,media',
   workflow: 'summary,reference,assets,story,shots,media,graph',
 });
 function sectionsForView(view = 'brief') { return VIEW_SECTIONS[view] || VIEW_SECTIONS.brief; }
@@ -68,7 +74,8 @@ function platformTopbar({ project = null, saving = false, isNew = false } = {}) 
 function currentRoute() {
   const match = location.pathname.match(/^\/story-ad\/projects\/([^/]+)$/);
   const params = new URLSearchParams(location.search);
-  const requestedView = params.get('view') === 'flow' ? 'storyboard' : params.get('view');
+  const rawView = params.get('view');
+  const requestedView = rawView === 'flow' ? 'storyboard' : (rawView === 'final' ? 'sound' : rawView);
   const view = VIEW_ORDER.includes(requestedView) ? requestedView : 'brief';
   return {
     page: match ? 'project' : 'center',
@@ -196,9 +203,10 @@ function projectNavigation(bundle, active) {
     scene: counts.scenes,
     storyboard: counts.shots,
     shot: counts.keyframes,
-    final: counts.clips,
+    compose: counts.clips,
+    edit: Number(counts.final_videos || 0),
   }[view]);
-  return VIEW_ORDER.map(view => {
+  return VIEW_ORDER.filter(view => view !== 'edit' || Number(counts.final_videos || 0) > 0).map(view => {
     const [number, label] = VIEW_META[view];
     const count = countFor(view);
     const state = steps[view] || { enabled: true, completed: false, blocker: '' };
