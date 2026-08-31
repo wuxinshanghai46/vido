@@ -336,7 +336,9 @@ export async function mount(host, context) {
     const button = event.currentTarget;
     try {
       setButtonBusy(button, true, '正在进入…');
-      await store.updateRequest({ shot_design_confirmed: true }, { skipRefresh: true });
+      const updated = await store.updateRequest({ shot_design_confirmed: true }, { refreshSections: 'summary' });
+      const nextStep = updated?.navigation?.steps?.final;
+      if (nextStep?.enabled === false) throw new Error(nextStep.blocker || '视频生成尚未解锁。');
       context.navigate(`/story-ad/projects/${encodeURIComponent(bundle.project.id)}?view=final`);
     } catch (error) {
       toast(error.message, 'danger');

@@ -50,6 +50,10 @@ async function main() {
   check(!promptSave.includes('await context.refreshShell()'), '提示词保存成功后不得等待完整页面外壳刷新');
   check(promptSave.includes("void store.refreshSections?.('summary,shots')"), '保存后必须在后台定向同步提示词与镜头状态');
   check(/mainSketchAction\}\$\{shots\.length.*data-confirm-storyboard/.test(view), '确认分镜按钮必须紧邻全部重新生成按钮');
+  const confirmAction = view.slice(view.indexOf("host.querySelector('[data-confirm-storyboard]')"), view.indexOf("host.querySelectorAll('[data-storyboard-page]')"));
+  check(confirmAction.includes("refreshSections: 'summary'"), '确认分镜后必须读取服务器最新导航状态');
+  check(!confirmAction.includes('skipRefresh'), '确认分镜不得带着旧导航状态立即跳转');
+  check(confirmAction.indexOf('navigation?.steps?.final') < confirmAction.indexOf('context.navigate'), '必须先确认视频阶段已解锁，再进入下一步');
   check(!view.includes('class="storyboard-next-action"'), '页面底部不得重复显示整条确认栏');
   check(css.includes('.storyboard-prompt-dialog-backdrop'), '必须提供全屏弹层样式');
   check(/width:min\(1120px,96vw\)/.test(css), '弹层必须接近竞品的大尺寸编辑体验');
