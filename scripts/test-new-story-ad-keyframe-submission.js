@@ -37,10 +37,13 @@ function testBrowserAndRouteGuardContract() {
       `${path.basename(file)} must not call browser-native alert/confirm/prompt`);
   });
   const routeStart = route.indexOf("router.post('/tasks/:id/keyframes'");
-  const guardIndex = route.indexOf('service.keyframeSubmissionPreflight(req.params.id, body, userFromReq(req));', routeStart);
-  const queueIndex = route.indexOf('return queueTaskStage(', routeStart);
-  assert(routeStart >= 0 && guardIndex > routeStart && queueIndex > guardIndex,
-  'billing preflight must run before a background keyframe job is queued');
+  const routeEnd = route.indexOf("router.post('/tasks/:id/prompt-preview'", routeStart);
+  const keyframeRoute = route.slice(routeStart, routeEnd);
+  assert(routeStart >= 0
+    && keyframeRoute.includes("res.status(410)")
+    && keyframeRoute.includes('LEGACY_KEYFRAME_GENERATION_DISABLED')
+    && !keyframeRoute.includes('queueTaskStage('),
+  '旧整批关键帧入口必须是无模型调用、无排队的 410 拒绝壳');
   assert(html.includes('bootstrap.js?v=20260731-reference-grounding-v2'));
   assert(html.includes('digital-human.js?v=20260728-disable-legacy-entry-v53'));
   const sceneRouteStart = route.indexOf("router.post('/tasks/:id/scene-assets'");

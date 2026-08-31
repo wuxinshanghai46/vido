@@ -10,7 +10,7 @@ const PROFILE_KIND = 'scene_sound_profiles';
 const ASSET_KIND = 'sound_assets';
 const TIMELINE_KIND = 'audio_timeline';
 const LEDGER_KIND = 'audio_license_ledger';
-const ALLOWED_TRACKS = new Set(['room_tone', 'ambient', 'foley', 'sfx', 'transition']);
+const ALLOWED_TRACKS = new Set(['room_tone', 'ambient', 'foley', 'sfx', 'transition', 'bgm']);
 const OPEN_LICENSES = new Set(['cc0', 'pdm', 'by']);
 const OPEN_AUDIO_HOSTS = Object.freeze(['cdn.freesound.org', 'upload.wikimedia.org', 'files.freemusicarchive.org', 'freemusicarchive.org', 'archive.org', 'storage.jamendo.com', 'mp3d.jamendo.com']);
 
@@ -113,7 +113,9 @@ async function importOpenverseAsset(taskId, input = {}) {
   const timeline = {
     timeline_id: `audio_${shot.shot_id}_${trackType}_${assetId}`, shot_id: shot.shot_id, shot_index: shot.shot_index,
     scene_id: shot.scene_id, track_type: trackType, asset_id: assetId, start_sec: 0,
-    duration_sec: Math.max(0.1, Math.min(shot.duration_sec, source.duration_sec || shot.duration_sec)),
+    duration_sec: trackType === 'bgm'
+      ? Math.max(0.1, Math.min(state.shots.reduce((sum, row) => sum + row.duration_sec, 0), source.duration_sec || state.shots.reduce((sum, row) => sum + row.duration_sec, 0)))
+      : Math.max(0.1, Math.min(shot.duration_sec, source.duration_sec || shot.duration_sec)),
     volume: Math.max(0, Math.min(1, Number(input.volume ?? 0.35) || 0.35)), status: 'ready',
   };
   storage.saveOutput(taskId, TIMELINE_KIND, [...state.timeline.filter(item => item.timeline_id !== timeline.timeline_id), timeline]);
@@ -124,6 +126,7 @@ async function importOpenverseAsset(taskId, input = {}) {
     file_sha256: asset.file_sha256, downloaded_at: importedAt, requires_attribution: source.license === 'by', redistributable: true,
   };
   storage.saveOutput(taskId, LEDGER_KIND, [...state.ledger.filter(item => item.asset_id !== assetId), ledger]);
+  storage.deleteOutput(taskId, 'audio_production_approval');
   storage.deleteOutput(taskId, 'final_video');
   return { asset, timeline, ledger };
 }
@@ -208,7 +211,9 @@ function addUserAsset(taskId, input = {}, actor = {}) {
     track_type: trackType,
     asset_id: assetId,
     start_sec: Math.max(0, Math.min(shot.duration_sec, Number(input.start_sec || 0) || 0)),
-    duration_sec: Math.max(0, Math.min(shot.duration_sec, Number(input.duration_sec || shot.duration_sec) || shot.duration_sec)),
+    duration_sec: trackType === 'bgm'
+      ? Math.max(0.1, Math.min(state.shots.reduce((sum, row) => sum + row.duration_sec, 0), Number(input.duration_sec || state.shots.reduce((sum, row) => sum + row.duration_sec, 0)) || 0.1))
+      : Math.max(0, Math.min(shot.duration_sec, Number(input.duration_sec || shot.duration_sec) || shot.duration_sec)),
     volume: Math.max(0, Math.min(1, Number(input.volume ?? 0.35) || 0.35)),
     status: 'ready',
   };
@@ -220,6 +225,7 @@ function addUserAsset(taskId, input = {}, actor = {}) {
     file_sha256: row.file_sha256, downloaded_at: timestamp, requires_attribution: false, redistributable: false,
   };
   storage.saveOutput(taskId, LEDGER_KIND, [...state.ledger.filter(item => item.asset_id !== assetId), ledgerRow]);
+  storage.deleteOutput(taskId, 'audio_production_approval');
   storage.deleteOutput(taskId, 'final_video');
   return { asset: row, timeline: timelineRow, ledger: ledgerRow };
 }
@@ -230,7 +236,7 @@ function resolvedTracks(taskId) {
   const shotStarts = new Map();
   let cursor = 0;
   state.shots.forEach(shot => { shotStarts.set(shot.shot_id, cursor); cursor += shot.duration_sec; });
-  return state.timeline.filter(row => row.status === 'ready').map(row => {
+  return state.timeline.filter(row => row.status === 'ready' && row.track_type !== 'bgm').map(row => {
     const asset = assetById.get(row.asset_id) || {};
     const path = localPath(asset);
     return {
@@ -241,6 +247,15 @@ function resolvedTracks(taskId) {
   }).filter(row => row.file_path && fs.existsSync(row.file_path));
 }
 
+function resolvedBgm(taskId) {
+  const state = compile(taskId);
+  const row = state.timeline.find(item => item.status === 'ready' && item.track_type === 'bgm');
+  const asset = state.assets.find(item => item.asset_id === row?.asset_id) || null;
+  if (!row || !asset) return null;
+  const filePath = localPath(asset);
+  return filePath && fs.existsSync(filePath) ? { ...asset, file_path: filePath, volume: row.volume } : null;
+}
+
 function attributionManifest(taskId) {
   const rows = list(storage.getOutput(taskId, LEDGER_KIND));
   return rows.filter(row => row.requires_attribution).map(row => ({
@@ -248,4 +263,4 @@ function attributionManifest(taskId) {
   }));
 }
 
-module.exports = { ALLOWED_TRACKS, ASSET_KIND, LEDGER_KIND, PROFILE_KIND, TIMELINE_KIND, addUserAsset, attributionManifest, compile, importOpenverseAsset, recommendedQuery, recommendedTrack, resolvedTracks, searchOpenverse };
+module.exports = { ALLOWED_TRACKS, ASSET_KIND, LEDGER_KIND, PROFILE_KIND, TIMELINE_KIND, addUserAsset, attributionManifest, compile, importOpenverseAsset, recommendedQuery, recommendedTrack, resolvedBgm, resolvedTracks, searchOpenverse };

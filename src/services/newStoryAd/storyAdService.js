@@ -60,6 +60,9 @@ const assetPlan = require('./assetPlanService'), workflowTransition = require('.
 const assetPlanCheckpointLineage = require('./assetPlanCheckpointLineageService');
 const productionLimits = require('./productionLimitsService'), storySceneCoverage = require('./storySceneCoverageService');
 const voicePlan = require('./voicePlanService');
+const videoInputFrames = require('./videoInputFrameService');
+const audioProduction = require('./audioProductionService');
+const storyAdTimeline = require('./storyAdTimelineService');
 const accountVoiceAssignment = require('./accountVoiceAssignmentService');
 const contentSkill = require('./contentSkillService'), contentDomainArtifacts = require('./contentDomainArtifactService');
 const workAggregate = require('./workAggregateService');
@@ -2109,6 +2112,15 @@ async function ensureContractsForMedia(taskId, ctx, shots) {
   const contractCtx = { ...ctx, scene_assets: Array.isArray(sceneAssets) ? sceneAssets : [] };
   return keyframeContractFreshness.inspect(taskId, { ctx: contractCtx, shots }).contracts;
 }
+function approvedVideoFrames(taskId, shots = [], contracts = []) {
+  return videoInputFrames.resolve(taskId, { shots, contracts }).frames;
+}
+function mediaRuntimeContext(taskId, context = {}) {
+  return audioProduction.applyPlan(taskId, {
+    ...context,
+    ...(storage.getOutput(taskId, 'media_runtime_context') || {}),
+  });
+}
 function assertVideoInputsReady({ ctx = {}, shots = [], keyframes = [], contracts = [], sceneAcceptance = null } = {}) {
   assertVerifiedSceneAssets(ctx.scene_assets || [], { acceptance: sceneAcceptance });
   const personContract = personIdentity.assertVerifiedPerson(ctx);
@@ -2119,7 +2131,11 @@ function assertVideoInputsReady({ ctx = {}, shots = [], keyframes = [], contract
     const frame = keyframes[index] || {};
     const qa = frame.qa || {};
     if (!isCompleteKeyframe(frame)) {
-      failures.push(`第 ${index + 1} 镜缺少可用关键帧`);
+      failures.push(`第 ${index + 1} 镜缺少可用的已确认彩色分镜首帧`);
+      continue;
+    }
+    if (frame.source_type === 'confirmed_colour_storyboard') {
+      if (qa.pass !== true || qa.status !== 'human_confirmed_storyboard') failures.push(`第 ${index + 1} 镜彩色分镜尚未确认`);
       continue;
     }
     if (frame.regeneration_error) {
@@ -2201,10 +2217,10 @@ function silentTtsOutput(reason = 'voiceover_disabled') {
 async function generateTtsStage(taskId, options = {}) {
   const task = storage.getTask(taskId);
   if (!task) throw new Error('没有找到对应项目。');
-  const ctx = storage.getOutput(taskId, 'context') || task.request || {};
+  const ctx = mediaRuntimeContext(taskId, storage.getOutput(taskId, 'context') || task.request || {});
   const shots = await ensureStoryboardForMedia(taskId);
   const contracts = await ensureContractsForMedia(taskId, ctx, shots);
-  const keyframes = Array.isArray(storage.getOutput(taskId, 'keyframes')) ? storage.getOutput(taskId, 'keyframes') : [];
+  const keyframes = approvedVideoFrames(taskId, shots, contracts);
   // “合成广告”会先执行 TTS。必须在产生配音费用之前执行与视频阶段
   // 相同的审核门禁，避免未通过的关键帧仍然消耗一次配音调用。
   videoSubmissionGate.validateBeforeProvider({ storage, taskId, validate: () => assertVideoInputsReady({ ctx, shots, keyframes, contracts, sceneAcceptance: sceneVerificationOptions(taskId).acceptance }) });
@@ -2217,6 +2233,7 @@ async function generateTtsStage(taskId, options = {}) {
   if (!includeVoiceover) {
     const tts_audio = silentTtsOutput();
     storage.saveOutput(taskId, 'tts_audio', tts_audio);
+    storage.deleteOutput(taskId, audioProduction.OUTPUT_KIND);
     storage.saveStage(taskId, 'tts', {
       status: 'done',
       output_summary: 'voiceover skipped by user',
@@ -2236,6 +2253,7 @@ async function generateTtsStage(taskId, options = {}) {
     onCheckpoint: tracks => storage.saveOutput(taskId, 'tts_audio', { tracks, voice_id: voiceId, voice_assignments: voiceAssignments, provider_used: tracks.find(track => track?.provider_used)?.provider_used || '', warnings: tracks.map(track => track?.warning).filter(Boolean), status: tracks.every(Boolean) ? 'ready' : 'running', updated_at: new Date().toISOString() }),
   });
   storage.saveOutput(taskId, 'tts_audio', tts_audio);
+  storage.deleteOutput(taskId, audioProduction.OUTPUT_KIND);
   storage.saveStage(taskId, 'tts', {
     status: 'done',
     output_summary: `${tts_audio.tracks.length} audio tracks`,
@@ -2261,7 +2279,7 @@ function buildVideoPreflightPlan(taskId, options = {}) {
   const task = storage.getTask(taskId);
   if (!task) throw new videoCore.chineseError.VideoGenerationError('TASK_NOT_FOUND', '', { status: 404 });
   const shots = Array.isArray(storage.getOutput(taskId, 'storyboard_table')) ? storage.getOutput(taskId, 'storyboard_table') : [];
-  const storedCtx = storage.getOutput(taskId, 'context') || task.request || {};
+  const storedCtx = mediaRuntimeContext(taskId, storage.getOutput(taskId, 'context') || task.request || {});
   // Preflight and execution must bind the same output context. Deferring the
   // requested resolution until after authorization invalidates every freshly
   // generated lineage during compose and can invite an unnecessary paid redo.
@@ -2269,7 +2287,8 @@ function buildVideoPreflightPlan(taskId, options = {}) {
   const sceneAssets = storage.getOutput(taskId, 'scene_assets') || ctx.scene_assets || [];
   const contractCtx = { ...ctx, scene_assets: Array.isArray(sceneAssets) ? sceneAssets : [] };
   const contracts = keyframeContractFreshness.inspect(taskId, { ctx: contractCtx, shots }).contracts;
-  const keyframes = Array.isArray(storage.getOutput(taskId, 'keyframes')) ? storage.getOutput(taskId, 'keyframes') : [];
+  let keyframes = [];
+  try { keyframes = approvedVideoFrames(taskId, shots, contracts); } catch { keyframes = []; }
   const storedClips = Array.isArray(storage.getOutput(taskId, 'video_clips')) ? storage.getOutput(taskId, 'video_clips') : [];
   const statuses = videoAdapter.listVideoShotStatuses(taskId, shots.length);
   const clips = videoClipStatusRecovery.recover(storedClips, statuses);
@@ -2361,6 +2380,7 @@ function buildVideoPreflightPlan(taskId, options = {}) {
   const runtimePolicy = storyAdV3RuntimePolicy();
   plan.runtime_policy = runtimePolicy;
   videoSubmissionGate.addInputBlocker(plan, () => assertVideoInputsReady({ ctx: contractCtx, shots, keyframes, contracts, sceneAcceptance: sceneVerificationOptions(taskId).acceptance }));
+  videoSubmissionGate.addInputBlocker(plan, () => audioProduction.assertApproved(taskId));
   if (plan.paid_unit_count > 0 && !runtimePolicy.paid_video_enabled) {
     plan.blockers.push({
       code: 'VIDEO_V3_PAID_DISABLED',
@@ -2424,11 +2444,12 @@ async function generateVideoStage(taskId, options = {}) { options = paidExecutio
   const task = storage.getTask(taskId);
   if (!task) throw new videoCore.chineseError.VideoGenerationError('TASK_NOT_FOUND', '', { status: 404 });
   productionGraph.assertExecutable(taskId);
-  let ctx = { ...(storage.getOutput(taskId, 'context') || task.request || {}), production_graph: storage.getOutput(taskId, 'production_graph_v1') || null };
+  let ctx = { ...mediaRuntimeContext(taskId, storage.getOutput(taskId, 'context') || task.request || {}), production_graph: storage.getOutput(taskId, 'production_graph_v1') || null };
   const shots = await ensureStoryboardForMedia(taskId);
   const contracts = await ensureContractsForMedia(taskId, ctx, shots);
-  const keyframes = Array.isArray(storage.getOutput(taskId, 'keyframes')) ? storage.getOutput(taskId, 'keyframes') : [];
+  const keyframes = approvedVideoFrames(taskId, shots, contracts);
   videoSubmissionGate.validateBeforeProvider({ storage, taskId, validate: () => assertVideoInputsReady({ ctx, shots, keyframes, contracts, sceneAcceptance: sceneVerificationOptions(taskId).acceptance }) });
+  videoSubmissionGate.validateBeforeProvider({ storage, taskId, validate: () => audioProduction.assertApproved(taskId) });
   // 视频供应商调用必须经过不可绕过的方案与人民币费用确认。
   const preflightPlan = assertVideoPreflightConfirmation(taskId, options);
   const generationMode = preflightPlan.mode;
@@ -2451,8 +2472,8 @@ async function generateVideoStage(taskId, options = {}) { options = paidExecutio
     ...persistedCtx,
     include_voiceover: visualOnly ? false : includeVoiceover,
   };
-  storage.saveOutput(taskId, 'context', persistedCtx);
-  const autoTtsEnabled = includeVoiceover && options.auto_tts !== false && options.autoTts !== false;
+  storage.saveOutput(taskId, 'media_runtime_context', persistedCtx);
+  const autoTtsEnabled = includeVoiceover && options.auto_tts === true;
   const ttsNeedsRefresh = includeVoiceover && !ttsAdapter.voiceoverReady(ttsAudio, shots, voiceId, voiceAssignments);
   if (visualOnly) {
     ttsAudio = silentTtsOutput('visual_only_storyboard_video');
@@ -2462,6 +2483,8 @@ async function generateVideoStage(taskId, options = {}) { options = paidExecutio
   } else if (ttsNeedsRefresh && autoTtsEnabled) {
     const generatedTts = await generateTtsStage(taskId, options);
     ttsAudio = generatedTts.tts_audio;
+  } else if (ttsNeedsRefresh) {
+    throw Object.assign(new Error('旁白或对白音轨与当前声音方案不一致，请先重新生成并试听确认。'), { code: 'VIDEO_TTS_APPROVAL_REQUIRED', status: 409, retryable: false });
   }
   storage.updateTask(taskId, { status: 'running', stage: 'video', error: '', error_code: '', retryable: false });
   storage.saveStage(taskId, 'video', { status: 'running', input_summary: `${shots.length} shot videos` });
@@ -3287,14 +3310,15 @@ function subtitleSegmentsFromShots(shots = [], subtitleConfig = {}) {
 async function composeStage(taskId, options = {}) {
   const task = storage.getTask(taskId);
   if (!task) throw new Error('没有找到对应项目。');
-  let ctx = storage.getOutput(taskId, 'context') || task.request || {};
+  let ctx = mediaRuntimeContext(taskId, storage.getOutput(taskId, 'context') || task.request || {});
   const shots = await ensureStoryboardForMedia(taskId);
   // Composition must never generate visual clips. Step 4 owns storyboard video
   // generation and review; step 5 only mixes optional audio/effects and joins
   // the already-approved clips.
   const storedComposeClips = Array.isArray(storage.getOutput(taskId, 'video_clips')) ? storage.getOutput(taskId, 'video_clips') : [], composeStatuses = videoAdapter.listVideoShotStatuses(taskId, shots.length), clips = videoClipStatusRecovery.recover(storedComposeClips, composeStatuses);
   const composeSceneAssets = storage.getOutput(taskId, 'scene_assets') || ctx.scene_assets || [], composeContracts = keyframeContractFreshness.inspect(taskId, { ctx: { ...ctx, scene_assets: composeSceneAssets }, shots }).contracts;
-  const composeKeyframes = storage.getOutput(taskId, 'keyframes') || [], composeBlueprint = storage.getOutput(taskId, 'blueprint') || {}, composeStoryboardMeta = storage.getOutput(taskId, 'storyboard_meta') || {}, composeTts = storage.getOutput(taskId, 'tts_audio') || {}, composeAudioTracks = Array.isArray(composeTts?.tracks) ? composeTts.tracks : (Array.isArray(composeTts) ? composeTts : []);
+  const composeKeyframes = approvedVideoFrames(taskId, shots, composeContracts), composeBlueprint = storage.getOutput(taskId, 'blueprint') || {}, composeStoryboardMeta = storage.getOutput(taskId, 'storyboard_meta') || {}, composeTts = storage.getOutput(taskId, 'tts_audio') || {}, composeAudioTracks = Array.isArray(composeTts?.tracks) ? composeTts.tracks : (Array.isArray(composeTts) ? composeTts : []);
+  audioProduction.assertApproved(taskId);
   const composeSceneBlocks = storage.getOutput(taskId, 'video_scene_blocks') || [], composeModelRoute = String(clips.find(clip => clip?.provider_used)?.provider_used || '').toLowerCase();
   const missingLipSync = shots.map((shot, index) => videoAdapter.explicitShotSpeechMode(shot, composeContracts[index] || {}) === 'on_camera_dialogue' && clips[index]?.lip_sync_applied !== true ? index + 1 : 0).filter(Boolean);
   if (missingLipSync.length) {
@@ -3327,9 +3351,7 @@ async function composeStage(taskId, options = {}) {
   const composeVoiceAssignments = voicePlan.resolveVoiceAssignments(options, ctx, ttsAudio, composeVoiceId);
   const includeVoiceover = voicePlan.voiceoverEnabled(options, ctx, composeVoiceId, composeVoiceAssignments);
   if (includeVoiceover && !ttsAdapter.voiceoverReady(ttsAudio, shots, composeVoiceId, composeVoiceAssignments)) {
-    const generatedTts = await generateTtsStage(taskId, options);
-    ttsAudio = generatedTts.tts_audio;
-    ctx = storage.getOutput(taskId, 'context') || ctx;
+    throw Object.assign(new Error('当前旁白或对白未完成试听确认，合成不会自动补做付费配音。'), { code: 'COMPOSE_TTS_APPROVAL_REQUIRED', status: 409, retryable: false });
   } else if (!includeVoiceover) {
     ttsAudio = silentTtsOutput();
     storage.saveOutput(taskId, 'tts_audio', ttsAudio);
@@ -3354,13 +3376,13 @@ async function composeStage(taskId, options = {}) {
     || Object.prototype.hasOwnProperty.call(options, 'bgmAsset');
   const bgmAsset = hasBgmAssetOption
     ? (options.bgm_asset ?? options.bgmAsset ?? null)
-    : (ctx.bgm_asset || ctx.bgmAsset || null);
+    : (soundDesignAssets.resolvedBgm(taskId) || ctx.bgm_asset || ctx.bgmAsset || null);
   const brandOverlay = options.brand_overlay || options.brandOverlay || ctx.brand_overlay || ctx.brandOverlay || { enabled: false };
   const composeVoiceName = Object.prototype.hasOwnProperty.call(options, 'voice_name')
     || Object.prototype.hasOwnProperty.call(options, 'voiceName')
     ? cleanText(options.voice_name ?? options.voiceName ?? '', 120)
     : cleanText(ctx.voice_name || ctx.voiceName || '', 120);
-  storage.saveOutput(taskId, 'context', {
+  storage.saveOutput(taskId, 'media_runtime_context', {
     ...ctx,
     voice_id: composeVoiceId,
     voice_name: composeVoiceName,
@@ -3376,6 +3398,8 @@ async function composeStage(taskId, options = {}) {
   });
   stageProgress.update(taskId, { stage: 'compose', phase: 'timeline_ready', completed: 2, total: 3, generationId: composeGenerationId, startedAt: composeStartedAt, message: '成片时间线已确认，正在封装最终视频' });
   const advertisedSubjectProofCoverage = productIdentity.assertProofCoverage(ctx, shots, clips);
+  const timelineEdits = storyAdTimeline.get(taskId);
+  const timelineTransitions = shots.map((shot, index) => ({ ...shot, ...(timelineEdits[index] || {}) }));
   const final_video = await composeService.concatVideos({
     taskId,
     clips,
@@ -3386,9 +3410,9 @@ async function composeStage(taskId, options = {}) {
     subtitles: subtitleSegmentsFromShots(shots, subtitleConfig),
     subtitleEnabled,
     subtitleStyle,
-    transitions: shots,
+    transitions: timelineTransitions,
     brandOverlay,
-    targetDurationSec: ctx.target_duration, soundTracks: soundDesignAssets.resolvedTracks(taskId),
+    targetDurationSec: ctx.target_duration, soundTracks: soundDesignAssets.resolvedTracks(taskId), timelineEdits,
   });
   const finalVideoWithLineage = {
     ...final_video,

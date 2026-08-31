@@ -55,55 +55,51 @@ export async function mount(host, context) {
   const { bundle, store } = context;
   const generation = bundle?.generation || {};
   const shots = bundle?.storyboard?.shots || [];
-  const keyframes = Array.isArray(generation.keyframes) ? generation.keyframes : [];
+  const approvedFrames = Array.isArray(generation.approved_frames) ? generation.approved_frames : [];
   const clips = Array.isArray(generation.clips) ? generation.clips : [];
-  const soundDesign = await request(`/api/story-ad/projects/${encodeURIComponent(bundle.project.id)}/sound-design`).catch(() => ({ shots: [], profiles: [], assets: [], timeline: [], ledger: [] }));
+  const [soundDesign, timeline] = await Promise.all([
+    request(`/api/story-ad/projects/${encodeURIComponent(bundle.project.id)}/sound-design`).catch(() => ({ shots: [], profiles: [], assets: [], timeline: [], ledger: [], production: {} })),
+    request(`/api/story-ad/projects/${encodeURIComponent(bundle.project.id)}/timeline`).catch(() => ({ items: [] })),
+  ]);
   const finalVideo = generation.final_video || (bundle?.project?.final_video_url ? {
     video_url: bundle.project.final_video_url,
     status: '已生成',
   } : null);
   const finalUrl = finalVideoUrl(finalVideo || {});
-  const posterUrl = finalVideo?.poster_url || finalVideo?.thumbnail_url || keyframes.find(item => item.thumbnail_url || item.image_url || item.imageUrl)?.thumbnail_url || keyframes.find(item => item.image_url || item.imageUrl)?.image_url || keyframes.find(item => item.imageUrl)?.imageUrl || '';
+  const posterUrl = finalVideo?.poster_url || finalVideo?.thumbnail_url || approvedFrames.find(item => item.thumbnail_url || item.image_url || item.imageUrl)?.thumbnail_url || approvedFrames.find(item => item.image_url || item.imageUrl)?.image_url || approvedFrames.find(item => item.imageUrl)?.imageUrl || '';
   const downloadUrl = finalUrl ? `${finalUrl}${finalUrl.includes('?') ? '&' : '?'}download=1` : '';
   const mediaCatalog = generation.media_catalog || {};
-  const keyframeTotal = Number(mediaCatalog.keyframes?.total || keyframes.length);
   const clipTotal = Number(mediaCatalog.clips?.total || clips.length);
-  const keyframeModelPicker = await loadGenerationModelPicker(bundle.project.id, 'new_story_ad.keyframe', { label: '关键帧模型' });
   const videoModelPicker = await loadGenerationModelPicker(bundle.project.id, 'new_story_ad.video', { label: '视频模型' });
   host.innerHTML = `
     <section class="view-head">
-      <div><h1>声音、视频与合成</h1><p>第 6 步统一完成彩色关键帧、配音、场景环境声、拟音、音效、视频片段和最终成片。</p></div>
+      <div><h1>声音、视频、剪辑与合成</h1><p>彩色分镜直接作为视频首帧；先完成全部声音试听，再生成视频并在时间线完成剪辑与合成。</p></div>
       <div class="view-actions">
-        ${keyframes.length ? `${videoModelPicker.html}<button class="btn" type="button" data-generate-video>生成视频</button>` : `${keyframeModelPicker.html}<button class="btn" type="button" data-generate-keyframes>生成关键帧</button>`}
-        ${clips.length ? '<button class="btn" type="button" data-generate-tts>生成配音</button><button class="btn primary" type="button" data-compose>合成成片</button>' : ''}
+        ${approvedFrames.length ? `${videoModelPicker.html}<button class="btn" type="button" data-generate-video>生成分镜视频</button>` : '<button class="btn" type="button" data-back-storyboard>返回补充分镜</button>'}
+        ${clips.length ? '<button class="btn primary" type="button" data-compose>按时间线合成成片</button>' : ''}
       </div>
     </section>
-    <div class="production-lanes" aria-label="生产轨道"><span data-production-lane><b>关键帧</b><small>${keyframes.length}/${shots.length}</small></span><span data-production-lane><b>声音</b><small>${soundDesign.timeline?.length || 0} 条素材</small></span><span data-production-lane><b>视频</b><small>${clips.length}/${shots.length}</small></span><span data-production-lane><b>合成</b><small>${finalVideo ? '已完成' : '待完成'}</small></span></div>
-    <div class="guide"><b>怎么操作：</b>系统已默认选择 <b>${escapeHtml(keyframeModelPicker.selectedLabel || 'Image-2 · SZ')}</b>。点击“生成关键帧”，会把第 6 步已确认的黑白分镜逐镜生成彩色画面；下拉框只在你想换供应商时使用。关键帧完成后，页面会切换为视频模型和“生成视频”。</div>
+    <div class="production-lanes" aria-label="生产轨道"><span data-production-lane><b>彩色分镜</b><small>${approvedFrames.length}/${shots.length}</small></span><span data-production-lane><b>声音确认</b><small>${soundDesign.production?.approved ? '已确认' : '待确认'}</small></span><span data-production-lane><b>分镜视频</b><small>${clips.length}/${shots.length}</small></span><span data-production-lane><b>剪辑合成</b><small>${finalVideo ? '已完成' : '待完成'}</small></span></div>
+    <div class="guide"><b>怎么操作：</b>无需再次生成关键帧。先在声音工作台完成旁白/多人对白、场景音效和 BGM 的试听确认，再进行视频费用预检；视频完成后可逐镜调整裁剪、速度、原声和转场，最后本地合成导出。</div>
     ${finalVideo ? `<section class="card final-player">
       <div class="card-head"><div><h2>最终成片</h2><p>${escapeHtml(finalVideo.status || '已生成')} · 播放器保持源视频比例</p></div>${finalUrl ? `<a class="btn primary final-download" href="${escapeHtml(downloadUrl)}" download="${escapeHtml(finalVideo.filename || 'vido-final.mp4')}" aria-label="下载原始成片"><span aria-hidden="true">↓</span><span><b>下载原始成片</b><small>保留原始比例和清晰度</small></span></a>` : ''}</div>
       <div class="final-media">${finalVideoPlayer(finalVideo, posterUrl)}</div>
     </section>` : ''}
     ${soundDesignMarkup(soundDesign)}
     <details class="card generation-section generation-details">
-      <summary class="card-head"><div><h2>关键帧</h2><p>已加载 ${keyframes.length}/${keyframeTotal} · 默认收起，点击展开</p></div><span class="details-chevron" aria-hidden="true">⌄</span></summary>
-      <div class="card-body">${keyframes.length ? `<div class="generation-grid">${keyframes.map((item, index) => mediaCard(item, index, '关键帧')).join('')}</div>${moreMediaButton(mediaCatalog.keyframes, 'keyframes', '继续加载关键帧')}` : emptyState({
-        title: '还没有关键帧',
-        body: shots.length ? '确认镜头设计后，按当前分镜生成关键帧。' : '先完成镜头结构和镜头设计。',
-        action: shots.length ? '生成关键帧' : '返回分镜台',
-        actionId: shots.length ? 'generate-keyframes' : 'back-storyboard',
-      })}</div>
+      <summary class="card-head"><div><h2>已确认彩色分镜 / 视频首帧</h2><p>${approvedFrames.length}/${shots.length} · 直接进入图生视频，不产生二次生图费用</p></div><span class="details-chevron" aria-hidden="true">⌄</span></summary>
+      <div class="card-body">${approvedFrames.length ? `<div class="generation-grid">${approvedFrames.map((item, index) => mediaCard(item, index, '首帧')).join('')}</div>` : emptyState({ title: '彩色分镜尚未完整', body: '请返回分镜页逐镜生成或重绘，然后确认镜头设计。' })}</div>
     </details>
     <section class="card generation-section">
       <div class="card-head"><div><h2>视频片段</h2><p>已加载 ${clips.length}/${clipTotal}</p></div></div>
       <div class="card-body">${clips.length ? `<div class="generation-grid">${clips.map((item, index) => mediaCard(item, index, '视频')).join('')}</div>${moreMediaButton(mediaCatalog.clips, 'clips', '继续加载视频片段')}` : emptyState({
         title: '还没有视频片段',
-        body: keyframes.length ? '先通过视频预检，再提交付费视频生成。' : '关键帧准备完成后才能进入视频生成。',
+        body: soundDesign.production?.approved ? '声音已确认，可以进行视频预检并提交生成。' : '请先在上方试听并确认全部声音，再提交视频生成。',
       })}</div>
     </section>
+    ${clips.length ? `<section class="card generation-section"><div class="card-head"><div><h2>智能剪辑时间线</h2><p>逐镜裁剪首尾、调整速度和原声，并选择镜头转场；保存后合成会按此时间线执行。</p></div><button class="btn" type="button" data-save-timeline>保存时间线</button></div><div class="card-body"><div class="sound-journey-list" data-edit-timeline>${clips.map((clip, index) => { const edit = timeline.items?.[index] || {}; return `<article data-timeline-row data-shot-index="${index + 1}"><b>SH${String(index + 1).padStart(2, '0')}</b><span><label>裁头 <input type="number" min="0" step="0.1" value="${Number(edit.trim_start_sec || 0)}" data-trim-start></label><label>裁尾 <input type="number" min="0" step="0.1" value="${Number(edit.trim_end_sec || 0)}" data-trim-end></label></span><span><label>速度 <input type="number" min="0.5" max="2" step="0.05" value="${Number(edit.speed || 1)}" data-clip-speed></label><label>原声音量 <input type="range" min="0" max="1" step="0.05" value="${Number(edit.clip_volume ?? 1)}" data-clip-volume></label><label><input type="checkbox" ${edit.muted ? 'checked' : ''} data-clip-muted> 静音</label></span><span><label>转场 <select data-transition-type>${[['hard_cut','硬切'],['cut_on_action','动作切'],['match_cut','匹配切'],['dissolve','叠化'],['fade','淡入淡出']].map(([value,label]) => `<option value="${value}" ${edit.transition_type === value ? 'selected' : ''}>${label}</option>`).join('')}</select></label><label>时长 <input type="number" min="0" max="2" step="0.05" value="${Number(edit.transition_duration_sec ?? 0.35)}" data-transition-duration></label></span></article>`; }).join('')}</div></div></section>` : ''}
     <div data-modal-host></div>`;
 
-  const selectedKeyframeModel = bindGenerationModelPicker(host, keyframeModelPicker);
   const selectedVideoModel = bindGenerationModelPicker(host, videoModelPicker);
 
   bindSoundDesign(host, { bundle, store, refreshShell: context.refreshShell });
@@ -111,7 +107,7 @@ export async function mount(host, context) {
   const run = async (button, path, pending, success) => {
     try {
       setButtonBusy(button, true, pending, { elapsed: true });
-      await store.runStage(path, path === 'keyframes' ? { image_model: selectedKeyframeModel() } : undefined);
+      await store.runStage(path);
       toast(success, 'success');
       await context.refreshShell();
     } catch (error) {
@@ -120,10 +116,12 @@ export async function mount(host, context) {
       setButtonBusy(button, false);
     }
   };
-  host.querySelectorAll('[data-generate-keyframes], [data-empty-action="generate-keyframes"]').forEach(button => button.addEventListener('click', event => run(event.currentTarget, 'keyframes', '正在提交…', '关键帧任务已提交。')));
-  host.querySelector('[data-empty-action="back-storyboard"]')?.addEventListener('click', () => context.navigate(`/story-ad/projects/${encodeURIComponent(bundle.project.id)}?view=storyboard`));
-  host.querySelector('[data-generate-tts]')?.addEventListener('click', event => run(event.currentTarget, 'tts', '正在提交…', '配音任务已提交。'));
+  host.querySelector('[data-back-storyboard]')?.addEventListener('click', () => context.navigate(`/story-ad/projects/${encodeURIComponent(bundle.project.id)}?view=storyboard`));
   host.querySelector('[data-compose]')?.addEventListener('click', event => run(event.currentTarget, 'compose', '正在提交…', '成片合成任务已提交。'));
+  host.querySelector('[data-save-timeline]')?.addEventListener('click', async event => {
+    const items = [...host.querySelectorAll('[data-timeline-row]')].map(row => ({ shot_index: Number(row.dataset.shotIndex), trim_start_sec: Number(row.querySelector('[data-trim-start]')?.value || 0), trim_end_sec: Number(row.querySelector('[data-trim-end]')?.value || 0), speed: Number(row.querySelector('[data-clip-speed]')?.value || 1), clip_volume: Number(row.querySelector('[data-clip-volume]')?.value ?? 1), muted: row.querySelector('[data-clip-muted]')?.checked === true, transition_type: row.querySelector('[data-transition-type]')?.value || 'hard_cut', transition_duration_sec: Number(row.querySelector('[data-transition-duration]')?.value || 0) }));
+    try { setButtonBusy(event.currentTarget, true, '保存中…'); await request(`/api/story-ad/projects/${encodeURIComponent(bundle.project.id)}/timeline`, { method: 'PUT', body: { items } }); toast('剪辑时间线已保存。', 'success'); } catch (error) { toast(error.message, 'danger'); } finally { setButtonBusy(event.currentTarget, false); }
+  });
   bindMoreMedia(host, context);
 
   host.querySelector('[data-generate-video]')?.addEventListener('click', async event => {

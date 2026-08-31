@@ -578,6 +578,12 @@ function buildProjectBundle(taskId, { sections = '', user = {} } = {}) {
     const audioCatalog = mediaCatalog.page(outputs, { kind: 'audio', offset: 0, limit: mediaCatalog.DEFAULT_LIMIT });
     bundle.generation = {
       keyframes: keyframeCatalog.items,
+      approved_frames: (context.shot_design_confirmed === true && storyboardImageConfirmation.inspect(taskId).ready
+        ? list(outputs.storyboard_images) : []).slice(0, 200).map(item => ({
+        ...item,
+        source_type: 'confirmed_colour_storyboard',
+        source_output_kind: 'storyboard_images',
+      })),
       clips: clipCatalog.items,
       final_video: outputs.final_video || null,
       media_result: raw.media_result || outputs.media_result || null,

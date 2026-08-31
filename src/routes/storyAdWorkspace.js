@@ -19,6 +19,8 @@ const storage = require('../services/newStoryAd/storageService');
 const mediaCatalog = require('../services/newStoryAd/mediaCatalogService');
 const mediaModelSelection = require('../services/newStoryAd/mediaGenerationModelSelectionService');
 const soundDesignAssets = require('../services/newStoryAd/soundDesignAssetService');
+const audioProduction = require('../services/newStoryAd/audioProductionService');
+const storyAdTimeline = require('../services/newStoryAd/storyAdTimelineService');
 
 const router = express.Router();
 
@@ -419,7 +421,39 @@ router.all('/projects/:taskId/sketches/*', rejectLegacySketchRoute);
 
 router.get('/projects/:taskId/sound-design', asyncRoute(async (req, res) => {
   projectForRequest(req);
-  res.json({ success: true, task_id: req.params.taskId, ...soundDesignAssets.compile(req.params.taskId) });
+  const production = audioProduction.current(req.params.taskId);
+  res.json({ success: true, task_id: req.params.taskId, ...soundDesignAssets.compile(req.params.taskId), production: {
+    speech: production.speech,
+    speakers: production.speakers,
+    voice_id: production.voice_id,
+    voice_assignments: production.voice_assignments,
+    include_voiceover: production.include_voiceover,
+    tts_tracks: production.tts.tracks || [],
+    approved: production.approved,
+    approval: production.approval,
+  } });
+}));
+
+router.put('/projects/:taskId/audio-plan', asyncRoute(async (req, res) => {
+  projectForRequest(req);
+  const state = audioProduction.savePlan(req.params.taskId, req.body || {});
+  res.json({ success: true, task_id: req.params.taskId, production: { speech: state.speech, speakers: state.speakers, voice_id: state.voice_id, voice_assignments: state.voice_assignments, include_voiceover: state.include_voiceover, approved: state.approved } });
+}));
+
+router.post('/projects/:taskId/audio-confirm', asyncRoute(async (req, res) => {
+  projectForRequest(req);
+  const state = audioProduction.confirm(req.params.taskId, currentUser(req));
+  res.json({ success: true, task_id: req.params.taskId, approved: state.approved, approval: state.approval });
+}));
+
+router.get('/projects/:taskId/timeline', asyncRoute(async (req, res) => {
+  projectForRequest(req);
+  res.json({ success: true, task_id: req.params.taskId, items: storyAdTimeline.get(req.params.taskId) });
+}));
+
+router.put('/projects/:taskId/timeline', asyncRoute(async (req, res) => {
+  projectForRequest(req);
+  res.json({ success: true, task_id: req.params.taskId, items: storyAdTimeline.save(req.params.taskId, req.body || {}) });
 }));
 
 router.post('/projects/:taskId/sound-assets', asyncRoute(async (req, res) => {

@@ -1904,16 +1904,13 @@ router.post('/tasks/:id/keyframe-contract', asyncRoute(async (req, res) => {
 }));
 
 router.post('/tasks/:id/keyframes', asyncRoute(async (req, res) => {
-  const body = mediaModelSelection.applySelection('new_story_ad.keyframe', req.body || {});
   taskForReq(req);
-  service.keyframeSubmissionPreflight(req.params.id, body, userFromReq(req));
-  return queueTaskStage(
-    req,
-    res,
-    'keyframes',
-    job => service.generateKeyframesStage(req.params.id, { ...body, generation_id: job.generationId }),
-    { deadlineMs: task => service.keyframeStageBudgetMs(task.id, body) },
-  );
+  res.status(410).json({
+    success: false,
+    code: 'LEGACY_KEYFRAME_GENERATION_DISABLED',
+    error: '整批关键帧生成已停用。已确认的彩色分镜会直接作为视频首帧；需要修改画面时请回到分镜页逐镜重绘。',
+    retryable: false,
+  });
 }));
 
 router.post('/tasks/:id/prompt-preview', asyncRoute(async (req, res) => {

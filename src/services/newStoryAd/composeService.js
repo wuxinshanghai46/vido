@@ -512,6 +512,54 @@ function adjustSubtitlesForTransitionOverlaps(subtitles = [], plan = []) {
   });
 }
 
+function timelineEditActive(edit = {}) {
+  return Number(edit.trim_start_sec || 0) > 0
+    || Number(edit.trim_end_sec || 0) > 0
+    || Math.abs((Number(edit.speed) || 1) - 1) > 0.001
+    || Number(edit.clip_volume ?? 1) < 0.999
+    || edit.muted === true;
+}
+
+async function prepareTimelineClips(taskId = '', clips = [], edits = []) {
+  const rows = Array.isArray(edits) ? edits : [];
+  const byIndex = new Map(rows.map(row => [Math.max(1, Number(row.shot_index) || 1), row]));
+  const prepared = [];
+  for (let index = 0; index < clips.length; index += 1) {
+    const clip = clips[index] || {};
+    const edit = byIndex.get(index + 1) || {};
+    if (!timelineEditActive(edit)) { prepared.push(clip); continue; }
+    const input = localVideoPath(clip);
+    if (!input) throw Object.assign(new Error(`第 ${index + 1} 镜剪辑源文件不可用`), { code: 'TIMELINE_CLIP_FILE_REQUIRED', status: 422 });
+    const actual = Math.max(0.2, await videoAdapter.probeDuration(input));
+    const start = Math.max(0, Math.min(actual - 0.1, Number(edit.trim_start_sec || 0) || 0));
+    const endTrim = Math.max(0, Math.min(actual - start - 0.1, Number(edit.trim_end_sec || 0) || 0));
+    const sourceDuration = Math.max(0.1, actual - start - endTrim);
+    const speed = Math.max(0.5, Math.min(2, Number(edit.speed) || 1));
+    const outputDuration = sourceDuration / speed;
+    const volume = edit.muted === true ? 0 : Math.max(0, Math.min(1, Number(edit.clip_volume ?? 1) || 0));
+    const filename = `${safeBase(`timeline_${taskId || 'task'}_shot_${index + 1}_${Date.now()}`)}.mp4`;
+    const output = path.join(COMPOSE_DIR, filename);
+    const args = ['-y', '-ss', start.toFixed(3), '-t', sourceDuration.toFixed(3), '-i', input];
+    const sourceHasAudio = await hasAudioStream(input);
+    args.push('-filter:v', `setpts=${(1 / speed).toFixed(8)}*PTS`, '-map', '0:v:0');
+    if (sourceHasAudio) args.push('-filter:a', `${audioTempoFilter(speed)},volume=${volume.toFixed(3)}`, '-map', '0:a:0');
+    args.push('-c:v', 'libx264', '-preset', 'veryfast', '-crf', '21', '-pix_fmt', 'yuv420p');
+    if (sourceHasAudio) args.push('-c:a', 'aac', '-b:a', '160k'); else args.push('-an');
+    args.push('-t', outputDuration.toFixed(3), '-movflags', '+faststart', output);
+    await execFfmpeg(args, ffmpegDurationBudgetMs(outputDuration));
+    prepared.push({
+      ...clip,
+      file_path: output,
+      video_url: publicComposeUrl(filename),
+      videoUrl: publicComposeUrl(filename),
+      duration_sec: outputDuration,
+      scene_block_source_file: '',
+      timeline_edit: { ...edit, applied: true, source_duration_sec: actual, output_duration_sec: outputDuration },
+    });
+  }
+  return prepared;
+}
+
 async function mixTimelineSound(videoPath = '', tracks = [], outputPath = '') {
   const usable = (Array.isArray(tracks) ? tracks : []).filter(track => track?.file_path && fs.existsSync(track.file_path));
   if (!usable.length) return videoPath;
@@ -545,9 +593,11 @@ async function concatVideos({
   brandOverlay = null,
   targetDurationSec = 0,
   soundTracks = [],
+  timelineEdits = [],
 } = {}) {
   ensureDir(COMPOSE_DIR);
-  const visualUnits = buildVisualComposeUnits(clips);
+  const editedClips = await prepareTimelineClips(taskId, clips, timelineEdits);
+  const visualUnits = buildVisualComposeUnits(editedClips);
   const rawInputs = visualUnits.map(unit => unit.file_path);
   if (!rawInputs.length) throw new Error('最终合成至少需要一个已通过审核的本地视频镜头。');
   const tracks = Array.isArray(ttsAudio?.tracks) ? ttsAudio.tracks : (Array.isArray(ttsAudio) ? ttsAudio : []);
@@ -722,5 +772,6 @@ module.exports = {
   normalizeBrandOverlay,
   applyBrandOverlay,
   mixTimelineSound,
+  prepareTimelineClips,
   concatVideos,
 };

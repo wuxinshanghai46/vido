@@ -1,7 +1,7 @@
 import { request } from '../api.js?v=20260831-production-v340';
 import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260831-production-v340';
 
-const TRACK_TYPES = [['room_tone', '空间底噪'], ['ambient', '环境声'], ['foley', '拟音'], ['sfx', '动作音效'], ['transition', '转场音']];
+const TRACK_TYPES = [['room_tone', '空间底噪'], ['ambient', '环境声'], ['foley', '拟音'], ['sfx', '动作音效'], ['transition', '转场音'], ['bgm', '背景音乐']];
 function trackOptions(selected = 'room_tone') {
   return TRACK_TYPES.map(([value, label]) => `<option value="${value}" ${value === selected ? 'selected' : ''}>${label}</option>`).join('');
 }
@@ -9,9 +9,25 @@ function trackOptions(selected = 'room_tone') {
 export function soundDesignMarkup(soundDesign = {}) {
   const assets = new Map((soundDesign.assets || []).map(item => [item.asset_id, item]));
   const shots = soundDesign.shots || [];
+  const production = soundDesign.production || {};
+  const ttsTracks = Array.isArray(production.tts_tracks) ? production.tts_tracks : [];
   return `<section class="card generation-section sound-journey-section">
-    <div class="card-head"><div><h2>场景声音设计</h2><p>系统已按每个镜头默认选择声音类型和搜索词；你只需试听推荐声音，也可以搜索其他声音或上传自己的素材。</p></div></div>
+    <div class="card-head"><div><h2>声音工作台</h2><p>先听旁白/多人对白，再确认环境声、动作音效和背景音乐；确认后才能提交视频生成。</p></div><span class="status-badge ${production.approved ? 'success' : 'warning'}">${production.approved ? '声音已确认' : '待试听确认'}</span></div>
     <div class="card-body">
+      <div class="guide"><b>正确顺序：</b>设置旁白与每位说话人的音色 → 生成并逐镜试听 → 绑定场景声/音效/BGM → 确认声音方案。任何音轨变化都会自动撤销确认。</div>
+      <div class="sound-library-toolbar" data-audio-plan>
+        <label><span>启用旁白 / 对白</span><input type="checkbox" data-include-voiceover ${production.include_voiceover ? 'checked' : ''}></label>
+        <label><span>旁白音色</span><select data-voice-select data-voice-role="narrator"><option value="${escapeHtml(production.voice_assignments?.narrator || production.voice_id || '')}">${escapeHtml(production.voice_assignments?.narrator || production.voice_id || '请选择可用音色')}</option></select></label>
+        ${(production.speakers || []).map(speaker => `<label><span>${escapeHtml(speaker)} 的音色</span><select data-voice-select data-speaker="${escapeHtml(speaker)}"><option value="${escapeHtml(production.voice_assignments?.speakers?.[speaker] || '')}">${escapeHtml(production.voice_assignments?.speakers?.[speaker] || '请选择该角色音色')}</option></select></label>`).join('')}
+        <label><span>背景音乐音量</span><input type="range" min="0" max="0.35" step="0.01" value="0.16" data-bgm-volume></label>
+        <label><span>字幕</span><select data-subtitle-enabled><option value="true">显示字幕</option><option value="false">不显示</option></select></label>
+        <button class="btn" type="button" data-save-audio-plan>保存声音设置</button>
+        <button class="btn" type="button" data-generate-audio>生成 / 更新配音</button>
+        <button class="btn primary" type="button" data-confirm-audio>我已试听并确认声音</button>
+      </div>
+      ${(production.speech || []).length ? `<div class="sound-journey-list">${production.speech.map((row, index) => `<article data-audio-track><b>SH${String(row.shot_index).padStart(2, '0')}</b><span>${escapeHtml(row.mode === 'on_camera_dialogue' ? '出镜对白（视频阶段执行口型同步）' : row.mode === 'offscreen' ? '旁白 / 画外音' : '无语音')}</span><span>${(row.units || []).map(unit => `${escapeHtml(unit.speaker || '旁白')}：${escapeHtml(unit.text)}`).join('<br>') || '本镜无对白'}</span><span>${ttsTracks[index]?.audio_url ? `<audio controls preload="none" src="${escapeHtml(ttsTracks[index].audio_url)}"></audio>` : '<em>尚未生成试听音频</em>'}</span></article>`).join('')}</div>` : ''}
+      <hr>
+      <h3>场景音效与背景音乐</h3>
       ${shots.length ? `<div class="guide sound-selection-guide"><b>怎么操作：</b>点击镜头右侧“试听推荐”，试听后点“使用这个声音”即可绑定；不满意时修改上方搜索词，或直接上传自己的声音。</div><div class="sound-library-toolbar"><label><span>系统建议 / 搜索其他声音</span><input class="input" type="search" value="${escapeHtml(shots[0].recommended_query || '')}" placeholder="例如：showroom ambience、footsteps、metal touch" data-sound-library-query></label><label><span>绑定镜头</span><select data-sound-library-shot>${shots.map(shot => `<option value="${shot.shot_index}">SH${String(shot.shot_index).padStart(2, '0')}</option>`).join('')}</select></label><label><span>声音类型</span><select data-sound-library-type>${trackOptions(shots[0].recommended_track_type)}</select></label><button class="btn" type="button" data-search-sound-library>试听 / 搜索</button></div><p class="sound-license-note">试听不会产生导入或绑定；只有点击“使用这个声音”后，系统才会核验许可并绑定。仅接受 CC0、PDM、CC BY。</p><div class="sound-library-results" data-sound-library-results></div>` : ''}
       ${shots.length ? `<div class="sound-journey-list">${shots.map((item, index) => {
         const rows = (soundDesign.timeline || []).filter(row => row.shot_id === item.shot_id);
@@ -22,6 +38,27 @@ export function soundDesignMarkup(soundDesign = {}) {
 }
 
 export function bindSoundDesign(host, { bundle, store, refreshShell }) {
+  request('/api/avatar/voice-list').then(result => {
+    host.querySelectorAll('[data-voice-select]').forEach(select => {
+      const selected = select.value;
+      select.innerHTML = (result.voices || []).map(voice => `<option value="${escapeHtml(voice.id || '')}" ${String(voice.id || '') === selected ? 'selected' : ''}>${escapeHtml(voice.name || voice.id || '自动')} · ${escapeHtml(voice.provider || '系统')}</option>`).join('');
+    });
+  }).catch(() => {});
+  const audioPlanPayload = () => {
+    const speakers = {};
+    host.querySelectorAll('[data-voice-select][data-speaker]').forEach(select => { if (select.value) speakers[select.dataset.speaker] = select.value; });
+    const narrator = host.querySelector('[data-voice-select][data-voice-role="narrator"]')?.value || '';
+    return { include_voiceover: host.querySelector('[data-include-voiceover]')?.checked === true, voice_id: narrator, voice_assignments: { narrator, speakers }, bgm_volume: Number(host.querySelector('[data-bgm-volume]')?.value || 0.16), subtitle: host.querySelector('[data-subtitle-enabled]')?.value !== 'false' };
+  };
+  host.querySelector('[data-save-audio-plan]')?.addEventListener('click', async event => {
+    try { setButtonBusy(event.currentTarget, true, '保存中…'); await request(`/api/story-ad/projects/${encodeURIComponent(bundle.project.id)}/audio-plan`, { method: 'PUT', body: audioPlanPayload() }); toast('声音设置已保存；请生成并试听配音。', 'success'); await refreshShell(); } catch (error) { toast(error.message, 'danger'); } finally { setButtonBusy(event.currentTarget, false); }
+  });
+  host.querySelector('[data-generate-audio]')?.addEventListener('click', async event => {
+    try { setButtonBusy(event.currentTarget, true, '正在生成配音…', { elapsed: true }); const payload = audioPlanPayload(); await request(`/api/story-ad/projects/${encodeURIComponent(bundle.project.id)}/audio-plan`, { method: 'PUT', body: payload }); await store.runStage('tts', payload); toast('配音已生成，请逐镜试听后确认声音。', 'success'); await refreshShell(); } catch (error) { toast(error.message, 'danger'); } finally { setButtonBusy(event.currentTarget, false); }
+  });
+  host.querySelector('[data-confirm-audio]')?.addEventListener('click', async event => {
+    try { setButtonBusy(event.currentTarget, true, '确认中…'); await request(`/api/story-ad/projects/${encodeURIComponent(bundle.project.id)}/audio-confirm`, { method: 'POST', body: {} }); toast('声音方案已锁定，现在可以进行视频预检。', 'success'); await refreshShell(); } catch (error) { toast(error.message, 'danger'); } finally { setButtonBusy(event.currentTarget, false); }
+  });
   host.querySelectorAll('[data-sound-shot]').forEach(row => {
     const input = row.querySelector('[data-sound-file]');
     row.querySelector('[data-upload-sound]')?.addEventListener('click', () => input?.click());

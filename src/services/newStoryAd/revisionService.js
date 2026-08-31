@@ -185,7 +185,10 @@ function invalidateOutputs(storage, taskId, scope = 'none', options = {}) {
     compose: ['final_video'],
   };
   const preserveKinds = new Set(Array.isArray(options.preserveKinds) ? options.preserveKinds : []);
-  const downstream = [...new Set(scopes.flatMap(domain => graph[domain] || []))]
+  const postProductionKinds = scopes.some(domain => ['source', 'product', 'scene', 'person', 'person_visual', 'creative', 'blueprint', 'storyboard', 'voice'].includes(domain))
+    ? ['audio_production_approval', 'edit_timeline', 'media_runtime_context']
+    : [];
+  const downstream = [...new Set([...scopes.flatMap(domain => graph[domain] || []), ...postProductionKinds])]
     .filter(kind => !preserveKinds.has(kind));
   if (typeof storage.deleteOutputs === 'function') storage.deleteOutputs(taskId, downstream);
   else downstream.forEach(kind => storage.deleteOutput(taskId, kind));
