@@ -1,4 +1,4 @@
-import { escapeHtml } from '../components/ui.js?v=20260831-production-v332';
+import { escapeHtml } from '../components/ui.js?v=20260831-production-v333';
 
 /** 在画布侧栏编辑权威剧情/分镜，不使用图投影中的截断摘要回写。 */
 export function inlineNodeEditor(node = {}, bundle = {}) {
