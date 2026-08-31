@@ -90,7 +90,7 @@ async function main() {
   assert.match(billingSource, /当前缺失场景最多 \$\{missingSceneCount \* 5\} 次调用/);
   assert.match(billingSource, /草稿质量每个场景使用 1 张 2×2 视角图集和 1 张布局图/);
 
-  const projectionSource = fs.readFileSync(path.join(root, 'src/services/storyAdWorkspace/projectBundleService.js'), 'utf8');
+  const projectionSource = fs.readFileSync(path.join(root, 'src/services/storyAdWorkspace/sceneSpatialProjectionService.js'), 'utf8');
   assert.match(projectionSource, /camera\.normalized_position \|\| camera\.position/);
   assert.match(projectionSource, /camera\.look_at \|\| camera\.lookAt/);
 

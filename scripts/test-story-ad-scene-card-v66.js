@@ -30,7 +30,7 @@ function fixtureScene(id, suffix, options = {}) {
     material_contract: { primary: `材质${suffix}` },
     scene_contract: {
       full_space_lock: options.locked !== false,
-      anchors: [`锚点${suffix}`],
+      anchors: [{ id: `anchor-${suffix}`, label: `锚点${suffix}`, description: `只属于${suffix}` }],
       geometry_facts: [`几何${suffix}`],
       materials: [`材质证据${suffix}`],
       lighting: { direction: `灯光${suffix}` },
@@ -72,7 +72,7 @@ function testProjectionAndIsolation() {
   assert.equal(scenes.length, 2);
   assert.deepEqual(scenes[0].scene_card.view_order, ['master', 'reverse', 'interaction', 'detail', 'layout']);
   assert.equal(scenes[0].scene_card.schema_version, 1);
-  assert(scenes[0].scene_card.anchors.some(row => row.label.includes('锚点a')), '字符串证据必须保留原文');
+  assert(scenes[0].scene_card.anchors.some(row => row.label.includes('锚点a')), '现行结构化锚点证据必须保留用户可读名称');
   assert(scenes[0].scene_card.geometry_facts.some(row => row.label.includes('几何a')));
   assert(scenes[0].scene_card.prop_placements.some(row => row.label === '道具a'));
   assert(scenes[0].scene_card.materials.some(row => row.label.includes('材质证据a')));

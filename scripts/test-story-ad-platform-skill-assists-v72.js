@@ -63,12 +63,15 @@ async function main() {
   const assetAssist = fs.readFileSync(path.join(__dirname, '../public/story-ad/views/assetCenterAssist.js'), 'utf8');
   const planning = fs.readFileSync(path.join(__dirname, '../public/story-ad/views/assetCenterPlanningDetails.js'), 'utf8');
   const world = fs.readFileSync(path.join(__dirname, '../public/story-ad/views/sceneWorldView.js'), 'utf8');
+  const worldPlanner = fs.readFileSync(path.join(__dirname, '../public/story-ad/views/sceneWorldExperiencePlanner.js'), 'utf8');
   const app = fs.readFileSync(path.join(__dirname, '../public/story-ad/app.js'), 'utf8');
   assert.match(`${assetView}\n${assetAssist}`, /AI 帮写人物设定/);
   assert.match(planning, /AI 帮写场景设定/);
-  assert.match(world, /AI 完善规划/);
-  assert.match(world, /3D导演预演（结构化）/);
-  assert.match(world, /当前未配置重建供应商/);
+  assert.match(world, /选择360 \/ 3D模式/);
+  assert.doesNotMatch(world, /AI 完善规划/, '场景世界入口必须使用现行空间能力选择合同，不得恢复旧 AI 完善按钮');
+  assert.match(worldPlanner, /AI 完善规划/);
+  assert.match(worldPlanner, /3D导演预演（结构化）/);
+  assert.match(worldPlanner, /当前未配置重建供应商/);
   assert.match(app, /data-delete-project/);
   assert.match(app, /彻底删除项目/);
 

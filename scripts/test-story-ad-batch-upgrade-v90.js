@@ -48,7 +48,7 @@ assert.match(assetStageView, /data-generate-subject-assets/, 'the current subjec
 assert.match(assetStageView, /生成人物资产/, 'the current subject generation owner must describe the unified missing-subject flow');
 assert.doesNotMatch(assetView, /生成缺失人物 \/ 动物资产/, 'the retired asset-center copy must not return to the current view');
 assert.doesNotMatch(assetView, /repair_existing: repairing/, '资产中心不得继续拥有场景修复入口');
-assert.match(sceneWorldPage, /import\('\.\/sceneCardInteractions\.js[^']*'\)\)\.bindSceneCards/, '场景页必须按需加载独立生成交互');
+assert.match(sceneWorldPage, /await import\('\.\/sceneCardInteractions\.js[^']*'\);[\s\S]*?\.bindSceneCards/, '场景页必须按需加载独立生成交互');
 assert.match(sceneCardInteractions, /runStage\('scene-assets'/, '场景交互模块必须独立拥有单场景生成入口');
 assert.match(sceneCardInteractions, /space_id:\s*sceneId,\s*scene_id:\s*sceneId/, '单场景入口必须只提交当前精确目标');
 assert.match(assetView, /subject_targets = pending\.map/, 'one user action must submit every missing person target');
