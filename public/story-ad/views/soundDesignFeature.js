@@ -240,7 +240,16 @@ export function bindSoundDesign(host, { bundle, store, soundDesign = {}, refresh
     try { if (inlineProgress) inlineProgress.hidden = false; setButtonBusy(event.currentTarget, true, '正在生成配音试听…', { elapsed: true }); const payload = audioPlanPayload(); if (host.querySelector('[data-audio-plan]')?.dataset.hasSpeech === 'true' && !payload.voice_id) throw new Error('当前没有可用音色，不能生成配音试听。'); await request(`/api/story-ad/projects/${encodeURIComponent(bundle.project.id)}/audio-plan`, { method: 'PUT', body: payload }); await store.runStage('tts', payload); toast('配音任务已提交，进度会在当前页面持续更新。', 'success'); } catch (error) { toast(error.message, 'danger'); if (inlineProgress) inlineProgress.hidden = true; } finally { setButtonBusy(event.currentTarget, false); }
   });
   host.querySelector('[data-confirm-audio]')?.addEventListener('click', async event => {
-    try { setButtonBusy(event.currentTarget, true, '正在确认…'); await request(`/api/story-ad/projects/${encodeURIComponent(bundle.project.id)}/audio-confirm`, { method: 'POST', body: {} }); toast('声音已确认，正在进入视频与合成。', 'success'); navigate(`/story-ad/projects/${encodeURIComponent(bundle.project.id)}?view=compose`); } catch (error) { toast(error.message, 'danger'); } finally { setButtonBusy(event.currentTarget, false); }
+    try {
+      setButtonBusy(event.currentTarget, true, '正在确认…');
+      const confirmation = await request(`/api/story-ad/projects/${encodeURIComponent(bundle.project.id)}/audio-confirm`, { method: 'POST', body: {} });
+      if (confirmation?.approved !== true) throw new Error('声音确认未完成，请稍后重试。');
+      const refreshedBundle = await store.refreshSections('summary');
+      const composeStep = refreshedBundle?.navigation?.steps?.compose;
+      if (composeStep?.enabled !== true) throw new Error(composeStep?.blocker || '声音已确认，但工作流状态尚未同步，请刷新页面后重试。');
+      toast('声音已确认，正在进入视频与合成。', 'success');
+      navigate(`/story-ad/projects/${encodeURIComponent(bundle.project.id)}?view=compose`);
+    } catch (error) { toast(error.message, 'danger'); } finally { setButtonBusy(event.currentTarget, false); }
   });
 
   const importSound = async (row, button, id = row.dataset.recommendedSoundId || '') => {

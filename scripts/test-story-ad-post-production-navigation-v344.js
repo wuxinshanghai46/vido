@@ -67,6 +67,8 @@ assert.match(soundWorkbench, /sound-option-panel/);
 assert.match(soundWorkbench, /bgm-picker/);
 assert.match(css, /\.voice-setup-panel\{[^}]*grid-template-columns:minmax\(0,1fr\)/, '剧情权威声音合同必须使用单列设置区，不得恢复旧人声模式双栏');
 assert.match(soundWorkbench, /voice-story-contract/, '声音页必须解释旁白与对白由剧情自动决定');
+assert.match(soundWorkbench, /store\.refreshSections\('summary'\)/, '声音确认成功后必须刷新持久化导航状态');
+assert.ok(soundWorkbench.indexOf("store.refreshSections('summary')") < soundWorkbench.indexOf('?view=compose'), '刷新后的服务端导航状态必须先于 compose 跳转生效');
 assert.match(css, /\.post-stage-summary\{[^}]*repeat\(3,minmax\(0,1fr\)\)/);
 
-console.log(JSON.stringify({ passed: true, checks: 28, no_video_editor_hidden: true, legacy_final_redirected: true, post_production_views: ['sound', 'compose', 'edit'], upstream_steps_changed: 0 }));
+console.log(JSON.stringify({ passed: true, checks: 30, confirmation_navigation_refresh: true, no_video_editor_hidden: true, legacy_final_redirected: true, post_production_views: ['sound', 'compose', 'edit'], upstream_steps_changed: 0 }));
