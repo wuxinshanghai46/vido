@@ -1,5 +1,5 @@
-import { escapeHtml } from '../components/ui.js?v=20260901-production-v364';
-import { personGenerationSettingsControls } from './assetCenterPlanningDetailsGenerationSettings.js?v=20260901-production-v364';
+import { escapeHtml } from '../components/ui.js?v=20260901-production-v365';
+import { personGenerationSettingsControls } from './assetCenterPlanningDetailsGenerationSettings.js?v=20260901-production-v365';
 
 export function personEditForm(item = {}) {
   const profile = item.profile || {};

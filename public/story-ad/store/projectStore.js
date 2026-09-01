@@ -1,11 +1,11 @@
-import { request, uploadAsset, uploadReferenceVideo } from '../api.js?v=20260901-production-v364';
-import { beginReferenceReplacement, referenceSyncInterrupted, replacementCurrent, removeProjectReference, restoreReferenceReplacement } from './referenceReplacementState.js?v=20260901-production-v364';
-import { cancelReferenceAnalysisRequest, retryReferenceAnalysisRequest, retryReferenceImportRequest } from './referenceRetryStore.js?v=20260901-production-v364';
-import { loadProjectList } from './projectListStore.js?v=20260901-production-v364';
-import { loadProjectBundle, prefetchProjectBundle, refreshProjectBundle } from './projectBundleStore.js?v=20260901-production-v364';
-import { beginStageSubmissionState } from './stageSubmissionState.js?v=20260901-production-v364';
-import { createStoryboardLiveRefresh } from './storyboardLiveRefresh.js?v=20260901-production-v364';
-import { retainActiveGenerationProgress } from './progressProjection.js?v=20260901-production-v364';
+import { request, uploadAsset, uploadReferenceVideo } from '../api.js?v=20260901-production-v365';
+import { beginReferenceReplacement, referenceSyncInterrupted, replacementCurrent, removeProjectReference, restoreReferenceReplacement } from './referenceReplacementState.js?v=20260901-production-v365';
+import { cancelReferenceAnalysisRequest, retryReferenceAnalysisRequest, retryReferenceImportRequest } from './referenceRetryStore.js?v=20260901-production-v365';
+import { loadProjectList } from './projectListStore.js?v=20260901-production-v365';
+import { loadProjectBundle, prefetchProjectBundle, refreshProjectBundle } from './projectBundleStore.js?v=20260901-production-v365';
+import { beginStageSubmissionState } from './stageSubmissionState.js?v=20260901-production-v365';
+import { createStoryboardLiveRefresh } from './storyboardLiveRefresh.js?v=20260901-production-v365';
+import { retainActiveGenerationProgress } from './progressProjection.js?v=20260901-production-v365';
 export function createProjectStore() {
   const state = { projects: [],
     stats: {},
@@ -51,7 +51,7 @@ export function createProjectStore() {
     hydrateReferenceFailure();
     return bundle;
   }
-  const mediaStore = () => import('./mediaCatalogStore.js?v=20260901-production-v364'), loadMediaPage = async options => (await mediaStore()).loadMediaPage({ request, state }, options);
+  const mediaStore = () => import('./mediaCatalogStore.js?v=20260901-production-v365'), loadMediaPage = async options => (await mediaStore()).loadMediaPage({ request, state }, options);
   const loadMoreMedia = async (kind = 'keyframes', limit = 24) => (await mediaStore()).loadMoreMedia({ request, state, set }, kind, limit);
   async function refreshSections(sections) {
     return refreshProjectBundle({ request, set, state, sections });
@@ -569,7 +569,7 @@ export function createProjectStore() {
     updateRequest,
     beginStageSubmission: (stage, total, message, details) => beginStageSubmissionState({ state, set }, stage, total, message, details),
     runStage,
-    saveScenePrompt: async (scene, prompt) => (await import('./scenePromptConfirmationStore.js?v=20260901-production-v364')).saveScenePrompt({ state, request }, scene, prompt),
+    saveScenePrompt: async (scene, prompt) => (await import('./scenePromptConfirmationStore.js?v=20260901-production-v365')).saveScenePrompt({ state, request }, scene, prompt),
     saveBlueprint,
     saveStoryboard,
     saveStoryboardImages,
@@ -584,7 +584,7 @@ export function createProjectStore() {
     videoPreflight,
     startVideo,
     cancelGeneration,
-    acceptCurrentScenes: async () => (await import('./sceneAcceptanceStore.js?v=20260901-production-v364')).acceptCurrentScenes({ state, request, refreshSections }),
+    acceptCurrentScenes: async () => (await import('./sceneAcceptanceStore.js?v=20260901-production-v365')).acceptCurrentScenes({ state, request, refreshSections }),
     clearProject,
     syncProgressPolling,
     stopProgressPolling,

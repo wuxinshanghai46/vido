@@ -1,7 +1,7 @@
-import { request } from '../api.js?v=20260901-production-v364';
-import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260901-production-v364';
-import { inlineNodeEditor, saveInlineNode } from './workflowInlineEditor.js?v=20260901-production-v364';
-import { bindWorkflowDirectorSync, ensureWorkflowDirectorStyles, openWorkflowDirector, projectWorkflowDirectorNodes, workflowNodePanelMarkup, workflowNodePortMarkup } from './workflowDirectorNodes.js?v=20260901-production-v364';
+import { request } from '../api.js?v=20260901-production-v365';
+import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260901-production-v365';
+import { inlineNodeEditor, saveInlineNode } from './workflowInlineEditor.js?v=20260901-production-v365';
+import { bindWorkflowDirectorSync, ensureWorkflowDirectorStyles, openWorkflowDirector, projectWorkflowDirectorNodes, workflowNodePanelMarkup, workflowNodePortMarkup } from './workflowDirectorNodes.js?v=20260901-production-v365';
 const MIN_STAGE_WIDTH = 3400;
 const MIN_STAGE_HEIGHT = 1500;
 const NODE_WIDTH = 220;
@@ -166,7 +166,7 @@ function clamp(value, min, max) {
 /** 挂载可编辑、可持久化的项目工作流画布。 */
 export async function mount(host, context) {
   const taskId = context.bundle?.project?.id;
-  if (!document.getElementById('story-ad-workflow-style')) { const link = Object.assign(document.createElement('link'), { id: 'story-ad-workflow-style', rel: 'stylesheet', href: '/story-ad/workflow.css?v=20260901-production-v364' }); document.head.append(link); } ensureWorkflowDirectorStyles();
+  if (!document.getElementById('story-ad-workflow-style')) { const link = Object.assign(document.createElement('link'), { id: 'story-ad-workflow-style', rel: 'stylesheet', href: '/story-ad/workflow.css?v=20260901-production-v365' }); document.head.append(link); } ensureWorkflowDirectorStyles();
   host.innerHTML = '<div class="workflow-view"><div class="workflow-bar"><div><h1>工作流画布</h1><p>正在读取当前项目关系…</p></div></div><div class="view-loading">正在加载画布…</div></div>';
   let graph;
   try {
