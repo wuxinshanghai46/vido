@@ -17,6 +17,8 @@ const boundaryGeneration = require('../src/services/newStoryAd/videoBoundaryGene
 const videoFailureRecovery = require('../src/services/newStoryAd/videoFailureRecoveryService');
 const videoFrameQa = require('../src/services/newStoryAd/videoFrameQaService');
 const videoLineage = require('../src/services/newStoryAd/videoLineageService');
+const audioProduction = require('../src/services/newStoryAd/audioProductionService');
+const mediaAdapter = require('../src/services/newStoryAd/mediaAdapter');
 
 const clip = (index, block, cross = undefined) => ({
   shot_index: index,
@@ -50,9 +52,19 @@ async function main() {
   const stalePlan = preflight.buildVideoPreflight({ taskId: 'boundary-stale-media', shots, keyframes, contracts: [{}, {}, {}, {}], clips: staleClips, statuses: [], mode: 'economy' });
   assert.strictEqual(stalePlan.shots.find(item => item.index === 3).action, 'provider_generate', 'missing boundary review must not override an independent regeneration reason');
 
-  storyAd.createTask({ task_id: 'boundary-compose-block', brief: '跨生成单元封装门禁回归' }, { id: 'owner-1' });
+  storyAd.createTask({ task_id: 'boundary-compose-block', brief: '跨生成单元封装门禁回归', shot_design_confirmed: true }, { id: 'owner-1' });
+  storage.saveOutput('boundary-compose-block', 'context', { brief: '跨生成单元封装门禁回归', shot_design_confirmed: true });
   storage.saveOutput('boundary-compose-block', 'storyboard_table', shots);
+  storage.saveOutput('boundary-compose-block', 'storyboard_images', shots.map((_, index) => {
+    const filename = `boundary-compose-storyboard-${index + 1}.png`;
+    const filePath = mediaAdapter.assetPathFromName(filename);
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, `confirmed-storyboard-${index + 1}`);
+    return { shot_index: index + 1, image_url: `/api/new-story-ad/assets/${filename}`, subject_qa_policy_version: 2, subject_count_qa: { pass: true } };
+  }));
   storage.saveOutput('boundary-compose-block', 'video_clips', clips);
+  audioProduction.savePlan('boundary-compose-block', { include_voiceover: false, subtitle: true });
+  audioProduction.confirm('boundary-compose-block', { id: 'owner-1' });
   await assert.rejects(
     () => storyAd.composeStage('boundary-compose-block', {}),
     error => error.code === 'COMPOSE_VIDEO_ARTIFACT_INCOMPATIBLE',
