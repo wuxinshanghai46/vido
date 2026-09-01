@@ -28,7 +28,7 @@ const PUBLIC_MEDIA_CHOICES = Object.freeze({
   ]),
   video: Object.freeze([
     Object.freeze({ id: 'seedance-dy', public_name: 'Seedance', provider_code: 'DY', execution_route: 'deyunai/doubao-seedance-2-0-260128', default: true }),
-    Object.freeze({ id: 'seedance-sz', public_name: 'Seedance', provider_code: 'SZ', execution_route: 'smscrw/doubao-seedance-2-0-260128' }),
+    Object.freeze({ id: 'seedance-sz', public_name: 'Seedance 2.0', provider_code: 'SZ', execution_route: 'smscrw/doubao-seedance-2.0' }),
     Object.freeze({ id: 'seedance-wb', public_name: 'Seedance', provider_code: 'WB', execution_route: 'webang-seedance/doubao-seedance-2-0-260128' }),
   ]),
 });

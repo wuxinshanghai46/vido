@@ -1,7 +1,7 @@
 'use strict';
 
 const { loadSettings, saveSettings, PROVIDER_PRESETS, PROVIDER_ADAPTER_DEFAULTS } = require('../src/services/settingsService');
-const pipeline = require('../src/services/pipelineModelService');
+const seedanceMigration = require('./configure-story-ad-szznai-seedance-v368');
 
 async function readStdin() {
   let raw = '';
@@ -11,7 +11,6 @@ async function readStdin() {
 
 async function main() {
   const fromStdin = process.argv.includes('--stdin');
-  const providerOnly = process.argv.includes('--provider-only');
   const raw = fromStdin ? await readStdin() : String(process.env.SMSCRW_API_KEY || '').trim();
   let apiKey = raw;
   if (fromStdin && raw.startsWith('{')) apiKey = String(JSON.parse(raw).api_key || '').trim();
@@ -24,7 +23,7 @@ async function main() {
   const provider = settings.providers.find(item => item?.id === 'smscrw' || item?.preset === 'smscrw');
   const models = Array.isArray(provider?.models) && provider.models.length
     ? provider.models.map(model => ({ ...model }))
-    : preset.defaultModels.map(model => ({ ...model, enabled: true }));
+    : preset.defaultModels.map(model => ({ ...model, enabled: model.id === seedanceMigration.VIDEO_MODEL }));
   const nextProvider = {
     ...(provider || {}),
     id: 'smscrw',
@@ -35,39 +34,25 @@ async function main() {
     enabled: true,
     adapter: adapter.adapter,
     adapter_config: adapter.adapter_config,
-    // Key rotation must never collapse the provider's text/vision/image/video
-    // catalogue to one image model. Preserve an existing catalogue; a fresh
-    // provider receives the complete preset.
+    // Preserve the catalogue while the v368 migration enforces that only the
+    // exact Seedance video model remains executable.
     models,
   };
   if (provider) Object.assign(provider, nextProvider);
   else settings.providers.push(nextProvider);
   saveSettings(settings);
 
-  const configuredStages = [];
-  if (!providerOnly) {
-    for (const stageId of pipeline.NEW_STORY_AD_IMAGE_STAGE_IDS) {
-      if (!pipeline.getStageDefaults(stageId).length) continue;
-      const result = pipeline.setStageConfig(stageId, [
-        { provider_id: 'smscrw', model_id: 'gpt-image-2', priority: 1, enabled: true },
-        { provider_id: 'webang-maas', model_id: 'gpt-image-2', priority: 2, enabled: true },
-        { provider_id: 'deyunai', model_id: 'gpt-image-2', priority: 3, enabled: true },
-      ]);
-      if (result.rejected.length) throw new Error(`${stageId} configuration rejected: ${JSON.stringify(result.rejected)}`);
-      configuredStages.push(stageId);
-    }
-  }
+  const migration = seedanceMigration.apply({ write: true });
 
   console.log(JSON.stringify({
     configured: true,
     provider_id: 'smscrw',
-    model_id: 'gpt-image-2',
-    preserved_model_count: models.length,
+    model_id: seedanceMigration.VIDEO_MODEL,
+    preserved_model_count: settings.providers.find(item => item.id === 'smscrw')?.models?.length || models.length,
     api_key_stored: true,
     primary_priority: 1,
-    fallback_provider_ids: ['webang-maas', 'deyunai'],
-    route_update_skipped: providerOnly,
-    configured_stage_count: configuredStages.length,
+    route_stage: seedanceMigration.VIDEO_STAGE,
+    non_video_smscrw_routes: migration.non_video_smscrw_routes,
   }));
 }
 

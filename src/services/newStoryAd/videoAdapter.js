@@ -169,7 +169,7 @@ function isDeyunaiSeedanceModel(model = {}) {
 
 function isSmscrwSeedanceModel(model = {}) {
   return String(model.provider_id || '').toLowerCase() === 'smscrw'
-    && /^doubao-seedance-2-0/i.test(String(model.model_id || ''));
+    && /^doubao-seedance-2(?:[-.]0)/i.test(String(model.model_id || ''));
 }
 
 function shotNeedsNativeAudio(shot = {}) {

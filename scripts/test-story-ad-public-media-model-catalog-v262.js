@@ -17,7 +17,7 @@ const IMAGE_LABELS = [
   'Image-2 · SZ', 'Image-2 · WB', 'Image-2 · DY',
   'Nano Banana · SZ', 'Nano Banana · WB', 'Nano Banana · DY',
 ];
-const VIDEO_LABELS = ['Seedance · DY', 'Seedance · SZ', 'Seedance · WB'];
+const VIDEO_LABELS = ['Seedance · DY', 'Seedance 2.0 · SZ', 'Seedance · WB'];
 const labels = rows => rows.map(row => `${row.public_name} · ${row.provider_code}`);
 const configuredImage = selection.PUBLIC_MEDIA_CHOICES.image.map((choice, index) => ({
   route: choice.execution_route,
@@ -55,7 +55,7 @@ assert.deepEqual(selection.PUBLIC_MEDIA_CHOICES.image.map(choice => choice.execu
 ]);
 assert.deepEqual(selection.PUBLIC_MEDIA_CHOICES.video.map(choice => choice.execution_route), [
   'deyunai/doubao-seedance-2-0-260128',
-  'smscrw/doubao-seedance-2-0-260128',
+  'smscrw/doubao-seedance-2.0',
   'webang-seedance/doubao-seedance-2-0-260128',
 ]);
 
@@ -75,12 +75,12 @@ assert.throws(() => selection.resolveSelection('new_story_ad.scene_asset', 'smsc
 assert.throws(() => selection.resolveSelection('new_story_ad.scene_asset', 'seedream', configuredImage), error => error.code === 'MEDIA_GENERATION_MODEL_SELECTION_INVALID');
 
 const migrated = migration.desiredModels([
-  { provider_id: 'smscrw', model_id: 'doubao-seedance-2-0-260128', priority: 1, enabled: true },
+  { provider_id: 'smscrw', model_id: 'doubao-seedance-2.0', priority: 1, enabled: true },
   { provider_id: 'deyunai', model_id: 'doubao-seedance-2-0-fast-260128', priority: 2, enabled: true },
 ]);
 assert.deepEqual(migrated.slice(0, 3).map(migration.key), [
   'deyunai/doubao-seedance-2-0-260128',
-  'smscrw/doubao-seedance-2-0-260128',
+  'smscrw/doubao-seedance-2.0',
   'webang-seedance/doubao-seedance-2-0-260128',
 ]);
 assert.deepEqual(migration.desiredModels(migrated), migrated);
@@ -88,11 +88,8 @@ assert.deepEqual(migration.desiredModels(migrated), migrated);
 let savedConfig = null;
 const stageRows = {
   'new_story_ad.video': [
-    { provider_id: 'smscrw', model_id: 'doubao-seedance-2-0-260128', priority: 1, enabled: true },
+    { provider_id: 'smscrw', model_id: 'doubao-seedance-2.0', priority: 1, enabled: true },
     { provider_id: 'deyunai', model_id: 'doubao-seedance-2-0-fast-260128', priority: 2, enabled: true },
-  ],
-  'new_story_ad.sound_generation': [
-    { provider_id: 'smscrw', model_id: 'doubao-seedance-2-0-260128', priority: 1, enabled: true },
   ],
 };
 const migrationReport = migration.migrate({ apply: true, pipelineService: {

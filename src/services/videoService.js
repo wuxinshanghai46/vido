@@ -1671,24 +1671,46 @@ function _findSmscrwProvider(settings = {}) {
 }
 
 function _normaliseSmscrwBaseUrl(apiUrl = '') {
-  const base = String(apiUrl || 'https://ai.smscrw.cn/v1').trim().replace(/\/+$/, '');
-  return /\/v1$/i.test(base) ? base : `${base}/v1`;
+  const configured = String(apiUrl || 'https://ai.smscrw.cn').trim().replace(/\/+$/, '');
+  return configured
+    .replace(/\/api\/v3\/contents\/generations\/tasks$/i, '')
+    .replace(/\/v1$/i, '');
 }
 
-function buildSmscrwVideoRequest({ prompt = '', model = 'doubao-seedance-2-0-260128', duration = 5, aspectRatio = '16:9', resolution = '720p', image_url = '', reference_image_urls = [], generateAudio = false, generate_audio = false, idempotencyKey = '' } = {}) {
+function _smscrwVideoContract(provider = {}) {
+  const configured = provider?.adapter_config?.video || {};
+  const taskEndpoint = String(configured.task_endpoint || '/api/v3/contents/generations/tasks');
+  return {
+    baseUrl: _normaliseSmscrwBaseUrl(configured.base_url || provider.video_api_url || provider.api_url),
+    taskEndpoint,
+    statusEndpoint: String(configured.status_endpoint || `${taskEndpoint}/{task_id}`),
+    contentEndpoint: String(configured.content_endpoint || `${taskEndpoint}/{task_id}/content`),
+    cancelEndpoint: String(configured.cancel_endpoint || `${taskEndpoint}/{task_id}`),
+  };
+}
+
+function _smscrwTaskPath(template = '', taskId = '') {
+  return String(template || '').replace('{task_id}', encodeURIComponent(String(taskId || '')));
+}
+
+function _isSmscrwReference(value = '') {
+  return /^https?:\/\//i.test(value) || /^asset:\/\/pa_[A-Za-z0-9_-]+$/i.test(value);
+}
+
+function buildSmscrwVideoRequest({ prompt = '', model = 'doubao-seedance-2.0', duration = 5, aspectRatio = '16:9', resolution = '720p', image_url = '', reference_image_urls = [], generateAudio = false, generate_audio = false, idempotencyKey = '' } = {}) {
   const text = String(prompt || '').trim().slice(0, 4000);
   if (!text) throw new Error('SZZNAI Seedance 提示词不能为空');
   const content = [{ type: 'text', text }];
   const images = [...new Set([image_url, ...(Array.isArray(reference_image_urls) ? reference_image_urls : [])]
     .map(value => String(value || '').trim()).filter(Boolean))];
   for (const url of images) {
-    if (!/^https?:\/\//i.test(url)) throw new Error('SZZNAI 图生视频参考图必须是公网 http(s) URL');
+    if (!_isSmscrwReference(url)) throw new Error('SZZNAI 参考图必须是公网 http(s) URL 或平台返回的 asset://pa_... 引用');
     content.push({ type: 'image_url', image_url: { url }, role: 'reference_image' });
   }
   const ratio = ['9:16', '16:9', '1:1'].includes(String(aspectRatio || '').trim()) ? String(aspectRatio).trim() : '16:9';
   const seconds = Math.min(Math.max(Math.round(Number(duration) || 5), 5), 10);
   const body = {
-    model: String(model || 'doubao-seedance-2-0-260128').trim(),
+    model: String(model || 'doubao-seedance-2.0').trim(),
     content,
     resolution: _normalizeSeedanceResolution(resolution),
     ratio,
@@ -1719,11 +1741,15 @@ function _smscrwRequest(method, baseUrl, pathName, apiKey, body = null, { timeou
         let data = null;
         try { data = raw ? JSON.parse(raw) : {}; } catch {}
         if (res.statusCode >= 400) {
-          const detail = data?.error?.message || data?.message || raw.slice(0, 500) || res.statusMessage || 'empty response';
+          const providerError = data?.error && typeof data.error === 'object' ? data.error : data;
+          const detail = providerError?.message || data?.errorMessage || data?.message || raw.slice(0, 500) || res.statusMessage || 'empty response';
           const error = new Error(`SZZNAI Seedance HTTP ${res.statusCode}: ${detail}`);
           error.status = res.statusCode;
-          error.retryable = data?.retryable === true;
-          error.retry_after = data?.retry_after;
+          error.code = providerError?.code || data?.errorCode || 'SZZNAI_VIDEO_REQUEST_FAILED';
+          error.request_id = providerError?.request_id || data?.requestId || res.headers['x-request-id'] || '';
+          error.retryable = providerError?.retryable === true;
+          error.retry_after = providerError?.retry_after;
+          error.next_action = providerError?.next_action || '';
           return reject(error);
         }
         if (!data) return reject(new Error(`SZZNAI Seedance 返回格式错误: ${raw.slice(0, 300)}`));
@@ -1741,16 +1767,21 @@ function _smscrwRequest(method, baseUrl, pathName, apiKey, body = null, { timeou
   });
 }
 
-function _smscrwDownload(baseUrl, taskId, apiKey, destPath, signal = null, redirects = 0) {
+function _smscrwDownload(baseUrl, contentPath, apiKey, destPath, signal = null, redirects = 0, includeAuthorization = true) {
   if (redirects > 4) return Promise.reject(new Error('SZZNAI 视频下载重定向次数过多'));
   return new Promise((resolve, reject) => {
-    const url = redirects ? String(baseUrl) : `${baseUrl}/videos/${encodeURIComponent(taskId)}/content`;
+    const url = redirects ? String(baseUrl) : `${baseUrl}${contentPath}`;
     const file = fs.createWriteStream(destPath);
-    const req = https.get(url, { headers: { Authorization: `Bearer ${apiKey}`, 'User-Agent': 'VIDO/1.0' } }, (res) => {
+    const headers = { 'User-Agent': 'VIDO/1.0' };
+    if (includeAuthorization) headers.Authorization = `Bearer ${apiKey}`;
+    const req = https.get(url, { headers }, (res) => {
       if ([301, 302, 303, 307, 308].includes(res.statusCode) && res.headers.location) {
-        file.close(() => fs.unlink(destPath, () => {}));
         const redirectUrl = new URL(res.headers.location, url).toString();
-        return _smscrwDownload(redirectUrl, taskId, apiKey, destPath, signal, redirects + 1).then(resolve, reject);
+        const sameOrigin = new URL(redirectUrl).origin === new URL(url).origin;
+        file.close(() => fs.unlink(destPath, () => {
+          _smscrwDownload(redirectUrl, '', apiKey, destPath, signal, redirects + 1, includeAuthorization && sameOrigin).then(resolve, reject);
+        }));
+        return;
       }
       if (res.statusCode < 200 || res.statusCode >= 300) {
         const chunks = [];
@@ -1878,14 +1909,22 @@ async function generateWebangSeedanceClip({ prompt, duration = 5, outputDir, fil
   }
 }
 
-// ——— SZZNAI（SMSCRW）Seedance 2.0：官方 /v1 异步视频合同 ———
+async function cancelSmscrwSeedanceTask({ provider = null, apiKey = '', taskId = '' } = {}) {
+  if (!provider || !apiKey || !taskId) return { cancelled: false, reason: 'missing_provider_task' };
+  const contract = _smscrwVideoContract(provider);
+  await _smscrwRequest('DELETE', contract.baseUrl, _smscrwTaskPath(contract.cancelEndpoint, taskId), apiKey, null, { timeoutMs: 30000 });
+  return { cancelled: true, taskId };
+}
+
+// ——— SZZNAI（SMSCRW）Seedance 2.0：/api/v3/contents/generations/tasks 异步视频合同 ———
 async function generateSmscrwSeedanceClip({ prompt, duration = 5, outputDir, filename, aspectRatio = '16:9', image_url = '', reference_image_urls = [], video_model, resolution = '720p', videoResolution = '', provider_task_id = '', idempotencyKey = '', idempotency_key = '', userId = null, agentId = null, generateAudio = false, generate_audio = false, signal = null, onSubmitted = null, onProgress = null }) {
   const { getApiKey, loadSettings } = require('./settingsService');
   const provider = _findSmscrwProvider(loadSettings());
   const apiKey = (provider?.id ? getApiKey(provider.id) : '') || getApiKey('smscrw') || process.env.SMSCRW_API_KEY;
   if (!provider || !apiKey) throw new Error('未配置或未启用 SZZNAI（SMSCRW）API Key');
-  const baseUrl = _normaliseSmscrwBaseUrl(provider.api_url);
-  const model = video_model || (provider.models || []).find(item => item.enabled !== false && item.use === 'video')?.id || 'doubao-seedance-2-0-260128';
+  const contract = _smscrwVideoContract(provider);
+  const baseUrl = contract.baseUrl;
+  const model = video_model || (provider.models || []).find(item => item.enabled !== false && item.use === 'video')?.id || 'doubao-seedance-2.0';
   const request = buildSmscrwVideoRequest({
     prompt, model, duration, aspectRatio,
     resolution: videoResolution || resolution,
@@ -1901,7 +1940,7 @@ async function generateSmscrwSeedanceClip({ prompt, duration = 5, outputDir, fil
   let errorMessage = null;
   try {
     if (!taskId) {
-      const submit = await _smscrwRequest('POST', baseUrl, '/videos/generations', apiKey, request.body, {
+      const submit = await _smscrwRequest('POST', baseUrl, contract.taskEndpoint, apiKey, request.body, {
         idempotencyKey: request.idempotencyKey,
         timeoutMs: 60000,
         signal,
@@ -1910,7 +1949,8 @@ async function generateSmscrwSeedanceClip({ prompt, duration = 5, outputDir, fil
       const directUrl = _pickWebangVideoUrl(submit);
       if (typeof onSubmitted === 'function') await onSubmitted({ taskId, status: taskId ? 'submitted' : 'completed', submittedAt: new Date().toISOString() });
       if (directUrl && !taskId) {
-        await downloadFile(directUrl, outputPath, signal);
+        const includeAuthorization = new URL(directUrl).origin === new URL(baseUrl).origin;
+        await _smscrwDownload(directUrl, '', apiKey, outputPath, signal, 0, includeAuthorization);
         ok = true;
         return { filePath: outputPath, providerTaskId: '', providerUrl: directUrl };
       }
@@ -1920,16 +1960,16 @@ async function generateSmscrwSeedanceClip({ prompt, duration = 5, outputDir, fil
     for (let index = 0; index < 120; index += 1) {
       if (signal?.aborted) throw (signal.reason instanceof Error ? signal.reason : new Error('SZZNAI generation aborted'));
       if (index > 0 || !provider_task_id) await new Promise(resolve => setTimeout(resolve, 5000));
-      const statusResult = await _smscrwRequest('GET', baseUrl, `/videos/generations/${encodeURIComponent(taskId)}`, apiKey, null, { timeoutMs: 30000, signal });
+      const statusResult = await _smscrwRequest('GET', baseUrl, _smscrwTaskPath(contract.statusEndpoint, taskId), apiKey, null, { timeoutMs: 30000, signal });
       const state = _pickWebangStatus(statusResult);
       const videoUrl = _pickWebangVideoUrl(statusResult);
       if (typeof onProgress === 'function') await onProgress({ taskId, status: state || 'pending', elapsedMs: Date.now() - startedAt, polledAt: new Date().toISOString(), hasOutputUrl: !!videoUrl });
       if (['succeeded', 'success', 'completed', 'done', 'finished'].includes(state)) {
         if (typeof onProgress === 'function') await onProgress({ taskId, status: 'downloading', elapsedMs: Date.now() - startedAt, polledAt: new Date().toISOString(), hasOutputUrl: !!videoUrl });
-        if (videoUrl) await downloadFile(videoUrl, outputPath, signal);
-        else await _smscrwDownload(baseUrl, taskId, apiKey, outputPath, signal);
+        const contentPath = _smscrwTaskPath(contract.contentEndpoint, taskId);
+        await _smscrwDownload(baseUrl, contentPath, apiKey, outputPath, signal);
         ok = true;
-        return { filePath: outputPath, providerTaskId: taskId, providerUrl: videoUrl || `${baseUrl}/videos/${taskId}/content`, resumed: !!provider_task_id };
+        return { filePath: outputPath, providerTaskId: taskId, providerUrl: `${baseUrl}${contentPath}`, resumed: !!provider_task_id };
       }
       if (['failed', 'fail', 'error', 'cancelled', 'canceled'].includes(state)) {
         const detail = statusResult?.error?.message || statusResult?.message || JSON.stringify(statusResult).slice(0, 500);
@@ -1942,6 +1982,10 @@ async function generateSmscrwSeedanceClip({ prompt, duration = 5, outputDir, fil
     throw new Error('SZZNAI Seedance 生成超时（10 分钟）');
   } catch (error) {
     errorMessage = error.message;
+    if (taskId && signal?.aborted) {
+      try { await cancelSmscrwSeedanceTask({ provider, apiKey, taskId }); }
+      catch (cancelError) { error.cancel_error = String(cancelError?.message || cancelError); }
+    }
     throw error;
   } finally {
     try {
@@ -2389,8 +2433,11 @@ function assertImageUrlForProvider(imageUrl = '', provider = '') {
   if (provider === 'webang-seedance' && (/^asset:\/\//i.test(value) || /^asset-[\w-]+$/i.test(value))) {
     return value;
   }
+  if (provider === 'smscrw' && /^asset:\/\/pa_[A-Za-z0-9_-]+$/i.test(value)) {
+    return value;
+  }
   if (!/^https?:\/\//i.test(value) || /^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0)(?::|\/|$)/i.test(value)) {
-    throw new Error('图生视频参考图必须是公网 http(s) URL；只有微众 Seedance 路径支持 asset:// 素材库 ID');
+    throw new Error('图生视频参考图必须是公网 http(s) URL；仅供应商文档明确支持时可使用 asset:// 素材库 ID');
   }
   return value;
 }
@@ -2550,6 +2597,7 @@ async function generateDeyunaiClip({ prompt, duration = 5, outputDir, filename, 
 module.exports = {
   generateVideoClip,
   generateSmscrwSeedanceClip,
+  cancelSmscrwSeedanceTask,
   buildSmscrwVideoRequest,
   findSmscrwProvider: _findSmscrwProvider,
   ensureWebangImageAsset: _ensureWebangImageAsset,

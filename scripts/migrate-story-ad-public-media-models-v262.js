@@ -5,10 +5,10 @@ const pipeline = require('../src/services/pipelineModelService');
 
 const PRIMARY = Object.freeze([
   Object.freeze({ provider_id: 'deyunai', model_id: 'doubao-seedance-2-0-260128', enabled: true }),
-  Object.freeze({ provider_id: 'smscrw', model_id: 'doubao-seedance-2-0-260128', enabled: true }),
+  Object.freeze({ provider_id: 'smscrw', model_id: 'doubao-seedance-2.0', enabled: true }),
   Object.freeze({ provider_id: 'webang-seedance', model_id: 'doubao-seedance-2-0-260128', enabled: true }),
 ]);
-const STAGES = Object.freeze(['new_story_ad.video', 'new_story_ad.sound_generation']);
+const STAGES = Object.freeze(['new_story_ad.video']);
 
 function key(model = {}) {
   return `${String(model.provider_id || '').trim().toLowerCase()}/${String(model.model_id || '').trim().toLowerCase()}`;
@@ -20,6 +20,7 @@ function desiredModels(current = []) {
   const primary = PRIMARY.map((model, index) => ({ ...existing.get(key(model)), ...model, priority: index + 1 }));
   const rest = (Array.isArray(current) ? current : [])
     .filter(model => !primaryKeys.has(key(model)))
+    .filter(model => String(model.provider_id || '').trim().toLowerCase() !== 'smscrw')
     .map((model, index) => ({ ...model, priority: primary.length + index + 1 }));
   return [...primary, ...rest];
 }

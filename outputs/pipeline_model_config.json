@@ -868,13 +868,13 @@
       {
         "provider_id": "topview",
         "model_id": "topview-image2video-pro",
-        "priority": 4,
+        "priority": 3,
         "enabled": true
       },
       {
         "provider_id": "topview",
         "model_id": "topview-image2video-best",
-        "priority": 5,
+        "priority": 4,
         "enabled": true
       }
     ],
@@ -1419,58 +1419,46 @@
     ],
     "new_story_ad.person_sheet": [
       {
-        "provider_id": "smscrw",
-        "model_id": "gpt-image-2",
-        "priority": 1,
-        "enabled": true
-      },
-      {
         "provider_id": "deyunai",
         "model_id": "gpt-image-2",
-        "priority": 2,
+        "priority": 1,
         "enabled": true
       }
     ],
     "new_story_ad.scene_asset": [
       {
-        "provider_id": "smscrw",
-        "model_id": "gpt-image-2",
-        "priority": 1,
-        "enabled": true
-      },
-      {
         "provider_id": "deyunai",
         "model_id": "gpt-image-2",
-        "priority": 2,
+        "priority": 1,
         "enabled": true
       }
     ],
     "new_story_ad.keyframe": [
       {
-        "provider_id": "smscrw",
-        "model_id": "gpt-image-2",
-        "priority": 1,
-        "enabled": true
-      },
-      {
         "provider_id": "deyunai",
         "model_id": "gpt-image-2",
-        "priority": 2,
+        "priority": 1,
         "enabled": true
       }
     ],
     "new_story_ad.video": [
       {
-        "provider_id": "deyunai",
-        "model_id": "doubao-seedance-2-0-260128",
+        "provider_id": "smscrw",
+        "model_id": "doubao-seedance-2.0",
         "enabled": true,
         "priority": 1
       },
       {
         "provider_id": "deyunai",
-        "model_id": "doubao-seedance-2-0-fast-260128",
+        "model_id": "doubao-seedance-2-0-260128",
         "enabled": true,
         "priority": 2
+      },
+      {
+        "provider_id": "deyunai",
+        "model_id": "doubao-seedance-2-0-fast-260128",
+        "enabled": true,
+        "priority": 3
       },
       {
         "provider_id": "topview",
@@ -1501,198 +1489,114 @@
     ],
     "new_story_ad.person_dossier_atlas": [
       {
-        "provider_id": "smscrw",
-        "model_id": "gpt-image-2",
-        "priority": 1,
-        "enabled": true
-      },
-      {
         "provider_id": "deyunai",
         "model_id": "gpt-image-2",
-        "priority": 2,
+        "priority": 1,
         "enabled": true
       }
     ],
     "new_story_ad.person_dossier_native_master": [
       {
-        "provider_id": "smscrw",
-        "model_id": "gpt-image-2",
-        "priority": 1,
-        "enabled": true
-      },
-      {
         "provider_id": "deyunai",
         "model_id": "gpt-image-2",
-        "priority": 2,
+        "priority": 1,
         "enabled": true
       }
     ],
     "new_story_ad.person_dossier_wearable_accessory": [
       {
-        "provider_id": "smscrw",
-        "model_id": "gpt-image-2",
-        "priority": 1,
-        "enabled": true
-      },
-      {
         "provider_id": "deyunai",
         "model_id": "gpt-image-2",
-        "priority": 2,
+        "priority": 1,
         "enabled": true
       }
     ],
     "new_story_ad.person_dossier_wardrobe_detail": [
       {
-        "provider_id": "smscrw",
-        "model_id": "gpt-image-2",
-        "priority": 1,
-        "enabled": true
-      },
-      {
         "provider_id": "deyunai",
         "model_id": "gpt-image-2",
-        "priority": 2,
+        "priority": 1,
         "enabled": true
       }
     ],
     "new_story_ad.pet_dossier": [
       {
-        "provider_id": "smscrw",
-        "model_id": "gpt-image-2",
-        "priority": 1,
-        "enabled": true
-      },
-      {
         "provider_id": "deyunai",
         "model_id": "gpt-image-2",
-        "priority": 2,
+        "priority": 1,
         "enabled": true
       }
     ],
     "new_story_ad.prop_dossier_atlas": [
       {
-        "provider_id": "smscrw",
-        "model_id": "gpt-image-2",
-        "priority": 1,
-        "enabled": true
-      },
-      {
         "provider_id": "deyunai",
         "model_id": "gpt-image-2",
-        "priority": 2,
+        "priority": 1,
         "enabled": true
       }
     ],
     "new_story_ad.product_asset": [
       {
-        "provider_id": "smscrw",
-        "model_id": "gpt-image-2",
-        "priority": 1,
-        "enabled": true
-      },
-      {
         "provider_id": "deyunai",
         "model_id": "gpt-image-2",
-        "priority": 2,
+        "priority": 1,
         "enabled": true
       }
     ],
     "new_story_ad.scene_extension_atlas": [
       {
-        "provider_id": "smscrw",
-        "model_id": "gpt-image-2",
-        "priority": 1,
-        "enabled": true
-      },
-      {
         "provider_id": "deyunai",
         "model_id": "gpt-image-2",
-        "priority": 2,
+        "priority": 1,
         "enabled": true
       }
     ],
     "new_story_ad.scene_extension_master": [
       {
-        "provider_id": "smscrw",
-        "model_id": "gpt-image-2",
-        "priority": 1,
-        "enabled": true
-      },
-      {
         "provider_id": "deyunai",
         "model_id": "gpt-image-2",
-        "priority": 2,
+        "priority": 1,
         "enabled": true
       }
     ],
     "new_story_ad.scene_extension_layout": [
       {
-        "provider_id": "smscrw",
-        "model_id": "gpt-image-2",
-        "priority": 1,
-        "enabled": true
-      },
-      {
         "provider_id": "deyunai",
         "model_id": "gpt-image-2",
-        "priority": 2,
+        "priority": 1,
         "enabled": true
       }
     ],
     "new_story_ad.scene_extension_reverse": [
       {
-        "provider_id": "smscrw",
-        "model_id": "gpt-image-2",
-        "priority": 1,
-        "enabled": true
-      },
-      {
         "provider_id": "deyunai",
         "model_id": "gpt-image-2",
-        "priority": 2,
+        "priority": 1,
         "enabled": true
       }
     ],
     "new_story_ad.scene_extension_interaction": [
       {
-        "provider_id": "smscrw",
-        "model_id": "gpt-image-2",
-        "priority": 1,
-        "enabled": true
-      },
-      {
         "provider_id": "deyunai",
         "model_id": "gpt-image-2",
-        "priority": 2,
+        "priority": 1,
         "enabled": true
       }
     ],
     "new_story_ad.scene_extension_detail": [
       {
-        "provider_id": "smscrw",
-        "model_id": "gpt-image-2",
-        "priority": 1,
-        "enabled": true
-      },
-      {
         "provider_id": "deyunai",
         "model_id": "gpt-image-2",
-        "priority": 2,
+        "priority": 1,
         "enabled": true
       }
     ],
     "new_story_ad.scene_panorama": [],
     "new_story_ad.storyboard_sketch": [
       {
-        "provider_id": "smscrw",
-        "model_id": "gpt-image-2",
-        "priority": 1,
-        "enabled": true
-      },
-      {
         "provider_id": "deyunai",
         "model_id": "gpt-image-2",
-        "priority": 2,
+        "priority": 1,
         "enabled": true
       }
     ]

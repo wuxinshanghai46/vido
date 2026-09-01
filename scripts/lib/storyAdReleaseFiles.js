@@ -60,6 +60,7 @@ const BASE_FILES = [
   'scripts/test-story-ad-consistency-vision-routing-v240.js',
   'scripts/test-story-ad-vision-schema-fallback-v240.js',
   'scripts/configure-story-ad-szznai-routing-v243.js',
+  'scripts/configure-story-ad-szznai-seedance-v368.js',
   'scripts/test-story-ad-szznai-routing-v243.js',
   'scripts/test-story-ad-scene-submit-feedback-v273.js',
   'scripts/test-story-ad-scene-auto-qa-repair-v274.js',
