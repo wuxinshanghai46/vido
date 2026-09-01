@@ -20,7 +20,7 @@ function main() {
   assert(view.includes('声音内容已按剧情自动确定') && view.includes('两者并存时会自动组合'), '旁白与对白必须按剧情合同自动组合');
 
   assert(view.includes('data-open-bgm-library') && view.includes('<dialog class="bgm-library-dialog"'), '背景音乐查询必须恢复为独立弹窗');
-  assert(view.includes('查询与选择背景音乐') && view.includes('输入歌名或风格后按回车即可查询'), '弹窗必须说明输入内容和回车查询方式');
+  assert(view.includes('查询与选择背景音乐') && view.includes('输入主题或风格后按回车查询开放授权器乐'), '弹窗必须说明输入内容、回车查询方式和开放授权范围');
   assert(view.includes('data-play-sound-preview') && view.includes('data-import-bgm'), '弹窗候选必须同时具备试听和采用动作');
   assert(!view.includes('data-toggle-bgm-library'), '旧的页面内展开音乐库入口必须退出当前合同');
   assert(css.includes('v350 voice preview and background-music library dialog'));

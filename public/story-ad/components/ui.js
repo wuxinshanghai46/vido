@@ -118,7 +118,7 @@ const GENERATION_STAGE_OWNING_VIEW = Object.freeze({
   video: 'final',
   video_repair: 'final',
   media: 'final',
-  tts: 'final',
+  tts: 'sound',
   compose: 'final',
   final_video: 'final',
   full: 'final',
@@ -318,6 +318,16 @@ export function syncInlineGenerationProgress(bundle = {}, scope = document) {
     const percent = Math.max(2, Math.min(99, Number(view.percent || 0))); host.setAttribute('aria-valuenow', String(percent));
     const fill = host.querySelector('i'); if (fill) fill.style.width = `${percent}%`;
     const label = host.querySelector('[data-person-plan-progress-label]'); if (label) label.textContent = `${percent}% · ${view.liveText || '正在处理'}`;
+  });
+  scope.querySelectorAll?.('[data-tts-inline-progress]').forEach(host => {
+    const active = Boolean(view?.active && view.stage === 'tts');
+    host.hidden = !active;
+    if (!active) return;
+    const percent = Math.max(2, Math.min(99, Number(view.percent || 0)));
+    host.setAttribute('aria-valuenow', String(percent));
+    const fill = host.querySelector('i'); if (fill) fill.style.width = `${percent}%`;
+    const label = host.querySelector('[data-tts-progress-label]'); if (label) label.textContent = `${view.completed}/${view.total} 段 · ${view.liveText || '正在生成配音'}`;
+    const value = host.querySelector('[data-tts-progress-value]'); if (value) value.textContent = `${percent}%`;
   });
 }
 

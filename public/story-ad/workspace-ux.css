@@ -103,3 +103,6 @@
 
 /* v364 explain song references without mislabeling commercial originals as open license */
 .bgm-search-context{margin:0;padding:10px 12px;border:1px solid color-mix(in srgb,var(--info) 40%,var(--line));border-radius:9px;background:color-mix(in srgb,var(--info) 8%,var(--surface));color:var(--muted);font-size:12px;line-height:1.55}
+
+/* v373 sound progress, audition volume and semantic music matching */
+.voice-generation-progress{display:grid;gap:8px;padding:11px 12px;border:1px solid color-mix(in srgb,var(--accent) 42%,var(--line));border-radius:10px;background:color-mix(in srgb,var(--accent) 7%,var(--surface))}.voice-generation-progress[hidden]{display:none}.voice-generation-progress>div:first-child{display:flex;align-items:center;justify-content:space-between;gap:12px;color:var(--muted);font-size:12px}.voice-generation-progress>div:first-child b{color:var(--text);font-size:12px}.sound-volume-field output{margin-left:6px;color:var(--accent);font-weight:800}.bgm-match-reason{display:block;margin-top:4px;color:var(--accent)!important;font-weight:700}

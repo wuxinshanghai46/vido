@@ -430,6 +430,7 @@ router.get('/projects/:taskId/sound-design', asyncRoute(async (req, res) => {
     include_voiceover: production.include_voiceover,
     has_speech: production.has_speech,
     subtitle: production.plan.subtitle !== false,
+    voice_volume: production.plan.voice_volume ?? 1,
     bgm_volume: production.plan.bgm_volume ?? 0.16,
     tts_tracks: production.tts.tracks || [],
     approved: production.approved,
@@ -440,7 +441,7 @@ router.get('/projects/:taskId/sound-design', asyncRoute(async (req, res) => {
 router.put('/projects/:taskId/audio-plan', asyncRoute(async (req, res) => {
   projectForRequest(req);
   const state = audioProduction.savePlan(req.params.taskId, req.body || {});
-  res.json({ success: true, task_id: req.params.taskId, production: { speech: state.speech, speakers: state.speakers, voice_id: state.voice_id, voice_assignments: state.voice_assignments, include_voiceover: state.include_voiceover, subtitle: state.plan.subtitle !== false, bgm_volume: state.plan.bgm_volume ?? 0.16, approved: state.approved } });
+  res.json({ success: true, task_id: req.params.taskId, production: { speech: state.speech, speakers: state.speakers, voice_id: state.voice_id, voice_assignments: state.voice_assignments, include_voiceover: state.include_voiceover, subtitle: state.plan.subtitle !== false, voice_volume: state.plan.voice_volume ?? 1, bgm_volume: state.plan.bgm_volume ?? 0.16, approved: state.approved } });
 }));
 
 router.post('/projects/:taskId/audio-confirm', asyncRoute(async (req, res) => {

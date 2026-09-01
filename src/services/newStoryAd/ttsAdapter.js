@@ -382,7 +382,11 @@ async function generateVoiceover({
       allowSilentFallback,
     })));
     indexes.forEach((index, offset) => { tracks[index] = generated[offset]; });
-    if (typeof onCheckpoint === 'function') await onCheckpoint(tracks.slice());
+    if (typeof onCheckpoint === 'function') await onCheckpoint(tracks.slice(), {
+      completed: tracks.filter(Boolean).length,
+      total: list.length,
+      completed_indexes: tracks.map((track, index) => track ? index + 1 : 0).filter(Boolean),
+    });
     cancellation.throwIfCancelled(taskId);
   }
   return {

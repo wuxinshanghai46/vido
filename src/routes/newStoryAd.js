@@ -1963,7 +1963,7 @@ router.post('/tasks/:id/tts', asyncRoute(async (req, res) => {
     req,
     res,
     'tts',
-    () => service.generateTtsStage(req.params.id, body),
+    job => service.generateTtsStage(req.params.id, { ...body, generation_id: job?.generationId || job?.id || '' }),
     { deadlineMs: task => service.longFormStageBudgetMs(task.id, 'tts') },
   );
 }));

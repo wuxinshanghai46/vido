@@ -386,9 +386,11 @@ assert(service.includes('sceneAuthority.currentState({ storage, taskId, task, no
   'autosave must resolve scene assets through the current authoritative lineage');
 assert(!service.includes("storage.getOutput(taskId, 'scene_assets') || previousCtx.scene_assets"),
   'invalidated context scene assets must never be promoted back into the current lineage');
-const ttsBlock = service.slice(service.indexOf('async function generateTtsStage'), service.indexOf('async function generateVideoStage'));
-assert(ttsBlock.indexOf('assertVideoInputsReady') >= 0, 'TTS must enforce media QA preflight');
-assert(ttsBlock.indexOf('assertVideoInputsReady') < ttsBlock.indexOf('ttsAdapter.generateVoiceover'), 'QA preflight must run before paid TTS');
+const ttsStart = service.indexOf('async function generateTtsStage');
+const ttsBlock = service.slice(ttsStart, service.indexOf('/** 编译通用执行方案', ttsStart));
+assert(ttsBlock.indexOf('assertVideoInputsReady') < 0, 'TTS must not be blocked by person/keyframe video QA that is unrelated to audio generation');
+assert(ttsBlock.indexOf('ensureStoryboardForMedia') >= 0 && ttsBlock.indexOf('ensureStoryboardForMedia') < ttsBlock.indexOf('ttsAdapter.generateVoiceover'), 'TTS must still require the authoritative storyboard before a paid voice call');
+assert(ttsBlock.includes("stageProgress.update(taskId, { stage: 'tts'"), 'TTS must publish real checkpoint progress for the sound page');
 assert(ttsBlock.indexOf('if (!includeVoiceover)') < ttsBlock.indexOf('ttsAdapter.generateVoiceover'), 'disabled voiceover must return before any paid TTS call');
 const videoBlock = service.slice(service.indexOf('async function generateVideoStage'), service.indexOf('async function composeStage'));
 assert(videoBlock.includes('ttsAudio = silentTtsOutput()'), 'video generation must use empty audio tracks when voiceover is disabled');

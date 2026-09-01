@@ -114,6 +114,21 @@ function generatedSoundSource(queryOrKind = '') {
   };
 }
 
+const CHINESE_BGM_INTENTS = Object.freeze([
+  { pattern: /相思|思念|怀念|离别|故乡|乡愁/u, label: '思念、离别与东方器乐', queries: ['longing traditional Chinese instrumental music', 'nostalgic guzheng instrumental', 'melancholic erhu instrumental', 'Chinese flute longing music'] },
+  { pattern: /星|月|夜|神话|古风|国风|东方/u, label: '古风、夜色与东方器乐', queries: ['ancient Chinese instrumental music', 'moonlight guzheng instrumental', 'Chinese flute ambient music'] },
+  { pattern: /温暖|治愈|柔和|钢琴/u, label: '温暖、治愈与轻柔钢琴', queries: ['warm piano instrumental music', 'soft healing piano music'] },
+  { pattern: /紧张|悬疑|悬念|压迫/u, label: '紧张、悬疑与电影配乐', queries: ['cinematic suspense instrumental music', 'dark tension soundtrack'] },
+  { pattern: /轻快|活力|商业|欢快/u, label: '轻快、活力与商业节奏', queries: ['upbeat acoustic background music', 'positive corporate instrumental music'] },
+]);
+
+function bgmSearchIntent(query = '') {
+  const original = clean(query, 120);
+  if (!/[\u3400-\u9fff]/u.test(original)) return null;
+  const matched = CHINESE_BGM_INTENTS.find(intent => intent.pattern.test(original));
+  return matched || { label: '电影氛围与器乐叙事', queries: ['cinematic instrumental background music', 'ambient storytelling instrumental music'] };
+}
+
 function openverseQueryCandidates(query = '', { trackType = '' } = {}) {
   const original = clean(query, 120);
   if (!original) return [];
@@ -129,20 +144,9 @@ function openverseQueryCandidates(query = '', { trackType = '' } = {}) {
     [/cinematic|background music|corporate music/i, ['instrumental music', 'piano music']],
   ];
   const fallback = rules.find(([pattern]) => pattern.test(original))?.[1] || [];
+  const intent = trackType === 'bgm' ? bgmSearchIntent(original) : null;
   const bgmFallback = trackType === 'bgm'
-    ? (/相思|思念|怀念|离别|故乡|乡愁/u.test(original)
-      ? ['guzheng music', 'erhu music', 'Chinese flute music', 'traditional Chinese music']
-      : /星|月|夜|神话|古风|国风|东方/u.test(original)
-        ? ['guzheng music', 'Chinese flute music', 'traditional Chinese music']
-        : /温暖|治愈|柔和|钢琴/u.test(original)
-          ? ['warm piano instrumental music', 'soft piano music']
-          : /紧张|悬疑|悬念|压迫/u.test(original)
-            ? ['cinematic suspense music', 'dark tension soundtrack']
-            : /轻快|活力|商业|欢快/u.test(original)
-              ? ['upbeat acoustic background music', 'positive corporate instrumental music']
-              : containsChinese
-                ? ['cinematic background music', 'ambient instrumental music']
-                : ['instrumental music', 'background music'])
+    ? (intent?.queries || ['instrumental music', 'background music'])
     : [];
   return [...new Set([...candidates, ...fallback, ...bgmFallback].map(value => clean(value, 120)).filter(Boolean))];
 }
@@ -172,6 +176,7 @@ async function searchOpenverse(query = '', { trackType = '' } = {}) {
   const matchedQueries = [];
   const queryCandidates = openverseQueryCandidates(q, { trackType });
   const similarOpenLicense = trackType === 'bgm' && !queryCandidates.includes(q);
+  const searchIntent = trackType === 'bgm' ? bgmSearchIntent(q) : null;
   const targetCount = trackType === 'bgm' || /music|bgm|音乐/i.test(q) ? 8 : 1;
   for (const candidate of queryCandidates) {
     try {
@@ -182,7 +187,7 @@ async function searchOpenverse(query = '', { trackType = '' } = {}) {
       for (const item of results) {
         if (seen.has(item.id)) continue;
         seen.add(item.id);
-        merged.push(item);
+        merged.push({ ...item, ...(searchIntent ? { match_reason: searchIntent.label } : {}), matched_query: candidate });
       }
       if (merged.length >= targetCount) break;
     } catch (error) {
@@ -199,6 +204,7 @@ async function searchOpenverse(query = '', { trackType = '' } = {}) {
     selected_queries: matchedQueries,
     match_mode: similarOpenLicense ? 'similar_open_license' : 'open_license_search',
     reference_query: similarOpenLicense ? q : '',
+    match_reason: searchIntent?.label || '',
     fallback_used: matchedQueries.some(candidate => candidate !== q),
     license_note: `系统合并 ${matchedQueries.length || 1} 组相关关键词；仅展示允许商用与修改的 CC0、PDM、CC BY 音频，CC BY 会自动写入署名清单。`,
   };
@@ -417,4 +423,4 @@ function attributionManifest(taskId) {
   }));
 }
 
-module.exports = { ALLOWED_TRACKS, ASSET_KIND, LEDGER_KIND, PROFILE_KIND, TIMELINE_KIND, addUserAsset, attributionManifest, compile, generatedSoundKind, generatedSoundSource, importOpenverseAsset, normalizeTimelineTracks, openverseQueryCandidates, recommendedBgmQuery, recommendedQuery, recommendedTrack, resolvedBgm, resolvedTracks, searchOpenverse, shouldAutoRecommend, upsertTimelineTrack };
+module.exports = { ALLOWED_TRACKS, ASSET_KIND, LEDGER_KIND, PROFILE_KIND, TIMELINE_KIND, addUserAsset, attributionManifest, bgmSearchIntent, compile, generatedSoundKind, generatedSoundSource, importOpenverseAsset, normalizeTimelineTracks, openverseQueryCandidates, recommendedBgmQuery, recommendedQuery, recommendedTrack, resolvedBgm, resolvedTracks, searchOpenverse, shouldAutoRecommend, upsertTimelineTrack };

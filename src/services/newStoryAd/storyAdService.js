@@ -2207,15 +2207,16 @@ async function generateTtsStage(taskId, options = {}) {
   if (!task) throw new Error('没有找到对应项目。');
   const ctx = mediaRuntimeContext(taskId, storage.getOutput(taskId, 'context') || task.request || {});
   const shots = await ensureStoryboardForMedia(taskId);
-  const contracts = await ensureContractsForMedia(taskId, ctx, shots);
-  const keyframes = approvedVideoFrames(taskId, shots, contracts);
-  videoSubmissionGate.validateBeforeProvider({ storage, taskId, validate: () => assertVideoInputsReady({ ctx, shots, keyframes, contracts, sceneAcceptance: sceneVerificationOptions(taskId).acceptance }) });
   const existingTtsAudio = storage.getOutput(taskId, 'tts_audio') || {};
   const voiceId = resolveTtsVoiceId(options, ctx, existingTtsAudio);
   const voiceAssignments = voicePlan.resolveVoiceAssignments(options, ctx, existingTtsAudio, voiceId);
   const includeVoiceover = voicePlan.voiceoverEnabled(options, ctx, voiceId, voiceAssignments);
+  const generationId = cleanText(options.generation_id || options.generationId || '', 80);
+  const startedAt = new Date().toISOString();
+  let completedTracks = 0;
   storage.updateTask(taskId, { status: 'running', stage: 'tts' });
   storage.saveStage(taskId, 'tts', { status: 'running', input_summary: `${shots.length} shot voice tracks` });
+  stageProgress.update(taskId, { stage: 'tts', phase: 'voice_preparing', completed: 0, total: shots.length, generationId, startedAt, message: `正在准备 ${shots.length} 段配音` });
   if (!includeVoiceover) {
     const tts_audio = silentTtsOutput();
     storage.saveOutput(taskId, 'tts_audio', tts_audio);
@@ -2226,18 +2227,33 @@ async function generateTtsStage(taskId, options = {}) {
       diagnostics: { skipped: true, reason: tts_audio.reason },
     });
     storage.updateTask(taskId, { status: 'done', stage: 'tts_ready' });
+    stageProgress.update(taskId, { stage: 'tts', status: 'done', phase: 'voice_skipped', completed: shots.length, total: shots.length, generationId, startedAt, message: '当前分镜没有需要生成的旁白或对白' });
     return { tts_audio, skipped: true };
   }
-  const reusedTts = ttsReuse.reuseExistingVoiceover({ storage, taskId, ttsAudio: existingTtsAudio, shots, voiceId, voiceAssignments, force: options.force_regenerate_tts === true || options.forceRegenerateTts === true }); if (reusedTts) return reusedTts;
-  const tts_audio = await ttsAdapter.generateVoiceover({
-    taskId, shots, voiceId, voiceAssignments,
-    userId: task.user_id || task.request?.user_id || task.request?.userId || '',
-    requestBaseUrl: options.request_base_url || options.requestBaseUrl || '',
-    speed: options.speed || ctx.tts_speed || 1,
-    allowSilentFallback: options.allow_silent_fallback === true || options.allowSilentFallback === true,
-    existingTracks: (options.force_regenerate_tts === true || options.forceRegenerateTts === true) ? [] : (existingTtsAudio?.tracks || []),
-    onCheckpoint: tracks => storage.saveOutput(taskId, 'tts_audio', { tracks, voice_id: voiceId, voice_assignments: voiceAssignments, provider_used: tracks.find(track => track?.provider_used)?.provider_used || '', warnings: tracks.map(track => track?.warning).filter(Boolean), status: tracks.every(Boolean) ? 'ready' : 'running', updated_at: new Date().toISOString() }),
-  });
+  const reusedTts = ttsReuse.reuseExistingVoiceover({ storage, taskId, ttsAudio: existingTtsAudio, shots, voiceId, voiceAssignments, force: options.force_regenerate_tts === true || options.forceRegenerateTts === true });
+  if (reusedTts) {
+    stageProgress.update(taskId, { stage: 'tts', status: 'done', phase: 'voice_reused', completed: shots.length, total: shots.length, generationId, startedAt, message: `已复用 ${shots.length} 段当前音色的有效配音` });
+    return reusedTts;
+  }
+  let tts_audio;
+  try {
+    tts_audio = await ttsAdapter.generateVoiceover({
+      taskId, shots, voiceId, voiceAssignments,
+      userId: task.user_id || task.request?.user_id || task.request?.userId || '',
+      requestBaseUrl: options.request_base_url || options.requestBaseUrl || '',
+      speed: options.speed || ctx.tts_speed || 1,
+      allowSilentFallback: options.allow_silent_fallback === true || options.allowSilentFallback === true,
+      existingTracks: (options.force_regenerate_tts === true || options.forceRegenerateTts === true) ? [] : (existingTtsAudio?.tracks || []),
+      onCheckpoint: (tracks, checkpoint = {}) => {
+        completedTracks = Number(checkpoint.completed ?? tracks.filter(Boolean).length) || 0;
+        storage.saveOutput(taskId, 'tts_audio', { tracks, voice_id: voiceId, voice_assignments: voiceAssignments, provider_used: tracks.find(track => track?.provider_used)?.provider_used || '', warnings: tracks.map(track => track?.warning).filter(Boolean), status: tracks.every(Boolean) ? 'ready' : 'running', updated_at: new Date().toISOString() });
+        stageProgress.update(taskId, { stage: 'tts', phase: 'voice_generating', completed: completedTracks, total: shots.length, generationId, startedAt, message: `已生成 ${completedTracks}/${shots.length} 段配音` });
+      },
+    });
+  } catch (error) {
+    stageProgress.update(taskId, { stage: 'tts', status: 'failed', phase: 'voice_failed', completed: completedTracks, total: shots.length, generationId, startedAt, message: error.message || '配音生成失败' });
+    throw error;
+  }
   storage.saveOutput(taskId, 'tts_audio', tts_audio);
   storage.deleteOutput(taskId, audioProduction.OUTPUT_KIND);
   storage.saveStage(taskId, 'tts', {
@@ -2249,6 +2265,7 @@ async function generateTtsStage(taskId, options = {}) {
     },
   });
   storage.updateTask(taskId, { status: 'done', stage: 'tts_ready' });
+  stageProgress.update(taskId, { stage: 'tts', status: 'done', phase: 'voice_ready', completed: shots.length, total: shots.length, generationId, startedAt, message: `${shots.length} 段配音已生成，可逐段试听` });
   return { tts_audio };
 }
 

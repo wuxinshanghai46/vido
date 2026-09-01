@@ -48,14 +48,14 @@ async function main() {
   assert(view.includes('声音内容已按剧情自动确定'), '声音页必须说明内容直接继承剧情合同');
   assert(view.includes('旁白按旁白生成，对白按对应人物生成，两者并存时会自动组合'), '必须清楚说明旁白与人物对白的自动组合规则');
   assert(view.includes('data-open-bgm-library') && view.includes('data-bgm-library-dialog') && view.includes('data-search-bgm-library'), '背景音乐必须通过独立弹窗提供风格选择和搜索入口');
-  assert(view.includes('不会把商业原曲冒充为开源素材'), '歌曲名查询必须向用户解释返回的是相似开放授权音乐');
+  assert(!view.includes('已将“') && view.includes('曲库不保证收录同名商业歌曲'), '音乐库不得用结果无法证明的“已识别”提示误导用户');
   assert(view.includes('data-import-bgm') && view.includes('切换为这首'), '每个背景音乐候选必须可以试听并切换');
   assert(view.includes("items.slice(0, 1).map(bgmCandidateMarkup)"), '页面默认推荐必须只展示一首，更多候选留在独立音乐库');
   assert(view.includes('&track_type=bgm') && routes.includes("trackType: req.query.track_type || ''"), '背景音乐搜索必须把音轨类型传到开放音乐检索服务');
   assert(view.includes(':not([data-sound-track="bgm"])'), '场景音效试听时长不得错误读取全片 BGM 行');
   assert(view.includes('原音乐不会重复叠加'), '切换成功反馈必须解释单轨替换结果');
-  assert(routes.includes('subtitle: production.plan.subtitle !== false') && routes.includes('bgm_volume: production.plan.bgm_volume ?? 0.16'), '声音接口必须返回已保存的字幕和 BGM 音量，避免刷新后显示默认值');
-  assert(css.includes('v349 sound choice cards') && css.includes('.bgm-candidate-grid'), '新交互必须有独立响应式样式');
+  assert(routes.includes('subtitle: production.plan.subtitle !== false') && routes.includes('voice_volume: production.plan.voice_volume ?? 1') && routes.includes('bgm_volume: production.plan.bgm_volume ?? 0.16'), '声音接口必须返回已保存的字幕、人声和 BGM 音量，避免刷新后显示默认值');
+  assert(css.includes('v349 sound choice cards') && css.includes('.bgm-candidate-grid') && css.includes('v373 sound progress'), '新交互必须有独立响应式样式');
 
   const axios = require('axios');
   const originalGet = axios.get;
@@ -65,8 +65,8 @@ async function main() {
     searched.push(query);
     const count = ['warm piano background music', '星月神话'].includes(query) ? 2 : 8;
     return { data: { results: Array.from({ length: count }, (_, index) => ({
-      id: `${query}-${index}`, title: query === 'guzheng music' && index === 0 ? 'cat recorder field recording'
-        : query === 'guzheng music' && index === 1 ? 'Protests in Chile group of musicians'
+      id: `${query}-${index}`, title: query === 'longing traditional Chinese instrumental music' && index === 0 ? 'cat recorder field recording'
+        : query === 'longing traditional Chinese instrumental music' && index === 1 ? 'Protests in Chile group of musicians'
         : `${query} ${index}`, creator: 'Open creator', license: 'cc0',
       url: `https://cdn.freesound.org/previews/${encodeURIComponent(query)}-${index}.mp3`, duration: 30,
     })) } };
@@ -81,8 +81,9 @@ async function main() {
     assert.strictEqual(chineseTitle.match_mode, 'similar_open_license', '商业歌曲名必须标记为相似开放授权检索，禁止冒充原曲');
     assert.strictEqual(chineseTitle.reference_query, '相思');
     assert(!chineseTitle.results.some(item => /cat|protest/i.test(item.name)), '背景音乐候选必须过滤现场录音、动物声等明显非配乐素材');
-    assert.strictEqual(searched[0], 'guzheng music', '相思类意境必须优先查询古筝音乐，而不是先等待无法检索的中文原曲名');
+    assert.strictEqual(searched[0], 'longing traditional Chinese instrumental music', '相思类意境必须优先查询包含思念语义的东方器乐，而不是宽泛古筝关键词');
     assert(!searched.includes('instrumental music'), '相思类意境不得回退到过宽的通用器乐关键词');
+    assert(chineseTitle.results.every(item => item.match_reason === '思念、离别与东方器乐'), '每首中文主题候选必须展示真实检索方向，让用户知道与输入的关系');
   } finally {
     axios.get = originalGet;
   }
