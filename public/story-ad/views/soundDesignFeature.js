@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260902-production-v382';
-import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260902-production-v382';
-import { bgmCandidateMarkup, bindLiveAudioPreview, previewSeconds, soundPreviewMarkup } from '../controllers/liveAudioPreviewController.js?v=20260902-production-v382';
+import { request } from '../api.js?v=20260902-production-v383';
+import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260902-production-v383';
+import { bgmCandidateMarkup, bindLiveAudioPreview, previewSeconds, soundPreviewMarkup } from '../controllers/liveAudioPreviewController.js?v=20260902-production-v383';
 
 const TRACK_TYPES = [['room_tone', '空间底噪'], ['ambient', '环境声'], ['foley', '拟音'], ['sfx', '动作音效'], ['transition', '转场音'], ['bgm', '背景音乐']];
 function trackOptions(selected = 'room_tone') {
