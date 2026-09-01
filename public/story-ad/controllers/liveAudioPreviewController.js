@@ -10,21 +10,55 @@ export function soundPreviewMarkup(url = '', duration = 4, label = '试听本镜
   return `<div class="sound-preview-control"><button class="btn small" type="button" data-play-sound-preview data-preview-seconds="${seconds}">▶ ${label} ${seconds} 秒</button><audio preload="none" src="${escapeHtml(url)}" ${previewKind ? `data-preview-kind="${escapeHtml(previewKind)}"` : ''} hidden></audio></div>`;
 }
 
-export function bgmCandidateMarkup(item = {}, index = 0) {
-  return `<article class="bgm-candidate ${index === 0 ? 'is-recommended' : ''}" data-openverse-preview="${escapeHtml(item.id || '')}"><div><b>${escapeHtml(item.name || '背景音乐')}</b><small>${escapeHtml(item.creator || 'Unknown')} · ${escapeHtml(String(item.license || '').toUpperCase())}${index === 0 ? ' · 系统首选' : ''}</small>${item.match_reason ? `<small class="bgm-match-reason">匹配方向：${escapeHtml(item.match_reason)}</small>` : ''}</div>${soundPreviewMarkup(item.audio_url || '', 8, '试听音乐', 'bgm')}<button class="btn small" type="button" data-import-bgm="${escapeHtml(item.id || '')}">${index === 0 ? '使用这首' : '切换为这首'}</button></article>`;
+export function bgmCandidateMarkup(item = {}, index = 0, selectedSourceId = '') {
+  const selected = !!selectedSourceId && String(item.id || '') === String(selectedSourceId);
+  return `<article class="bgm-candidate ${index === 0 ? 'is-recommended' : ''} ${selected ? 'is-selected' : ''}" data-openverse-preview="${escapeHtml(item.id || '')}"><div><b>${escapeHtml(item.name || '背景音乐')}</b><small>${escapeHtml(item.creator || 'Unknown')} · ${escapeHtml(String(item.license || '').toUpperCase())}${selected ? ' · 当前使用' : (index === 0 ? ' · 系统首选' : '')}</small>${item.match_reason ? `<small class="bgm-match-reason">匹配方向：${escapeHtml(item.match_reason)}</small>` : ''}</div>${soundPreviewMarkup(item.audio_url || '', 8, '试听音乐', 'bgm')}<button class="btn small" type="button" data-import-bgm="${escapeHtml(item.id || '')}" ${selected ? 'disabled' : ''}>${selected ? '已选择' : (index === 0 ? '使用这首' : '切换为这首')}</button></article>`;
 }
 
-export function bindLiveAudioPreview({ host, bundle, audioPlanPayload, request, setButtonBusy, toast }) {
-  const volumeValue = selector => Math.max(0, Math.min(1, Number(host.querySelector(selector)?.value || 0)));
+export function bindLiveAudioPreview({ host, bundle, audioPlanPayload, request, toast }) {
+  const volumeValue = (selector, maximum = 1) => Math.max(0, Math.min(maximum, Number(host.querySelector(selector)?.value || 0)));
   const voicePlayer = host.querySelector('[data-overall-voice-player]');
   const bgmPlayer = host.querySelector('[data-overall-bgm-player]');
   const status = host.querySelector('[data-overall-audio-status]');
   const playButton = host.querySelector('[data-play-overall-audio]');
+  let overallState = 'idle';
+  let expectedDuration = 0;
+  let endGuard = null;
+  let audioContext = null;
+  let voiceGain = null;
+  let bgmGain = null;
+
+  const setPlayButton = (label, disabled = false) => {
+    if (!playButton) return;
+    playButton.textContent = label;
+    playButton.disabled = disabled;
+    if (disabled) playButton.setAttribute('aria-busy', 'true'); else playButton.removeAttribute('aria-busy');
+  };
+  const ensureGainGraph = async () => {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass || !voicePlayer || !bgmPlayer) return;
+    if (!audioContext) {
+      audioContext = new AudioContextClass();
+      voiceGain = audioContext.createGain();
+      bgmGain = audioContext.createGain();
+      audioContext.createMediaElementSource(voicePlayer).connect(voiceGain).connect(audioContext.destination);
+      audioContext.createMediaElementSource(bgmPlayer).connect(bgmGain).connect(audioContext.destination);
+      voicePlayer.volume = 1;
+      bgmPlayer.volume = 1;
+    }
+    if (audioContext.state === 'suspended') await audioContext.resume();
+  };
+  const clearEndGuard = () => { if (endGuard) clearTimeout(endGuard); endGuard = null; };
+  const armEndGuard = () => {
+    clearEndGuard();
+    const remaining = Math.max(0, expectedDuration - Number(voicePlayer?.currentTime || 0));
+    if (remaining > 0) endGuard = setTimeout(() => finishOverall(), Math.ceil((remaining + 0.35) * 1000));
+  };
 
   host.addEventListener('play', event => {
     const current = event.target;
     if (String(current?.tagName || '').toLowerCase() !== 'audio') return;
-    const stoppedOverall = current.dataset.audioGroup !== 'overall' && voicePlayer && !voicePlayer.paused;
+    const stoppedOverall = current.dataset.audioGroup !== 'overall' && overallState === 'playing';
     host.querySelectorAll('audio').forEach(audio => {
       const sameGroup = current.dataset.audioGroup && audio.dataset.audioGroup === current.dataset.audioGroup;
       if (audio !== current && !sameGroup && !audio.paused) { audio.pause(); audio.currentTime = 0; }
@@ -34,39 +68,66 @@ export function bindLiveAudioPreview({ host, bundle, audioPlanPayload, request, 
       if (audio !== current && button.dataset.idleText) button.textContent = button.dataset.idleText;
     });
     if (stoppedOverall) {
-      if (playButton && !playButton.disabled) playButton.textContent = '▶ 试听背景音乐 + 配音对白';
+      overallState = 'idle';
+      clearEndGuard();
+      setPlayButton('▶ 整体试听');
       if (status) status.textContent = '已切换到单项试听；整体试听已停止。';
     }
   }, true);
 
-  const stopOverall = ({ clearSource = false } = {}) => {
+  const stopOverall = ({ clearSource = false, reset = true } = {}) => {
+    clearEndGuard();
     [voicePlayer, bgmPlayer].filter(Boolean).forEach(audio => {
-      audio.pause(); audio.currentTime = 0;
+      audio.pause();
+      if (reset) audio.currentTime = 0;
       if (clearSource) audio.removeAttribute('src');
     });
-    if (playButton && !playButton.disabled) playButton.textContent = '▶ 试听背景音乐 + 配音对白';
+    overallState = reset ? 'idle' : 'paused';
+    setPlayButton(reset ? '▶ 整体试听' : '▶ 继续试听');
+  };
+  const finishOverall = () => {
+    if (overallState === 'idle') return;
+    stopOverall();
+    if (status) status.textContent = '试听已结束。';
   };
   const syncPreviewVolumes = () => {
-    const voiceVolume = volumeValue('[data-voice-volume]');
-    const bgmVolume = volumeValue('[data-bgm-volume]');
-    host.querySelectorAll('audio[data-preview-kind="voice"]').forEach(audio => { audio.volume = voiceVolume; });
-    host.querySelectorAll('audio[data-preview-kind="bgm"]').forEach(audio => { audio.volume = bgmVolume; });
+    const voiceVolume = volumeValue('[data-voice-volume]', 1.5);
+    const bgmVolume = volumeValue('[data-bgm-volume]', 1);
+    host.querySelectorAll('audio[data-preview-kind="voice"]').forEach(audio => { if (audio !== voicePlayer || !voiceGain) audio.volume = Math.min(1, voiceVolume); });
+    host.querySelectorAll('audio[data-preview-kind="bgm"]').forEach(audio => { if (audio !== bgmPlayer || !bgmGain) audio.volume = Math.min(1, bgmVolume); });
+    if (voiceGain) voiceGain.gain.value = voiceVolume;
+    if (bgmGain) bgmGain.gain.value = bgmVolume;
     const voiceOutput = host.querySelector('[data-voice-volume-value]'); if (voiceOutput) voiceOutput.textContent = `${Math.round(voiceVolume * 100)}%`;
     const bgmOutput = host.querySelector('[data-bgm-volume-value]'); if (bgmOutput) bgmOutput.textContent = `${Math.round(bgmVolume * 100)}%`;
-    if (status && voicePlayer && !voicePlayer.paused) status.textContent = `正在试听：配音 ${Math.round(voiceVolume * 100)}% + 背景音乐 ${Math.round(bgmVolume * 100)}%（可继续实时调节）`;
+    if (status && overallState === 'playing') status.textContent = `试听中：配音 ${Math.round(voiceVolume * 100)}% + 背景音乐 ${Math.round(bgmVolume * 100)}%`;
   };
   syncPreviewVolumes();
   host.querySelector('[data-voice-volume]')?.addEventListener('input', syncPreviewVolumes);
   host.querySelector('[data-bgm-volume]')?.addEventListener('input', syncPreviewVolumes);
 
-  playButton?.addEventListener('click', async event => {
+  const playOverall = async () => {
+    await ensureGainGraph();
+    syncPreviewVolumes();
+    await Promise.all([voicePlayer.play(), bgmPlayer.play()]);
+    overallState = 'playing';
+    setPlayButton('⏸ 暂停');
+    syncPreviewVolumes();
+    armEndGuard();
+  };
+
+  playButton?.addEventListener('click', async () => {
     try {
-      if (voicePlayer && !voicePlayer.paused) {
-        stopOverall();
-        if (status) status.textContent = '整体试听已停止；音量设置会保留。';
+      if (overallState === 'playing') {
+        stopOverall({ reset: false });
+        if (status) status.textContent = '试听已暂停。';
         return;
       }
-      setButtonBusy(event.currentTarget, true, '正在准备整体试听…', { elapsed: true });
+      if (overallState === 'paused' && voicePlayer?.src && bgmPlayer?.src) {
+        await playOverall();
+        return;
+      }
+      overallState = 'loading';
+      setPlayButton('正在加载试听…', true);
       const payload = audioPlanPayload();
       await request(`/api/story-ad/projects/${encodeURIComponent(bundle.project.id)}/audio-plan`, { method: 'PUT', body: payload });
       if (!voicePlayer?.src || !bgmPlayer?.src) {
@@ -74,24 +135,24 @@ export function bindLiveAudioPreview({ host, bundle, audioPlanPayload, request, 
         if (!result.preview?.voice_audio_url || !result.preview?.bgm_audio_url) throw new Error('整体试听的配音轨或背景音乐轨没有准备完成。');
         voicePlayer.src = result.preview.voice_audio_url;
         bgmPlayer.src = result.preview.bgm_audio_url;
+        expectedDuration = Math.max(0, Number(result.preview.duration_sec || 0));
       }
-      syncPreviewVolumes();
       voicePlayer.currentTime = 0;
       bgmPlayer.currentTime = 0;
-      await Promise.all([voicePlayer.play(), bgmPlayer.play()]);
-      if (status) status.textContent = `正在试听：配音 ${Math.round(volumeValue('[data-voice-volume]') * 100)}% + 背景音乐 ${Math.round(volumeValue('[data-bgm-volume]') * 100)}%（可继续实时调节）`;
+      setPlayButton('▶ 整体试听');
+      await playOverall();
     } catch (error) {
       stopOverall({ clearSource: true });
       toast(error.message, 'danger');
       if (status) status.textContent = error.message || '整体试听生成失败。';
-    } finally {
-      setButtonBusy(event.currentTarget, false);
-      if (voicePlayer && !voicePlayer.paused) event.currentTarget.textContent = '■ 停止整体试听';
     }
   });
-  voicePlayer?.addEventListener('ended', () => {
-    stopOverall();
-    if (status) status.textContent = '整体试听已播放完成，可调整音量后直接再次试听。';
+  voicePlayer?.addEventListener('ended', finishOverall);
+  voicePlayer?.addEventListener('error', finishOverall);
+  bgmPlayer?.addEventListener('ended', () => {
+    if (overallState !== 'playing' || voicePlayer?.ended) return;
+    bgmPlayer.currentTime = 0;
+    bgmPlayer.play().catch(finishOverall);
   });
 
   let previewTimer = null;

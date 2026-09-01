@@ -72,6 +72,7 @@ export function soundDesignMarkup(soundDesign = {}) {
   const bgmRows = (soundDesign.timeline || []).filter(row => row.track_type === 'bgm');
   const activeBgmRow = bgmRows.at(-1) || null;
   const activeBgmAsset = assets.get(activeBgmRow?.asset_id) || null;
+  const activeBgmSourceId = String(activeBgmAsset?.source_id || activeBgmAsset?.asset_id || '').replace(/^openverse_/, '');
   const readyVoiceTracks = (production.speech || []).filter(row => (row.units || []).length && trackPreviewUrl(ttsTrackFor(ttsByShot, row))).length;
   const overallPreviewReady = !!activeBgmAsset?.file_url && spokenShots > 0 && readyVoiceTracks === spokenShots;
   const keySoundCount = shots.filter(item => item.auto_recommend_sound).length;
@@ -103,12 +104,12 @@ export function soundDesignMarkup(soundDesign = {}) {
             <article><span>整体配音对白</span><b>${readyVoiceTracks}/${spokenShots} 段已生成</b><small>${readyVoiceTracks === spokenShots && spokenShots > 0 ? '包含上方每个镜头的旁白与人物对白' : '请先完成全部逐镜配音生成'}</small></article>
           </div>
           <div class="overall-audio-volume-grid">
-            <label class="sound-volume-field"><span>配音对白音量 <output data-voice-volume-value>${Math.round(Number(production.voice_volume ?? 1) * 100)}%</output></span><input type="range" min="0.6" max="1.2" step="0.01" value="${Number(production.voice_volume ?? 1)}" data-voice-volume><small>用于整体试听和最终成片。</small></label>
-            <label class="sound-volume-field"><span>背景音乐音量 <output data-bgm-volume-value>${Math.round(Number(production.bgm_volume ?? 0.16) * 100)}%</output></span><input type="range" min="0" max="0.35" step="0.01" value="${Number(production.bgm_volume ?? 0.16)}" data-bgm-volume><small>用于整体试听和最终成片。</small></label>
+            <label class="sound-volume-field"><span>配音对白音量 <output data-voice-volume-value>${Math.round(Number(production.voice_volume ?? 1) * 100)}%</output></span><input type="range" min="0.6" max="1.5" step="0.01" value="${Number(production.voice_volume ?? 1)}" data-voice-volume><small>可放大到 150%，同时作用于整体试听和最终成片。</small></label>
+            <label class="sound-volume-field"><span>背景音乐音量 <output data-bgm-volume-value>${Math.round(Number(production.bgm_volume ?? 0.16) * 100)}%</output></span><input type="range" min="0" max="1" step="0.01" value="${Number(production.bgm_volume ?? 0.16)}" data-bgm-volume><small>可调到 100%，同时作用于整体试听和最终成片。</small></label>
           </div>
-          <div class="overall-audio-actions"><button class="btn primary" type="button" data-play-overall-audio ${overallPreviewReady ? '' : 'disabled'}>▶ 试听背景音乐 + 配音对白</button><small data-overall-audio-status>${overallPreviewReady ? '首次准备配音时间轴后即可边听边调两路音量，不会再次调用语音供应商。' : '需要先选择背景音乐并生成全部配音。'}</small></div>
+          <div class="overall-audio-actions"><button class="btn primary" type="button" data-play-overall-audio ${overallPreviewReady ? '' : 'disabled'}>▶ 整体试听</button><small data-overall-audio-status>${overallPreviewReady ? '点击后可边听边调两路音量，不会再次调用语音供应商。' : '需要先选择背景音乐并生成全部配音。'}</small></div>
           <audio preload="none" data-overall-voice-player data-preview-kind="voice" data-audio-group="overall" hidden></audio>
-          <audio preload="none" data-overall-bgm-player data-preview-kind="bgm" data-audio-group="overall" loop hidden></audio>
+          <audio preload="none" data-overall-bgm-player data-preview-kind="bgm" data-audio-group="overall" hidden></audio>
         </section>
       </section>
       <details class="sound-option-panel">
@@ -127,7 +128,11 @@ export function soundDesignMarkup(soundDesign = {}) {
   </section>`;
 }
 
-export function bindSoundDesign(host, { bundle, store, refreshShell, navigate }) {
+export function bindSoundDesign(host, { bundle, store, soundDesign = {}, refreshShell, navigate }) {
+  const boundAssets = new Map((soundDesign.assets || []).map(item => [item.asset_id, item]));
+  const boundBgmRow = (soundDesign.timeline || []).filter(item => item.track_type === 'bgm').at(-1);
+  const boundBgmAsset = boundAssets.get(boundBgmRow?.asset_id) || null;
+  const activeBgmSourceId = String(boundBgmAsset?.source_id || boundBgmAsset?.asset_id || '').replace(/^openverse_/, '');
   let availableVoices = [];
   let blockedVoiceProviders = new Set();
   try { blockedVoiceProviders = new Set(JSON.parse(sessionStorage.getItem('story-ad-blocked-voice-providers') || '[]')); } catch {}
@@ -245,7 +250,16 @@ export function bindSoundDesign(host, { bundle, store, refreshShell, navigate })
   };
   const bindBgmImportButtons = (container, row) => {
     container?.querySelectorAll('[data-import-bgm]').forEach(button => button.addEventListener('click', async event => {
-      try { await importSound(row, event.currentTarget, event.currentTarget.dataset.importBgm); toast('背景音乐已切换，原音乐不会重复叠加。', 'success'); await refreshShell(); } catch (error) { toast(error.message, 'danger'); } finally { setButtonBusy(event.currentTarget, false); }
+      const candidate = event.currentTarget.closest('.bgm-candidate');
+      const previousSelected = container.querySelector('.bgm-candidate.is-selected');
+      container.querySelectorAll('.bgm-candidate').forEach(item => item.classList.remove('is-selected'));
+      candidate?.classList.add('is-selected');
+      try { await importSound(row, event.currentTarget, event.currentTarget.dataset.importBgm); toast('背景音乐已切换，原音乐不会重复叠加。', 'success'); await refreshShell(); }
+      catch (error) {
+        candidate?.classList.remove('is-selected');
+        previousSelected?.classList.add('is-selected');
+        toast(error.message, 'danger');
+      } finally { setButtonBusy(event.currentTarget, false); }
     }));
   };
   const recommendationRequests = new Map();
@@ -260,7 +274,7 @@ export function bindSoundDesign(host, { bundle, store, refreshShell, navigate })
       const item = items[0];
       if (!item) { resultHost.innerHTML = '<small>暂未找到合规候选，可搜索其他声音或上传自己的。</small>'; return; }
       if (row.dataset.soundTrack === 'bgm') {
-        resultHost.innerHTML = `<div class="bgm-candidate-grid">${items.slice(0, 1).map(bgmCandidateMarkup).join('')}</div>`;
+        resultHost.innerHTML = `<div class="bgm-candidate-grid">${items.slice(0, 1).map((item, index) => bgmCandidateMarkup(item, index, activeBgmSourceId)).join('')}</div>`;
         syncPreviewVolumes();
         bindBgmImportButtons(resultHost, row);
         return;
@@ -293,7 +307,7 @@ export function bindSoundDesign(host, { bundle, store, refreshShell, navigate })
       setDialogFeedback('[data-bgm-library-feedback]');
       const result = await request(`/api/story-ad/projects/${encodeURIComponent(bundle.project.id)}/sound-library?q=${encodeURIComponent(query)}&track_type=bgm`);
       const items = result.results || [];
-      resultsHost.innerHTML = items.length ? `<div class="bgm-candidate-grid">${items.slice(0, 8).map(bgmCandidateMarkup).join('')}</div>` : `<p>${escapeHtml(result.license_note || '没有找到满足许可规则的音乐。')}</p>`;
+      resultsHost.innerHTML = items.length ? `<div class="bgm-candidate-grid">${items.slice(0, 8).map((item, index) => bgmCandidateMarkup(item, index, activeBgmSourceId)).join('')}</div>` : `<p>${escapeHtml(result.license_note || '没有找到满足许可规则的音乐。')}</p>`;
       syncPreviewVolumes();
       bindBgmImportButtons(resultsHost, bgmRow);
     } catch (error) { setDialogFeedback('[data-bgm-library-feedback]', error.message || '开源音乐库暂时不可用。'); } finally { setButtonBusy(button, false); }

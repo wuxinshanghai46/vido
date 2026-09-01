@@ -40,7 +40,7 @@ const originalGet = axios.get;
 let downloads = 0;
 axios.get = async url => {
   if (String(url).includes('/v1/audio/')) return { data: { results: [{ id: 'cache-fixture', title: 'Warm Piano Instrumental', creator: 'Fixture', license: 'cc0', license_url: 'https://creativecommons.org/publicdomain/zero/1.0/', foreign_landing_url: 'https://example.test/item', url: 'https://cdn.freesound.org/previews/cache-fixture.mp3', duration: 30 }] } };
-  if (String(url).includes('cdn.freesound.org')) { downloads += 1; return { data: Buffer.alloc(2048, 1), headers: { 'content-type': 'audio/mpeg' } }; }
+  if (String(url).includes('cdn.freesound.org')) { const data = Buffer.alloc(2048, 1); data.write('ID3', 0, 'ascii'); downloads += 1; return { data, headers: { 'content-type': 'audio/mpeg' } }; }
   throw new Error(`unexpected request ${url}`);
 };
 try {

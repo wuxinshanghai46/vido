@@ -46,7 +46,7 @@ async function main() {
   assert.strictEqual(state.plan.voice_volume, 0.72, '配音音量必须持久化');
   assert.strictEqual(state.plan.bgm_volume, 0.11, '背景音乐音量必须独立持久化');
   state = audioProduction.savePlan(taskId, { voice_id: 'mock-voice', voice_volume: 9, bgm_volume: -1 });
-  assert.strictEqual(state.plan.voice_volume, 1.2, '服务端必须限制异常过大的人声音量');
+  assert.strictEqual(state.plan.voice_volume, 1.5, '服务端必须限制异常过大的人声音量');
   assert.strictEqual(state.plan.bgm_volume, 0, '服务端必须限制负背景音乐音量');
 
   const root = path.resolve(__dirname, '..');

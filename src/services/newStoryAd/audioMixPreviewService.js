@@ -69,8 +69,8 @@ async function create(taskId, input = {}) {
     throw Object.assign(new Error(`请先生成全部配音对白（当前 ${summary.ready_voice_track_count}/${summary.spoken_shot_count} 段）。`), { code: 'AUDIO_PREVIEW_VOICE_REQUIRED', status: 422 });
   }
   const bgm = soundDesign.resolvedBgm(taskId);
-  const voiceVolume = clamp(input.voice_volume ?? input.voiceVolume ?? state.plan.voice_volume, 1, 0.6, 1.2);
-  const bgmVolume = clamp(input.bgm_volume ?? input.bgmVolume ?? state.plan.bgm_volume, 0.16, 0, 0.35);
+  const voiceVolume = clamp(input.voice_volume ?? input.voiceVolume ?? state.plan.voice_volume, 1, 0.6, 1.5);
+  const bgmVolume = clamp(input.bgm_volume ?? input.bgmVolume ?? state.plan.bgm_volume, 0.16, 0, 1);
   const byShot = trackMap(state.tts.tracks);
   let cursor = 0;
   const placements = [];

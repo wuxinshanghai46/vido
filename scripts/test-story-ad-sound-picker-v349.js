@@ -54,7 +54,7 @@ async function main() {
   assert(view.includes('data-open-bgm-library') && view.includes('data-bgm-library-dialog') && view.includes('data-search-bgm-library'), '背景音乐必须通过独立弹窗提供风格选择和搜索入口');
   assert(!view.includes('已将“') && view.includes('曲库不保证收录同名商业歌曲'), '音乐库不得用结果无法证明的“已识别”提示误导用户');
   assert(view.includes('data-import-bgm') && view.includes('切换为这首'), '每个背景音乐候选必须可以试听并切换');
-  assert(view.includes("items.slice(0, 1).map(bgmCandidateMarkup)"), '页面默认推荐必须只展示一首，更多候选留在独立音乐库');
+  assert(view.includes("items.slice(0, 1).map((item, index) => bgmCandidateMarkup(item, index, activeBgmSourceId))"), '页面默认推荐必须只展示一首，更多候选留在独立音乐库');
   assert(view.includes('&track_type=bgm') && routes.includes("trackType: req.query.track_type || ''"), '背景音乐搜索必须把音轨类型传到开放音乐检索服务');
   assert(view.includes(':not([data-sound-track="bgm"])'), '场景音效试听时长不得错误读取全片 BGM 行');
   assert(view.includes('原音乐不会重复叠加'), '切换成功反馈必须解释单轨替换结果');

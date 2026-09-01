@@ -225,7 +225,7 @@ async function muxTimelineVoiceTracks(videoPath = '', placements = [], outputPat
   valid.forEach((item, index) => {
     const delay = Math.max(0, Math.round(Number(item.offset_sec || 0) * 1000));
     const clipDuration = Math.max(0.1, Number(item.duration_sec || duration));
-    filters.push(`[${index + 1}:a]atrim=0:${clipDuration.toFixed(3)},asetpts=PTS-STARTPTS,adelay=${delay}|${delay},volume=${clampVolume(voiceVolume, 1, 0.6, 1.2)}[av${index}]`);
+    filters.push(`[${index + 1}:a]atrim=0:${clipDuration.toFixed(3)},asetpts=PTS-STARTPTS,adelay=${delay}|${delay},volume=${clampVolume(voiceVolume, 1, 0.6, 1.5)}[av${index}]`);
     audioLabels.push(`[av${index}]`);
   });
   filters.push(`${audioLabels.join('')}amix=inputs=${audioLabels.length}:duration=first:dropout_transition=0,atrim=0:${duration.toFixed(3)}[aout]`);
@@ -667,7 +667,7 @@ async function concatVideos({
       texts: validSubtitles,
       bgm: bgmPath ? {
         path: bgmPath,
-        volume: clampVolume(bgmVolume, 0.16, 0, 0.35),
+        volume: clampVolume(bgmVolume, 0.16, 0, 1),
         voice_volume: 1,
         fadeIn: 1,
         fadeOut: 2,
