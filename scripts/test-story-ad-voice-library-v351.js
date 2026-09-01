@@ -15,7 +15,7 @@ assert(view.includes('data-voice-select') && view.includes('hidden'), '必须保
 assert(!view.includes('data-preview-selected-voice'), '禁止恢复主表单旁的试听按钮');
 assert(view.includes('zhipu|智谱|aliyun-nls|智能语音交互') && view.includes('return /aliyun-tts|阿里百炼|cosyvoice/.test(provider)'), '剧情声音库必须排除智谱和旧 NLS，只保留当前阿里百炼可用链');
 assert(css.includes('.voice-picker-trigger') && css.includes('.voice-library-item.is-selected'));
-assert(css.includes('.voice-settings-grid select{min-height:58px}'), '音色按钮和字幕选择框必须等高对齐');
+assert(css.includes('.voice-settings-grid label{align-content:start}') && css.includes('.voice-settings-grid select{height:58px;min-height:58px}'), '音色按钮和字幕选择框必须固定等高且禁止网格拉伸');
 assert(tts.includes('strictProvider') && tts.includes("item.id === selectedProvider"), '显式试听必须锁定所选供应商');
 assert(avatar.includes('providerId: providerKey') && avatar.includes("err.code === 'TTS_PROVIDER_BILLING'"), '试听接口必须传递供应商并返回真实账户错误');
 console.log('story-ad voice library v351 checks passed');
