@@ -4,30 +4,34 @@ const https = require('https');
 const fs = require('fs');
 const path = require('path');
 const { loadSettings, saveSettings, PROVIDER_PRESETS, inferProviderAdapter } = require('../services/settingsService');
-const { voices: ALIYUN_VOICES } = require('../services/aliyunCosyVoiceCatalog');
+const { voices: VOLCENGINE_SPEECH_VOICES } = require('../services/volcengineSpeechCatalog');
 
-function validateAliyunWorkspace(provider) {
-  if (provider.id !== 'aliyun-tts' && provider.preset !== 'aliyun-tts') return;
-  if (!/^sk-ws-/.test(String(provider.api_key || ''))) throw new Error('百炼工作空间 API Key 必须以 sk-ws- 开头');
-  if (!/^ws-[a-z0-9]+$/i.test(String(provider.workspace_id || ''))) throw new Error('Workspace ID 格式应为 ws-*');
-  const httpUrl = new URL(String(provider.api_url || ''));
-  const wsUrl = new URL(String(provider.api_ws_url || ''));
-  const expectedHost = `${provider.workspace_id}.cn-beijing.maas.aliyuncs.com`.toLowerCase();
-  if (String(provider.api_host || expectedHost).toLowerCase() !== expectedHost || httpUrl.hostname.toLowerCase() !== expectedHost) throw new Error('API Host、DashScope HTTP 地址必须与 Workspace ID 属于同一个北京工作空间');
-  if (wsUrl.protocol !== 'wss:' || wsUrl.hostname !== 'dashscope.aliyuncs.com' || wsUrl.pathname !== '/api-ws/v1/inference/') throw new Error('CosyVoice WebSocket 地址必须为 wss://dashscope.aliyuncs.com/api-ws/v1/inference/');
-  provider.api_host = expectedHost;
+function validateVolcengineSpeech(provider) {
+  if (provider.id === 'aliyun-tts' || provider.preset === 'aliyun-tts') throw new Error('阿里 TTS 已停用，请配置字节豆包语音 TTS');
+  if (provider.id !== 'volcengine-tts' && provider.preset !== 'volcengine-tts') return;
+  const url = new URL(String(provider.api_url || 'https://openspeech.bytedance.com'));
+  if (url.protocol !== 'https:' || url.hostname !== 'openspeech.bytedance.com') throw new Error('字节豆包语音 API 地址必须为 https://openspeech.bytedance.com');
+  const invalid = (provider.models || []).find(model => (
+    !['seed-tts-2.0', 'seed-icl-2.0'].includes(String(model?.id || ''))
+    || model.type !== 'tts' || model.use !== 'tts'
+  ));
+  if (invalid) throw new Error(`字节语音专用供应商禁止配置非 TTS 模型：${invalid.id || 'unknown'}`);
+  provider.api_url = 'https://openspeech.bytedance.com';
+  provider.tts_resource_id = 'seed-tts-2.0';
+  provider.clone_resource_id = 'seed-icl-2.0';
+  provider.capability_scope = ['tts', 'voice_clone'];
 }
 
-function resetAliyunRuntimeState() {
+function resetTtsRuntimeState() {
   const outputDir = path.resolve(process.env.OUTPUT_DIR || path.join(__dirname, '../../outputs'));
   const cacheDir = path.join(outputDir, '_cosy_cache');
   if (cacheDir.startsWith(`${outputDir}${path.sep}`)) fs.rmSync(cacheDir, { recursive: true, force: true });
   const badFile = path.join(outputDir, 'avatar', 'bad_preview_voices.json');
   if (!fs.existsSync(badFile)) return;
   try {
-    const aliyunIds = new Set(ALIYUN_VOICES.map(v => v.id));
+    const providerIds = new Set(VOLCENGINE_SPEECH_VOICES.map(v => v.id));
     const rows = JSON.parse(fs.readFileSync(badFile, 'utf8'));
-    if (Array.isArray(rows)) fs.writeFileSync(badFile, JSON.stringify(rows.filter(id => !aliyunIds.has(String(id))), null, 2));
+    if (Array.isArray(rows)) fs.writeFileSync(badFile, JSON.stringify(rows.filter(id => !providerIds.has(String(id))), null, 2));
   } catch {}
 }
 
@@ -98,7 +102,7 @@ router.post('/providers/refresh-all', async (req, res) => {
 
 // 新增供应商
 router.post('/providers', (req, res) => {
-  const { id, name, api_url, api_key, api_host, api_ws_url, workspace_id, topview_uid, api_uid, uid, webang_asset_group_id, webang_asset_api_url, adapter, adapter_config, models = [] } = req.body;
+  const { id, name, api_url, api_key, api_host, api_ws_url, workspace_id, tts_resource_id, clone_resource_id, topview_uid, api_uid, uid, webang_asset_group_id, webang_asset_api_url, adapter, adapter_config, models = [] } = req.body;
   if (!name || !api_url) return res.status(400).json({ success: false, error: '请填写供应商名称和 API 地址' });
   const settings = loadSettings();
   const newId = (id || name.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '') || Date.now().toString());
@@ -113,6 +117,8 @@ router.post('/providers', (req, res) => {
   if (api_ws_url !== undefined) provider.api_ws_url = String(api_ws_url || '').trim();
   if (api_host !== undefined) provider.api_host = String(api_host || '').trim();
   if (workspace_id !== undefined) provider.workspace_id = String(workspace_id || '').trim();
+  if (tts_resource_id !== undefined) provider.tts_resource_id = String(tts_resource_id || '').trim();
+  if (clone_resource_id !== undefined) provider.clone_resource_id = String(clone_resource_id || '').trim();
   if (adapter !== undefined) provider.adapter = String(adapter || '').trim();
   if (adapter_config && typeof adapter_config === 'object') provider.adapter_config = adapter_config;
   if (topview_uid !== undefined) provider.topview_uid = String(topview_uid || '').trim();
@@ -120,16 +126,16 @@ router.post('/providers', (req, res) => {
   if (uid !== undefined) provider.uid = String(uid || '').trim();
   if (webang_asset_group_id !== undefined) provider.webang_asset_group_id = String(webang_asset_group_id || '').trim();
   if (webang_asset_api_url !== undefined) provider.webang_asset_api_url = String(webang_asset_api_url || '').trim();
-  try { validateAliyunWorkspace(provider); } catch (error) { return res.status(400).json({ success: false, error: error.message }); }
+  try { validateVolcengineSpeech(provider); } catch (error) { return res.status(400).json({ success: false, error: error.message }); }
   settings.providers.push(provider);
   saveSettings(settings);
-  if (provider.id === 'aliyun-tts') resetAliyunRuntimeState();
+  if (provider.id === 'volcengine-tts') resetTtsRuntimeState();
   res.json({ success: true, data: { id: newId } });
 });
 
 // 更新供应商基本信息（名称/URL/Key）
 router.put('/providers/:id', (req, res) => {
-  const { name, api_url, api_key, api_host, api_ws_url, workspace_id, topview_uid, api_uid, uid, webang_asset_group_id, webang_asset_api_url, adapter, adapter_config } = req.body;
+  const { name, api_url, api_key, api_host, api_ws_url, workspace_id, tts_resource_id, clone_resource_id, topview_uid, api_uid, uid, webang_asset_group_id, webang_asset_api_url, adapter, adapter_config } = req.body;
   const settings = loadSettings();
   const p = settings.providers.find(p => p.id === req.params.id);
   if (!p) return res.status(404).json({ success: false, error: '供应商不存在' });
@@ -139,6 +145,8 @@ router.put('/providers/:id', (req, res) => {
   if (api_ws_url !== undefined) p.api_ws_url = String(api_ws_url || '').trim();
   if (api_host !== undefined) p.api_host = String(api_host || '').trim();
   if (workspace_id !== undefined) p.workspace_id = String(workspace_id || '').trim();
+  if (tts_resource_id !== undefined) p.tts_resource_id = String(tts_resource_id || '').trim();
+  if (clone_resource_id !== undefined) p.clone_resource_id = String(clone_resource_id || '').trim();
   if (topview_uid !== undefined) p.topview_uid = String(topview_uid || '').trim();
   if (api_uid !== undefined) p.api_uid = String(api_uid || '').trim();
   if (uid !== undefined) p.uid = String(uid || '').trim();
@@ -146,10 +154,10 @@ router.put('/providers/:id', (req, res) => {
   if (webang_asset_api_url !== undefined) p.webang_asset_api_url = String(webang_asset_api_url || '').trim();
   if (adapter !== undefined) p.adapter = String(adapter || '').trim();
   if (adapter_config !== undefined) p.adapter_config = (adapter_config && typeof adapter_config === 'object') ? adapter_config : {};
-  try { validateAliyunWorkspace(p); } catch (error) { return res.status(400).json({ success: false, error: error.message }); }
+  try { validateVolcengineSpeech(p); } catch (error) { return res.status(400).json({ success: false, error: error.message }); }
   p.test_status = null; p.last_tested = null; p.test_error = null;
   saveSettings(settings);
-  if (p.id === 'aliyun-tts') resetAliyunRuntimeState();
+  if (p.id === 'volcengine-tts') resetTtsRuntimeState();
   res.json({ success: true });
 });
 
@@ -185,6 +193,7 @@ router.post('/providers/:id/models', (req, res) => {
   const settings = loadSettings();
   const p = settings.providers.find(p => p.id === req.params.id);
   if (!p) return res.status(404).json({ success: false, error: '供应商不存在' });
+  if (p.id === 'volcengine-tts') return res.status(400).json({ success: false, error: '字节语音专用供应商的能力固定为 TTS 2.0 / 声音复刻 2.0，禁止添加其他模型' });
   if (!p.models) p.models = [];
   p.models.push({ id: modelId, name, type: type || 'chat', use: use || 'story', enabled: true });
   saveSettings(settings);
@@ -224,7 +233,7 @@ router.post('/tts-health-check', async (req, res) => {
   const fs = require('fs');
   const path = require('path');
   const settings = loadSettings();
-  const TTS_IDS = ['volcengine', 'zhipu', 'baidu', 'aliyun-tts', 'minimax', 'xunfei', 'elevenlabs', 'openai'];
+  const TTS_IDS = ['volcengine-tts'];
   const outDir = path.join(__dirname, '../../outputs/tts-health');
   fs.mkdirSync(outDir, { recursive: true });
   const results = [];
@@ -284,15 +293,15 @@ router.post('/providers/:id/test', async (req, res) => {
 
 
 async function testProviderConnection(p) {
-  if (p.id === 'aliyun-tts' || p.preset === 'aliyun-tts') {
-    validateAliyunWorkspace(p);
+  if (p.id === 'volcengine-tts' || p.preset === 'volcengine-tts') {
+    validateVolcengineSpeech(p);
     const outDir = path.resolve(process.env.OUTPUT_DIR || path.join(__dirname, '../../outputs'), 'tts-health');
     fs.mkdirSync(outDir, { recursive: true });
-    const outPath = path.join(outDir, `aliyun-workspace-${Date.now()}`);
-    const audioPath = await require('../services/ttsService').testProviderSynthesis('aliyun-tts', outPath);
+    const outPath = path.join(outDir, `volcengine-tts-${Date.now()}`);
+    const audioPath = await require('../services/ttsService').testProviderSynthesis('volcengine-tts', outPath);
     const bytes = fs.statSync(audioPath).size;
     fs.rmSync(audioPath, { force: true });
-    return { message: '工作空间 CosyVoice 合成正常', detail: `真实合成 ${bytes} bytes` };
+    return { message: '字节豆包语音 2.0 合成正常', detail: `真实合成 ${bytes} bytes` };
   }
   const testUrls = {
     'api.openai.com':            '/v1/models',

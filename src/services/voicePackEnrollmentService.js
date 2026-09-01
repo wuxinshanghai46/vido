@@ -40,7 +40,7 @@ function dependencies(overrides = {}) {
   return {
     db: overrides.db || require('../models/database'),
     voicePacks: overrides.voicePacks || require('./voicePackService'),
-    aliyun: overrides.aliyun || require('./aliyunVoiceService'),
+    volc: overrides.volc || require('./volcengineSpeechService'),
     pipelineModels: overrides.pipelineModels || require('./pipelineModelService'),
     tracker: overrides.tracker || require('./tokenTracker'),
     voicesDir: path.resolve(overrides.voicesDir || path.join(__dirname, '../../outputs/voices')),
@@ -57,10 +57,10 @@ function findAccountVoice(db, userId, voicePackId) {
 
 function assertExistingState(existing) {
   if (!existing) return null;
-  if (existing.aliyun_voice_id && existing.status === 'ready') {
-    return { voice_id: existing.id, provider_voice_id: existing.aliyun_voice_id, status: 'ready', reused: true };
+  if (existing.volc_speaker_id && existing.status === 'ready') {
+    return { voice_id: existing.id, provider_voice_id: existing.volc_speaker_id, status: 'ready', reused: true };
   }
-  if (existing.status === 'enrollment_uncertain') {
+  if (existing.status === 'enrollment_uncertain' && !existing.volc_speaker_id) {
     const error = new Error('该音色上次注册时供应商结果不确定，系统已停止重复提交以避免重复计费；请等待后台自动核对');
     error.code = 'VOICE_ENROLLMENT_UNCERTAIN';
     error.status = 409;
@@ -103,21 +103,36 @@ async function performEnrollment(input, deps) {
   const ready = assertExistingState(existing);
   if (ready) return { ...ready, name: resolved.voice.name };
 
+  // 已提交过的 speaker_id 先向字节查询，禁止为同一账号/素材重复训练并产生重复槽位费用。
+  if (existing?.volc_speaker_id && ['training', 'enrollment_uncertain'].includes(existing.status)) {
+    const queried = await deps.volc.queryVoice(existing.volc_speaker_id);
+    if (queried.ready) {
+      deps.db.updateVoice(existing.id, { status: 'ready', enrollment_completed_at: new Date().toISOString(), last_error: null });
+      return { voice_id: existing.id, provider_voice_id: existing.volc_speaker_id, status: 'ready', reused: true, name: resolved.voice.name };
+    }
+    const pending = new Error('该音色已提交字节声音复刻 2.0，当前仍在处理中；系统已阻止重复提交');
+    pending.code = 'VOICE_ENROLLMENT_IN_PROGRESS';
+    pending.status = 409;
+    pending.retryable = true;
+    throw pending;
+  }
+
   const route = deps.pipelineModels.pickModelWithDefault(STAGE);
-  if (!route || route.provider_id !== 'aliyun-tts') {
+  if (!route || route.provider_id !== 'volcengine-tts' || route.model_id !== 'seed-icl-2.0') {
     const error = new Error('模型调用管理中没有启用可用的授权音色注册模型');
     error.code = 'VOICE_ENROLLMENT_MODEL_UNAVAILABLE';
     error.status = 503;
     throw error;
   }
-  if (!deps.aliyun.hasKey()) {
-    const error = new Error('模型调用管理所选阿里 CosyVoice 注册服务尚未配置可用密钥');
+  if (!deps.volc.hasKey()) {
+    const error = new Error('模型调用管理所选字节声音复刻 2.0 尚未配置可用密钥');
     error.code = 'VOICE_ENROLLMENT_PROVIDER_NOT_READY';
     error.status = 503;
     throw error;
   }
 
   const voiceId = existing?.id || deterministicVoiceId(userId, voicePackId);
+  const customSpeakerId = `vido_${crypto.createHash('sha256').update(`${userId}\n${voicePackId}`).digest('hex').slice(0, 24)}`;
   fs.mkdirSync(deps.voicesDir, { recursive: true });
   fs.mkdirSync(deps.publicAssetsDir, { recursive: true });
   const filename = `voice_${voiceId}.mp3`;
@@ -137,6 +152,7 @@ async function performEnrollment(input, deps) {
     clone_provider: route.provider_id,
     enrollment_stage: STAGE,
     enrollment_model_id: route.model_id,
+    volc_speaker_id: customSpeakerId,
     status: 'submitting',
     enrollment_started_at: new Date().toISOString(),
     last_error: null,
@@ -146,30 +162,28 @@ async function performEnrollment(input, deps) {
 
   const startedAt = Date.now();
   try {
-    const audioUrl = `${publicBaseUrl(requestBaseUrl)}/public/jimeng-assets/${encodeURIComponent(publicName)}`;
-    const enroll = await deps.aliyun.enrollVoice(audioUrl, {
-      voicePrefix: `vido${crypto.createHash('sha1').update(userId).digest('hex').slice(0, 8)}`,
-      languageHint: 'zh',
-      targetModel: route.model_id,
+    const enroll = await deps.volc.enrollVoice(localPath, {
+      customSpeakerId,
+      language: 0,
+      demoText: '你好，这是我的声音复刻效果试听。',
     });
     deps.db.updateVoice(voiceId, {
-      aliyun_voice_id: enroll.voice_id,
-      aliyun_task_id: enroll.task_id || enroll.voice_id,
-      aliyun_target_model: enroll.target_model || route.model_id,
-      status: 'ready',
-      enrollment_completed_at: new Date().toISOString(),
+      volc_speaker_id: enroll.speaker_id || customSpeakerId,
+      volc_model_id: route.model_id,
+      status: enroll.ready ? 'ready' : 'training',
+      enrollment_completed_at: enroll.ready ? new Date().toISOString() : null,
       last_error: null,
     });
     deps.tracker.record({
       provider: route.provider_id, model: route.model_id, category: 'tts', operation: 'voice_enrollment',
       status: 'success', billingState: 'confirmed', durationMs: Date.now() - startedAt,
-      userId, agentId: STAGE, requestId: enroll.request_id || enroll.voice_id,
+      userId, agentId: STAGE, requestId: enroll.request_id || enroll.speaker_id,
     });
-    return { voice_id: voiceId, provider_voice_id: enroll.voice_id, status: 'ready', reused: false, name: resolved.voice.name };
+    return { voice_id: voiceId, provider_voice_id: enroll.speaker_id || customSpeakerId, status: enroll.ready ? 'ready' : 'training', reused: false, name: resolved.voice.name };
   } catch (error) {
     const uncertain = uncertainProviderOutcome(error);
     deps.db.updateVoice(voiceId, {
-      status: uncertain ? 'enrollment_uncertain' : 'aliyun_failed',
+      status: uncertain ? 'enrollment_uncertain' : 'volc_failed',
       last_error: String(error.message || error).slice(0, 500),
       enrollment_failed_at: new Date().toISOString(),
     });

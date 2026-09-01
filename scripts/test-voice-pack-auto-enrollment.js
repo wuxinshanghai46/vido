@@ -44,16 +44,17 @@ async function main() {
     pipelineModels: {
       pickModelWithDefault(stage) {
         assert.strictEqual(stage, 'voice.enrollment');
-        return { provider_id: 'aliyun-tts', model_id: 'cosyvoice-v3.5-plus' };
+        return { provider_id: 'volcengine-tts', model_id: 'seed-icl-2.0' };
       },
     },
-    aliyun: {
+    volc: {
       hasKey: () => true,
-      async enrollVoice(url, options) {
-        calls.push({ url, options });
+      async enrollVoice(audioPath, options) {
+        calls.push({ audioPath, options });
         await new Promise(resolve => setTimeout(resolve, 15));
-        return { voice_id: `aliyun_${calls.length}`, request_id: `request_${calls.length}`, target_model: options.targetModel };
+        return { speaker_id: options.customSpeakerId, request_id: `request_${calls.length}`, ready: true, status: 2 };
       },
+      async queryVoice(speakerId) { return { speaker_id: speakerId, ready: true, status: 2 }; },
     },
     tracker: { record(row) { tracked.push(row); } },
   };
@@ -65,7 +66,8 @@ async function main() {
   assert.strictEqual(db.rows.length, 1);
   assert.strictEqual(db.rows[0].user_id, 'user-a');
   assert.strictEqual(db.rows[0].status, 'ready');
-  assert.ok(db.rows[0].aliyun_voice_id);
+  assert.ok(db.rows[0].volc_speaker_id);
+  assert.strictEqual(db.rows[0].clone_provider, 'volcengine-tts');
   assert.strictEqual(tracked.length, 1);
   assert.strictEqual(tracked[0].agentId, 'voice.enrollment');
 
@@ -90,16 +92,17 @@ async function main() {
   const uncertainDeps = {
     ...deps,
     db: uncertainDb,
-    aliyun: {
+    volc: {
       hasKey: () => true,
       async enrollVoice() { uncertainCalls++; throw new Error('socket timeout after submission'); },
+      async queryVoice(speakerId) { return { speaker_id: speakerId, ready: false, status: 1 }; },
     },
   };
   await assert.rejects(service.ensureRegisteredVoicePack(input, uncertainDeps), /socket timeout/);
   assert.strictEqual(uncertainDb.rows[0].status, 'enrollment_uncertain');
   await assert.rejects(
     service.ensureRegisteredVoicePack(input, uncertainDeps),
-    error => error.code === 'VOICE_ENROLLMENT_UNCERTAIN',
+    error => error.code === 'VOICE_ENROLLMENT_IN_PROGRESS',
   );
   assert.strictEqual(uncertainCalls, 1, '结果不确定时不得自动重复提交');
 

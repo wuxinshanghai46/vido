@@ -6,8 +6,8 @@ const storyAdService = require('../src/services/newStoryAd/storyAdService');
 const ttsService = require('../src/services/ttsService');
 const { buildAssSubtitleFile } = require('../src/services/effectsService');
 
-assert.strictEqual(ttsService.voiceProviderForId('tongtong'), 'zhipu', '智谱音色不得误送到阿里 CosyVoice');
-assert.strictEqual(ttsService.voiceProviderForId('longxiaochun_v3'), 'aliyun-tts', '阿里音色必须保留 CosyVoice 路由');
+assert.strictEqual(ttsService.voiceProviderForId('zh_female_vv_uranus_bigtts'), 'volcengine-tts', '官方音色必须固定路由到字节豆包语音 TTS 2.0');
+assert.strictEqual(ttsService.voiceProviderForId('longxiaochun_v3'), '', '阿里旧音色不得继续参与新 TTS 合同');
 assert.strictEqual(ttsService.isTtsBillingError(new Error('429 余额不足或无可用资源包,请充值。')), true, '供应商余额错误必须被识别并隔离');
 
 const uiSource = fs.readFileSync(path.join(__dirname, '../public/js/new-story-ad/audio-preflight.js'), 'utf8');

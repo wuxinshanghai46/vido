@@ -1676,16 +1676,17 @@ router.post('/preview-voice', async (req, res) => {
   const safeVoiceId = voiceId || null;
   const voiceHay = String(voiceId || '');
   const safeGender = gender || (/child|kid|童|儿童/i.test(voiceHay) ? 'child' : /(^|[^a-z])male([^a-z]|$)|boy|男/i.test(voiceHay) ? 'male' : /(^|[^a-z])female([^a-z]|$)|girl|女/i.test(voiceHay) ? 'female' : 'female');
-  const providerAliases = { '阿里云': 'aliyun-tts', '阿里 cosyvoice': 'aliyun-tts', '智谱': 'zhipu', '智谱ai': 'zhipu', '飞影 hifly': 'hifly' };
+  const providerAliases = { '字节豆包语音': 'volcengine-tts', '字节声音复刻 2.0': 'volcengine-tts' };
   const rawProviderKey = String(providerId || provider || '').trim().toLowerCase();
   const providerKey = providerAliases[rawProviderKey] || rawProviderKey;
   const isTopviewVoice = providerKey.includes('topview');
 
   try {
-    if (isTopviewVoice) {
+    if (isTopviewVoice || (providerKey && providerKey !== 'volcengine-tts')) {
       return res.status(422).json({
         success: false,
-        error: 'Topview 音色是视频生成平台内置音色，当前未提供独立 TTS 试听音频；选择后可正常用于商品口播视频生成。',
+        code: 'TTS_PROVIDER_DISABLED',
+        error: '当前只允许使用字节豆包语音 TTS 2.0；其他语音供应商已停用。',
       });
     }
     if (safeVoiceId && _readBadPreviewVoices().has(String(safeVoiceId))) {
@@ -1693,11 +1694,11 @@ router.post('/preview-voice', async (req, res) => {
     }
     const crypto = require('crypto');
     let providerVersion = '';
-    if (providerKey === 'aliyun-tts') {
+    if (providerKey === 'volcengine-tts') {
       try {
         const settings = require('../services/settingsService').loadSettings();
-        const ali = (settings.providers || []).find(p => p.id === 'aliyun-tts' || p.preset === 'aliyun-tts');
-        providerVersion = `${ali?.workspace_id || ''}:${ali?.catalog_synced_at || ''}`;
+        const volc = (settings.providers || []).find(p => p.id === 'volcengine-tts' || p.preset === 'volcengine-tts');
+        providerVersion = `${volc?.tts_resource_id || ''}:${volc?.clone_resource_id || ''}:${volc?.catalog_synced_at || ''}`;
       } catch {}
     }
     const cacheKey = crypto.createHash('sha1')
@@ -1725,7 +1726,7 @@ router.post('/preview-voice', async (req, res) => {
 
     if (!result) {
       _markBadPreviewVoice(safeVoiceId, 'generateSpeech returned empty result');
-      return res.status(500).json({ success: false, error: '所有 TTS 供应商均不可用，请在设置中配置语音 API Key（智谱/火山/百度/阿里等）' });
+      return res.status(500).json({ success: false, error: '字节豆包语音 TTS 当前不可用，请在后台 AI 配置中检查 API Key' });
     }
 
     // TTS 可能生成 .wav 或 .mp3，检查实际文件
@@ -1768,33 +1769,27 @@ router.get('/voice-list', async (req, res) => {
     const trustedProviders = new Set();
     const blockedProviders = [];
     for (const p of settings.providers || []) {
-      if (!p.enabled || !p.api_key) continue;
+      if (p.id !== 'volcengine-tts' || !p.enabled || !p.api_key) continue;
       if (p.test_status === 'error') { blockedProviders.push(p.id); continue; }
       trustedProviders.add(p.id);
     }
     if (blockedProviders.length) console.log('[voice-list] 已屏蔽测试失败的供应商:', blockedProviders.join(','));
     const badPreviewVoices = _readBadPreviewVoices();
     const storyScope = String(req.query.scope || '').toLowerCase() === 'story';
-    let hiflyVoices = [];
-
-    // 供应商名 → id 反查表（用于 ttsService 返回的对象）
+    // 供应商名 → id 反查表（唯一权威 TTS 供应商）
     const nameToId = {
-      '智谱AI':'zhipu', '智谱':'zhipu', '火山引擎':'volcengine', '百度语音':'baidu', '百度':'baidu',
-      '阿里云':'aliyun-tts', '科大讯飞':'xunfei', '讯飞':'xunfei', 'Fish Audio':'fishaudio',
-      'MiniMax':'minimax', 'ElevenLabs':'elevenlabs', 'OpenAI':'openai',
+      '字节豆包语音':'volcengine-tts', '字节声音复刻 2.0':'volcengine-tts', '我的声音':'volcengine-tts',
     };
 
     const real = getAvailableVoices();
     const filtered = real.filter(v => {
       if (badPreviewVoices.has(String(v.id))) return false;
-      // Windows SAPI 总是允许
-      if (v.provider === 'Windows') return true;
-      const pid = nameToId[v.provider] || (v.provider || '').toLowerCase();
-      return trustedProviders.has(pid);
-    }).map(v => ({ ...v, providerId: nameToId[v.provider] || (v.provider || '').toLowerCase() }));
+      const pid = v.providerId || nameToId[v.provider] || (v.provider || '').toLowerCase();
+      return pid === 'volcengine-tts' && trustedProviders.has(pid);
+    }).map(v => ({ ...v, providerId: v.providerId || nameToId[v.provider] || (v.provider || '').toLowerCase() }));
 
     // 用户已在「声音克隆」工作台克隆过的自定义音色（db.listVoices）
-    // 只返回"真克隆 ready"的：aliyun_voice_id 有 / volc_speaker_id 有且 status!=volc_failed / fish_ref_id 有
+    // 新合同只返回字节声音复刻 2.0 已 ready 的 speaker_id。
     // 训练中 / 失败 / 超时的一律不出现在这里（否则用户会误选 → 合成报错）
     let clonedVoices = [];
     try {
@@ -1805,19 +1800,11 @@ router.get('/voice-list', async (req, res) => {
           if (badPreviewVoices.has(String(v.id))) return false;
           if (!v.file_path || !fs.existsSync(v.file_path)) return false;
           // 真 ready 的才挂出来
-          if (v.aliyun_voice_id) return true;
-          if (v.volc_speaker_id && v.status === 'ready') return true;
-          if (v.fish_ref_id) return true;
-          return false;
+          return !!(v.volc_speaker_id && v.status === 'ready');
         })
         .map(v => {
-          // 优先级：阿里 CosyVoice > 火山 > Fish（同时有阿里和火山时显示阿里）
-          const providerLabel = v.aliyun_voice_id ? '阿里 CosyVoice'
-            : v.volc_speaker_id ? '火山复刻'
-            : 'Fish Audio';
-          const providerId = v.aliyun_voice_id ? 'aliyun-tts'
-            : v.volc_speaker_id ? 'volcengine'
-            : 'fishaudio';
+          const providerLabel = '字节声音复刻 2.0';
+          const providerId = 'volcengine-tts';
           return {
             // 用 v.id (custom_xxx) 才能在 ttsService.generateSpeech 里触发 _generateWithCustomVoice
             id: v.id,
@@ -1829,81 +1816,17 @@ router.get('/voice-list', async (req, res) => {
             isCloned: true,
             originId: v.id,
             // 调试用：让前端能区分到底走哪条链
-            has_aliyun: !!v.aliyun_voice_id,
+            has_aliyun: false,
             has_volc: !!(v.volc_speaker_id && v.status === 'ready'),
           };
         });
     } catch (e) { console.warn('[voice-list] listVoices failed:', e.message); }
 
-    if (!storyScope && trustedProviders.has('hifly')) {
-      try {
-        const hifly = require('../services/hiflyService');
-        const list = await hifly.listVoices({ page: 1, size: 300 });
-        hiflyVoices = (list || [])
-          .map((v, i) => {
-            const rawId = v.voice || v.voice_id || v.id || v.value;
-            if (!rawId) return null;
-            const name = v.title || v.name || v.voice_name || rawId;
-            const hay = String(name + ' ' + rawId).toLowerCase();
-            const gender = /male|男|叔|哥|先生|man|boy/.test(hay)
-              ? 'male'
-              : /child|kid|童|girl|boy/.test(hay)
-              ? 'child'
-              : 'female';
-            const id = `hifly:${rawId}`;
-            if (badPreviewVoices.has(id)) return null;
-            return {
-              id,
-              name,
-              gender,
-              provider: '飞影 Hifly',
-              providerId: 'hifly',
-              providerIcon: '🎬',
-              lang: 'zh',
-              tag: i < 6 ? '飞影' : undefined,
-              raw: v,
-            };
-          })
-          .filter(Boolean);
-      } catch (e) {
-        console.warn('[voice-list] 拉取飞影音色失败:', e.message);
-      }
-    }
-
-    let topviewVoices = [];
-    if (!storyScope) {
-      try {
-        const topview = require('../services/topviewService');
-        topviewVoices = await topview.listVoices({ language: 'zh-CN', pageSize: 50 });
-      } catch (e) {
-        console.warn('[voice-list] Topview voices failed:', e.message);
-      }
-    }
     const voices = [
-      ...(storyScope ? [] : [{ id: '', name: '自动（按可用链回退）', gender: 'auto', provider: '系统', providerIcon: '⚡' }]),
-      ...topviewVoices,
+      ...(storyScope ? [] : [{ id: '', name: '自动（字节豆包语音）', gender: 'auto', provider: '字节豆包语音', providerId: 'volcengine-tts', providerIcon: '🎙️' }]),
       ...clonedVoices,
-      ...hiflyVoices,
       ...filtered,
     ];
-
-    // 附加：settings 里 user-defined TTS 模型（仅 trusted 供应商）
-    for (const provider of settings.providers || []) {
-      if (!trustedProviders.has(provider.id)) continue;
-      const ttsModels = (provider.models || []).filter(m => m.use === 'tts' && m.enabled !== false);
-      for (const m of ttsModels) {
-        if (voices.find(v => v.id === m.id)) continue;
-        const name = m.name || m.id;
-        const gender = /female|girl|女|甜美|温柔|知性/.test(name + m.id) ? 'female'
-          : /male|boy|男|磁性|开朗|成熟/.test(name + m.id) ? 'male'
-          : /child|kid|童/.test(name + m.id) ? 'child' : 'neutral';
-        voices.push({
-          id: m.id, name, gender,
-          provider: provider.name || provider.id,
-          providerId: provider.id,
-        });
-      }
-    }
 
     if (storyScope) res.setHeader('Cache-Control', 'private, max-age=60');
     res.json({ success: true, voices, blocked: blockedProviders, scope: storyScope ? 'story' : 'all' });

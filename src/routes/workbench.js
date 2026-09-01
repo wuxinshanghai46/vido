@@ -63,8 +63,7 @@ router.get('/clone-engines', (req, res) => {
 
   // 当前实际已实现上传/克隆的引擎
   const ENGINES = [
-    { id: 'aliyun-tts', name: '阿里 CosyVoice 2 定制音色',  keyFormat: 'DashScope API Key', desc: 'Plan B · 永久 voice_id · 训练一次长期复用·推荐' },
-    { id: 'volcengine', name: '火山引擎声音复刻',  keyFormat: 'appId:accessToken', desc: '字节跳动豆包·中文效果最佳·秒级克隆' },
+    { id: 'volcengine-tts', name: '字节声音复刻 2.0', keyFormat: '新版 API Key', desc: '仅声音复刻与 TTS；训练一次、按账号复用' },
   ];
 
   const available = ENGINES.map(eng => {
@@ -83,6 +82,55 @@ router.get('/clone-engines', (req, res) => {
   });
 
   res.json({ success: true, engines: available });
+});
+
+// 新权威入口：新版 API Key + /api/v3/tts/voice_clone。下方同路径旧实现保留为不可达兼容代码，
+// 防止缓存客户端恢复阿里或 V1 火山调用。
+router.post('/upload-voice', voiceUpload.single('audio'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ success: false, error: '请上传音频文件' });
+  const name = String(req.body.name || '自定义声音').trim().slice(0, 80);
+  const gender = req.body.gender || 'female';
+  const ext = path.extname(req.file.originalname) || '.mp3';
+  const voiceId = 'custom_' + uuidv4().slice(0, 8);
+  const filename = `voice_${voiceId}${ext}`;
+  const destPath = path.join(voicesDir, filename);
+  fs.renameSync(req.file.path, destPath);
+  const userId = String(req.user?.id || 'anonymous');
+  const speakerId = `vido_${require('crypto').createHash('sha256').update(`${userId}\n${voiceId}`).digest('hex').slice(0, 24)}`;
+  db.insertVoice({
+    id: voiceId, name, gender, filename, file_path: destPath, user_id: req.user?.id || null,
+    volc_speaker_id: speakerId, clone_provider: 'volcengine-tts', status: 'submitting',
+  });
+  try {
+    const volc = require('../services/volcengineSpeechService');
+    if (!volc.hasKey()) throw Object.assign(new Error('请先在后台 AI 配置中填写字节豆包语音 API Key'), { code: 'TTS_PROVIDER_NOT_CONFIGURED' });
+    const enrolled = await volc.enrollVoice(destPath, {
+      customSpeakerId: speakerId,
+      language: 0,
+      demoText: String(req.body.reference_text || '你好，这是我的声音复刻效果试听。').slice(0, 300),
+    });
+    const status = enrolled.ready ? 'ready' : 'training';
+    db.updateVoice(voiceId, {
+      volc_speaker_id: enrolled.speaker_id || speakerId,
+      clone_provider: 'volcengine-tts', status, last_error: null,
+      enrollment_completed_at: enrolled.ready ? new Date().toISOString() : null,
+    });
+    return res.json({
+      success: true, voiceId, filename, name, gender, cloned: true,
+      cloneProvider: 'volcengine-tts', volc_speaker_id: enrolled.speaker_id || speakerId,
+      training: !enrolled.ready, status,
+    });
+  } catch (error) {
+    const uncertain = /timeout|timed out|超时|socket|econnreset|hang up|network|连接中断/i.test(String(error.message || error));
+    db.updateVoice(voiceId, {
+      status: uncertain ? 'enrollment_uncertain' : 'volc_failed',
+      last_error: String(error.message || error).slice(0, 500),
+    });
+    return res.status(error.code === 'TTS_PROVIDER_NOT_CONFIGURED' ? 503 : 502).json({
+      success: false, code: error.code || 'VOLCENGINE_VOICE_CLONE_FAILED', error: error.message,
+      voiceId, recordingPreserved: true,
+    });
+  }
 });
 
 // POST /api/workbench/upload-voice - 上传自定义声音样本并克隆
@@ -297,6 +345,12 @@ router.post('/voices/:id/refresh-status', async (req, res) => {
   try {
     const v = db.getVoice(req.params.id);
     if (!v) return res.status(404).json({ success: false, error: '声音不存在' });
+    if (!v.volc_speaker_id) return res.status(410).json({ success: false, code: 'ALIYUN_TTS_DISABLED', error: '该历史声音没有字节声音复刻 speaker_id，请重新复刻' });
+    const status = await require('../services/volcengineSpeechService').queryVoice(v.volc_speaker_id);
+    const next = status.ready ? 'ready' : Number(status.status) === 3 ? 'volc_failed' : 'training';
+    db.updateVoice(v.id, { status: next, last_error: next === 'volc_failed' ? '字节声音复刻训练失败' : null });
+    return res.json({ success: true, status: next, volc_speaker_id: v.volc_speaker_id });
+    /* istanbul ignore next -- 阿里历史查询链已被上方新合同无条件截断 */
     if (v.aliyun_voice_id) return res.json({ success: true, status: 'ready', aliyun_voice_id: v.aliyun_voice_id });
     if (!v.aliyun_task_id) return res.json({ success: true, status: v.volc_speaker_id ? 'ready' : 'no-task' });
 
@@ -319,6 +373,11 @@ router.post('/voices/:id/refresh-volc-status', async (req, res) => {
     const v = db.getVoice(req.params.id);
     if (!v) return res.status(404).json({ success: false, error: '声音不存在' });
     if (!v.volc_speaker_id) return res.json({ success: true, status: 'no-task', note: '该声音未走火山路径' });
+    const queried = await require('../services/volcengineSpeechService').queryVoice(v.volc_speaker_id);
+    const next = queried.ready ? 'ready' : Number(queried.status) === 3 ? 'volc_failed' : 'training';
+    db.updateVoice(v.id, { status: next, last_error: next === 'volc_failed' ? '字节声音复刻训练失败' : null });
+    return res.json({ success: true, status: next, volc_speaker_id: v.volc_speaker_id, remote_status: queried.status });
+    /* istanbul ignore next -- V1 火山状态链已被上方 V3 查询无条件截断 */
 
     const { getApiKey } = require('../services/settingsService');
     const volcKey = getApiKey('volcengine');
@@ -393,6 +452,21 @@ router.get('/voices', async (req, res) => {
     const createdMs = v.created_at ? new Date(v.created_at).getTime() : 0;
     if (!createdMs || now - createdMs < TRAINING_HARD_TIMEOUT_MS) continue;
 
+    if (v.volc_speaker_id) {
+      try {
+        const queried = await require('../services/volcengineSpeechService').queryVoice(v.volc_speaker_id);
+        const next = queried.ready ? 'ready' : Number(queried.status) === 3 ? 'volc_failed' : 'training';
+        db.updateVoice(v.id, { status: next, last_error: next === 'volc_failed' ? '字节声音复刻训练失败' : null });
+        v.status = next;
+      } catch (error) {
+        console.warn(`[voices] 查询字节 speaker ${v.volc_speaker_id} 失败:`, error.message);
+      }
+      continue;
+    }
+    db.updateVoice(v.id, { status: 'legacy_provider_disabled', last_error: '历史阿里 TTS 音色已停用，请重新使用字节声音复刻 2.0' });
+    v.status = 'legacy_provider_disabled';
+    continue;
+
     // 超 30 分钟还 training → 先查一次真实状态，查不到就标 timeout
     let resolved = false;
     if (v.aliyun_task_id && !v.aliyun_voice_id) {
@@ -427,24 +501,56 @@ router.get('/voices', async (req, res) => {
     name: v.name,
     gender: v.gender || 'female',
     filename: v.filename,
-    // 真克隆 ready = 拿到永久 ID（aliyun_voice_id 或 volc_speaker_id + status≠failed）
-    cloned: !!((v.aliyun_voice_id) || (v.volc_speaker_id && v.status !== 'volc_failed')),
-    clone_provider: v.clone_provider || (v.aliyun_voice_id ? 'aliyun-tts' : v.volc_speaker_id ? 'volcengine' : ''),
-    aliyun_voice_id: v.aliyun_voice_id || null,
-    aliyun_task_id: v.aliyun_task_id || null,
-    aliyun_mode: v.aliyun_mode || null, // 'zeroshot' 表示零样本模式
+    cloned: !!(v.volc_speaker_id && v.status === 'ready'),
+    clone_provider: v.volc_speaker_id ? 'volcengine-tts' : '',
     volc_speaker_id: v.volc_speaker_id || null,
-    status: v.status || (v.aliyun_task_id && !v.aliyun_voice_id ? 'training' : 'ready'),
+    status: v.status || (v.volc_speaker_id ? 'training' : 'legacy_provider_disabled'),
     last_error: v.last_error || null,
     created_at: v.created_at
   }));
   res.json({ success: true, voices });
 });
 
+// POST /api/workbench/voices/:id/retry-volcengine — 使用保留的原录音重试字节声音复刻。
+router.post('/voices/:id/retry-volcengine', async (req, res) => {
+  try {
+    const voice = db.getVoice(req.params.id);
+    if (!voice) return res.status(404).json({ success: false, error: '声音不存在' });
+    if (voice.user_id && String(voice.user_id) !== String(req.user?.id || '') && req.user?.role !== 'admin') {
+      return res.status(403).json({ success: false, error: '无权操作' });
+    }
+    if (!voice.file_path || !fs.existsSync(voice.file_path)) {
+      return res.status(400).json({ success: false, error: '原始录音文件已丢失，无法重试' });
+    }
+    const userId = String(req.user?.id || voice.user_id || 'anonymous');
+    const speakerId = voice.volc_speaker_id || `vido_${require('crypto').createHash('sha256').update(`${userId}\n${voice.id}`).digest('hex').slice(0, 24)}`;
+    db.updateVoice(voice.id, { volc_speaker_id: speakerId, clone_provider: 'volcengine-tts', status: 'submitting', last_error: null });
+    const enrolled = await require('../services/volcengineSpeechService').enrollVoice(voice.file_path, {
+      customSpeakerId: speakerId,
+      language: 0,
+      demoText: '你好，这是我的声音复刻效果试听。',
+    });
+    const next = enrolled.ready ? 'ready' : 'training';
+    db.updateVoice(voice.id, {
+      volc_speaker_id: enrolled.speaker_id || speakerId,
+      clone_provider: 'volcengine-tts',
+      status: next,
+      last_error: null,
+      enrollment_completed_at: enrolled.ready ? new Date().toISOString() : null,
+    });
+    return res.json({ success: true, status: next, training: !enrolled.ready, volc_speaker_id: enrolled.speaker_id || speakerId });
+  } catch (error) {
+    db.updateVoice(req.params.id, { status: 'volc_failed', last_error: String(error.message || error).slice(0, 500) });
+    return res.status(error.code === 'TTS_PROVIDER_NOT_CONFIGURED' ? 503 : 502).json({ success: false, code: error.code || 'VOLCENGINE_VOICE_CLONE_FAILED', error: error.message });
+  }
+});
+
 // POST /api/workbench/voices/:id/reclone-aliyun
 //   用已有 voice 记录的 file_path 重新调阿里 CosyVoice 复刻（同步），
 //   成功后把 aliyun_voice_id 写入同一条记录（不删火山的 speaker_id，保留双通道）
 router.post('/voices/:id/reclone-aliyun', async (req, res) => {
+  return res.status(410).json({ success: false, code: 'ALIYUN_TTS_DISABLED', error: '阿里 TTS 已停用；请使用字节声音复刻 2.0 重新上传' });
+  /* istanbul ignore next -- 旧阿里重新复刻入口只保留拒绝壳 */
   try {
     const voice = db.getVoice(req.params.id);
     if (!voice) return res.status(404).json({ success: false, error: '声音不存在' });
@@ -546,15 +652,20 @@ router.post('/voices/:id/preview', async (req, res) => {
     if (voice.user_id && String(voice.user_id) !== String(req.user?.id || '') && req.user?.role !== 'admin') {
       return res.status(403).json({ success: false, error: '无权使用其他账号的声音' });
     }
-    const hasId = voice.aliyun_voice_id || voice.volc_speaker_id;
-    const isZeroshot = voice.clone_provider === 'aliyun-zeroshot' || voice.aliyun_mode === 'zeroshot';
-    if (!hasId && !isZeroshot) {
-      return res.status(400).json({ success: false, error: '该声音尚未完成克隆（阿里 voice_id / 火山 speaker_id 均空，且非零样本模式）' });
+    if (!voice.volc_speaker_id) {
+      return res.status(410).json({ success: false, error: '该历史声音没有字节声音复刻 speaker_id，请重新复刻' });
     }
+    const remote = await require('../services/volcengineSpeechService').queryVoice(voice.volc_speaker_id);
+    if (!remote.ready) {
+      const next = Number(remote.status) === 3 ? 'volc_failed' : 'training';
+      db.updateVoice(voice.id, { status: next });
+      return res.status(409).json({ success: false, error: next === 'training' ? '字节声音复刻仍在处理中，请稍后重试' : '字节声音复刻训练失败，请重新上传', volc_status: remote.status });
+    }
+    if (voice.status !== 'ready') db.updateVoice(voice.id, { status: 'ready', last_error: null });
 
     // 火山 speaker：合成前先查一次远端训练状态，避免 speaker 其实是占位槽位（未真训练）
     // 时返回默认女声导致"快速女声+滴声"错觉。只 allow status_code∈{3,5}(Success/Active)。
-    if (voice.volc_speaker_id && !voice.aliyun_voice_id) {
+    if (false && voice.volc_speaker_id) {
       try {
         const { getApiKey } = require('../services/settingsService');
         const volcKey = getApiKey('volcengine');

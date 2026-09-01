@@ -52,7 +52,9 @@ assert.match(workbench, /ensureRegisteredVoicePack/);
 assert.match(enrollment, /voice\.enrollment/);
 
 const tts = fs.readFileSync(path.join(__dirname, '../src/services/ttsService.js'), 'utf8');
-assert.match(tts, /if \(!v\.aliyun_voice_id \|\| v\.status !== 'ready'\) continue/);
+assert.match(tts, /voice\.volc_speaker_id/);
+assert.match(enrollment, /seed-icl-2\.0/);
+assert.doesNotMatch(enrollment, /aliyunVoiceService/);
 
 const html = fs.readFileSync(path.join(__dirname, '../public/digital-human.html'), 'utf8');
 const ui = fs.readFileSync(path.join(__dirname, '../public/js/digital-human.js'), 'utf8');
@@ -62,4 +64,4 @@ assert.match(ui, /cloneVoicePack/);
 assert.match(ui, /使用此音色/);
 
 fs.rmSync(root, { recursive: true, force: true });
-console.log('authorized voice pack library: 19 assertions passed');
+console.log('authorized voice pack library: 21 assertions passed');

@@ -16,9 +16,9 @@ function voiceSampleText(production = {}, speaker = '') {
 function usableStoryVoice(voice = {}) {
   const id = String(voice.id || '').trim();
   const provider = `${voice.providerId || ''} ${voice.provider || ''}`.toLowerCase();
-  if (!id || /topview|windows|系统|zhipu|智谱|aliyun-nls|智能语音交互|\bnls\b/.test(provider)) return false;
-  if (voice.isCloned === true || /^custom[_:]/.test(id)) return voice.has_aliyun === true || /aliyun|阿里/.test(provider);
-  return /aliyun-tts|阿里百炼|cosyvoice/.test(provider);
+  if (!id || /topview|windows|系统|zhipu|智谱|aliyun|阿里|cosyvoice|智能语音交互|\bnls\b/.test(provider)) return false;
+  if (voice.isCloned === true || /^custom[_:]/.test(id)) return voice.has_volc === true && /volcengine-tts|字节|豆包|声音复刻/.test(provider);
+  return /volcengine-tts|字节豆包语音/.test(provider);
 }
 function recommendedVoice(voices = [], currentId = '', role = 'narrator') {
   const usable = voices.filter(usableStoryVoice);
@@ -28,7 +28,7 @@ function recommendedVoice(voices = [], currentId = '', role = 'narrator') {
     const descriptor = `${voice.name || ''} ${voice.tag || ''}`;
     const provider = `${voice.providerId || ''} ${voice.provider || ''}`;
     const score = (/推荐/.test(descriptor) ? 30 : 0)
-      + (/aliyun|阿里/.test(provider) ? 20 : 0)
+      + (/volcengine-tts|字节|豆包/.test(provider) ? 20 : 0)
       + (role === 'narrator' && /知性|沉稳|讲述|播报|权威|精准/.test(descriptor) ? 8 : 0);
     return { voice, index, score };
   }).sort((a, b) => b.score - a.score || a.index - b.index)[0]?.voice || null;
@@ -70,7 +70,7 @@ export function soundDesignMarkup(soundDesign = {}) {
             <label><span>字幕</span><select data-subtitle-enabled><option value="true" ${production.subtitle !== false ? 'selected' : ''}>显示字幕</option><option value="false" ${production.subtitle === false ? 'selected' : ''}>不显示字幕</option></select><small>字幕跟随最终确认的旁白与对白。</small></label>
           </div>
           <div class="voice-generation-bar"><div><b>生成并逐段试听</b><small>将按上方音色生成 ${spokenShots} 段配音。</small></div><div class="sound-primary-actions"><button class="btn" type="button" data-save-audio-plan>保存设置</button><button class="btn primary" type="button" data-generate-audio data-generate-label="生成 ${spokenShots || ''} 段配音试听">生成 ${spokenShots || ''} 段配音试听</button></div></div>
-          <dialog class="voice-library-dialog" data-voice-library-dialog aria-labelledby="voiceLibraryTitle"><header><div><small>试听后再选择</small><h2 id="voiceLibraryTitle">选择配音音色</h2><p>仅显示当前可用的阿里百炼 CosyVoice；默认推荐项会高亮显示。</p></div><button class="icon-btn dialog-close-button" type="button" data-close-voice-library aria-label="关闭音色库">×</button></header><div class="voice-library-dialog-body"><div class="voice-library-toolbar"><input class="input" type="search" placeholder="搜索音色或风格" data-voice-library-query><select class="voice-library-provider-select" data-voice-library-provider><option value="">全部可用供应商</option></select></div><div class="dialog-inline-feedback" data-voice-library-feedback role="alert" hidden></div><div class="voice-library-results" data-voice-library-results><p>正在加载可试听音色…</p></div><audio data-voice-library-audio preload="none" hidden></audio></div></dialog>
+          <dialog class="voice-library-dialog" data-voice-library-dialog aria-labelledby="voiceLibraryTitle"><header><div><small>试听后再选择</small><h2 id="voiceLibraryTitle">选择配音音色</h2><p>仅显示当前可用的字节豆包语音 2.0 音色；默认推荐项会高亮显示。</p></div><button class="icon-btn dialog-close-button" type="button" data-close-voice-library aria-label="关闭音色库">×</button></header><div class="voice-library-dialog-body"><div class="voice-library-toolbar"><input class="input" type="search" placeholder="搜索音色或风格" data-voice-library-query><select class="voice-library-provider-select" data-voice-library-provider><option value="">全部可用供应商</option></select></div><div class="dialog-inline-feedback" data-voice-library-feedback role="alert" hidden></div><div class="voice-library-results" data-voice-library-results><p>正在加载可试听音色…</p></div><audio data-voice-library-audio preload="none" hidden></audio></div></dialog>
         </div>
       </div>
       ${(production.speech || []).length ? `<div class="speech-preview-list">${production.speech.map((row, index) => `<article data-audio-track><header><b>SH${String(row.shot_index).padStart(2, '0')}</b><span>${escapeHtml(row.mode === 'on_camera_dialogue' ? '出镜对白' : row.mode === 'offscreen' ? '旁白 / 画外音' : '无语音')}</span></header><p>${(row.units || []).map(unit => `${escapeHtml(unit.speaker || '旁白')}：${escapeHtml(unit.text)}`).join('<br>') || '本镜无对白'}</p><div>${ttsTracks[index]?.audio_url ? `<audio controls preload="metadata" src="${escapeHtml(ttsTracks[index].audio_url)}"></audio>` : '<em>生成后可在这里试听</em>'}</div></article>`).join('')}</div>` : ''}

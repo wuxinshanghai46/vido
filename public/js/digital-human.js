@@ -17731,7 +17731,7 @@
     const file = state.voiceClone.file;
     if (!file) return toast('请上传音频', 'error');
     const gender = $$('[data-vc-gender]').find(b => b.classList.contains('active'))?.dataset.vcGender || 'female';
-    // 上传时附带严格朗读的参考文本，帮助阿里定制音色对齐训练
+    // 上传时附带参考文本，帮助字节声音复刻对齐训练。
     const referenceText = $('#dhVcScript')?.textContent?.trim() || '';
 
     $('#dhVcSubmit').disabled = true;
@@ -17750,7 +17750,7 @@
       const data = await r.json();
       if (!data?.success) throw new Error(data?.error || '克隆失败');
       if (data.training) {
-        toast(`⏳ 阿里 CosyVoice 2 已提交异步训练（task=${(data.aliyun_task_id||'').slice(0,8)}…），约 3-15 分钟完成，列表会自动刷新`, 'success');
+        toast('⏳ 字节声音复刻 2.0 已提交训练，列表会自动刷新', 'success');
       } else if (data.cloned) {
         toast(`🎉 克隆成功（${data.cloneProvider}）· 已滚动到「我的克隆声音」板块，点 🔊 测试声音听效果`, 'success');
         // 自动滚到克隆列表板块
@@ -17759,16 +17759,13 @@
           if (target) target.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }, 300);
       } else {
-        // 把三家具体错因呈给用户，别再只说"占位失败"
-        const reasons = (data.tried || []).map(t => `· ${t.id}: ${t.error || '未知'}`).join('\n');
-        const msg = '⚠️ 三家克隆全部失败：\n' + reasons + '\n\n解决：拿阿里 sk-* 或 火山 appId:accessToken';
         await DhAlert({
           title: '声音克隆失败',
-          message: '三家克隆服务均未成功。',
-          detail: escapeHtml(msg).replace(/\n/g, '<br>'),
+          message: '字节声音复刻 2.0 未成功。',
+          detail: '请在后台 AI 配置中检测字节豆包语音 API Key 后重试。',
           type: 'danger',
         });
-        toast('三家克隆都失败了，详情见弹窗', 'error');
+        toast('字节声音复刻失败，详情见弹窗', 'error');
       }
       state.voiceClone.file = null;
       $('#dhVcFile').value = '';
@@ -17871,31 +17868,29 @@
     try {
       const r = await fetch('/api/workbench/voices', { headers: { Authorization: 'Bearer ' + state.token } });
       const data = await r.json();
-      // 包含所有非 ready 的状态（training/training_timeout/aliyun_failed/volc_failed）让用户能看到状态
+      // 包含字节复刻的训练中/失败状态，让用户能看到进度并重试。
       state.voiceClone.list = (data?.voices || []).filter(v =>
         v.cloned || v.status === 'training' || v.status === 'training_timeout'
-        || v.status === 'aliyun_failed' || v.status === 'volc_failed'
-        || v.aliyun_task_id || v.volc_speaker_id
+        || v.status === 'volc_failed' || v.volc_speaker_id
       );
       renderVoiceClones();
 
-      const hasTraining = state.voiceClone.list.some(v => v.status === 'training' && !v.aliyun_voice_id);
       const hasVolcTraining = state.voiceClone.list.some(v => v.status === 'training' && v.volc_speaker_id);
 
       // 首次加载时如果有训练中的记录 → 立刻打一次远端状态查询，不等 30s 轮询，
       // 避免已经 ready 的卡片一直挂"训练中"文案。
-      if ((hasTraining || hasVolcTraining) && !skipImmediateRefresh) {
+      if (hasVolcTraining && !skipImmediateRefresh) {
         await refreshTrainingStatuses();
         // refresh 完再拉一次列表，拿到最新 status 后用 skipImmediateRefresh 避免递归
         return loadVoiceClones({ skipImmediateRefresh: true });
       }
 
-      if ((hasTraining || hasVolcTraining) && !state.voiceClone._pollTimer) {
+      if (hasVolcTraining && !state.voiceClone._pollTimer) {
         state.voiceClone._pollTimer = setInterval(async () => {
           await refreshTrainingStatuses();
           await loadVoiceClones({ skipImmediateRefresh: true });
         }, 30000);
-      } else if (!hasTraining && !hasVolcTraining && state.voiceClone._pollTimer) {
+      } else if (!hasVolcTraining && state.voiceClone._pollTimer) {
         clearInterval(state.voiceClone._pollTimer);
         state.voiceClone._pollTimer = null;
       }
@@ -17906,11 +17901,7 @@
     const training = (state.voiceClone.list || []).filter(v => v.status === 'training');
     for (const v of training) {
       try {
-        // 阿里走 refresh-status，火山走 refresh-volc-status
-        const endpoint = v.clone_provider === 'volcengine' || v.volc_speaker_id
-          ? 'refresh-volc-status'
-          : 'refresh-status';
-        await fetch('/api/workbench/voices/' + v.id + '/' + endpoint, {
+        await fetch('/api/workbench/voices/' + v.id + '/refresh-volc-status', {
           method: 'POST',
           headers: { Authorization: 'Bearer ' + state.token },
         });
@@ -17919,13 +17910,10 @@
   }
 
   function _providerLabel(v) {
-    if (v.aliyun_voice_id) return '☁️ 阿里 CosyVoice 定制音色（永久 voice_id · 真克隆 · 优先使用）';
-    if (v.volc_speaker_id && v.status === 'ready') return '🌋 火山 ICL 2.0 旧版（speaker_id=' + String(v.volc_speaker_id).slice(0, 16) + '）· 可升级到阿里';
-    if (v.volc_speaker_id && v.status === 'training') return '⏳ 火山 ICL 2.0 训练中…（约 5-15 分钟）';
-    if (v.volc_speaker_id) return '🌋 火山 ICL 2.0 旧版（speaker_id=' + String(v.volc_speaker_id).slice(0, 16) + '）';
-    if (v.status === 'training') return '⏳ 阿里定制音色训练中…（约 3-15 分钟，完成后自动刷新）';
-    if (v.clone_provider === 'aliyun-zeroshot' || v.aliyun_mode === 'zeroshot') return '⚠️ 非真克隆（阿里零样本降级已废弃 · 请删除重传走火山）';
-    return '已克隆';
+    if (v.volc_speaker_id && v.status === 'ready') return '🎙️ 字节声音复刻 2.0（speaker_id=' + String(v.volc_speaker_id).slice(0, 16) + '）';
+    if (v.volc_speaker_id && v.status === 'training') return '⏳ 字节声音复刻 2.0 训练中…';
+    if (v.volc_speaker_id) return '🎙️ 字节声音复刻 2.0';
+    return '历史音色已停用，请重新上传';
   }
 
   function renderVoiceClones() {
@@ -17941,14 +17929,14 @@
       return;
     }
     host.innerHTML = list.map(v => {
-      const isZeroshot = v.clone_provider === 'aliyun-zeroshot' || v.aliyun_mode === 'zeroshot';
-      const isFailed = ['training_timeout', 'aliyun_failed', 'volc_failed'].includes(v.status);
-      const isReal = !!(v.aliyun_voice_id || (v.volc_speaker_id && v.status === 'ready'));
+      const isZeroshot = false;
+      const isFailed = ['training_timeout', 'legacy_provider_disabled', 'volc_failed'].includes(v.status);
+      const isReal = !!(v.volc_speaker_id && v.status === 'ready');
       const isReady = isReal && !isFailed;
       const isTraining = v.status === 'training' && !isReady && !isFailed;
       const failBadge = v.status === 'training_timeout' ? '❌ 训练超时'
-        : v.status === 'aliyun_failed' ? '❌ 阿里训练失败'
-        : v.status === 'volc_failed' ? '❌ 火山训练失败'
+        : v.status === 'legacy_provider_disabled' ? '❌ 历史音色已停用'
+        : v.status === 'volc_failed' ? '❌ 字节复刻失败'
         : '❌ 失败';
       const statusHtml = isZeroshot
         ? `<div class="dh-vc-status err" style="background:rgba(239,68,68,0.15);color:#ef4444;border:1px solid #ef4444">⚠️ 非真克隆</div>`
@@ -17961,7 +17949,7 @@
         ? `data-vc-preview="${v.id}"`
         : isFailed
         ? `disabled title="${escapeHtml(v.last_error || '训练失败')}"`
-        : 'disabled title="此记录不是真克隆，请点🗑 删除后重新上传走火山声音复刻"';
+        : 'disabled title="请重新上传并使用字节声音复刻 2.0"';
       const genderLabel = v.gender === 'male' ? '♂ 男' : '♀ 女';
       return `<div class="dh-vc-card ${isReady ? 'cloned' : 'pending'}" data-vc-id="${v.id}">
       <div class="dh-vc-head">
@@ -17981,7 +17969,7 @@
       ${isFailed ? `<div style="background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.3);padding:10px 12px;border-radius:8px;font-size:12px;color:#ef4444;margin-top:8px;line-height:1.6">
         ❌ <b>克隆训练失败</b><br>
         ${escapeHtml(v.last_error || '训练超时或服务端错误')}<br>
-        点右下 <b>🔁 重新上传</b> 保持原名称/性别直接重试，或 <b>🗑 删除</b> 彻底清掉。如多次失败可检查阿里/火山 API Key 配置。
+        点右下 <b>🔁 重试训练</b> 使用原录音再次提交，或 <b>🗑 删除</b> 清理此记录。如多次失败请检查字节豆包语音 API Key。
       </div>` : ''}
       <div style="font-size:11px;color:var(--dh-text-muted);margin-top:6px">🔊 测试声音：输入任意文字，用你的音色朗读出来（默认 0.85 倍速，中文自然语速）</div>
       <div class="dh-vc-preview-input">
@@ -17995,7 +17983,6 @@
       </div>
       <div class="dh-vc-actions">
         ${isFailed ? `<button data-vc-retry-same="${v.id}" style="background:var(--dh-gradient);color:#0D0E12;border:0;font-weight:600" title="用之前上传的录音文件再次提交克隆 API，无需重选文件">🔁 重试训练</button><button data-vc-retry-newfile="${v.id}" title="重新选择音频文件并上传">📁 换新文件</button>` : ''}
-        ${v.volc_speaker_id && !v.aliyun_voice_id && !isFailed ? `<button data-vc-reclone-aliyun="${v.id}" style="background:linear-gradient(135deg,#10b981,#21fff3);color:#0D0E12;border:0;font-weight:600" title="用阿里 CosyVoice 重新复刻这条录音，完成后会优先使用阿里">☁️ 升级到阿里</button>` : ''}
         <button data-vc-delete="${v.id}">🗑 删除</button>
       </div>
     </div>`;
@@ -18009,50 +17996,23 @@
     const ok = await DhConfirm({
       title: '🔁 重试训练',
       message: `用「${escapeHtml(v.name)}」之前上传的录音文件重新提交训练`,
-      detail: '不需要重选文件，直接调阿里 CosyVoice 同步复刻',
+      detail: '不需要重选文件，直接重新提交字节声音复刻 2.0',
       confirmText: '开始重试',
       type: 'primary',
     });
     if (!ok) return;
-    toast('⏳ 正在用原录音重新调阿里 CosyVoice 复刻...');
+    toast('⏳ 正在用原录音重新提交字节声音复刻 2.0...');
     try {
-      const r = await fetch(`/api/workbench/voices/${id}/reclone-aliyun`, {
+      const r = await fetch(`/api/workbench/voices/${id}/retry-volcengine`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + state.token },
       });
       const d = await r.json();
       if (!d.success) throw new Error(d.error || '失败');
-      toast(`✅ 重试成功！voice_id=${d.aliyun_voice_id?.slice(0,32)}...`, 'success');
+      toast('✅ 已重新提交字节声音复刻', 'success');
       loadVoiceClones();
     } catch (err) {
       toast('重试失败：' + err.message, 'error');
-    }
-  }
-
-  // 把火山旧版 voice 升级到阿里：用同一录音文件重跑阿里 CosyVoice 复刻
-  async function recloneWithAliyun(id) {
-    const v = state.voiceClone.list.find(x => x.id === id);
-    if (!v) return toast('找不到该克隆记录', 'error');
-    const ok = await DhConfirm({
-      title: '☁️ 升级到阿里 CosyVoice',
-      message: `将「${escapeHtml(v.name)}」用阿里 CosyVoice 重新复刻`,
-      detail: '不会删除火山的 speaker_id，只是新增阿里 voice_id 并优先使用',
-      confirmText: '开始升级',
-      type: 'primary',
-    });
-    if (!ok) return;
-    toast('⏳ 正在用阿里 CosyVoice 复刻...');
-    try {
-      const r = await fetch(`/api/workbench/voices/${id}/reclone-aliyun`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + state.token },
-      });
-      const d = await r.json();
-      if (!d.success) throw new Error(d.error || '失败');
-      toast(`✅ 升级成功！现在用阿里 voice_id=${d.aliyun_voice_id?.slice(0,32)}...`, 'success');
-      loadVoiceClones();
-    } catch (err) {
-      toast('升级失败：' + err.message, 'error');
     }
   }
 
@@ -19389,8 +19349,6 @@ const gChip = closest('[data-gender]'); if (gChip) { selectGender(gChip.dataset.
     if (vcDelBtn) { deleteVoiceClone(vcDelBtn.dataset.vcDelete); return; }
     const vcEditBtn = closest('[data-vc-edit]');
     if (vcEditBtn) { editVoiceClone(vcEditBtn.dataset.vcEdit); return; }
-    const vcRecloneAliyun = closest('[data-vc-reclone-aliyun]');
-    if (vcRecloneAliyun) { recloneWithAliyun(vcRecloneAliyun.dataset.vcRecloneAliyun); return; }
     const voicePackClone = closest('[data-voice-pack-clone]');
     if (voicePackClone) { cloneVoicePack(voicePackClone.dataset.voicePackClone); return; }
     const voicePackPage = closest('[data-voice-pack-page]');

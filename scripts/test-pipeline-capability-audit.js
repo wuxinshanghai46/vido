@@ -11,13 +11,25 @@ function main() {
   const enrollment = report.stages.find(stage => stage.stage_id === 'voice.enrollment');
   assert.ok(enrollment, '授权声音素材自动注册必须进入平台能力审计');
   assert.ok(enrollment.enabled_model_count > 0, '授权声音素材自动注册必须有启用模型');
-  assert.strictEqual(report.summary.stages_without_enabled_model, 4);
+  assert.strictEqual(report.summary.stages_without_enabled_model, 7);
   assert.deepStrictEqual(report.stages.filter(stage => !stage.enabled_model_count).map(stage => stage.stage_id).sort(), [
+    'drama.character_image',
+    'imggen.t2i',
     'new_story_ad.asset_plan_scene_coverage_recovery',
     'new_story_ad.scene_depth',
     'new_story_ad.scene_panorama',
     'new_story_ad.scene_spatial_reconstruction',
+    'replicate.avatar',
   ], 'optional 6DoF and true panorama stages must remain fail-closed until a verified provider is configured');
+  assert.equal(pipeline.isStageModelAllowed('new_story_ad.storyboard_image', {
+    provider_id: 'volcengine-tts', model_id: 'seed-tts-2.0',
+  }), false, '字节语音专用凭证不得进入图片阶段');
+  assert.equal(pipeline.isStageModelAllowed('new_story_ad.reference_video_synthesis', {
+    provider_id: 'volcengine', model_id: 'doubao-seedance-2-0-260128',
+  }), false, '字节直连供应商不得进入视频阶段');
+  assert.equal(pipeline.isStageModelAllowed('new_story_ad.tts', {
+    provider_id: 'volcengine-tts', model_id: 'seed-tts-2.0',
+  }), true, '字节语音专用供应商只允许进入 TTS 阶段');
   assert.equal(pipeline.isStageModelAllowed('new_story_ad.scene_panorama', {
     provider_id: 'smscrw', model_id: 'gpt-image-2',
   }), false, 'ordinary 3:2 image models must not be routed into the paid panorama stage');

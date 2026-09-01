@@ -11733,7 +11733,7 @@ async function _runProductAdTask(req, taskId, { avatar, product, topic, title = 
   fs.mkdirSync(taskDir, { recursive: true });
   const base = _publicBaseUrl(req);
   const videoModel = _pickPipelineModel('product_avatar.marketing_video') || { provider_id: 'topview', model_id: 'topview-product-avatar-i2v' };
-  const ttsModel = _pickPipelineModel('product_avatar.tts') || { provider_id: 'aliyun-tts', model_id: 'cosyvoice-v3-flash' };
+  const ttsModel = _pickPipelineModel('product_avatar.tts') || { provider_id: 'volcengine-tts', model_id: 'seed-tts-2.0' };
   const productVideoTitle = String(title || `${product?.name || product?.image_name || '商品'} 商品口播视频`).trim().slice(0, 100);
   const manualVoiceSegments = Array.isArray(segments) && segments.length
     ? segments.map((s, i) => ({
@@ -33272,6 +33272,8 @@ function _tokenType(k) {
 
 // GET /api/dh/aliyun-token/view — 只返回遮罩版 token + 更新时间
 router.get('/aliyun-token/view', (req, res) => {
+  return res.status(410).json({ success: false, code: 'ALIYUN_TTS_DISABLED', error: '阿里 TTS 已停用；请在后台 AI 配置中维护字节豆包语音 TTS' });
+  /* istanbul ignore next -- 旧客户端拒绝壳之后的历史代码不再执行 */
   try {
     const { loadSettings } = require('../services/settingsService');
     const settings = loadSettings();
@@ -33293,6 +33295,8 @@ router.get('/aliyun-token/view', (req, res) => {
 
 // POST /api/dh/aliyun-token/update — { token }
 router.post('/aliyun-token/update', (req, res) => {
+  return res.status(410).json({ success: false, code: 'ALIYUN_TTS_DISABLED', error: '阿里 TTS 已停用；此旧入口不会写入配置或发起模型调用' });
+  /* istanbul ignore next -- 旧客户端拒绝壳之后的历史代码不再执行 */
   try {
     const { token } = req.body || {};
     if (!token?.trim()) return res.status(400).json({ success: false, error: 'token 必填' });

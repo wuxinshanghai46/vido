@@ -247,7 +247,7 @@ const NEW_STORY_AD_IMAGE_DEFAULTS = [
 ];
 
 const STAGE_DEFAULTS = {
-  'voice.enrollment':    [{ provider_id: 'aliyun-tts', model_id: 'cosyvoice-v3.5-plus', priority: 1, enabled: true }],
+  'voice.enrollment':    [{ provider_id: 'volcengine-tts', model_id: 'seed-icl-2.0', priority: 1, enabled: true }],
   // 数字人
   'avatar.describe':     [{ provider_id: 'deyunai', model_id: 'gpt-4o-mini', priority: 1, enabled: false }],
   'avatar.image_gen':    [
@@ -266,10 +266,7 @@ const STAGE_DEFAULTS = {
     { provider_id: 'volcengine', model_id: 'jimeng_realman_avatar_picture_omni_v15', priority: 4, enabled: true },
     { provider_id: 'dashscope', model_id: 'wan2.2-animate-move', priority: 5, enabled: true },
   ],
-  'avatar.tts':          [
-    { provider_id: 'aliyun-tts', model_id: 'cosyvoice-v3.5-plus', priority: 1, enabled: true },
-    { provider_id: 'aliyun-tts', model_id: 'cosyvoice-v3-flash', priority: 2, enabled: true },
-  ],
+  'avatar.tts':          [{ provider_id: 'volcengine-tts', model_id: 'seed-tts-2.0', priority: 1, enabled: true }],
   // 商品数字人
   'product_avatar.describe': [{ provider_id: 'deyunai', model_id: 'gpt-4o-mini', priority: 1, enabled: false }],
   'product_avatar.person_image': [
@@ -285,10 +282,7 @@ const STAGE_DEFAULTS = {
     { provider_id: 'topview', model_id: 'topview-product-avatar-i2v', priority: 1, enabled: true },
     { provider_id: 'volcengine', model_id: 'doubao-seedance-2-0-260128', priority: 2, enabled: true },
   ],
-  'product_avatar.tts': [
-    { provider_id: 'aliyun-tts', model_id: 'cosyvoice-v3.5-plus', priority: 1, enabled: true },
-    { provider_id: 'aliyun-tts', model_id: 'cosyvoice-v3-flash', priority: 2, enabled: true },
-  ],
+  'product_avatar.tts': [{ provider_id: 'volcengine-tts', model_id: 'seed-tts-2.0', priority: 1, enabled: true }],
   // 广告数字人
   'ad_avatar.copy': [{ provider_id: 'deyunai', model_id: 'gpt-4o-mini', priority: 1, enabled: false }],
   'ad_avatar.keyframe': [
@@ -304,10 +298,7 @@ const STAGE_DEFAULTS = {
     { provider_id: 'topview', model_id: 'topview-avatar4-fast', priority: 2, enabled: true },
     { provider_id: 'hifly', model_id: 'hifly', priority: 3, enabled: true },
   ],
-  'ad_avatar.tts': [
-    { provider_id: 'aliyun-tts', model_id: 'cosyvoice-v3.5-plus', priority: 1, enabled: true },
-    { provider_id: 'aliyun-tts', model_id: 'cosyvoice-v3-flash', priority: 2, enabled: true },
-  ],
+  'ad_avatar.tts': [{ provider_id: 'volcengine-tts', model_id: 'seed-tts-2.0', priority: 1, enabled: true }],
   // 剧情广告
   // 中文说明：剧本、分镜导演和修复阶段负责生成“业务无关的视觉合同”，
   // 需要更强的结构化视觉推理模型优先；DeepSeek 只作为末位后备，避免把具体行业场景写死。
@@ -461,10 +452,7 @@ const STAGE_DEFAULTS = {
     { provider_id: 'deyunai', model_id: 'kling-v2.5-turbo-pro', priority: 6, enabled: false },
     { provider_id: 'deyunai', model_id: 'hailuo-02-fast', priority: 7, enabled: false },
   ],
-  'luxury_ad.tts': [
-    { provider_id: 'aliyun-tts', model_id: 'cosyvoice-v3.5-plus', priority: 1, enabled: true },
-    { provider_id: 'aliyun-tts', model_id: 'cosyvoice-v3-flash', priority: 2, enabled: true },
-  ],
+  'luxury_ad.tts': [{ provider_id: 'volcengine-tts', model_id: 'seed-tts-2.0', priority: 1, enabled: true }],
   'luxury_ad.post': [
     { provider_id: 'local', model_id: 'ffmpeg-effects', priority: 1, enabled: true },
   ],
@@ -543,10 +531,7 @@ const STAGE_DEFAULTS = {
     { provider_id: 'topview', model_id: 'topview-image2video-pro', priority: 5, enabled: false },
     { provider_id: 'volcengine', model_id: 'doubao-seedance-2-0-260128', priority: 6, enabled: false },
   ],
-  'new_story_ad.tts': [
-    { provider_id: 'aliyun-tts', model_id: 'cosyvoice-v3.5-plus', priority: 1, enabled: true },
-    { provider_id: 'aliyun-tts', model_id: 'cosyvoice-v3-flash', priority: 2, enabled: true },
-  ],
+  'new_story_ad.tts': [{ provider_id: 'volcengine-tts', model_id: 'seed-tts-2.0', priority: 1, enabled: true }],
   'new_story_ad.lip_sync': [
     { provider_id: 'deyunai', model_id: 'doubao-seedance-2-0-260128', priority: 1, enabled: true },
     { provider_id: 'topview', model_id: 'topview-avatar4', priority: 2, enabled: true },
@@ -569,11 +554,11 @@ const STAGE_DEFAULTS = {
     { provider_id: 'api-key-20260404180437', model_id: 'doubao-seedance-2-0-260128', priority: 1, enabled: true },
     { provider_id: 'jimeng', model_id: 'jimeng_t2v_v30', priority: 2, enabled: true },
   ],
-  'drama.tts':           [{ provider_id: 'aliyun-tts', model_id: 'cosyvoice-v3-flash', priority: 1, enabled: true }],
+  'drama.tts':           [{ provider_id: 'volcengine-tts', model_id: 'seed-tts-2.0', priority: 1, enabled: true }],
   // 爆款复刻
   'replicate.extract':   [{ provider_id: 'deepseek', model_id: 'deepseek-chat', priority: 1, enabled: true }],
   'replicate.rewrite':   [{ provider_id: 'deepseek', model_id: 'deepseek-chat', priority: 1, enabled: true }],
-  'replicate.tts':       [{ provider_id: 'aliyun-tts', model_id: 'cosyvoice-v3-flash', priority: 1, enabled: true }],
+  'replicate.tts':       [{ provider_id: 'volcengine-tts', model_id: 'seed-tts-2.0', priority: 1, enabled: true }],
   'replicate.avatar':    [{ provider_id: 'volcengine', model_id: 'jimeng_realman_avatar_picture_omni_v15', priority: 1, enabled: true }],
   // 故事
   'story.generate':      [{ provider_id: 'deepseek', model_id: 'deepseek-chat', priority: 1, enabled: true }],
@@ -588,6 +573,13 @@ function isNewStoryAdImageStage(stageId = '') {
 }
 
 function isStageModelAllowed(stageId = '', model = {}) {
+  const stage = String(stageId || '').trim();
+  const provider = String(model?.provider_id || '').trim();
+  const modelId = String(model?.model_id || '').trim();
+  if (stage === 'voice.enrollment') return provider === 'volcengine-tts' && modelId === 'seed-icl-2.0';
+  if (/\.tts$/.test(stage)) return provider === 'volcengine-tts' && modelId === 'seed-tts-2.0';
+  // 用户明确要求字节只用于 TTS：非 TTS 阶段同时禁止新语音专用供应商和旧直连 volcengine。
+  if (provider === 'volcengine-tts' || provider === 'volcengine') return false;
   if (!isNewStoryAdImageStage(stageId)) return true;
   if (String(stageId || '').trim() === 'new_story_ad.scene_panorama') {
     const capabilityService = require('./modelCapabilityService');
@@ -607,6 +599,19 @@ function filterStageModels(stageId = '', models = []) {
 
 function sanitizePipelineConfig(config = {}) {
   const stages = { ...(config.stages || {}) };
+  for (const [stageId, models] of Object.entries(stages)) {
+    const rows = Array.isArray(models) ? models : [];
+    if (stageId === 'voice.enrollment') {
+      stages[stageId] = [{ provider_id: 'volcengine-tts', model_id: 'seed-icl-2.0', priority: 1, enabled: true }];
+      continue;
+    }
+    if (/\.tts$/.test(stageId)) {
+      stages[stageId] = [{ provider_id: 'volcengine-tts', model_id: 'seed-tts-2.0', priority: 1, enabled: true }];
+      continue;
+    }
+    // 字节语音专用凭证永远不能出现在文本、图片、视频、识别等非 TTS 阶段。
+    stages[stageId] = rows.filter(model => !['volcengine-tts', 'volcengine'].includes(String(model?.provider_id || '')));
+  }
   for (const stageId of NEW_STORY_AD_IMAGE_STAGE_IDS) {
     if (!Array.isArray(stages[stageId])) continue;
     stages[stageId] = filterStageModels(stageId, stages[stageId]).map((model, index) => ({
@@ -617,7 +622,9 @@ function sanitizePipelineConfig(config = {}) {
   return { stages };
 }
 
-function listDefaults() { return STAGE_DEFAULTS; }
+function listDefaults() {
+  return Object.fromEntries(Object.entries(STAGE_DEFAULTS).map(([stageId, models]) => [stageId, filterStageModels(stageId, models)]));
+}
 function getStageDefaults(stageId) { return filterStageModels(stageId, STAGE_DEFAULTS[stageId] || []); }
 
 function isStrictPipelineManagedStage(stageId) {

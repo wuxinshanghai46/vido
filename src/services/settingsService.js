@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const sqliteConfig = require('../db/sqlite');
 const appKv = require('../repositories/appKvRepository');
-const { voices: ALIYUN_COSYVOICE_VOICES } = require('./aliyunCosyVoiceCatalog');
+const { voices: VOLCENGINE_SPEECH_VOICES } = require('./volcengineSpeechCatalog');
 
 const OUTPUT_DIR = process.env.OUTPUT_DIR
   ? path.resolve(process.env.OUTPUT_DIR)
@@ -77,12 +77,9 @@ const PROVIDER_PRESETS = {
   // ——— 语音合成 ———
   elevenlabs:  { name: 'ElevenLabs',   api_url: 'https://api.elevenlabs.io/v1',                 defaultModels: [{ id: 'eleven_multilingual_v2', name: 'Multilingual v2（多语言高质）', type: 'tts', use: 'tts' }, { id: 'eleven_flash_v2_5', name: 'Flash v2.5（极速）', type: 'tts', use: 'tts' }] },
   fishaudio:   { name: 'Fish Audio',   api_url: 'https://api.fish.audio/v1',                    defaultModels: [{ id: 'speech-1.5', name: 'Fish Speech 1.5（中文/多语言·极自然）', type: 'tts', use: 'tts' }] },
-  volcengine:  { name: '火山引擎(豆包)', api_url: 'https://openspeech.bytedance.com/api/v1',   defaultModels: [
-    { id: 'zh_female_tianmei', name: '甜美女声（天美）', type: 'tts', use: 'tts' },
-    { id: 'zh_male_chunhou',  name: '醇厚男声（醇厚）', type: 'tts', use: 'tts' },
-    { id: 'zh_female_story',  name: '故事女声',         type: 'tts', use: 'tts' },
-    { id: 'zh_child_girl',    name: '童声女孩',         type: 'tts', use: 'tts' },
-    { id: 'zh_male_rap',      name: '说唱男声',         type: 'tts', use: 'tts' },
+  'volcengine-tts': { name: '字节豆包语音（仅 TTS）', api_url: 'https://openspeech.bytedance.com', defaultModels: [
+    { id: 'seed-tts-2.0', name: `语音合成 2.0（${VOLCENGINE_SPEECH_VOICES.length} 个标准音色）`, type: 'tts', use: 'tts' },
+    { id: 'seed-icl-2.0', name: '声音复刻 2.0', type: 'tts', use: 'tts' },
   ] },
   baidu:       { name: '百度语音',       api_url: 'https://tsn.baidu.com',                     defaultModels: [
     { id: '0',    name: '度小美（标准女声）', type: 'tts', use: 'tts' },
@@ -92,7 +89,6 @@ const PROVIDER_PRESETS = {
     { id: '5003', name: '度米朵（情感女声）', type: 'tts', use: 'tts' },
     { id: '106',  name: '度博文（情感男声）', type: 'tts', use: 'tts' },
   ] },
-  'aliyun-tts': { name: '阿里百炼工作空间 · CosyVoice', api_url: 'https://dashscope.aliyuncs.com/api/v1', defaultModels: ALIYUN_COSYVOICE_VOICES.map(v => ({ id: v.id, name: v.name, type: 'tts', use: 'tts', model: v.model })) },
   xunfei: { name: '科大讯飞', api_url: 'wss://tts-api.xfyun.cn/v2/tts', defaultModels: [
     { id: 'xiaoyan', name: '小燕（温柔女声）', type: 'tts', use: 'tts' },
     { id: 'aisjiuxu', name: '许久（沉稳男声）', type: 'tts', use: 'tts' },
@@ -294,11 +290,10 @@ const ENV_SEED_MAP = [
   { envKey: 'TOPVIEW_API_KEY',     presetId: 'topview'       },
   { envKey: 'ELEVENLABS_API_KEY',  presetId: 'elevenlabs'  },
   { envKey: 'FISHAUDIO_API_KEY',   presetId: 'fishaudio'   },
-  { envKey: 'VOLCENGINE_TTS_KEY', presetId: 'volcengine'  },
+  { envKey: 'VOLCENGINE_SPEECH_API_KEY', presetId: 'volcengine-tts' },
   { envKey: 'BAIDU_TTS_KEY',      presetId: 'baidu'       },
   { envKey: 'BAIDU_AIP_KEY',      presetId: 'baidu-aip'   },
   { envKey: 'BAIDU_AIP_API_KEY',  presetId: 'baidu-aip'   },
-  { envKey: 'ALIYUN_TTS_KEY',     presetId: 'aliyun-tts'  },
   { envKey: 'HEYGEN_API_KEY',     presetId: 'heygen'      },
   { envKey: 'DID_API_KEY',        presetId: 'did'         },
   { envKey: 'SYNTHESIA_API_KEY',  presetId: 'synthesia'   },
@@ -498,12 +493,38 @@ const ENV_PROVIDER_EXTRA_MAP = {
   },
 };
 
+function enforceSpeechProviderBoundary(settings = {}) {
+  const out = { ...settings };
+  out.providers = (Array.isArray(settings.providers) ? settings.providers : [])
+    // 阿里仅移除 TTS/CosyVoice；qwen、dashscope 等非 TTS 供应商不受影响。
+    .filter(provider => provider && provider.id !== 'aliyun-tts' && provider.preset !== 'aliyun-tts')
+    // 旧 openspeech V1 TTS 配置不再参与正常执行；其他名为 volcengine 的非语音配置原样保留。
+    .filter(provider => !(provider.id === 'volcengine' && /openspeech\.bytedance\.com/i.test(String(provider.api_url || ''))))
+    .map(provider => {
+      if (provider.id !== 'volcengine-tts' && provider.preset !== 'volcengine-tts') return provider;
+      return {
+        ...provider,
+        id: 'volcengine-tts',
+        preset: 'volcengine-tts',
+        api_url: 'https://openspeech.bytedance.com',
+        tts_resource_id: 'seed-tts-2.0',
+        clone_resource_id: 'seed-icl-2.0',
+        capability_scope: ['tts', 'voice_clone'],
+        models: (provider.models || []).filter(model => (
+          ['seed-tts-2.0', 'seed-icl-2.0'].includes(String(model?.id || ''))
+          && model.type === 'tts' && model.use === 'tts'
+        )),
+      };
+    });
+  return out;
+}
+
 function loadSettings() {
   const dbConfig = sqliteConfig.getDbConfig();
   if (dbConfig.enabled && dbConfig.readPrimary) {
     try {
       const fromDb = appKv.get('settings.full', null);
-      if (fromDb) return normalizeProviderAdapters(normalizeWebangSeedanceModels(mergePresetModelsForExistingProviders(mergeEnvSeededProviders(fromDb))));
+      if (fromDb) return normalizeProviderAdapters(enforceSpeechProviderBoundary(normalizeWebangSeedanceModels(mergePresetModelsForExistingProviders(mergeEnvSeededProviders(fromDb)))));
       if (!dbConfig.jsonFallback) return normalizeProviderAdapters(seedFromEnv());
     } catch (error) {
       if (!dbConfig.jsonFallback) throw error;
@@ -511,7 +532,7 @@ function loadSettings() {
   }
   if (fs.existsSync(SETTINGS_PATH)) {
     try {
-      return normalizeProviderAdapters(normalizeWebangSeedanceModels(mergePresetModelsForExistingProviders(mergeEnvSeededProviders(JSON.parse(fs.readFileSync(SETTINGS_PATH, 'utf8'))))));
+      return normalizeProviderAdapters(enforceSpeechProviderBoundary(normalizeWebangSeedanceModels(mergePresetModelsForExistingProviders(mergeEnvSeededProviders(JSON.parse(fs.readFileSync(SETTINGS_PATH, 'utf8')))))));
     } catch {}
   }
   // 首次启动：从 .env 自动初始化
@@ -642,7 +663,7 @@ function seedFromEnv() {
 
 function saveSettings(data) {
   const dbConfig = sqliteConfig.getDbConfig();
-  const normalized = normalizeProviderAdapters(normalizeWebangSeedanceModels(mergePresetModelsForExistingProviders(data)));
+  const normalized = normalizeProviderAdapters(enforceSpeechProviderBoundary(normalizeWebangSeedanceModels(mergePresetModelsForExistingProviders(data))));
   if (dbConfig.enabled) appKv.set('settings.full', normalized);
   if (dbConfig.enabled && dbConfig.readPrimary && !dbConfig.dualWrite) return;
   fs.mkdirSync(path.dirname(SETTINGS_PATH), { recursive: true });
@@ -682,4 +703,5 @@ module.exports = {
   PROVIDER_ADAPTER_DEFAULTS,
   inferProviderAdapter,
   normalizeProviderAdapters,
+  enforceSpeechProviderBoundary,
 };

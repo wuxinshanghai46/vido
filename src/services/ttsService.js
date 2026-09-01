@@ -1,7 +1,7 @@
 /**
  * TTS 语音合成服务
- * 阿里百炼工作空间 CosyVoice 为唯一阿里 TTS 链路。
- * 自定义克隆音色：只走阿里 CosyVoice 真克隆（永久 voice_id），失败立即报错不回退默认女声
+ * 字节豆包语音 2.0 是当前唯一权威 TTS 链路。
+ * 自定义克隆音色：只走字节声音复刻 2.0，失败立即报错且不回退默认女声。
  */
 require('dotenv').config();
 const { execFile } = require('child_process');
@@ -52,15 +52,6 @@ async function generateSpeech(text, outputPath, { gender = 'female', speed = 1.0
 
   voiceId = await require('./voicePackEnrollmentService').resolveVoiceForAccount(voiceId, { userId, requestBaseUrl });
 
-  if (voiceId && String(voiceId).startsWith('hifly:')) {
-    const result = await generateWithHiflyTTS(text, outputPath, { voiceId, speed, pitch });
-    if (result) {
-      console.log(`[TTS] 使用飞影 Hifly 音色 ${voiceId} 生成成功`);
-      return _postProcessAudio(result);
-    }
-    throw new Error('飞影 Hifly 音色合成失败');
-  }
-
   // 自定义声音：如果选择了用户上传的声音，用声音克隆
   if (voiceId && (voiceId.startsWith('custom_') || voiceId.startsWith('custom:'))) {
     const result = await _generateWithCustomVoice(text, outputPath, { voiceId, speed, pitch, instruction, signal, userId });
@@ -69,35 +60,14 @@ async function generateSpeech(text, outputPath, { gender = 'female', speed = 1.0
       return _postProcessAudio(result);
     }
     // 不静默回退 — 用户明确选了自定义声音，失败就报错
-    throw new Error('自定义声音合成失败，请检查声音文件或配置 阿里 CosyVoice / 火山声音复刻 API Key 以启用声音克隆');
+    throw new Error('自定义声音合成失败，请检查声音文件或配置字节豆包语音 TTS API Key');
   }
 
-  // 显式选择的智谱音色必须回到智谱合成。此前它会落入下方阿里链，
-  // 把 tongtong 等智谱 voice id 误传给 CosyVoice，最终得到 418
-  // InvalidParameter。显式音色失败时不改用另一位说话人，避免声音错乱。
-  if (voiceProviderForId(voiceId) === 'zhipu') {
-    const apiKey = _getTTSKey('zhipu');
-    if (!apiKey) throw new Error(`所选智谱音色 ${voiceId} 当前未配置可用的 TTS API Key`);
-    try {
-      const result = await generateWithZhipu(text, outputPath, { gender, speed, voiceId, apiKey });
-      if (!result) throw new Error(`智谱音色 ${voiceId} 合成返回空结果`);
-      return _postProcessAudio(result);
-    } catch (error) {
-      if (isTtsBillingError(error)) {
-        const unavailable = new Error('智谱 TTS 余额或资源包不足，当前智谱音色已暂停；请改选阿里云音色后重试，或先为智谱账号充值');
-        unavailable.code = 'TTS_PROVIDER_BILLING';
-        unavailable.retryable = true;
-        throw unavailable;
-      }
-      throw error;
-    }
-  }
-
-  // 阿里供应商只有当前百炼工作空间 CosyVoice；旧 NLS 产品线已停用并移除。
-  // 不再回退到火山豆包/MiniMax/讯飞/百度/OpenAI/SAPI，这些会用默认女声替代用户期望的克隆/选定音色
+  // 新合同：普通配音只走独立的 volcengine-tts 供应商。
+  // 该供应商只能调用 seed-tts-2.0 / seed-icl-2.0，不得调用字节其他模型。
   const selectedProvider = String(providerId || voiceProviderForId(voiceId) || '').toLowerCase();
   const chain = [
-    { id: 'aliyun-tts', name: '阿里百炼 CosyVoice', fn: generateWithAliyunTTS, opts: { gender, speed, pitch, voiceId, instruction, signal } },
+    { id: 'volcengine-tts', name: '字节豆包语音 2.0', fn: generateWithVolcEngine, opts: { gender, speed, pitch, voiceId, instruction, signal, userId } },
   ].filter(item => !selectedProvider || !strictProvider || item.id === selectedProvider);
 
   if (strictProvider && selectedProvider && !chain.length) {
@@ -114,10 +84,10 @@ async function generateSpeech(text, outputPath, { gender = 'female', speed = 1.0
       const result = await fn(text, outputPath, { ...opts, apiKey });
       if (result) {
         console.log(`[TTS] 使用 ${name} 生成成功`);
-        // 埋点：阿里 CosyVoice / NLS 按字符计费
+        // 豆包语音 2.0 按字符计费。
         try {
           require('./tokenTracker').record({
-            provider: id, model: 'cosyvoice-v3-flash',
+            provider: id, model: 'seed-tts-2.0',
             category: 'tts', ttsChars: (text || '').length,
             durationMs: Date.now() - startedAt, status: 'success',
           });
@@ -130,7 +100,7 @@ async function generateSpeech(text, outputPath, { gender = 'female', speed = 1.0
       errors.push(`${name}: ${err.message}`);
       try {
         require('./tokenTracker').record({
-          provider: id, model: 'cosyvoice-v3-flash',
+          provider: id, model: 'seed-tts-2.0',
           category: 'tts', ttsChars: (text || '').length,
           durationMs: Date.now() - startedAt, status: 'fail', errorMsg: err.message,
         });
@@ -138,11 +108,11 @@ async function generateSpeech(text, outputPath, { gender = 'female', speed = 1.0
     }
   }
 
-  console.warn('[TTS] 阿里 TTS 全部失败：' + errors.join(' | '));
+  console.warn('[TTS] 字节豆包语音全部失败：' + errors.join(' | '));
   if (strictProvider) {
     const detail = errors.join(' | ');
     const error = new Error(detail || '所选语音供应商当前不可用');
-    if (/Arrearage|account is in good standing|余额|欠费/i.test(detail)) error.code = 'TTS_PROVIDER_BILLING';
+    if (/余额|欠费|quota|resource package|insufficient/i.test(detail)) error.code = 'TTS_PROVIDER_BILLING';
     else if (/未配置 API Key/i.test(detail)) error.code = 'TTS_PROVIDER_NOT_CONFIGURED';
     else error.code = 'TTS_PROVIDER_UNAVAILABLE';
     throw error;
@@ -283,47 +253,32 @@ async function _generateWithCustomVoice(text, outputPath, { voiceId, speed = 1.0
     throw new Error(`自定义声音 ${voiceId} 文件不存在`);
   }
 
-  // 守门（2026-04-26 精简）：只用阿里 CosyVoice 真克隆 · 没有 aliyun_voice_id 直接报错
-  // 不再 fallback 到火山 ICL / 默认女声，避免"选了我的声音却出来灿灿+嘟嘟"的歧义
-  const hasAliyunReady = !!voice.aliyun_voice_id;
-  if (!hasAliyunReady) {
+  // 新合同：自定义声音只能使用字节声音复刻 2.0 的已就绪 speaker_id。
+  const hasVolcReady = !!voice.volc_speaker_id && voice.status === 'ready';
+  if (!hasVolcReady) {
     const status = voice.status || 'unknown';
     const reason = status === 'training'
       ? '还在训练中（约 3-15 分钟），请稍后再试'
-      : `未完成阿里 CosyVoice 真克隆（aliyun_voice_id 为空，status=${status}）`;
-    throw new Error(`"${voice.name || voiceId}" ${reason}。请去「声音克隆」页面重新上传录音 → 走阿里 CosyVoice 真克隆通道。`);
+      : `未完成字节声音复刻 2.0（volc_speaker_id 为空或不可用，status=${status}）`;
+    throw new Error(`"${voice.name || voiceId}" ${reason}。请去「声音克隆」页面重新上传录音。`);
   }
 
-  // 阿里 CosyVoice 2 定制音色 · 永久 voice_id（唯一通道）
+  // 字节声音复刻 2.0（seed-icl-2.0 唯一通道）。
   try {
-    const aliyun = require('./aliyunVoiceService');
-    if (!aliyun.hasKey()) {
-      throw new Error('未配置阿里 CosyVoice API Key（去后台 AI 配置 → aliyun-tts 设置）');
-    }
-    let result;
-    try {
-      result = await aliyun.synthesize(text, voice.aliyun_voice_id, outputPath, { speed, pitch, instruction, signal });
-    } catch (err) {
-      const msg = String(err?.message || '');
-      if (instruction && /instruction|invalid|parameter|param|unsupported|not support|不支持|参数|字段/i.test(msg)) {
-        console.warn(`[TTS] 自定义音色 CosyVoice instruction 失败，降级为无 instruction 合成: ${msg}`);
-        result = await aliyun.synthesize(text, voice.aliyun_voice_id, outputPath, { speed, pitch, instruction: '', signal });
-      } else {
-        throw err;
-      }
-    }
+    const volc = require('./volcengineSpeechService');
+    if (!volc.hasKey()) throw new Error('未配置字节豆包语音 API Key（后台 AI 配置 → 字节豆包语音 TTS）');
+    const result = await volc.synthesize(text, voice.volc_speaker_id, outputPath, {
+      speed, pitch, signal, userId, cloned: true,
+    });
     if (result && fs.existsSync(result) && fs.statSync(result).size > 100) {
-      console.log(`[TTS] 阿里 CosyVoice 定制音色合成成功: ${voice.name} voice_id=${voice.aliyun_voice_id}`);
+      console.log(`[TTS] 字节声音复刻 2.0 合成成功: ${voice.name} speaker_id=${voice.volc_speaker_id}`);
       return result;
     }
-    throw new Error('阿里 CosyVoice 返回空结果');
+    throw new Error('字节声音复刻 2.0 返回空结果');
   } catch (err) {
-    throw new Error(`"${voice.name || voiceId}" 阿里克隆合成失败: ${err.message}`);
+    throw new Error(`"${voice.name || voiceId}" 字节复刻合成失败: ${err.message}`);
   }
 }
-
-// 注：原火山 ICL 2.0 / volc_speaker_id 路径 + 阿里零样本兜底，已下线
-//     （2026-04-26：用户要求全平台只用阿里 CosyVoice 真克隆，非真克隆直接报错）
 
 // ═══════════════════════════════════════════
 // 阿里云 CosyVoice 声音克隆（通过参考音频）
@@ -464,7 +419,7 @@ function voiceProviderForId(voiceId = '') {
   const id = String(voiceId || '').trim();
   if (!id) return '';
   if (ZHIPU_PUBLIC_VOICE_IDS.has(id) || Object.prototype.hasOwnProperty.call(ZHIPU_VOICES, id)) return 'zhipu';
-  if (/^(?:long|loong)[a-z0-9_-]+$/i.test(id)) return 'aliyun-tts';
+  if (require('./volcengineSpeechCatalog').voiceIds.has(id)) return 'volcengine-tts';
   if (/^custom[_:]/i.test(id)) return 'custom';
   return '';
 }
@@ -498,82 +453,22 @@ async function generateWithZhipu(text, outputPath, { gender, speed, voiceId, api
 }
 
 // ═══════════════════════════════════════════
-// 火山引擎 TTS（豆包大模型语音合成）
-// API Key 格式：AppId:AccessToken
-// 音色列表（中文最丰富）：
-//   女声：zh_female_tianmei（甜美）、zh_female_shuangkuai（爽快）、zh_female_qingxin（清新）
-//         zh_female_wanwan（温婉）、zh_female_linjia（知性邻家）
-//   男声：zh_male_chunhou（醇厚）、zh_male_yangguang（阳光）、zh_male_jingqiang（京腔）
-//         zh_male_daxuesheng（大学生）、zh_male_shaonian（少年音）
-//   特色：zh_female_story（故事女声）、zh_male_story（故事男声）
-//         zh_female_rap（说唱女声）、zh_male_rap（说唱男声）
-//   童声：zh_child_girl（童声女）、zh_child_boy（童声男）
+// 字节豆包语音 TTS 2.0（新版控制台 API Key + V3 SSE）。
 // ═══════════════════════════════════════════
-// 豆包语音合成2.0 voice_type（BVxxx_streaming 格式）
 const VOLC_VOICES = {
-  female: 'BV700_streaming',   // 灿灿（默认女声）
-  male: 'BV002_streaming',     // 通用男声
-  child: 'BV061_streaming',    // 天才童声
-  // 前端预设映射
-  'female-sweet': 'BV700_streaming',   // 灿灿
-  'female-pro': 'BV009_streaming',     // 知性女声
-  'male-mature': 'BV006_streaming',    // 磁性男声
-  'male-young': 'BV004_streaming',     // 开朗青年
+  female: 'zh_female_vv_uranus_bigtts',
+  male: 'zh_male_m191_uranus_bigtts',
+  child: 'zh_male_tiancaitongsheng_uranus_bigtts',
+  'female-sweet': 'zh_female_tianmeitaozi_uranus_bigtts',
+  'female-pro': 'zh_female_zhixingnv_uranus_bigtts',
+  'male-mature': 'zh_male_cixingjieshuonan_uranus_bigtts',
+  'male-young': 'zh_male_yangguangqingnian_uranus_bigtts',
 };
 
-async function generateWithVolcEngine(text, outputPath, { gender, speed, voiceId, apiKey }) {
-  // Key 格式：AppId:AccessToken（新版 Header 鉴权）
-  const parts = apiKey.split(':');
-  const appId = parts.length >= 2 ? parts[0] : '';
-  const accessToken = parts.length >= 2 ? parts.slice(1).join(':') : apiKey;
-
-  // 从 settings 读取音色
-  let voice = voiceId || VOLC_VOICES[voiceId] || VOLC_VOICES[gender] || 'BV700_streaming';
-  const model = _getTTSModel('volcengine');
-  if (model?.id && !voiceId) voice = model.id;
-
-  const mp3Path = outputPath.replace(/\.[^.]+$/, '') + '.mp3';
-  const speedRatio = Math.min(2.0, Math.max(0.5, speed));
-  const { v4: uuidv4 } = require('uuid');
-
-  const body = JSON.stringify({
-    app: { appid: appId, cluster: 'volcano_tts' },
-    user: { uid: 'vido_user' },
-    audio: { voice_type: voice, encoding: 'mp3', speed_ratio: speedRatio },
-    request: { reqid: uuidv4(), text: text.substring(0, 10000), operation: 'query' }
-  });
-
-  return new Promise((resolve, reject) => {
-    const req = https.request({
-      hostname: 'openspeech.bytedance.com',
-      path: '/api/v1/tts',
-      method: 'POST',
-      headers: {
-        'X-Api-App-Key': appId,
-        'X-Api-Access-Key': accessToken,
-        'X-Api-Resource-Id': 'seed-tts-1.0',
-        'X-Api-Connect-Id': uuidv4(),
-        'Content-Type': 'application/json',
-      }
-    }, (res) => {
-      const chunks = [];
-      res.on('data', c => chunks.push(c));
-      res.on('end', () => {
-        try {
-          const json = JSON.parse(Buffer.concat(chunks).toString());
-          if (json.code !== 3000) return reject(new Error('火山引擎 TTS: ' + (json.message || `code=${json.code}`)));
-          const audioData = json.data;
-          if (!audioData) return reject(new Error('火山引擎 TTS 未返回音频数据'));
-          fs.mkdirSync(path.dirname(mp3Path), { recursive: true });
-          fs.writeFileSync(mp3Path, Buffer.from(audioData, 'base64'));
-          resolve(mp3Path);
-        } catch (e) { reject(e); }
-      });
-    });
-    req.on('error', reject);
-    req.setTimeout(30000, () => { req.destroy(); reject(new Error('火山引擎 TTS 连接超时')); });
-    req.write(body);
-    req.end();
+async function generateWithVolcEngine(text, outputPath, { gender, speed, pitch, voiceId, apiKey, signal, userId }) {
+  let voice = VOLC_VOICES[voiceId] || voiceId || VOLC_VOICES[gender] || VOLC_VOICES.female;
+  return require('./volcengineSpeechService').synthesize(text, voice, outputPath, {
+    speed, pitch, apiKey, signal, userId, cloned: false,
   });
 }
 
@@ -1150,145 +1045,12 @@ function _downloadToFile(url, destPath) {
  * 返回按供应商分组的音色数组
  */
 function getAvailableVoices() {
-  const { loadSettings } = require('./settingsService');
   const voices = [];
 
-  // 智谱 GLM-TTS
-  if (_getTTSKey('zhipu')) {
-    voices.push(
-      { id: 'tongtong', name: '彤彤·温柔', gender: 'female', provider: '智谱AI', providerIcon: '🔮', lang: 'zh', tag: '推荐' },
-      { id: 'xiaochen', name: '小陈·知性', gender: 'female', provider: '智谱AI', providerIcon: '🔮', lang: 'zh' },
-      { id: 'chuichui', name: '锤锤·沉稳', gender: 'male', provider: '智谱AI', providerIcon: '🔮', lang: 'zh', tag: '推荐' },
-      { id: 'jam', name: 'Jam·活力', gender: 'male', provider: '智谱AI', providerIcon: '🔮', lang: 'zh' },
-      { id: 'kazi', name: 'Kazi·磁性', gender: 'male', provider: '智谱AI', providerIcon: '🔮', lang: 'zh' },
-      { id: 'douji', name: 'Douji·少年', gender: 'male', provider: '智谱AI', providerIcon: '🔮', lang: 'zh' },
-      { id: 'luodo', name: 'Luodo·儒雅', gender: 'male', provider: '智谱AI', providerIcon: '🔮', lang: 'zh' },
-    );
+  // 字节豆包语音合成 2.0 官方标准音色（99 个）。
+  if (_getTTSKey('volcengine-tts')) {
+    voices.push(...require('./volcengineSpeechCatalog').voices);
   }
-
-  // 火山引擎
-  if (_getTTSKey('volcengine')) {
-    voices.push(
-      { id: 'zh_female_tianmei', name: '甜美女声', gender: 'female', provider: '火山引擎', providerIcon: '🌋', lang: 'zh', tag: '推荐' },
-      { id: 'zh_female_shuangkuai', name: '爽快女声', gender: 'female', provider: '火山引擎', providerIcon: '🌋', lang: 'zh' },
-      { id: 'zh_female_qingxin', name: '清新女声', gender: 'female', provider: '火山引擎', providerIcon: '🌋', lang: 'zh' },
-      { id: 'zh_female_wanwan', name: '温婉女声', gender: 'female', provider: '火山引擎', providerIcon: '🌋', lang: 'zh' },
-      { id: 'zh_female_linjia', name: '知性邻家', gender: 'female', provider: '火山引擎', providerIcon: '🌋', lang: 'zh' },
-      { id: 'zh_female_story', name: '故事女声', gender: 'female', provider: '火山引擎', providerIcon: '🌋', lang: 'zh', tag: '讲述' },
-      { id: 'zh_male_chunhou', name: '醇厚男声', gender: 'male', provider: '火山引擎', providerIcon: '🌋', lang: 'zh', tag: '推荐' },
-      { id: 'zh_male_yangguang', name: '阳光男声', gender: 'male', provider: '火山引擎', providerIcon: '🌋', lang: 'zh' },
-      { id: 'zh_male_jingqiang', name: '京腔男声', gender: 'male', provider: '火山引擎', providerIcon: '🌋', lang: 'zh', tag: '方言' },
-      { id: 'zh_male_daxuesheng', name: '大学生', gender: 'male', provider: '火山引擎', providerIcon: '🌋', lang: 'zh' },
-      { id: 'zh_male_shaonian', name: '少年音', gender: 'male', provider: '火山引擎', providerIcon: '🌋', lang: 'zh' },
-      { id: 'zh_male_story', name: '故事男声', gender: 'male', provider: '火山引擎', providerIcon: '🌋', lang: 'zh', tag: '讲述' },
-      { id: 'zh_child_girl', name: '童声女孩', gender: 'child', provider: '火山引擎', providerIcon: '🌋', lang: 'zh', tag: '童声' },
-      { id: 'zh_child_boy', name: '童声男孩', gender: 'child', provider: '火山引擎', providerIcon: '🌋', lang: 'zh', tag: '童声' },
-    );
-  }
-
-  // 百度语音
-  if (_getTTSKey('baidu')) {
-    voices.push(
-      { id: 'dumiduo', name: '度米朵·甜美', gender: 'female', provider: '百度语音', providerIcon: '🔵', lang: 'zh', tag: '推荐' },
-      { id: 'duxiaomei', name: '度小美·标准', gender: 'female', provider: '百度语音', providerIcon: '🔵', lang: 'zh' },
-      { id: 'duxiaojiao', name: '度小娇·情感', gender: 'female', provider: '百度语音', providerIcon: '🔵', lang: 'zh' },
-      { id: 'duxiaolu', name: '度小鹿·知性', gender: 'female', provider: '百度语音', providerIcon: '🔵', lang: 'zh' },
-      { id: 'duyaya', name: '度丫丫·萝莉', gender: 'female', provider: '百度语音', providerIcon: '🔵', lang: 'zh' },
-      { id: 'dubowen', name: '度博文·新闻', gender: 'male', provider: '百度语音', providerIcon: '🔵', lang: 'zh', tag: '播报' },
-      { id: 'duxiaoyu', name: '度小宇·标准', gender: 'male', provider: '百度语音', providerIcon: '🔵', lang: 'zh' },
-      { id: 'duxiaoyao', name: '度逍遥·情感', gender: 'male', provider: '百度语音', providerIcon: '🔵', lang: 'zh' },
-      { id: 'duxiaotong', name: '度小童·童声', gender: 'child', provider: '百度语音', providerIcon: '🔵', lang: 'zh', tag: '童声' },
-      { id: 'duxiaomeng', name: '度小萌·萌宝', gender: 'child', provider: '百度语音', providerIcon: '🔵', lang: 'zh', tag: '童声' },
-    );
-  }
-
-  // 阿里云 CosyVoice
-  if (_getTTSKey('aliyun-tts')) {
-    const { voices: aliyunVoices } = require('./aliyunCosyVoiceCatalog');
-    voices.push(...aliyunVoices.map(v => ({
-      ...v,
-      provider: '阿里云',
-      providerIcon: '☁️',
-    })));
-  }
-
-  // 科大讯飞
-  if (_getTTSKey('xunfei')) {
-    voices.push(
-      { id: 'xiaoyan', name: '小燕·温柔', gender: 'female', provider: '科大讯飞', providerIcon: '🔷', lang: 'zh', tag: '推荐' },
-      { id: 'aisxping', name: '小萍·甜美', gender: 'female', provider: '科大讯飞', providerIcon: '🔷', lang: 'zh' },
-      { id: 'aisjinger', name: '晶儿·清亮', gender: 'female', provider: '科大讯飞', providerIcon: '🔷', lang: 'zh' },
-      { id: 'x4_lingxiaoli_assist', name: '凌小乐·助手', gender: 'female', provider: '科大讯飞', providerIcon: '🔷', lang: 'zh' },
-      { id: 'aisjiuxu', name: '许久·沉稳', gender: 'male', provider: '科大讯飞', providerIcon: '🔷', lang: 'zh', tag: '推荐' },
-      { id: 'x4_lingfeizhe_oral', name: '凌飞哲·自然', gender: 'male', provider: '科大讯飞', providerIcon: '🔷', lang: 'zh' },
-      { id: 'aisbabyxu', name: '许小宝·童声', gender: 'child', provider: '科大讯飞', providerIcon: '🔷', lang: 'zh', tag: '童声' },
-    );
-  }
-
-  // Fish Audio
-  if (_getTTSKey('fishaudio')) {
-    voices.push(
-      { id: 'speech-1.5', name: 'Fish Speech 1.5', gender: 'female', provider: 'Fish Audio', providerIcon: '🐟', lang: 'multi', tag: '多语言' },
-    );
-  }
-
-  // MiniMax
-  if (_getTTSKey('minimax')) {
-    voices.push(
-      { id: 'female-tianmei', name: '甜美女声', gender: 'female', provider: 'MiniMax', providerIcon: '🟠', lang: 'zh' },
-      { id: 'male-qingxin', name: '清新男声', gender: 'male', provider: 'MiniMax', providerIcon: '🟠', lang: 'zh' },
-    );
-  }
-
-  // ElevenLabs
-  if (_getTTSKey('elevenlabs')) {
-    voices.push(
-      { id: 'EXAVITQu4vr4xnSDxMaL', name: 'Bella (Female)', gender: 'female', provider: 'ElevenLabs', providerIcon: '🟣', lang: 'multi' },
-      { id: 'nPczCjzI2devNBz1zQrb', name: 'Brian (Male)', gender: 'male', provider: 'ElevenLabs', providerIcon: '🟣', lang: 'multi' },
-    );
-  }
-
-  // OpenAI
-  if (_getTTSKey('openai') || process.env.OPENAI_API_KEY) {
-    voices.push(
-      { id: 'nova', name: 'Nova', gender: 'female', provider: 'OpenAI', providerIcon: '⬛', lang: 'multi' },
-      { id: 'shimmer', name: 'Shimmer', gender: 'female', provider: 'OpenAI', providerIcon: '⬛', lang: 'multi' },
-      { id: 'alloy', name: 'Alloy', gender: 'female', provider: 'OpenAI', providerIcon: '⬛', lang: 'multi' },
-      { id: 'echo', name: 'Echo', gender: 'male', provider: 'OpenAI', providerIcon: '⬛', lang: 'multi' },
-      { id: 'fable', name: 'Fable', gender: 'male', provider: 'OpenAI', providerIcon: '⬛', lang: 'multi' },
-      { id: 'onyx', name: 'Onyx', gender: 'male', provider: 'OpenAI', providerIcon: '⬛', lang: 'multi' },
-    );
-  }
-
-  // Windows SAPI（总是可用）
-  voices.push(
-    { id: 'sapi-female', name: '系统女声', gender: 'female', provider: 'Windows', providerIcon: '🪟', lang: 'zh', tag: '免费' },
-    { id: 'sapi-male', name: '系统男声', gender: 'male', provider: 'Windows', providerIcon: '🪟', lang: 'zh', tag: '免费' },
-  );
-
-  // 自定义声音（用户上传）
-  try {
-    const db = require('../models/database');
-    const customVoices = db.listVoices();
-    for (const v of customVoices) {
-      // 参考素材、训练中和失败记录只能在声音克隆页查看，不能进入 TTS 选择器。
-      // 只有拿到真实 CosyVoice voice_id 的音色才具备“选择后可生成”的语义。
-      if (!v.aliyun_voice_id || v.status !== 'ready') continue;
-      voices.unshift({
-        id: v.id,
-        name: v.name,
-        gender: v.gender || 'female',
-        provider: '我的声音',
-        providerIcon: '🎤',
-        lang: 'zh',
-        tag: '自定义',
-        custom: true,
-        filePath: v.file_path,
-        sourceVoicePackId: v.source_voice_pack_id || null,
-        ttsReady: true,
-      });
-    }
-  } catch {}
 
   return voices;
 }
@@ -1306,28 +1068,14 @@ async function testProviderSynthesis(providerId, outputPath) {
     if (models.length > 0 && !models.some(m => m.enabled !== false && m.use === 'tts')) throw new Error('未启用 TTS 模型');
     // 绕过 test_status 的屏蔽，直接用 api_key
     const map = {
-      volcengine: () => generateWithVolcEngine('测试', outputPath, { apiKey: p.api_key, gender: 'female', speed: 1.0 }),
-      zhipu:       () => generateWithZhipu('测试', outputPath, { apiKey: p.api_key, gender: 'female', speed: 1.0 }),
-      baidu:       () => generateWithBaidu('测试', outputPath, { apiKey: p.api_key, gender: 'female', speed: 1.0 }),
-      'aliyun-tts':() => generateWithAliyunTTS('测试', outputPath, { apiKey: p.api_key, gender: 'female', speed: 1.0 }),
-      minimax:     () => generateWithMiniMaxTTS('测试', outputPath, { apiKey: p.api_key, gender: 'female', speed: 1.0 }),
-      xunfei:      () => generateWithXunfei('测试', outputPath, { apiKey: p.api_key, gender: 'female', speed: 1.0 }),
-      elevenlabs:  () => generateWithElevenLabs('测试', outputPath, { apiKey: p.api_key, gender: 'female', speed: 1.0 }),
-      openai:      () => generateWithOpenAI('测试', outputPath, { apiKey: p.api_key, gender: 'female', speed: 1.0 }),
+      'volcengine-tts': () => generateWithVolcEngine('测试', outputPath, { apiKey: p.api_key, gender: 'female', speed: 1.0 }),
     };
     const fn = map[providerId];
     if (!fn) throw new Error('未支持的 TTS 供应商 id');
     return await fn();
   }
   const map = {
-    volcengine: () => generateWithVolcEngine('测试', outputPath, { apiKey, gender: 'female', speed: 1.0 }),
-    zhipu:       () => generateWithZhipu('测试', outputPath, { apiKey, gender: 'female', speed: 1.0 }),
-    baidu:       () => generateWithBaidu('测试', outputPath, { apiKey, gender: 'female', speed: 1.0 }),
-    'aliyun-tts':() => generateWithAliyunTTS('测试', outputPath, { apiKey, gender: 'female', speed: 1.0 }),
-    minimax:     () => generateWithMiniMaxTTS('测试', outputPath, { apiKey, gender: 'female', speed: 1.0 }),
-    xunfei:      () => generateWithXunfei('测试', outputPath, { apiKey, gender: 'female', speed: 1.0 }),
-    elevenlabs:  () => generateWithElevenLabs('测试', outputPath, { apiKey, gender: 'female', speed: 1.0 }),
-    openai:      () => generateWithOpenAI('测试', outputPath, { apiKey, gender: 'female', speed: 1.0 }),
+    'volcengine-tts': () => generateWithVolcEngine('测试', outputPath, { apiKey, gender: 'female', speed: 1.0 }),
   };
   const fn = map[providerId];
   if (!fn) throw new Error('未支持的 TTS 供应商 id');

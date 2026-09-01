@@ -28,8 +28,8 @@
           expandedProviders: {},
           modal: '',
           editingId: '',
-          provider: { id: '', name: '', api_url: '', api_key: '', api_host: '', workspace_id: '', api_ws_url: '' },
-          providerEdit: { api_url: '', api_key: '', api_host: '', workspace_id: '', api_ws_url: '' },
+          provider: { id: '', name: '', api_url: '', api_key: '', tts_resource_id: '', clone_resource_id: '' },
+          providerEdit: { api_url: '', api_key: '', tts_resource_id: '', clone_resource_id: '' },
           model: { providerId: '', id: '', name: '', type: 'chat', use: 'story' },
           mcp: { name: '', url: '', description: '' },
           skill: { name: '', emoji: '', type: '文本', endpoint: '', description: '' }
@@ -43,8 +43,8 @@
         activePreset() {
           return this.presets.find(preset => preset.id === this.provider.id);
         },
-        editingAliyunWorkspace() {
-          return this.editingId === 'aliyun-tts';
+        editingVolcengineSpeech() {
+          return this.editingId === 'volcengine-tts';
         }
       },
       methods: {
@@ -73,7 +73,7 @@
         },
         openProvider() {
           this.modal = 'provider';
-          this.provider = { id: '', name: '', api_url: '', api_key: '', api_host: '', workspace_id: '', api_ws_url: '' };
+          this.provider = { id: '', name: '', api_url: '', api_key: '', tts_resource_id: '', clone_resource_id: '' };
         },
         isProviderExpanded(id) {
           return !!this.expandedProviders[id];
@@ -84,7 +84,7 @@
         openProviderEdit(provider) {
           this.modal = 'providerEdit';
           this.editingId = provider.id;
-          this.providerEdit = { api_url: provider.api_url || '', api_key: '', api_host: provider.api_host || '', workspace_id: provider.workspace_id || '', api_ws_url: provider.api_ws_url || '' };
+          this.providerEdit = { api_url: provider.api_url || '', api_key: '', tts_resource_id: provider.tts_resource_id || '', clone_resource_id: provider.clone_resource_id || '' };
         },
         openModel(providerId) {
           this.modal = 'model';
@@ -110,9 +110,8 @@
               name: this.provider.name,
               api_url: this.provider.api_url,
               api_key: this.provider.api_key,
-              api_host: this.provider.api_host,
-              workspace_id: this.provider.workspace_id,
-              api_ws_url: this.provider.api_ws_url,
+              tts_resource_id: this.provider.id === 'volcengine-tts' ? 'seed-tts-2.0' : undefined,
+              clone_resource_id: this.provider.id === 'volcengine-tts' ? 'seed-icl-2.0' : undefined,
               models: this.activePreset?.defaultModels || []
             });
             this.close();
@@ -126,10 +125,9 @@
           const body = {};
           if (this.providerEdit.api_url) body.api_url = this.providerEdit.api_url;
           if (this.providerEdit.api_key) body.api_key = this.providerEdit.api_key;
-          if (this.editingAliyunWorkspace) {
-            body.workspace_id = this.providerEdit.workspace_id;
-            body.api_host = this.providerEdit.api_host;
-            body.api_ws_url = this.providerEdit.api_ws_url;
+          if (this.editingVolcengineSpeech) {
+            body.tts_resource_id = 'seed-tts-2.0';
+            body.clone_resource_id = 'seed-icl-2.0';
           }
           try {
             await api.put(`/api/settings/providers/${encodeURIComponent(this.editingId)}`, body);
@@ -292,13 +290,13 @@
               </div>
               <div class="sp-error-bar" v-if="provider.test_error">{{ provider.test_error }}</div>
               <div class="sp-models-sub" v-show="isProviderExpanded(provider.id)">
-                <div class="sp-models-sub-head"><span>{{ (provider.models || []).length }} 个模型</span><button class="sp-btn primary-btn" @click="openModel(provider.id)">+ 添加模型</button></div>
+                <div class="sp-models-sub-head"><span>{{ (provider.models || []).length }} 个模型</span><button v-if="provider.id!=='volcengine-tts'" class="sp-btn primary-btn" @click="openModel(provider.id)">+ 添加模型</button><span v-else class="sp-prov-tag">仅限 TTS / 声音复刻</span></div>
                 <div class="sp-model-row" v-for="model in provider.models || []" :key="model.id">
                   <span class="sp-model-name">{{ model.name }}</span>
                   <span class="sp-model-id">{{ model.id }}</span>
                   <span class="sp-model-type">{{ model.type }}</span>
                   <span class="sp-model-use">{{ model.use }}</span>
-                  <button class="sp-model-del" @click="deleteModel(provider.id, model.id)">×</button>
+                  <button v-if="provider.id!=='volcengine-tts'" class="sp-model-del" @click="deleteModel(provider.id, model.id)">×</button>
                 </div>
               </div>
             </div>
@@ -329,23 +327,19 @@
                 <div class="form-row"><div class="form-group"><label>供应商名称</label><input v-model="provider.name" autocomplete="off"></div><div class="form-group"><label>ID</label><input v-model="provider.id" autocomplete="off"></div></div>
                 <div class="form-group"><label>API 地址</label><input v-model="provider.api_url" autocomplete="off"></div>
                 <div class="form-group"><label>API Key</label><input type="password" v-model="provider.api_key" autocomplete="new-password"></div>
-                <template v-if="provider.id==='aliyun-tts'">
-                  <div class="form-group"><label>Workspace ID</label><input v-model="provider.workspace_id" placeholder="ws-..."></div>
-                  <div class="form-group"><label>API Host</label><input v-model="provider.api_host" placeholder="ws-....cn-beijing.maas.aliyuncs.com"></div>
-                  <div class="form-group"><label>CosyVoice WebSocket 地址</label><input v-model="provider.api_ws_url" placeholder="wss://dashscope.aliyuncs.com/api-ws/v1/inference/"></div>
-                  <div class="ai-preset-empty">HTTP 地址使用工作空间专属 Host；CosyVoice WebSocket 仍使用阿里官方公共网关，由 sk-ws-* Key 绑定工作空间。</div>
+                <template v-if="provider.id==='volcengine-tts'">
+                  <div class="form-row"><div class="form-group"><label>语音合成资源</label><input value="seed-tts-2.0" disabled></div><div class="form-group"><label>声音复刻资源</label><input value="seed-icl-2.0" disabled></div></div>
+                  <div class="ai-preset-empty">安全边界：该供应商只允许语音合成与声音复刻，不能添加或调用字节文本、图片、视频、识别及其他模型。</div>
                 </template>
                 <div class="form-actions"><button class="btn-primary" @click="saveProvider">添加</button><button class="btn-sm" @click="close">取消</button></div>
               </template>
               <template v-if="modal==='providerEdit'">
                 <div class="form-title">编辑供应商</div>
-                <div class="form-group"><label>{{ editingAliyunWorkspace ? 'DashScope HTTP 地址' : 'API 地址' }}</label><input v-model="providerEdit.api_url"></div>
+                <div class="form-group"><label>API 地址</label><input v-model="providerEdit.api_url" :disabled="editingVolcengineSpeech"></div>
                 <div class="form-group"><label>API Key</label><input type="password" v-model="providerEdit.api_key" placeholder="留空不修改"></div>
-                <template v-if="editingAliyunWorkspace">
-                  <div class="form-group"><label>Workspace ID</label><input v-model="providerEdit.workspace_id" placeholder="ws-..."></div>
-                  <div class="form-group"><label>API Host</label><input v-model="providerEdit.api_host" placeholder="ws-....cn-beijing.maas.aliyuncs.com"></div>
-                  <div class="form-group"><label>CosyVoice WebSocket 地址</label><input v-model="providerEdit.api_ws_url" placeholder="wss://dashscope.aliyuncs.com/api-ws/v1/inference/"></div>
-                  <div class="ai-preset-empty">保存后会让旧阿里缓存失效；用户录音、克隆音色和其他供应商数据不会被删除。</div>
+                <template v-if="editingVolcengineSpeech">
+                  <div class="form-row"><div class="form-group"><label>语音合成资源</label><input value="seed-tts-2.0" disabled></div><div class="form-group"><label>声音复刻资源</label><input value="seed-icl-2.0" disabled></div></div>
+                  <div class="ai-preset-empty">这里只人工替换新版 API Key。权限固定为 TTS / 声音复刻；不会删除用户录音、历史业务记录或其他供应商数据。</div>
                 </template>
                 <div class="form-actions"><button class="btn-primary" @click="saveProviderEdit">保存</button><button class="btn-sm" @click="close">取消</button></div>
               </template>
