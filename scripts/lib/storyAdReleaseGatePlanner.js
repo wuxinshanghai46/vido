@@ -119,6 +119,8 @@ const DOMAIN_RULES = [
       /^src\/routes\/workbench\.js$/i,
       /^src\/services\/(?:pipelineModelService|deyunaiService|videoService)\.js$/i,
       /^src\/services\/(?:ttsService|voicePackEnrollmentService)\.js$/i,
+      /^outputs\/pipeline_model_config\.json$/i,
+      /^scripts\/configure-smscrw-image-provider\.js$/i,
       /^src\/services\/newStoryAd\/(?:videoAdapter(?:MediaRuntime)?|lipSyncService|videoArtifactWorkflowService)\.js$/i,
       /^src\/services\/newStoryAd\/(?:productionGraphService|productionAssetOrchestratorService|revisionService)\.js$/i,
       /^src\/routes\/newStoryAd\/(?:personPlanGenerationRoute|propRoutes)\.js$/i,

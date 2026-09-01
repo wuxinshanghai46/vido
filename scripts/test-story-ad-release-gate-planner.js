@@ -156,6 +156,15 @@ assert.deepEqual(personPromptPlan.gates.map(row => row.id), ['story_content', 'a
 assert.equal(plan(['AGENTS.md']).profile, 'ui');
 assert.equal(plan(['src/services/newStoryAd/storageService.js']).profile, 'systemic');
 assert.equal(plan(['src/services/voicePackEnrollmentService.js']).profile, 'systemic');
+assert.deepEqual(
+  planner.createPlan({
+    root: process.cwd(), baseRevision: 'a'.repeat(40), targetRevision: 'b'.repeat(40), sourceTree: 'c'.repeat(40),
+    files: ['outputs/pipeline_model_config.json', 'scripts/configure-smscrw-image-provider.js'],
+    reliable: true, targetedHome: true,
+  }).gates.map(row => row.id),
+  ['systemic', 'workspace_ui', 'release_core'],
+  '媒体供应商路由配置与兼容迁移脚本必须归入系统安全门禁，家庭电脑不得误触全平台回归',
+);
 assert.equal(plan(['src/routes/workbench.js']).profile, 'systemic');
 assert.equal(plan(['public/js/digital-human.js']).profile, 'ui');
 assert.deepEqual(
