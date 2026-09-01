@@ -28,8 +28,8 @@
           expandedProviders: {},
           modal: '',
           editingId: '',
-          provider: { id: '', name: '', api_url: '', api_key: '' },
-          providerEdit: { api_url: '', api_key: '' },
+          provider: { id: '', name: '', api_url: '', api_key: '', api_host: '', workspace_id: '', api_ws_url: '' },
+          providerEdit: { api_url: '', api_key: '', api_host: '', workspace_id: '', api_ws_url: '' },
           model: { providerId: '', id: '', name: '', type: 'chat', use: 'story' },
           mcp: { name: '', url: '', description: '' },
           skill: { name: '', emoji: '', type: '文本', endpoint: '', description: '' }
@@ -42,6 +42,9 @@
         },
         activePreset() {
           return this.presets.find(preset => preset.id === this.provider.id);
+        },
+        editingAliyunWorkspace() {
+          return this.editingId === 'aliyun-tts';
         }
       },
       methods: {
@@ -70,7 +73,7 @@
         },
         openProvider() {
           this.modal = 'provider';
-          this.provider = { id: '', name: '', api_url: '', api_key: '' };
+          this.provider = { id: '', name: '', api_url: '', api_key: '', api_host: '', workspace_id: '', api_ws_url: '' };
         },
         isProviderExpanded(id) {
           return !!this.expandedProviders[id];
@@ -81,7 +84,7 @@
         openProviderEdit(provider) {
           this.modal = 'providerEdit';
           this.editingId = provider.id;
-          this.providerEdit = { api_url: provider.api_url || '', api_key: '' };
+          this.providerEdit = { api_url: provider.api_url || '', api_key: '', api_host: provider.api_host || '', workspace_id: provider.workspace_id || '', api_ws_url: provider.api_ws_url || '' };
         },
         openModel(providerId) {
           this.modal = 'model';
@@ -107,6 +110,9 @@
               name: this.provider.name,
               api_url: this.provider.api_url,
               api_key: this.provider.api_key,
+              api_host: this.provider.api_host,
+              workspace_id: this.provider.workspace_id,
+              api_ws_url: this.provider.api_ws_url,
               models: this.activePreset?.defaultModels || []
             });
             this.close();
@@ -120,6 +126,11 @@
           const body = {};
           if (this.providerEdit.api_url) body.api_url = this.providerEdit.api_url;
           if (this.providerEdit.api_key) body.api_key = this.providerEdit.api_key;
+          if (this.editingAliyunWorkspace) {
+            body.workspace_id = this.providerEdit.workspace_id;
+            body.api_host = this.providerEdit.api_host;
+            body.api_ws_url = this.providerEdit.api_ws_url;
+          }
           try {
             await api.put(`/api/settings/providers/${encodeURIComponent(this.editingId)}`, body);
             this.close();
@@ -318,12 +329,24 @@
                 <div class="form-row"><div class="form-group"><label>供应商名称</label><input v-model="provider.name" autocomplete="off"></div><div class="form-group"><label>ID</label><input v-model="provider.id" autocomplete="off"></div></div>
                 <div class="form-group"><label>API 地址</label><input v-model="provider.api_url" autocomplete="off"></div>
                 <div class="form-group"><label>API Key</label><input type="password" v-model="provider.api_key" autocomplete="new-password"></div>
+                <template v-if="provider.id==='aliyun-tts'">
+                  <div class="form-group"><label>Workspace ID</label><input v-model="provider.workspace_id" placeholder="ws-..."></div>
+                  <div class="form-group"><label>API Host</label><input v-model="provider.api_host" placeholder="ws-....cn-beijing.maas.aliyuncs.com"></div>
+                  <div class="form-group"><label>CosyVoice WebSocket 地址</label><input v-model="provider.api_ws_url" placeholder="wss://dashscope.aliyuncs.com/api-ws/v1/inference/"></div>
+                  <div class="ai-preset-empty">HTTP 地址使用工作空间专属 Host；CosyVoice WebSocket 仍使用阿里官方公共网关，由 sk-ws-* Key 绑定工作空间。</div>
+                </template>
                 <div class="form-actions"><button class="btn-primary" @click="saveProvider">添加</button><button class="btn-sm" @click="close">取消</button></div>
               </template>
               <template v-if="modal==='providerEdit'">
                 <div class="form-title">编辑供应商</div>
-                <div class="form-group"><label>API 地址</label><input v-model="providerEdit.api_url"></div>
+                <div class="form-group"><label>{{ editingAliyunWorkspace ? 'DashScope HTTP 地址' : 'API 地址' }}</label><input v-model="providerEdit.api_url"></div>
                 <div class="form-group"><label>API Key</label><input type="password" v-model="providerEdit.api_key" placeholder="留空不修改"></div>
+                <template v-if="editingAliyunWorkspace">
+                  <div class="form-group"><label>Workspace ID</label><input v-model="providerEdit.workspace_id" placeholder="ws-..."></div>
+                  <div class="form-group"><label>API Host</label><input v-model="providerEdit.api_host" placeholder="ws-....cn-beijing.maas.aliyuncs.com"></div>
+                  <div class="form-group"><label>CosyVoice WebSocket 地址</label><input v-model="providerEdit.api_ws_url" placeholder="wss://dashscope.aliyuncs.com/api-ws/v1/inference/"></div>
+                  <div class="ai-preset-empty">保存后会让旧阿里缓存失效；用户录音、克隆音色和其他供应商数据不会被删除。</div>
+                </template>
                 <div class="form-actions"><button class="btn-primary" @click="saveProviderEdit">保存</button><button class="btn-sm" @click="close">取消</button></div>
               </template>
               <template v-if="modal==='model'">

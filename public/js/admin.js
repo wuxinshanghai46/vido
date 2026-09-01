@@ -1187,6 +1187,13 @@ function editProviderKey(id) {
   document.getElementById('modal-apikey-title').textContent = `编辑 ${p.name}`;
   document.getElementById('modal-prov-url').value = p.api_url || '';
   document.getElementById('modal-apikey-input').value = '';
+  const workspaceFields = document.getElementById('modal-aliyun-workspace-fields');
+  if (workspaceFields) workspaceFields.style.display = id === 'aliyun-tts' ? 'flex' : 'none';
+  if (id === 'aliyun-tts') {
+    document.getElementById('modal-workspace-id').value = p.workspace_id || '';
+    document.getElementById('modal-api-host').value = p.api_host || '';
+    document.getElementById('modal-api-ws-url').value = p.api_ws_url || '';
+  }
   document.getElementById('modal-apikey').classList.add('show');
 }
 function closeApiKeyModal() { document.getElementById('modal-apikey').classList.remove('show'); editingProviderId = null; }
@@ -1196,6 +1203,11 @@ async function saveProviderEdit() {
   const key = document.getElementById('modal-apikey-input').value.trim();
   try {
     const body = {}; if (url) body.api_url = url; if (key) body.api_key = key;
+    if (editingProviderId === 'aliyun-tts') {
+      body.workspace_id = document.getElementById('modal-workspace-id').value.trim();
+      body.api_host = document.getElementById('modal-api-host').value.trim();
+      body.api_ws_url = document.getElementById('modal-api-ws-url').value.trim();
+    }
     const res = await authFetch(`/api/settings/providers/${editingProviderId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     const data = await res.json(); if (!data.success) throw new Error(data.error);
     closeApiKeyModal(); await loadProviders(); toast('已保存');
@@ -4288,8 +4300,7 @@ const _PROVIDER_I18N = {
   'volcengine': '火山引擎',
   'jimeng': '即梦 AI',
   'dashscope': '阿里百炼',
-  'aliyun-tts': '阿里 TTS',
-  'aliyun-nls': '阿里 NLS',
+  'aliyun-tts': '阿里百炼工作空间 TTS',
   'deepseek': 'DeepSeek',
   'openai': 'OpenAI',
   'anthropic': 'Anthropic Claude',

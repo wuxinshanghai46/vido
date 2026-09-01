@@ -6,7 +6,8 @@ const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
 
 // 上传目录
-const uploadDir = path.join(__dirname, '../../outputs/avatar');
+const OUTPUT_DIR = path.resolve(process.env.OUTPUT_DIR || path.join(__dirname, '../../outputs'));
+const uploadDir = path.join(OUTPUT_DIR, 'avatar');
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
 const previewVoiceCacheDir = path.join(uploadDir, '__preview_cache');
 if (!fs.existsSync(previewVoiceCacheDir)) fs.mkdirSync(previewVoiceCacheDir, { recursive: true });
@@ -1691,8 +1692,16 @@ router.post('/preview-voice', async (req, res) => {
       return res.status(410).json({ success: false, error: '该音色试听失败，已自动移除' });
     }
     const crypto = require('crypto');
+    let providerVersion = '';
+    if (providerKey === 'aliyun-tts') {
+      try {
+        const settings = require('../services/settingsService').loadSettings();
+        const ali = (settings.providers || []).find(p => p.id === 'aliyun-tts' || p.preset === 'aliyun-tts');
+        providerVersion = `${ali?.workspace_id || ''}:${ali?.catalog_synced_at || ''}`;
+      } catch {}
+    }
     const cacheKey = crypto.createHash('sha1')
-      .update(JSON.stringify({ sampleText, safeVoiceId, safeGender, speed: speed || 1.0 }))
+      .update(JSON.stringify({ sampleText, safeVoiceId, safeGender, speed: speed || 1.0, providerVersion }))
       .digest('hex')
       .slice(0, 24);
     const cachedPath = path.join(previewVoiceCacheDir, `preview_${cacheKey}.mp3`);
@@ -1733,7 +1742,8 @@ router.post('/preview-voice', async (req, res) => {
     }
   } catch (err) {
     console.error('[preview-voice] error:', err.message);
-    if (!isTopviewVoice) _markBadPreviewVoice(safeVoiceId, err.message);
+    const { isTtsVoiceError } = require('../services/ttsService');
+    if (!isTopviewVoice && isTtsVoiceError(err)) _markBadPreviewVoice(safeVoiceId, err.message);
     const message = err.code === 'TTS_PROVIDER_BILLING'
       ? '该音色所属语音服务当前余额不足或账户状态异常，已从可选列表移除；请充值后重新检测，或改选其他可用供应商。'
       : err.code === 'TTS_PROVIDER_NOT_CONFIGURED'

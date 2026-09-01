@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const sqliteConfig = require('../db/sqlite');
 const appKv = require('../repositories/appKvRepository');
+const { voices: ALIYUN_COSYVOICE_VOICES } = require('./aliyunCosyVoiceCatalog');
 
 const OUTPUT_DIR = process.env.OUTPUT_DIR
   ? path.resolve(process.env.OUTPUT_DIR)
@@ -91,24 +92,7 @@ const PROVIDER_PRESETS = {
     { id: '5003', name: '度米朵（情感女声）', type: 'tts', use: 'tts' },
     { id: '106',  name: '度博文（情感男声）', type: 'tts', use: 'tts' },
   ] },
-  'aliyun-tts': { name: '阿里云CosyVoice', api_url: 'https://dashscope.aliyuncs.com/api/v1',  defaultModels: [
-    { id: 'longxiaochun', name: '龙小纯（温柔女声）', type: 'tts', use: 'tts' },
-    { id: 'longcheng',    name: '龙城（沉稳男声）',   type: 'tts', use: 'tts' },
-    { id: 'longhua',      name: '龙华（儒雅男声）',   type: 'tts', use: 'tts' },
-    { id: 'longwan',      name: '龙婉（粤语女声）',   type: 'tts', use: 'tts' },
-    { id: 'longyu',       name: '龙宇（重庆话男声）', type: 'tts', use: 'tts' },
-  ] },
-  'aliyun-nls': { name: '阿里 智能语音交互(NLS)', api_url: 'https://nls-gateway-cn-shanghai.aliyuncs.com', defaultModels: [
-    { id: 'xiaoyun',  name: 'Xiaoyun（标准女声）',     type: 'tts', use: 'tts' },
-    { id: 'xiaogang', name: 'Xiaogang（标准男声）',    type: 'tts', use: 'tts' },
-    { id: 'Aiqi',     name: 'Aiqi（温柔女声）',         type: 'tts', use: 'tts' },
-    { id: 'Aixia',    name: 'Aixia（亲切女声）',       type: 'tts', use: 'tts' },
-    { id: 'Ruoxi',    name: 'Ruoxi（温柔女声）',       type: 'tts', use: 'tts' },
-    { id: 'Sijia',    name: 'Sijia（温柔女声）',       type: 'tts', use: 'tts' },
-    { id: 'siyue',    name: '思悦（温柔女声）',         type: 'tts', use: 'tts' },
-    { id: 'jielidou', name: '杰力豆（童声）',           type: 'tts', use: 'tts' },
-    { id: 'ruilin',   name: '瑞琳（老爷爷）',           type: 'tts', use: 'tts' },
-  ] },
+  'aliyun-tts': { name: '阿里百炼工作空间 · CosyVoice', api_url: 'https://dashscope.aliyuncs.com/api/v1', defaultModels: ALIYUN_COSYVOICE_VOICES.map(v => ({ id: v.id, name: v.name, type: 'tts', use: 'tts', model: v.model })) },
   xunfei: { name: '科大讯飞', api_url: 'wss://tts-api.xfyun.cn/v2/tts', defaultModels: [
     { id: 'xiaoyan', name: '小燕（温柔女声）', type: 'tts', use: 'tts' },
     { id: 'aisjiuxu', name: '许久（沉稳男声）', type: 'tts', use: 'tts' },

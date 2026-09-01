@@ -3215,6 +3215,12 @@
           <input type="password" class="srp-inp" id="modal-apikey-input" placeholder="输入新的 API Key（留空则保持不变）" />
           <div style="font-size:11px;color:var(--text3);margin-top:5px">密钥仅保存在本地，不会上传任何服务器</div>
         </div>
+        <div id="modal-aliyun-workspace-fields" style="display:none;flex-direction:column;gap:12px">
+          <div><div class="sp-field-label">Workspace ID</div><input class="srp-inp" id="modal-workspace-id" placeholder="ws-..." /></div>
+          <div><div class="sp-field-label">API Host</div><input class="srp-inp" id="modal-api-host" placeholder="ws-....cn-beijing.maas.aliyuncs.com" /></div>
+          <div><div class="sp-field-label">CosyVoice WebSocket 地址</div><input class="srp-inp" id="modal-api-ws-url" placeholder="wss://dashscope.aliyuncs.com/api-ws/v1/inference/" /></div>
+          <div style="font-size:11px;color:var(--text3)">HTTP 使用工作空间专属 Host；CosyVoice WebSocket 使用阿里官方公共网关，由 sk-ws-* Key 绑定工作空间。</div>
+        </div>
       </div>
       <div class="modal-footer" style="display:flex;gap:8px;justify-content:flex-end;padding:0 20px 20px">
         <button class="btn-cancel" onclick="closeApiKeyModal()">取消</button>

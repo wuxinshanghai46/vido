@@ -1,7 +1,6 @@
 /**
  * TTS 语音合成服务
- * 优先级（2026-04-26 改版）：阿里云 CosyVoice → 阿里云 NLS
- * 全平台统一只用阿里 TTS · 移除火山豆包/百度/讯飞/MiniMax/ElevenLabs/OpenAI/SAPI
+ * 阿里百炼工作空间 CosyVoice 为唯一阿里 TTS 链路。
  * 自定义克隆音色：只走阿里 CosyVoice 真克隆（永久 voice_id），失败立即报错不回退默认女声
  */
 require('dotenv').config();
@@ -11,7 +10,8 @@ const path = require('path');
 const https = require('https');
 const http = require('http');
 
-const BAD_PREVIEW_VOICES_FILE = path.join(__dirname, '../../outputs/avatar/bad_preview_voices.json');
+const OUTPUT_DIR = path.resolve(process.env.OUTPUT_DIR || path.join(__dirname, '../../outputs'));
+const BAD_PREVIEW_VOICES_FILE = path.join(OUTPUT_DIR, 'avatar', 'bad_preview_voices.json');
 
 function readBadPreviewVoices() {
   try {
@@ -31,6 +31,12 @@ function markBadPreviewVoices(voiceIds = []) {
 
 function isTtsBillingError(error) {
   return /\b429\b|余额不足|资源包|请充值|insufficient (?:balance|quota|credit)|quota exceeded/i.test(String(error?.message || error || ''));
+}
+
+function isTtsVoiceError(error) {
+  const text = String(error?.message || error || '');
+  if (isTtsBillingError(error) || /Arrearage|account is in good standing|API.?Key|Unauthorized|Forbidden|WebSocket|超时|连接/i.test(text)) return false;
+  return /InvalidParameter|invalid voice|voice.*(?:not found|unsupported|不存在|不支持)|音色.*(?:无效|不存在|不支持)/i.test(text);
 }
 
 /**
@@ -78,7 +84,6 @@ async function generateSpeech(text, outputPath, { gender = 'female', speed = 1.0
       return _postProcessAudio(result);
     } catch (error) {
       if (isTtsBillingError(error)) {
-        markBadPreviewVoices([...ZHIPU_PUBLIC_VOICE_IDS]);
         const unavailable = new Error('智谱 TTS 余额或资源包不足，当前智谱音色已暂停；请改选阿里云音色后重试，或先为智谱账号充值');
         unavailable.code = 'TTS_PROVIDER_BILLING';
         unavailable.retryable = true;
@@ -88,12 +93,11 @@ async function generateSpeech(text, outputPath, { gender = 'female', speed = 1.0
     }
   }
 
-  // 供应商链（2026-04-26 精简）：只用阿里 — CosyVoice → NLS
+  // 阿里供应商只有当前百炼工作空间 CosyVoice；旧 NLS 产品线已停用并移除。
   // 不再回退到火山豆包/MiniMax/讯飞/百度/OpenAI/SAPI，这些会用默认女声替代用户期望的克隆/选定音色
   const selectedProvider = String(providerId || voiceProviderForId(voiceId) || '').toLowerCase();
   const chain = [
-    { id: 'aliyun-tts',  name: '阿里 CosyVoice', fn: generateWithAliyunTTS,   opts: { gender, speed, pitch, voiceId, instruction, signal } },
-    { id: 'aliyun-nls',  name: '阿里 NLS',       fn: generateWithAliyunNLS,   opts: { gender, speed, pitch, voiceId, signal } },
+    { id: 'aliyun-tts', name: '阿里百炼 CosyVoice', fn: generateWithAliyunTTS, opts: { gender, speed, pitch, voiceId, instruction, signal } },
   ].filter(item => !selectedProvider || !strictProvider || item.id === selectedProvider);
 
   if (strictProvider && selectedProvider && !chain.length) {
@@ -113,7 +117,7 @@ async function generateSpeech(text, outputPath, { gender = 'female', speed = 1.0
         // 埋点：阿里 CosyVoice / NLS 按字符计费
         try {
           require('./tokenTracker').record({
-            provider: id, model: id === 'aliyun-tts' ? 'cosyvoice-v3-flash' : 'aliyun-nls',
+            provider: id, model: 'cosyvoice-v3-flash',
             category: 'tts', ttsChars: (text || '').length,
             durationMs: Date.now() - startedAt, status: 'success',
           });
@@ -126,7 +130,7 @@ async function generateSpeech(text, outputPath, { gender = 'female', speed = 1.0
       errors.push(`${name}: ${err.message}`);
       try {
         require('./tokenTracker').record({
-          provider: id, model: id === 'aliyun-tts' ? 'cosyvoice-v3-flash' : 'aliyun-nls',
+          provider: id, model: 'cosyvoice-v3-flash',
           category: 'tts', ttsChars: (text || '').length,
           durationMs: Date.now() - startedAt, status: 'fail', errorMsg: err.message,
         });
@@ -677,20 +681,6 @@ const ALI_VOICES = {
   male: 'longcheng',
 };
 
-// —— 阿里 NLS（智能语音交互）基础 TTS · 不支持克隆，只能预设音色 ——
-// 使用 AppKey + AccessToken（api_key 存成 "{AppKey}:{AccessToken}" 格式）
-async function generateWithAliyunNLS(text, outputPath, { gender, speed, pitch, voiceId, signal = null }) {
-  const { synthesizeWithNLS, hasNLSCreds } = require('./aliyunVoiceService');
-  if (!hasNLSCreds()) return null;
-  // NLS TTS 的音色 ID 和 DashScope CosyVoice 不一样，单独映射
-  const NLS_VOICES = { female: 'xiaoyun', male: 'xiaogang', neutral: 'Aiqi' };
-  const voice = voiceId || NLS_VOICES[gender] || 'xiaoyun';
-  const model = _getTTSModel('aliyun-nls');
-  const finalVoice = (model?.id && !voiceId) ? model.id : voice;
-  const pitchRate = Math.round(((Number(pitch) || 1) - 1) * 500);
-  return synthesizeWithNLS(text, outputPath, { voice: finalVoice, speed, pitch: pitchRate, signal });
-}
-
 // 阿里 TTS 现在统一走 aliyunVoiceService.synthesize（CosyVoice WebSocket）
 // CosyVoice 已经不支持 HTTP REST 了，旧的 cosyvoice-v1 HTTP 端点已停服
 async function generateWithAliyunTTS(text, outputPath, { gender, speed, pitch, voiceId, apiKey, instruction = '', signal = null }) {
@@ -1214,77 +1204,12 @@ function getAvailableVoices() {
 
   // 阿里云 CosyVoice
   if (_getTTSKey('aliyun-tts')) {
-    const ali = (id, name, gender, tag = '') => ({ id, name, gender, provider: '阿里云', providerIcon: '☁️', lang: 'zh', ...(tag ? { tag } : {}) });
-    voices.push(
-      // CosyVoice v3-flash 官方公开音色。这里不再只放少量样例，
-      // 让配音弹窗更接近阿里控制台里能看到的声音库规模。
-      ali('longxiaochun_v3', '龙小淳·知性积极', 'female', '推荐'),
-      ali('longxiaoxia_v3', '龙小夏·沉稳权威', 'female', '口播'),
-      ali('longyumi_v3', 'YUMI·正经青年女', 'female'),
-      ali('longanwen_v3', '龙安温·优雅知性', 'female'),
-      ali('longanli_v3', '龙安莉·利落从容', 'female'),
-      ali('longyingmu_v3', '龙应沐·优雅知性', 'female'),
-      ali('longantai_v3', '龙安台·嗲甜台湾', 'female'),
-      ali('longhua_v3', '龙华·元气甜美', 'female'),
-      ali('longyan_v3', '龙颜·温暖春风', 'female'),
-      ali('longxing_v3', '龙星·温婉邻家', 'female'),
-      ali('longwan_v3', '龙婉·细腻柔声', 'female'),
-      ali('longqiang_v3', '龙嫱·浪漫风情', 'female'),
-      ali('longfeifei_v3', '龙菲菲·甜美娇气', 'female'),
-      ali('longanrou_v3', '龙安柔·温柔闺蜜', 'female'),
-      ali('longanling_v3', '龙安灵·思维灵动', 'female'),
-      ali('longanya_v3', '龙安雅·高雅气质', 'female'),
-      ali('longanqin_v3', '龙安亲·亲和活泼', 'female'),
-      ali('longmiao_v3', '龙妙·抑扬顿挫', 'female', '有声书'),
-      ali('longyuan_v3', '龙媛·温暖治愈', 'female', '有声书'),
-      ali('longyue_v3', '龙悦·温暖磁性', 'female', '有声书'),
-      ali('longwanjun_v3', '龙婉君·细腻柔声', 'female', '有声书'),
-      ali('longlaoyi_v3', '龙老姨·烟火从容', 'female', '长者'),
-      ali('longdaiyu_v3', '龙黛玉·娇率才女', 'female', '短视频'),
-      ali('longanran_v3', '龙安燃·活泼质感', 'female', '直播'),
-      ali('longanxuan_v3', '龙安宣·经典直播', 'female', '直播'),
-      ali('loongbella_v3', 'Bella3.0·精准干练', 'female', '播报'),
-      ali('longanyun_v3', '龙安昀·居家暖男', 'male'),
-      ali('longanlang_v3', '龙安朗·清爽利落', 'male', '播报'),
-      ali('longcheng_v3', '龙橙·智慧青年', 'male', '推荐'),
-      ali('longze_v3', '龙泽·温暖元气', 'male'),
-      ali('longzhe_v3', '龙哲·讲述暖男', 'male'),
-      ali('longtian_v3', '龙天·磁性理智', 'male'),
-      ali('longhao_v3', '龙浩·多情忧郁', 'male'),
-      ali('longhan_v3', '龙寒·温暖痴情', 'male'),
-      ali('longanzhi_v3', '龙安智·睿智轻熟', 'male'),
-      ali('longsanshu_v3', '龙三叔·沉稳质感', 'male', '有声书'),
-      ali('longxiu_v3', '龙修·博才说书', 'male', '有声书'),
-      ali('longnan_v3', '龙楠·睿智青年', 'male', '有声书'),
-      ali('longyichen_v3', '龙逸尘·洒脱活力', 'male', '有声书'),
-      ali('longlaobo_v3', '龙老伯·沧桑岁月', 'male', '长者'),
-      ali('longjiqi_v3', '龙机器·呆萌机器人', 'neutral', '短视频'),
-      ali('longhouge_v3', '龙猴哥·经典猴哥', 'male', '短视频'),
-      ali('longshuo_v3', '龙硕·博才干练', 'male', '播报'),
-      ali('longshu_v3', '龙书·沉稳青年', 'male', '播报'),
-      ali('longhuhu_v3', '龙呼呼·天真烂漫', 'child', '童声'),
-      // v3-flash 有些账号仍只接受无 _v3 的旧别名，保留少量兜底。
-      ali('longxiaochun', '龙小淳·兼容', 'female'),
-      ali('longcheng', '龙城·兼容', 'male'),
-      ali('longhua', '龙华·兼容', 'male')
-    );
-  }
-
-  // 阿里 NLS 预置音色（智能语音交互，和 CosyVoice 是不同产品线）
-  if (_getTTSKey('aliyun-nls')) {
-    const nls = (id, name, gender, tag = '') => ({ id, name, gender, provider: '阿里NLS', providerIcon: '☁️', lang: 'zh', ...(tag ? { tag } : {}) });
-    voices.push(
-      nls('xiaoyun', '小云·标准女声', 'female', '推荐'),
-      nls('xiaomei', '小美·甜美女声', 'female'),
-      nls('ruoxi', '若兮·温柔女声', 'female'),
-      nls('siqi', '思琪·自然女声', 'female'),
-      nls('sijia', '思佳·亲和女声', 'female'),
-      nls('aixia', '艾夏·活力女声', 'female'),
-      nls('xiaogang', '小刚·标准男声', 'male', '推荐'),
-      nls('aicheng', '艾诚·磁性男声', 'male'),
-      nls('sicheng', '思诚·自然男声', 'male'),
-      nls('aiqi', '艾琪·童声', 'child', '童声')
-    );
+    const { voices: aliyunVoices } = require('./aliyunCosyVoiceCatalog');
+    voices.push(...aliyunVoices.map(v => ({
+      ...v,
+      provider: '阿里云',
+      providerIcon: '☁️',
+    })));
   }
 
   // 科大讯飞
@@ -1385,7 +1310,6 @@ async function testProviderSynthesis(providerId, outputPath) {
       zhipu:       () => generateWithZhipu('测试', outputPath, { apiKey: p.api_key, gender: 'female', speed: 1.0 }),
       baidu:       () => generateWithBaidu('测试', outputPath, { apiKey: p.api_key, gender: 'female', speed: 1.0 }),
       'aliyun-tts':() => generateWithAliyunTTS('测试', outputPath, { apiKey: p.api_key, gender: 'female', speed: 1.0 }),
-      'aliyun-nls':() => generateWithAliyunNLS('测试', outputPath, { gender: 'female', speed: 1.0 }),
       minimax:     () => generateWithMiniMaxTTS('测试', outputPath, { apiKey: p.api_key, gender: 'female', speed: 1.0 }),
       xunfei:      () => generateWithXunfei('测试', outputPath, { apiKey: p.api_key, gender: 'female', speed: 1.0 }),
       elevenlabs:  () => generateWithElevenLabs('测试', outputPath, { apiKey: p.api_key, gender: 'female', speed: 1.0 }),
@@ -1400,7 +1324,6 @@ async function testProviderSynthesis(providerId, outputPath) {
     zhipu:       () => generateWithZhipu('测试', outputPath, { apiKey, gender: 'female', speed: 1.0 }),
     baidu:       () => generateWithBaidu('测试', outputPath, { apiKey, gender: 'female', speed: 1.0 }),
     'aliyun-tts':() => generateWithAliyunTTS('测试', outputPath, { apiKey, gender: 'female', speed: 1.0 }),
-    'aliyun-nls':() => generateWithAliyunNLS('测试', outputPath, { gender: 'female', speed: 1.0 }),
     minimax:     () => generateWithMiniMaxTTS('测试', outputPath, { apiKey, gender: 'female', speed: 1.0 }),
     xunfei:      () => generateWithXunfei('测试', outputPath, { apiKey, gender: 'female', speed: 1.0 }),
     elevenlabs:  () => generateWithElevenLabs('测试', outputPath, { apiKey, gender: 'female', speed: 1.0 }),
@@ -1420,4 +1343,5 @@ module.exports = {
   isTtsBillingError,
   readBadPreviewVoices,
   markBadPreviewVoices,
+  isTtsVoiceError,
 };

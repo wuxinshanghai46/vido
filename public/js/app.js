@@ -5543,6 +5543,13 @@ function editProviderKey(id) {
   document.getElementById('modal-apikey-title').textContent = `编辑 ${p.name}`;
   document.getElementById('modal-prov-url').value = p.api_url || '';
   document.getElementById('modal-apikey-input').value = '';
+  const workspaceFields = document.getElementById('modal-aliyun-workspace-fields');
+  if (workspaceFields) workspaceFields.style.display = id === 'aliyun-tts' ? 'flex' : 'none';
+  if (id === 'aliyun-tts') {
+    document.getElementById('modal-workspace-id').value = p.workspace_id || '';
+    document.getElementById('modal-api-host').value = p.api_host || '';
+    document.getElementById('modal-api-ws-url').value = p.api_ws_url || '';
+  }
   document.getElementById('modal-apikey').style.display = 'flex';
   setTimeout(() => document.getElementById('modal-prov-url').focus(), 100);
 }
@@ -5560,6 +5567,11 @@ async function saveProviderEdit() {
     const body = {};
     if (url) body.api_url = url;
     if (key) body.api_key = key;
+    if (editingProviderId === 'aliyun-tts') {
+      body.workspace_id = document.getElementById('modal-workspace-id').value.trim();
+      body.api_host = document.getElementById('modal-api-host').value.trim();
+      body.api_ws_url = document.getElementById('modal-api-ws-url').value.trim();
+    }
     const res = await fetch(`/api/settings/providers/${editingProviderId}`, {
       method: 'PUT', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body)

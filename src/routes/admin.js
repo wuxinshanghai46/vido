@@ -1548,8 +1548,7 @@ function _modelLabelIndex() {
 function _fallbackProviderName(id) {
   return ({
     topview: 'Topview AI',
-    'aliyun-tts': '阿里云 CosyVoice',
-    'aliyun-nls': '阿里云 NLS',
+    'aliyun-tts': '阿里百炼工作空间 CosyVoice',
     deyunai: '漫路聚合',
     volcengine: '火山引擎',
     replicate: 'Replicate',

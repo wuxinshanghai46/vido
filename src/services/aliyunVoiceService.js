@@ -1,25 +1,18 @@
 /**
- * 阿里 语音服务统一入口（支持两条独立产品线）
+ * 阿里百炼工作空间 CosyVoice 统一入口
  *
  * A. DashScope 百炼 CosyVoice 2.0（provider id = aliyun-tts / dashscope）
  *    - Key 格式：sk-* (DashScope API Key)
  *    - 能做：voice_customization 训练（需开通白名单）→ 永久 voice_id → CosyVoice 合成
  *    - 文档：https://help.aliyun.com/zh/model-studio/cosyvoice-clone-api
  *
- * B. 智能语音交互 NLS（provider id = aliyun-nls）
- *    - Key 格式："{AppKey}:{AccessToken}" (冒号分隔，和火山对称)
- *      - AppKey: 16 位字符，对应 NLS 控制台创建的项目
- *      - AccessToken: 32 位 hex，NLS AccessToken（24h 过期但通常用长期 Key）
- *    - 能做：基础 TTS 合成 + 预设音色（无法克隆用户音色）
- *    - 文档：https://help.aliyun.com/zh/isi/developer-reference/restful-api-1
  */
 
 const https = require('https');
 const fs = require('fs');
 const path = require('path');
 
-const API_HOST = 'dashscope.aliyuncs.com';
-const NLS_HOST = 'nls-gateway-cn-shanghai.aliyuncs.com';
+const DEFAULT_API_HOST = 'dashscope.aliyuncs.com';
 
 function _getKey() {
   const { getApiKey } = require('./settingsService');
@@ -31,16 +24,16 @@ function _getKey() {
     || null;
 }
 
-function _getNLSCreds() {
-  const { getApiKey } = require('./settingsService');
-  const raw = getApiKey('aliyun-nls') || process.env.ALIYUN_NLS_CREDS || '';
-  if (!raw || !raw.includes(':')) return null;
-  const [appKey, token] = raw.split(':').map(s => s.trim());
-  if (!appKey || !token) return null;
-  return { appKey, token };
+function _getProviderConfig() {
+  const { loadSettings } = require('./settingsService');
+  const provider = (loadSettings().providers || []).find(p => p && p.enabled !== false && (p.id === 'aliyun-tts' || p.preset === 'aliyun-tts')) || {};
+  const rawUrl = String(provider.api_url || `https://${DEFAULT_API_HOST}/api/v1`).trim();
+  const parsed = new URL(/^https?:\/\//i.test(rawUrl) ? rawUrl : `https://${rawUrl}`);
+  const workspaceId = String(provider.workspace_id || '').trim();
+  const httpHost = parsed.hostname || DEFAULT_API_HOST;
+  const wsUrl = String(provider.api_ws_url || `wss://${httpHost}/api-ws/v1/inference/`).trim();
+  return { httpHost, wsUrl, workspaceId };
 }
-
-function hasNLSCreds() { return !!_getNLSCreds(); }
 
 /**
  * 判断 token 类型
@@ -67,7 +60,7 @@ function _post(pathname, body, extraHeaders = {}, hostOverride) {
   const apiKey = _getKey();
   if (!apiKey) return Promise.reject(new Error('阿里 API Key 未配置 (provider id = aliyun-tts / dashscope)'));
   const payload = typeof body === 'string' ? body : JSON.stringify(body);
-  const host = hostOverride || API_HOST;
+  const host = hostOverride || _getProviderConfig().httpHost;
   return new Promise((resolve, reject) => {
     const req = https.request({
       hostname: host,
@@ -103,7 +96,7 @@ function _get(pathname) {
   if (!apiKey) return Promise.reject(new Error('阿里 API Key 未配置'));
   return new Promise((resolve, reject) => {
     const req = https.request({
-      hostname: API_HOST,
+      hostname: _getProviderConfig().httpHost,
       path: pathname,
       method: 'GET',
       headers: _authHeaders(apiKey),
@@ -321,7 +314,8 @@ async function synthesize(text, voiceId, outputPath, opts = {}) {
   const taskId = uuidv4().replace(/-/g, '');
 
   return new Promise((resolve, reject) => {
-    const ws = new WebSocket('wss://dashscope.aliyuncs.com/api-ws/v1/inference/', {
+    const { wsUrl } = _getProviderConfig();
+    const ws = new WebSocket(wsUrl, {
       headers: {
         Authorization: 'bearer ' + apiKey,
         'X-DashScope-DataInspection': 'enable',
@@ -407,7 +401,7 @@ async function synthesize(text, voiceId, outputPath, opts = {}) {
           fs.writeFileSync(outPath, buf);
           // 写缓存（用一份独立缓存目录避免被业务方删掉）
           try {
-            const cacheDir = path.resolve(__dirname, '../../outputs/_cosy_cache');
+            const cacheDir = path.resolve(process.env.OUTPUT_DIR || path.resolve(__dirname, '../../outputs'), '_cosy_cache');
             fs.mkdirSync(cacheDir, { recursive: true });
             const cachePath = path.join(cacheDir, require('crypto').createHash('md5').update(cKey).digest('hex') + '.' + format);
             fs.copyFileSync(outPath, cachePath);
@@ -466,79 +460,4 @@ async function synthesize(text, voiceId, outputPath, opts = {}) {
 
 function hasKey() { return !!_getKey(); }
 
-/**
- * 阿里 NLS · 基础 TTS 合成（REST，使用 AppKey + AccessToken）
- * 无法克隆用户音色，只能选预设音色
- *
- * @param {string} text 合成文本（≤ 300 字符建议）
- * @param {string} outputPath 输出路径（会自动补 .mp3）
- * @param {object} opts { voice?: string, speed?: number, volume?: number, pitch?: number, format?: 'mp3'|'wav'|'pcm', sampleRate?: number }
- * @returns {Promise<string>} 实际输出文件路径
- */
-function synthesizeWithNLS(text, outputPath, opts = {}) {
-  const creds = _getNLSCreds();
-  if (!creds) return Promise.reject(new Error('阿里 NLS 未配置 (provider id = aliyun-nls, api_key 格式 "{AppKey}:{AccessToken}")'));
-  if (!text || !text.trim()) return Promise.reject(new Error('NLS 合成文本不能为空'));
-
-  const format = (opts.format || 'mp3').toLowerCase();
-  const extMap = { mp3: '.mp3', wav: '.wav', pcm: '.pcm' };
-  const outPath = outputPath.replace(/\.[^.]+$/, '') + (extMap[format] || '.mp3');
-
-  // 速度映射：VIDO 的 speed 是 0.5-1.5，NLS 的 speech_rate 是 -500..500
-  const rate = Math.round(((Number(opts.speed) || 1.0) - 1) * 500);
-
-  const body = JSON.stringify({
-    appkey: creds.appKey,
-    token: creds.token,
-    text: String(text).slice(0, 300),
-    format,
-    sample_rate: opts.sampleRate || 16000,
-    voice: opts.voice || 'xiaoyun',
-    volume: Math.max(0, Math.min(100, opts.volume || 50)),
-    speech_rate: Math.max(-500, Math.min(500, rate)),
-    pitch_rate: Math.max(-500, Math.min(500, opts.pitch || 0)),
-  });
-
-  return new Promise((resolve, reject) => {
-    const signal = opts.signal;
-    if (signal?.aborted) return reject(signal.reason || Object.assign(new Error('NLS request aborted'), { code: 'ABORT_ERR' }));
-    const req = https.request({
-      hostname: NLS_HOST,
-      path: '/stream/v1/tts',
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Content-Length': Buffer.byteLength(body),
-      },
-    }, (res) => {
-      const chunks = [];
-      res.on('data', c => chunks.push(c));
-      res.on('end', () => {
-        const buf = Buffer.concat(chunks);
-        const ct = res.headers['content-type'] || '';
-        if (ct.includes('audio')) {
-          fs.mkdirSync(path.dirname(outPath), { recursive: true });
-          fs.writeFileSync(outPath, buf);
-          return resolve(outPath);
-        }
-        try {
-          const json = JSON.parse(buf.toString());
-          reject(new Error(`阿里 NLS TTS 失败: ${json.message || json.status || buf.toString().slice(0, 200)}`));
-        } catch (e) {
-          reject(new Error(`阿里 NLS TTS 响应非音频 (${res.statusCode}): ${buf.toString().slice(0, 200)}`));
-        }
-      });
-    });
-    const onAbort = () => req.destroy(signal.reason instanceof Error
-      ? signal.reason
-      : Object.assign(new Error('NLS request aborted'), { code: 'ABORT_ERR' }));
-    signal?.addEventListener?.('abort', onAbort, { once: true });
-    req.on('close', () => signal?.removeEventListener?.('abort', onAbort));
-    req.on('error', reject);
-    req.setTimeout(30000, () => { req.destroy(); reject(new Error('阿里 NLS TTS 超时')); });
-    req.write(body);
-    req.end();
-  });
-}
-
-module.exports = { enrollVoice, getTaskStatus, waitForEnroll, synthesize, hasKey, synthesizeWithNLS, hasNLSCreds };
+module.exports = { enrollVoice, getTaskStatus, waitForEnroll, synthesize, hasKey, _getProviderConfig };
