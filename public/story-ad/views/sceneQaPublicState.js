@@ -9,8 +9,14 @@ export function publicSceneQaReason(value = '') {
   const reason = text(value);
   if (!reason) return '';
   if (QA_SERVICE_FAILURE.test(reason)) return '审核服务暂时没有返回有效结论；场景图片已保留，可以稍后重新审核。';
-  if (/Active Plan|active_plan|person_plan_stale|scene_plan_stale|bundle_mismatch/i.test(reason)) {
-    return '当前项目的生成版本正在同步，或已有任务正在处理；请等待后刷新重试。';
+  if (/input_fingerprint_mismatch|content_revision_mismatch/i.test(reason)) {
+    return '项目内容已经更新，请重新确认人物和场景方案；已有素材不会被删除。';
+  }
+  if (/bundle_mismatch|person_plan_stale|scene_plan_stale/i.test(reason)) {
+    return '当前项目仍使用旧版人物或场景方案，请先同步当前版本方案；已有素材不会被删除。';
+  }
+  if (/Active Plan|active_plan/i.test(reason)) {
+    return '请先完成当前项目的人物和场景方案确认。';
   }
   return reason;
 }

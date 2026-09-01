@@ -48,14 +48,20 @@ async function main() {
 
   const publicError = loadApiErrorMessage();
   const activePlan = publicError({ error: '当前任务没有可用于生成的本版本 Active Plan: active_plan_bundle_mismatch, scene_plan_stale', code: 'GENERATION_ACTIVE_PLAN_REQUIRED' }, 409);
-  assert.match(activePlan, /生成版本正在同步/);
+  assert.match(activePlan, /旧版人物或场景方案/);
+  assert.match(activePlan, /已有素材/);
+  assert.match(activePlan, /没有提交新的模型调用/);
   assert.doesNotMatch(activePlan, /Active Plan|active_plan|scene_plan_stale/);
+  const contentChanged = publicError({ error: 'active_plan_input_fingerprint_mismatch, active_plan_content_revision_mismatch', code: 'GENERATION_ACTIVE_PLAN_REQUIRED' }, 409);
+  assert.match(contentChanged, /项目内容已经更新/);
+  assert.match(contentChanged, /重新确认/);
+  assert.doesNotMatch(contentChanged, /input_fingerprint|content_revision|Active Plan/i);
   const qaError = publicError({ error: '视觉模型全部失败: smscrw/claude:UNKNOWN; webang-maas/gemini:PROVIDER_RESPONSE_INVALID; zhipu/glm:RATE_LIMIT' }, 409);
   assert.match(qaError, /图片已保留/);
   assert.match(qaError, /重新审核不会重新生成图片/);
   assert.doesNotMatch(qaError, /smscrw|webang|zhipu|claude|gemini|PROVIDER_RESPONSE|RATE_LIMIT|UNKNOWN/);
 
-  console.log(JSON.stringify({ passed: true, cancelled_model_submissions: 0, confirmed_stage_submissions: calls, public_error_redactions: 2 }));
+  console.log(JSON.stringify({ passed: true, cancelled_model_submissions: 0, confirmed_stage_submissions: calls, public_error_redactions: 3 }));
 }
 
 main().catch(error => { console.error(error); process.exitCode = 1; });

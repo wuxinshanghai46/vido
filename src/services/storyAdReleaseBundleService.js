@@ -17,6 +17,11 @@ const COMPATIBLE_CONTRACT_EDGES = new Map([
   // relying on the immediately previous production version.
   ['story-scene-platform-v6', new Set(['story-scene-platform-v7'])],
   ['story-scene-platform-v7', new Set(['story-scene-platform-v8'])],
+  // V9 adds the downstream audio-first final-media flow. It does not change
+  // the persisted person/scene Active Plan schema, fingerprint contract or
+  // coverage contract, so an exact V8 plan can be promoted without a model
+  // call or rebuilding any existing image/video/audio artifact.
+  ['story-scene-platform-v8', new Set(['story-scene-platform-v9'])],
 ]);
 
 function readJson(file, fallback = {}) {

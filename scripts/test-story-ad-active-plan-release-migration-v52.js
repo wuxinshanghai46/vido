@@ -177,6 +177,51 @@ for (const fixture of fixtures) {
   assert.equal(storage.getOutput(fixture.taskId, publication.RELEASE_MIGRATION_KIND).migrated_at, migrationTimestamp);
 }
 
+const currentTaskId = 'new-current-release-task';
+const currentContext = context(currentTaskId, 2);
+storage.createTask({ id: currentTaskId, title: '当前版本新任务', content_revision: 1, request: currentContext, status: 'working', stage: 'scene_config_done' });
+storage.saveOutput(currentTaskId, 'context', currentContext);
+const currentFingerprint = assetPlan.fingerprint(storage.getTask(currentTaskId), currentContext);
+const currentCallsBefore = modelCalls(currentTaskId);
+const currentPlan = publication.publish(currentTaskId, rawPlan(2, 0, 4), { fingerprint: currentFingerprint, source: 'current-release-test' });
+assert.equal(currentPlan.release_envelope.producer_bundle_id, release.identity().bundle_id, 'new tasks must publish directly against the current release bundle');
+assert.equal(currentPlan.release_envelope.contract_version, release.envelope().contract_version, 'new tasks must never start on a legacy contract');
+assert.equal(publication.eligibility(currentTaskId, { fingerprint: currentFingerprint }).eligible, true);
+assert.equal(generationPermit.issue(currentTaskId, 'storyboard', { idempotencyKey: 'current-release-storyboard' }).stage, 'storyboard');
+assert.equal(modelCalls(currentTaskId), currentCallsBefore, 'publishing and permitting a new current-release task must make zero model calls');
+
+const v8AudioFirstCompatible = createFixture({
+  id: 'v8-audio-first-compatible', oldBundle: 'v8-audio-first-bundle', castCount: 2, propCount: 1, sceneCount: 4,
+  fingerprintContract: publication.FINGERPRINT_CONTRACT, contractVersion: 'story-scene-platform-v8',
+});
+const preservedV8Outputs = {
+  keyframe_media: { file: '/preserved/keyframe-01.png', sha256: 'keyframe-sha256', selected: true },
+  video_media: { file: '/preserved/scene-01.mp4', sha256: 'video-sha256', selected: true },
+  final_audio: { file: '/preserved/final-audio.mp3', sha256: 'audio-sha256', selected: true },
+};
+Object.entries(preservedV8Outputs).forEach(([kind, payload]) => storage.saveOutput(v8AudioFirstCompatible.taskId, kind, payload));
+const v8OutputHashesBefore = Object.fromEntries(Object.keys(preservedV8Outputs).map(kind => [kind, hash(storage.getOutput(v8AudioFirstCompatible.taskId, kind))]));
+const v8Compatibility = publication.releaseCompatibility({
+  task: storage.getTask(v8AudioFirstCompatible.taskId),
+  context: storage.getOutput(v8AudioFirstCompatible.taskId, 'context'),
+  plan: publication.activeRecord(v8AudioFirstCompatible.taskId).plan,
+  activeRecord: publication.activeRecord(v8AudioFirstCompatible.taskId),
+  candidate: storage.getOutput(v8AudioFirstCompatible.taskId, publication.CANDIDATE_KIND),
+  fingerprint: v8AudioFirstCompatible.fingerprint,
+});
+assert.equal(v8Compatibility.compatible, true, 'V8→V9 only adds downstream audio-first final media and must preserve an exact Active Plan');
+assert.equal(v8Compatibility.compatible_contract_transition, true);
+assert.deepEqual(v8Compatibility.issues, []);
+const v8CallsBefore = modelCalls(v8AudioFirstCompatible.taskId);
+const v8Permit = generationPermit.issue(v8AudioFirstCompatible.taskId, 'storyboard', { idempotencyKey: 'v366-v8-storyboard' });
+assert.equal(v8Permit.stage, 'storyboard');
+assert.equal(publication.activeRecord(v8AudioFirstCompatible.taskId).plan.release_envelope.contract_version, release.envelope().contract_version);
+assert.equal(storage.getTask(v8AudioFirstCompatible.taskId).required_bundle_id, release.identity().bundle_id);
+assert.equal(modelCalls(v8AudioFirstCompatible.taskId), v8CallsBefore, 'V8→V9 authority promotion must make zero model calls');
+for (const [kind, expectedHash] of Object.entries(v8OutputHashesBefore)) {
+  assert.equal(hash(storage.getOutput(v8AudioFirstCompatible.taskId, kind)), expectedHash, `V8→V9 migration must preserve ${kind}`);
+}
+
 const v7SystemBindingFixture = createFixture({
   id: 'v7-system-binding-compatible', oldBundle: 'v7-system-binding-bundle', castCount: 2, propCount: 0, sceneCount: 4,
   fingerprintContract: publication.FINGERPRINT_CONTRACT, contractVersion: 'story-scene-platform-v7',
@@ -189,14 +234,14 @@ const v7Compatibility = publication.releaseCompatibility({
   candidate: storage.getOutput(v7SystemBindingFixture.taskId, publication.CANDIDATE_KIND),
   fingerprint: v7SystemBindingFixture.fingerprint,
 });
-assert.equal(v7Compatibility.compatible, true, 'V7→V8 only changes the user workflow and must preserve an exact V15 Active Plan');
+assert.equal(v7Compatibility.compatible, true, 'V7→V8→V9 must preserve an exact Active Plan across registered compatibility edges');
 assert.equal(v7Compatibility.compatible_contract_transition, true);
 assert.deepEqual(v7Compatibility.issues, []);
 const v7CallsBefore = modelCalls(v7SystemBindingFixture.taskId);
 const v7Permit = generationPermit.issue(v7SystemBindingFixture.taskId, 'storyboard', { idempotencyKey: 'v282-storyboard' });
 assert.equal(v7Permit.stage, 'storyboard');
 assert.equal(publication.eligibility(v7SystemBindingFixture.taskId, { fingerprint: v7SystemBindingFixture.fingerprint }).eligible, true);
-assert.equal(publication.activeRecord(v7SystemBindingFixture.taskId).plan.release_envelope.contract_version, 'story-scene-platform-v8');
+assert.equal(publication.activeRecord(v7SystemBindingFixture.taskId).plan.release_envelope.contract_version, release.envelope().contract_version);
 assert.equal(modelCalls(v7SystemBindingFixture.taskId), v7CallsBefore, 'lazy authority promotion must not call a model');
 
 const v6TransitiveFixture = createFixture({
@@ -206,8 +251,8 @@ const v6TransitiveFixture = createFixture({
 const v6CallsBefore = modelCalls(v6TransitiveFixture.taskId);
 const v6Permit = generationPermit.issue(v6TransitiveFixture.taskId, 'storyboard', { idempotencyKey: 'v283-v6-storyboard' });
 assert.equal(v6Permit.stage, 'storyboard');
-assert.equal(publication.activeRecord(v6TransitiveFixture.taskId).plan.release_envelope.contract_version, 'story-scene-platform-v8');
-assert.equal(modelCalls(v6TransitiveFixture.taskId), v6CallsBefore, 'V6→V7→V8 authority promotion must stay model-free');
+assert.equal(publication.activeRecord(v6TransitiveFixture.taskId).plan.release_envelope.contract_version, release.envelope().contract_version);
+assert.equal(modelCalls(v6TransitiveFixture.taskId), v6CallsBefore, 'V6→V7→V8→V9 authority promotion must stay model-free');
 
 const v5IncompatibleFixture = createFixture({
   id: 'v5-system-binding-incompatible', oldBundle: 'v5-system-binding-bundle', castCount: 2, propCount: 0, sceneCount: 4,
@@ -627,4 +672,4 @@ assert.equal(idempotent.status, 0, idempotent.stderr);
 assert.equal(JSON.parse(idempotent.stdout).idempotent, true);
 assert.notEqual(cli(['--apply']).status, 0);
 
-console.log(JSON.stringify({ passed: true, production_shape_fixtures: fixtures.length, incompatible_cases: incompatibleCases.length, v7_to_v8_exact_plan_promoted: true, v6_to_v8_transitive_plan_promoted: true, unregistered_transition_blocked: true, owned_scene_release_migration: true, unrelated_generation_blocked: true, lazy_permit_release_migration: true, model_calls_added: 0, cli_dry_run: true, cli_apply_explicit_task: true }));
+console.log(JSON.stringify({ passed: true, production_shape_fixtures: fixtures.length, incompatible_cases: incompatibleCases.length, new_tasks_start_current: true, v8_to_v9_exact_plan_promoted: true, preserved_v8_outputs: Object.keys(preservedV8Outputs).length, v7_to_v9_transitive_plan_promoted: true, v6_to_v9_transitive_plan_promoted: true, unregistered_transition_blocked: true, owned_scene_release_migration: true, unrelated_generation_blocked: true, lazy_permit_release_migration: true, model_calls_added: 0, cli_dry_run: true, cli_apply_explicit_task: true }));

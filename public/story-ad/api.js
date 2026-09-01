@@ -189,9 +189,14 @@ async function refreshAuth() {
 function errorMessage(data, status) {
   const raw = String(data?.error || data?.message || data?.code || '').trim();
   const code = String(data?.code || '').trim().toUpperCase();
-  if (code === 'GENERATION_ACTIVE_PLAN_REQUIRED'
-    || /Active Plan|active_plan|person_plan_stale|scene_plan_stale|bundle_mismatch|input_fingerprint_mismatch|content_revision_mismatch/i.test(raw)) {
-    return '当前项目的生成版本正在同步，或已有任务正在处理。请等待当前操作结束并刷新页面后再试；本次没有提交新的模型调用。';
+  if (/input_fingerprint_mismatch|content_revision_mismatch/i.test(raw)) {
+    return '项目内容已经更新，当前人物和场景方案需要重新确认后才能继续生成；已有素材不会被删除，本次没有提交新的模型调用。';
+  }
+  if (/bundle_mismatch|person_plan_stale|scene_plan_stale/i.test(raw)) {
+    return '当前项目使用的是旧版人物或场景方案，系统已停止生成以保护已有素材。请先同步当前版本方案后再继续；本次没有提交新的模型调用。';
+  }
+  if (code === 'GENERATION_ACTIVE_PLAN_REQUIRED' || /Active Plan|active_plan/i.test(raw)) {
+    return '当前项目还没有可用于生成的最新人物和场景方案，请先完成方案确认；本次没有提交新的模型调用。';
   }
   if (/SCENE_(?:VISUAL_)?QA|VISION_QA|视觉模型全部失败|PROVIDER_RESPONSE_INVALID|(?:^|[\s:;])RATE_LIMIT(?:$|[\s:;])|(?:smscrw|webang-maas|zhipu|deyunai)\//i.test(`${code} ${raw}`)) {
     return '场景图片已保留，但审核服务暂时没有完成。可以稍后重新审核；重新审核不会重新生成图片。';
