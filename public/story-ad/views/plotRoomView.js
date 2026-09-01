@@ -1,7 +1,7 @@
-import { request } from '../api.js?v=20260901-production-v368';
-import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260901-production-v368';
-import { confirmDialog } from '../components/dialog.js?v=20260901-production-v368';
-import { applyBeat, beatEditor, collectBeat, collectBlueprint, productionIssues, syncFloatingEditor } from './plotBeatEditor.js?v=20260901-production-v368';
+import { request } from '../api.js?v=20260901-production-v369';
+import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260901-production-v369';
+import { confirmDialog } from '../components/dialog.js?v=20260901-production-v369';
+import { applyBeat, beatEditor, collectBeat, collectBlueprint, productionIssues, syncFloatingEditor } from './plotBeatEditor.js?v=20260901-production-v369';
 
 function characterEditor(character = {}, index = 0) {
   const gender = String(character.gender || '').toLowerCase();
@@ -76,7 +76,7 @@ export async function mount(host, context) {
   }
 
   const characterAutosave = characters.length
-    ? (await import('./plotCharacterAutosave.js?v=20260901-production-v368'))
+    ? (await import('./plotCharacterAutosave.js?v=20260901-production-v369'))
       .bindCharacterAutosave({ host, blueprint, store, collectBlueprint, toast })
     : null;
 
@@ -150,11 +150,11 @@ export async function mount(host, context) {
   };
   const openEditor = async (button, row, group) => {
     if (group === 'prompt_notes') {
-      promptModule ||= await import('./plotPromptPreview.js?v=20260901-production-v368');
+      promptModule ||= await import('./plotPromptPreview.js?v=20260901-production-v369');
       await promptModule.openPromptPreview({ pop, row, host, projectId: bundle.project.id, place: () => place(button), closeAll });
       return;
     }
-    cellEditorModule ||= await import('./plotBeatCellPopover.js?v=20260901-production-v368');
+    cellEditorModule ||= await import('./plotBeatCellPopover.js?v=20260901-production-v369');
     const currentCharacters = collectBlueprint(host, blueprint).characters;
     closeAll(); active = row; pop.innerHTML = cellEditorModule.beatCellEditor(row, group, currentCharacters); pop.dataset.group = group; pop.dataset.dialogueEditor = group === 'spoken_line' ? 'true' : 'false'; pop.showPopover(); place(button);
     pop.querySelector('[data-floating-field]')?.focus();
