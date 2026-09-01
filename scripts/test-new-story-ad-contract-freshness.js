@@ -12,6 +12,7 @@ const service = require('../src/services/newStoryAd/storyAdService');
 const storage = require('../src/services/newStoryAd/storageService');
 const freshness = require('../src/services/newStoryAd/keyframeContractFreshnessService');
 const ttsAdapter = require('../src/services/newStoryAd/ttsAdapter');
+const mediaAdapter = require('../src/services/newStoryAd/mediaAdapter');
 const { buildKeyframeContracts, contractFingerprint } = require('../src/services/newStoryAd/keyframeContractService');
 
 function context(characterName) {
@@ -50,6 +51,22 @@ function createStoredTask(id, ctx, storyboard) {
   storage.saveOutput(taskId, 'context', ctx);
   storage.saveOutput(taskId, 'storyboard_table', storyboard);
   return taskId;
+}
+
+function saveConfirmedStoryboard(taskId, count = 1, prefix = taskId) {
+  const images = Array.from({ length: count }, (_, index) => {
+    const filename = `${prefix}-${index + 1}.png`;
+    const filePath = mediaAdapter.assetPathFromName(filename);
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, `confirmed-storyboard-${index + 1}`);
+    return {
+      shot_index: index + 1,
+      image_url: `/api/new-story-ad/assets/${filename}`,
+      subject_qa_policy_version: 2,
+      subject_count_qa: { pass: true },
+    };
+  });
+  storage.saveOutput(taskId, 'storyboard_images', images);
 }
 
 function testSemanticChangeInvalidatesEveryAffectedFrame() {
@@ -346,9 +363,14 @@ function testVideoPreflightBlocksWithoutMutatingExistingMedia() {
 
 async function testPreProviderFailureVoidsAuthorization() {
   const storyboard = shots(1);
-  const oldCtx = context('授权旧语义');
-  const nextCtx = context('授权新语义');
+  const oldCtx = { ...context('授权旧语义'), shot_design_confirmed: true };
+  const nextCtx = {
+    ...context('授权新语义'),
+    shot_design_confirmed: true,
+    scene_assets: [{ id: 'scene-unverified', scene_contract: { status: 'unverified' } }],
+  };
   const taskId = createStoredTask('freshness-authorization-void', oldCtx, storyboard);
+  saveConfirmedStoryboard(taskId, 1, 'freshness-authorization-storyboard');
   const contracts = buildKeyframeContracts(oldCtx, storyboard);
   storage.saveOutput(taskId, 'keyframe_contracts', contracts);
   storage.saveOutput(taskId, 'keyframes', [{
@@ -364,7 +386,7 @@ async function testPreProviderFailureVoidsAuthorization() {
   const beforeCalls = storage.getTaskBundle(taskId).model_calls.length;
   await assert.rejects(
     () => service.generateTtsStage(taskId, { include_voiceover: false }),
-    error => error?.code === 'VIDEO_INPUT_QA_REQUIRED',
+    error => error?.code === 'SCENE_VERIFICATION_REQUIRED',
   );
   const authorization = storage.getOutput(taskId, 'video_cost_authorization');
   assert.strictEqual(authorization.status, 'voided');
@@ -374,8 +396,9 @@ async function testPreProviderFailureVoidsAuthorization() {
 
 async function testMatchingTtsIsReusedBeforeProviderCall() {
   const storyboard = [{ ...shots(1)[0], voiceover: '现有配音必须直接复用' }];
-  const ctx = context('配音复用');
+  const ctx = { ...context('配音复用'), shot_design_confirmed: true };
   const taskId = createStoredTask('tts-reuse-before-provider', ctx, storyboard);
+  saveConfirmedStoryboard(taskId, 1, 'tts-reuse-storyboard');
   const contracts = buildKeyframeContracts(ctx, storyboard);
   storage.saveOutput(taskId, 'keyframe_contracts', contracts);
   storage.saveOutput(taskId, 'keyframes', [{
