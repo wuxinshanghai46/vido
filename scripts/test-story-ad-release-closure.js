@@ -40,6 +40,7 @@ function main() {
   assert(selected.has('scripts/test-story-ad-lightweight-bundle-v100.js'), '发布闭包必须包含首屏轻量投影调用门禁');
   assert(selected.has('scripts/run-with-pm2-env.js'), '发布闭包必须包含 PM2 环境净化入口');
   assert(selected.has('scripts/migrate-story-ad-public-media-models-v262.js'), '发布闭包必须包含公开媒体模型配置迁移入口');
+  assert(selected.has('scripts/configure-smscrw-image-provider.js'), '发布闭包必须包含 SZ 旧配置入口的禁用兼容壳');
   assert(selected.has('scripts/test-story-ad-pm2-env-sanitization-v104.js'), '发布闭包必须包含 PM2 旧工作目录隔离回归');
   assert(selected.has('scripts/test-story-ad-platform-narrative-release-v111.js'), '发布闭包必须包含候选剧情定向回归');
   assert(selected.has('scripts/migrate-story-ad-person-demographics-v63.js'), '发布闭包必须包含历史人物人口属性零模型迁移入口');
