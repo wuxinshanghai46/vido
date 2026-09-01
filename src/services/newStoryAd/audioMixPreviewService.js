@@ -71,19 +71,6 @@ async function create(taskId, input = {}) {
   const bgm = soundDesign.resolvedBgm(taskId);
   const voiceVolume = clamp(input.voice_volume ?? input.voiceVolume ?? state.plan.voice_volume, 1, 0.6, 1.2);
   const bgmVolume = clamp(input.bgm_volume ?? input.bgmVolume ?? state.plan.bgm_volume, 0.16, 0, 0.35);
-  const signature = storage.canonicalFingerprint({
-    task_id: taskId,
-    audio_signature: state.signature,
-    voice_volume: voiceVolume,
-    bgm_volume: bgmVolume,
-    contract: 'story_ad_audio_mix_preview_v1',
-  });
-  const filename = `story_ad_audio_preview_${String(taskId).replace(/[^a-z0-9_-]/gi, '_').slice(0, 80)}_${signature.slice(0, 18)}.mp3`;
-  const outputPath = mediaAdapter.assetPathFromName(filename);
-  if (fs.existsSync(outputPath) && fs.statSync(outputPath).size > 1000) {
-    return { ...summary, audio_url: `/api/new-story-ad/assets/${encodeURIComponent(filename)}`, cached: true, voice_volume: voiceVolume, bgm_volume: bgmVolume };
-  }
-  fs.mkdirSync(path.dirname(outputPath), { recursive: true });
   const byShot = trackMap(state.tts.tracks);
   let cursor = 0;
   const placements = [];
@@ -95,26 +82,47 @@ async function create(taskId, input = {}) {
     cursor += Math.max(0.1, Number(shot.duration || shot.duration_sec || 3) || 3);
   });
   const duration = Math.max(0.2, cursor);
-  const args = ['-y', '-f', 'lavfi', '-t', duration.toFixed(3), '-i', 'anullsrc=r=48000:cl=stereo', '-stream_loop', '-1', '-i', bgm.file_path];
+  const signature = storage.canonicalFingerprint({
+    task_id: taskId,
+    duration_sec: duration,
+    placements: placements.map(item => {
+      const stat = fs.statSync(item.file_path);
+      return { filename: path.basename(item.file_path), bytes: stat.size, modified_ms: Math.round(stat.mtimeMs), start_sec: item.start_sec, duration_sec: item.duration_sec };
+    }),
+    contract: 'story_ad_live_voice_stem_v2',
+  });
+  const filename = `story_ad_voice_preview_${String(taskId).replace(/[^a-z0-9_-]/gi, '_').slice(0, 80)}_${signature.slice(0, 18)}.mp3`;
+  const outputPath = mediaAdapter.assetPathFromName(filename);
+  const response = {
+    ...summary,
+    audio_url: `/api/new-story-ad/assets/${encodeURIComponent(filename)}`,
+    voice_audio_url: `/api/new-story-ad/assets/${encodeURIComponent(filename)}`,
+    bgm_audio_url: bgm.file_url,
+    duration_sec: duration,
+    voice_volume: voiceVolume,
+    bgm_volume: bgmVolume,
+    live_mix: true,
+  };
+  if (fs.existsSync(outputPath) && fs.statSync(outputPath).size > 1000) return { ...response, cached: true };
+  fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+  const args = ['-y', '-f', 'lavfi', '-t', duration.toFixed(3), '-i', 'anullsrc=r=48000:cl=stereo'];
   placements.forEach(item => args.push('-i', item.file_path));
-  const filters = [
-    `[1:a]aformat=sample_rates=48000:channel_layouts=stereo,atrim=0:${duration.toFixed(3)},asetpts=PTS-STARTPTS,volume=${bgmVolume.toFixed(3)}[bgm]`,
-  ];
+  const filters = [];
   placements.forEach((item, index) => {
     const delay = Math.max(0, Math.round(item.start_sec * 1000));
-    filters.push(`[${index + 2}:a]aformat=sample_rates=48000:channel_layouts=stereo,atrim=0:${item.duration_sec.toFixed(3)},asetpts=PTS-STARTPTS,adelay=${delay}|${delay},volume=${voiceVolume.toFixed(3)}[voice${index}]`);
+    filters.push(`[${index + 1}:a]aformat=sample_rates=48000:channel_layouts=stereo,atrim=0:${item.duration_sec.toFixed(3)},asetpts=PTS-STARTPTS,adelay=${delay}|${delay}[voice${index}]`);
   });
-  const inputs = ['[0:a]', '[bgm]', ...placements.map((_, index) => `[voice${index}]`)].join('');
-  filters.push(`${inputs}amix=inputs=${placements.length + 2}:duration=first:dropout_transition=0:normalize=0,atrim=0:${duration.toFixed(3)}[mixed]`);
+  const inputs = ['[0:a]', ...placements.map((_, index) => `[voice${index}]`)].join('');
+  filters.push(`${inputs}amix=inputs=${placements.length + 1}:duration=first:dropout_transition=0:normalize=0,atrim=0:${duration.toFixed(3)}[voice_stem]`);
   const temporaryPath = `${outputPath}.${process.pid}.tmp.mp3`;
   try {
-    await execFfmpeg([...args, '-filter_complex', filters.join(';'), '-map', '[mixed]', '-c:a', 'libmp3lame', '-b:a', '192k', '-t', duration.toFixed(3), temporaryPath]);
+    await execFfmpeg([...args, '-filter_complex', filters.join(';'), '-map', '[voice_stem]', '-c:a', 'libmp3lame', '-b:a', '192k', '-t', duration.toFixed(3), temporaryPath]);
     if (!fs.existsSync(temporaryPath) || fs.statSync(temporaryPath).size < 1000) throw new Error('整体试听音频为空');
     fs.renameSync(temporaryPath, outputPath);
   } finally {
     if (fs.existsSync(temporaryPath)) fs.rmSync(temporaryPath, { force: true });
   }
-  return { ...summary, audio_url: `/api/new-story-ad/assets/${encodeURIComponent(filename)}`, cached: false, duration_sec: duration, voice_volume: voiceVolume, bgm_volume: bgmVolume };
+  return { ...response, cached: false };
 }
 
 module.exports = { create, describe };

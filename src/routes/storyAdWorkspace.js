@@ -481,6 +481,11 @@ router.post('/projects/:taskId/sound-assets/openverse', asyncRoute(async (req, r
   res.json({ success: true, task_id: req.params.taskId, ...(await soundDesignAssets.importOpenverseAsset(req.params.taskId, req.body || {})) });
 }));
 
+router.post('/projects/:taskId/sound-assets/openverse/prepare', asyncRoute(async (req, res) => {
+  projectForRequest(req);
+  res.json({ success: true, task_id: req.params.taskId, ...(await soundDesignAssets.prepareOpenverseAsset(req.body || {})) });
+}));
+
 router.put('/projects/:taskId/storyboard-images', asyncRoute(async (req, res) => {
   projectForRequest(req);
   const result = storyboardSketches.saveSketches(

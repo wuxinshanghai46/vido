@@ -41,7 +41,11 @@ async function main() {
   assert.strictEqual(storage.canonicalFingerprint(storage.getOutput(taskId, 'storyboard_table')), upstreamBefore, '背景音乐切换不得回写前五步分镜');
 
   const root = path.resolve(__dirname, '..');
-  const view = ['finalSoundDesignView.js', 'soundDesignFeature.js'].map(file => fs.readFileSync(path.join(root, 'public/story-ad/views', file), 'utf8')).join('\n');
+  const view = [
+    path.join(root, 'public/story-ad/views/finalSoundDesignView.js'),
+    path.join(root, 'public/story-ad/views/soundDesignFeature.js'),
+    path.join(root, 'public/story-ad/controllers/liveAudioPreviewController.js'),
+  ].map(file => fs.readFileSync(file, 'utf8')).join('\n');
   const css = fs.readFileSync(path.join(root, 'public/story-ad/workspace-ux.css'), 'utf8');
   const routes = fs.readFileSync(path.join(root, 'src/routes/storyAdWorkspace.js'), 'utf8');
   assert(!view.includes('name="story-voice-mode"') && !view.includes('data-include-voiceover'), '声音页不得重复询问剧情已经确定的旁白/对白开关');

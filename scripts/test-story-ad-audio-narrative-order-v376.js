@@ -75,7 +75,8 @@ async function main() {
   assert(generated.tracks.every((track, index) => track.shot_id === repairedShots[index].shot_id && track.shot_index === index + 1 && track.index === index + 1), '新生成音轨不得再用零基或数组偶然位置作为身份');
 
   const view = fs.readFileSync(path.resolve(__dirname, '../public/story-ad/views/soundDesignFeature.js'), 'utf8');
-  assert(view.includes("host.addEventListener('play'") && view.includes("host.querySelectorAll('audio')"), '任何音频开始播放时必须停止页面内其他音频');
+  const audioController = fs.readFileSync(path.resolve(__dirname, '../public/story-ad/controllers/liveAudioPreviewController.js'), 'utf8');
+  assert(audioController.includes("host.addEventListener('play'") && audioController.includes("host.querySelectorAll('audio')"), '任何音频开始播放时必须停止页面内其他音频');
   assert(view.includes('ttsTrackFor') && view.includes('row.shot_id'), '播放器必须优先按镜头 ID 绑定音轨');
 
   console.log(JSON.stringify({ ok: true, repaired_shots: repairedShots.length, rebound_tracks: repairedTracks.length, preserved_images: 7, model_calls: 0, paid_calls: 0 }));

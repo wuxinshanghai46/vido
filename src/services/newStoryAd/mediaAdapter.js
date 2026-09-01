@@ -17,6 +17,7 @@ const publicReferences = require('./publicReferenceService');
 
 const OUTPUT_DIR = path.resolve(process.env.OUTPUT_DIR || path.join(__dirname, '../../../outputs'));
 const ASSET_DIR = path.join(OUTPUT_DIR, 'new-story-ad-assets');
+const AUDIO_CACHE_DIR = path.resolve(process.env.NEW_STORY_AD_AUDIO_CACHE_DIR || path.join(OUTPUT_DIR, 'new-story-ad-audio-cache'));
 const THUMB_DIR = path.join(ASSET_DIR, 'thumbs');
 const assetThumbnailInflight = new Map();
 const IMAGE_MAX_CANDIDATES = Math.max(1, Math.min(5, Number(process.env.NEW_STORY_AD_IMAGE_MAX_CANDIDATES) || 2));
@@ -602,6 +603,7 @@ async function invokeWithAuditSafeRetry(invoke, candidatePrompt = '', retryPromp
 function assetPathFromName(filename = '') {
   const safe = path.basename(String(filename || '').split('?')[0]);
   if (!safe) return '';
+  if (/^(?:openverse_sound_|story_ad_voice_preview_)/i.test(safe)) return path.join(AUDIO_CACHE_DIR, safe);
   return path.join(ASSET_DIR, safe);
 }
 
@@ -1204,6 +1206,7 @@ async function generateImage({
 
 module.exports = {
   ASSET_DIR,
+  AUDIO_CACHE_DIR,
   THUMB_DIR,
   safeFilename,
   assetPathFromName,

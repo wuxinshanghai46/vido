@@ -66,7 +66,7 @@ function main(argv = process.argv.slice(2)) {
     '--output', path.join(logDir, `${safeName}-out.log`),
     '--error', path.join(logDir, `${safeName}-error.log`),
     '--update-env',
-  ], { env: { ...inherited, PORT: String(port), STORY_AD_BUILD_ID: buildId, STORY_AD_VERIFY_RELEASE: '1', STORY_AD_ALLOW_LEGACY_CLIENT: '0', STORY_AD_ENFORCE_NODE_RUNTIME: '1' } });
+  ], { env: { ...inherited, PORT: String(port), STORY_AD_BUILD_ID: buildId, STORY_AD_VERIFY_RELEASE: '1', STORY_AD_ALLOW_LEGACY_CLIENT: '0', STORY_AD_ENFORCE_NODE_RUNTIME: '1', NEW_STORY_AD_AUDIO_CACHE_DIR: inherited.NEW_STORY_AD_AUDIO_CACHE_DIR || '/data/vido/story-ad-audio-cache' } });
   };
   if (mode === 'candidate') {
     staleCandidateIds.forEach((id) => { try { pm2(['delete', String(id)]); } catch {} });

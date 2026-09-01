@@ -14,6 +14,8 @@ const LEDGER_KIND = 'audio_license_ledger';
 const ALLOWED_TRACKS = new Set(['room_tone', 'ambient', 'foley', 'sfx', 'transition', 'bgm']);
 const OPEN_LICENSES = new Set(['cc0', 'pdm', 'by']);
 const OPEN_AUDIO_HOSTS = Object.freeze(['cdn.freesound.org', 'upload.wikimedia.org', 'files.freemusicarchive.org', 'freemusicarchive.org', 'archive.org', 'storage.jamendo.com', 'mp3d.jamendo.com']);
+const recentOpenverseSources = new Map();
+const openverseCacheInflight = new Map();
 
 function list(value) { return Array.isArray(value) ? value.filter(Boolean) : []; }
 function clean(value = '', max = 1000) { return String(value || '').replace(/\s+/g, ' ').trim().slice(0, max); }
@@ -37,9 +39,20 @@ function sha256File(filePath = '') {
   return crypto.createHash('sha256').update(fs.readFileSync(filePath)).digest('hex');
 }
 function localPath(asset = {}) {
-  if (asset.file_path && fs.existsSync(asset.file_path)) return asset.file_path;
   const filename = clean(asset.filename || String(asset.file_url || asset.url || '').split('/').pop()?.split('?')[0], 240);
-  return filename ? mediaAdapter.assetPathFromName(filename) : '';
+  const cachedPath = filename ? mediaAdapter.assetPathFromName(filename) : '';
+  if (asset.source === 'openverse' && cachedPath) {
+    if (fs.existsSync(cachedPath) && fs.statSync(cachedPath).size >= 1000) return cachedPath;
+    if (asset.file_path && fs.existsSync(asset.file_path) && require('path').resolve(asset.file_path) !== require('path').resolve(cachedPath)) {
+      fs.mkdirSync(require('path').dirname(cachedPath), { recursive: true });
+      const temporary = `${cachedPath}.${process.pid}.${crypto.randomBytes(4).toString('hex')}.tmp`;
+      try { fs.copyFileSync(asset.file_path, temporary); fs.renameSync(temporary, cachedPath); }
+      finally { if (fs.existsSync(temporary)) fs.rmSync(temporary, { force: true }); }
+      return cachedPath;
+    }
+  }
+  if (asset.file_path && fs.existsSync(asset.file_path)) return asset.file_path;
+  return cachedPath;
 }
 
 function upsertTimelineTrack(rows = [], next = {}) {
@@ -70,6 +83,58 @@ function normalizeOpenverse(item = {}) {
     landing_url: clean(item.foreign_landing_url || item.landing_url || item.foreignLandingUrl, 1200),
     audio_url: clean(item.url || item.audio_url, 1600), duration_sec: Math.max(0, Number(item.duration || item.duration_sec || 0) || 0),
   };
+}
+
+function rememberOpenverseSources(items = []) {
+  list(items).forEach(item => { if (item?.id) recentOpenverseSources.set(String(item.id), item); });
+  while (recentOpenverseSources.size > 200) recentOpenverseSources.delete(recentOpenverseSources.keys().next().value);
+}
+
+async function resolveOpenverseSource(sourceId = '') {
+  if (sourceId.startsWith('vido_generated_')) return generatedSoundSource(sourceId);
+  const remembered = recentOpenverseSources.get(sourceId);
+  if (remembered) return remembered;
+  const response = await axios.get(`https://api.openverse.org/v1/audio/${encodeURIComponent(sourceId)}/`, {
+    timeout: 10000, headers: { 'User-Agent': 'VIDO/1.0 story-sound-import' },
+  });
+  const source = normalizeOpenverse(response?.data || {});
+  rememberOpenverseSources([source]);
+  return source;
+}
+
+async function cacheOpenverseSource(source = {}) {
+  const generatedSource = String(source.id || '').startsWith('vido_generated_');
+  const downloadUrl = generatedSource ? null : allowedOpenAudioUrl(source.audio_url);
+  if (!source.id || (!generatedSource && (!downloadUrl || !OPEN_LICENSES.has(source.license)))) {
+    throw Object.assign(new Error('该公开音频的下载地址或许可不符合导入规则'), { code: 'OPENVERSE_AUDIO_NOT_IMPORTABLE', status: 422 });
+  }
+  const ext = generatedSource ? '.mp3' : (['.mp3', '.m4a', '.wav', '.ogg', '.flac', '.aac'].includes(require('path').extname(downloadUrl.pathname).toLowerCase())
+    ? require('path').extname(downloadUrl.pathname).toLowerCase() : '.mp3');
+  const filename = generatedSource ? source.filename : `openverse_sound_${crypto.createHash('sha1').update(`${source.id}:${source.audio_url}`).digest('hex').slice(0, 18)}${ext}`;
+  const destination = generatedSource ? source.file_path : mediaAdapter.assetPathFromName(filename);
+  fs.mkdirSync(require('path').dirname(destination), { recursive: true });
+  if (generatedSource || (fs.existsSync(destination) && fs.statSync(destination).size >= 1000)) return { source, filename, destination, cached: true };
+  const key = `${source.id}:${source.audio_url}`;
+  if (!openverseCacheInflight.has(key)) openverseCacheInflight.set(key, (async () => {
+    const download = await axios.get(source.audio_url, { responseType: 'arraybuffer', timeout: 45000, maxContentLength: 35 * 1024 * 1024, headers: { 'User-Agent': 'VIDO/1.0 story-sound-import' } });
+    const contentType = clean(download.headers['content-type'], 120).toLowerCase();
+    const buffer = Buffer.from(download.data);
+    if (!/audio|mpeg|octet-stream/.test(contentType) || buffer.length < 1000 || buffer.length > 35 * 1024 * 1024) {
+      throw Object.assign(new Error('公开音频下载结果不是有效音频文件'), { code: 'OPENVERSE_AUDIO_DOWNLOAD_INVALID', status: 502 });
+    }
+    const temporary = `${destination}.${process.pid}.${crypto.randomBytes(4).toString('hex')}.tmp`;
+    try { fs.writeFileSync(temporary, buffer); fs.renameSync(temporary, destination); }
+    finally { if (fs.existsSync(temporary)) fs.rmSync(temporary, { force: true }); }
+  })().finally(() => openverseCacheInflight.delete(key)));
+  await openverseCacheInflight.get(key);
+  return { source, filename, destination, cached: false };
+}
+
+async function prepareOpenverseAsset(input = {}) {
+  const sourceId = clean(input.openverse_id || input.id, 180);
+  if (!sourceId) throw Object.assign(new Error('缺少 Openverse 音频 ID'), { code: 'OPENVERSE_AUDIO_ID_REQUIRED', status: 400 });
+  const cached = await cacheOpenverseSource(await resolveOpenverseSource(sourceId));
+  return { id: sourceId, filename: cached.filename, cached: cached.cached, ready: true };
 }
 
 function generatedSoundKind(query = '') {
@@ -197,8 +262,11 @@ async function searchOpenverse(query = '', { trackType = '' } = {}) {
       break;
     }
   }
-  if (merged.length) return {
-    results: merged.slice(0, 20),
+  if (merged.length) {
+    const results = merged.slice(0, 20);
+    rememberOpenverseSources(results);
+    return {
+    results,
     requested_query: q,
     selected_query: matchedQueries.join(' + ') || q,
     selected_queries: matchedQueries,
@@ -207,7 +275,7 @@ async function searchOpenverse(query = '', { trackType = '' } = {}) {
     match_reason: searchIntent?.label || '',
     fallback_used: matchedQueries.some(candidate => candidate !== q),
     license_note: `系统合并 ${matchedQueries.length || 1} 组相关关键词；仅展示允许商用与修改的 CC0、PDM、CC BY 音频，CC BY 会自动写入署名清单。`,
-  };
+  }; }
   const generated = generatedSoundSource(trackType === 'bgm' ? 'ambient_music' : q);
   return {
     results: [generated], requested_query: q, selected_query: 'VIDO 本地安全声音', fallback_used: true,
@@ -227,31 +295,10 @@ function recommendedBgmQuery(shots = []) {
 async function importOpenverseAsset(taskId, input = {}) {
   const sourceId = clean(input.openverse_id || input.id, 180);
   if (!sourceId) throw Object.assign(new Error('缺少 Openverse 音频 ID'), { code: 'OPENVERSE_AUDIO_ID_REQUIRED', status: 400 });
-  const generatedSource = sourceId.startsWith('vido_generated_') ? generatedSoundSource(sourceId) : null;
-  const response = generatedSource ? null : await axios.get(`https://api.openverse.org/v1/audio/${encodeURIComponent(sourceId)}/`, {
-    timeout: 10000, headers: { 'User-Agent': 'VIDO/1.0 story-sound-import' },
-  });
-  const source = generatedSource || normalizeOpenverse(response?.data || {});
-  const downloadUrl = generatedSource ? null : allowedOpenAudioUrl(source.audio_url);
-  if (!source.id || (!generatedSource && (!downloadUrl || !OPEN_LICENSES.has(source.license)))) {
-    throw Object.assign(new Error('该公开音频的下载地址或许可不符合导入规则'), { code: 'OPENVERSE_AUDIO_NOT_IMPORTABLE', status: 422 });
-  }
-  const ext = generatedSource ? '.mp3' : (['.mp3', '.m4a', '.wav', '.ogg', '.flac', '.aac'].includes(require('path').extname(downloadUrl.pathname).toLowerCase())
-    ? require('path').extname(downloadUrl.pathname).toLowerCase() : '.mp3');
-  const filename = generatedSource ? source.filename : `openverse_sound_${crypto.createHash('sha1').update(`${source.id}:${source.audio_url}`).digest('hex').slice(0, 18)}${ext}`;
-  const destination = generatedSource ? source.file_path : mediaAdapter.assetPathFromName(filename);
-  fs.mkdirSync(require('path').dirname(destination), { recursive: true });
-  if (!generatedSource && (!fs.existsSync(destination) || fs.statSync(destination).size < 1000)) {
-    const download = await axios.get(source.audio_url, { responseType: 'arraybuffer', timeout: 45000, maxContentLength: 35 * 1024 * 1024, headers: { 'User-Agent': 'VIDO/1.0 story-sound-import' } });
-    const contentType = clean(download.headers['content-type'], 120).toLowerCase();
-    const buffer = Buffer.from(download.data);
-    if (!/audio|mpeg|octet-stream/.test(contentType) || buffer.length < 1000 || buffer.length > 35 * 1024 * 1024) {
-      throw Object.assign(new Error('公开音频下载结果不是有效音频文件'), { code: 'OPENVERSE_AUDIO_DOWNLOAD_INVALID', status: 502 });
-    }
-    const temporary = `${destination}.${process.pid}.tmp`;
-    fs.writeFileSync(temporary, buffer);
-    fs.renameSync(temporary, destination);
-  }
+  const source = await resolveOpenverseSource(sourceId);
+  const generatedSource = sourceId.startsWith('vido_generated_');
+  const cachedSource = await cacheOpenverseSource(source);
+  const { filename, destination } = cachedSource;
   const importedAt = new Date().toISOString();
   const assetId = generatedSource ? source.id : `openverse_${source.id}`;
   const state = compile(taskId);
@@ -309,7 +356,10 @@ function compile(taskId) {
       status: clean(existing.status || 'planned', 40),
     };
   });
-  const assets = list(storage.getOutput(taskId, ASSET_KIND));
+  const assets = list(storage.getOutput(taskId, ASSET_KIND)).map(asset => {
+    const migratedPath = localPath(asset);
+    return migratedPath && migratedPath !== asset.file_path ? { ...asset, file_path: migratedPath } : asset;
+  });
   const timeline = normalizeTimelineTracks(storage.getOutput(taskId, TIMELINE_KIND));
   const ledger = list(storage.getOutput(taskId, LEDGER_KIND));
   return { profiles, assets, timeline, ledger, bgm_query: recommendedBgmQuery(shots), shots: shots.map((shot, index) => ({
@@ -423,4 +473,4 @@ function attributionManifest(taskId) {
   }));
 }
 
-module.exports = { ALLOWED_TRACKS, ASSET_KIND, LEDGER_KIND, PROFILE_KIND, TIMELINE_KIND, addUserAsset, attributionManifest, bgmSearchIntent, compile, generatedSoundKind, generatedSoundSource, importOpenverseAsset, normalizeTimelineTracks, openverseQueryCandidates, recommendedBgmQuery, recommendedQuery, recommendedTrack, resolvedBgm, resolvedTracks, searchOpenverse, shouldAutoRecommend, upsertTimelineTrack };
+module.exports = { ALLOWED_TRACKS, ASSET_KIND, LEDGER_KIND, PROFILE_KIND, TIMELINE_KIND, addUserAsset, attributionManifest, bgmSearchIntent, cacheOpenverseSource, compile, generatedSoundKind, generatedSoundSource, importOpenverseAsset, normalizeTimelineTracks, openverseQueryCandidates, prepareOpenverseAsset, recommendedBgmQuery, recommendedQuery, recommendedTrack, resolvedBgm, resolvedTracks, searchOpenverse, shouldAutoRecommend, upsertTimelineTrack };

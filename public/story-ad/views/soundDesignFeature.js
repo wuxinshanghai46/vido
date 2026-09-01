@@ -1,5 +1,6 @@
 import { request } from '../api.js?v=20260901-production-v376';
 import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260901-production-v376';
+import { bgmCandidateMarkup, bindLiveAudioPreview, previewSeconds, soundPreviewMarkup } from '../controllers/liveAudioPreviewController.js?v=20260901-production-v376';
 
 const TRACK_TYPES = [['room_tone', '空间底噪'], ['ambient', '环境声'], ['foley', '拟音'], ['sfx', '动作音效'], ['transition', '转场音'], ['bgm', '背景音乐']];
 function trackOptions(selected = 'room_tone') {
@@ -35,18 +36,6 @@ function recommendedVoice(voices = [], currentId = '', role = 'narrator') {
 }
 function voicePickerMarkup({ value = '', role = '', speaker = '', label = '音色', sample = '' } = {}) {
   return `<label><span>${escapeHtml(label)}</span><div class="voice-picker-summary"><select data-voice-select ${role ? `data-voice-role="${escapeHtml(role)}"` : ''} ${speaker ? `data-speaker="${escapeHtml(speaker)}"` : ''} hidden><option value="${escapeHtml(value)}">${escapeHtml(value)}</option></select><button class="voice-picker-trigger" type="button" data-open-voice-library data-preview-text="${escapeHtml(sample)}"><span><b data-selected-voice-name>${escapeHtml(value ? '正在加载音色名称…' : '正在选择可用音色…')}</b><small data-selected-voice-provider>点击打开音色库，可在弹窗内搜索、试听和选择</small></span><em>选择音色</em></button></div>${role === 'narrator' ? '<small data-voice-recommendation-status>正在加载剧情音色目录…</small>' : ''}</label>`;
-}
-
-function previewSeconds(value = 4, cap = 6) {
-  return Math.max(1, Math.min(cap, Math.round((Number(value) || 4) * 10) / 10));
-}
-function soundPreviewMarkup(url = '', duration = 4, label = '试听本镜', previewKind = '') {
-  if (!url) return '';
-  const seconds = previewSeconds(duration, label === '试听音乐' ? 8 : 6);
-  return `<div class="sound-preview-control"><button class="btn small" type="button" data-play-sound-preview data-preview-seconds="${seconds}">▶ ${label} ${seconds} 秒</button><audio preload="none" src="${escapeHtml(url)}" ${previewKind ? `data-preview-kind="${escapeHtml(previewKind)}"` : ''} hidden></audio></div>`;
-}
-function bgmCandidateMarkup(item = {}, index = 0) {
-  return `<article class="bgm-candidate ${index === 0 ? 'is-recommended' : ''}"><div><b>${escapeHtml(item.name || '背景音乐')}</b><small>${escapeHtml(item.creator || 'Unknown')} · ${escapeHtml(String(item.license || '').toUpperCase())}${index === 0 ? ' · 系统首选' : ''}</small>${item.match_reason ? `<small class="bgm-match-reason">匹配方向：${escapeHtml(item.match_reason)}</small>` : ''}</div>${soundPreviewMarkup(item.audio_url || '', 8, '试听音乐', 'bgm')}<button class="btn small" type="button" data-import-bgm="${escapeHtml(item.id || '')}">${index === 0 ? '使用这首' : '切换为这首'}</button></article>`;
 }
 
 function speechModeLabel(mode = '') {
@@ -117,8 +106,9 @@ export function soundDesignMarkup(soundDesign = {}) {
             <label class="sound-volume-field"><span>配音对白音量 <output data-voice-volume-value>${Math.round(Number(production.voice_volume ?? 1) * 100)}%</output></span><input type="range" min="0.6" max="1.2" step="0.01" value="${Number(production.voice_volume ?? 1)}" data-voice-volume><small>用于整体试听和最终成片。</small></label>
             <label class="sound-volume-field"><span>背景音乐音量 <output data-bgm-volume-value>${Math.round(Number(production.bgm_volume ?? 0.16) * 100)}%</output></span><input type="range" min="0" max="0.35" step="0.01" value="${Number(production.bgm_volume ?? 0.16)}" data-bgm-volume><small>用于整体试听和最终成片。</small></label>
           </div>
-          <div class="overall-audio-actions"><button class="btn primary" type="button" data-play-overall-audio ${overallPreviewReady ? '' : 'disabled'}>▶ 试听背景音乐 + 配音对白</button><small data-overall-audio-status>${overallPreviewReady ? '点击后生成本地混合试听，不会再次调用语音供应商。' : '需要先选择背景音乐并生成全部配音。'}</small></div>
-          <audio controls preload="none" data-overall-audio-player hidden></audio>
+          <div class="overall-audio-actions"><button class="btn primary" type="button" data-play-overall-audio ${overallPreviewReady ? '' : 'disabled'}>▶ 试听背景音乐 + 配音对白</button><small data-overall-audio-status>${overallPreviewReady ? '首次准备配音时间轴后即可边听边调两路音量，不会再次调用语音供应商。' : '需要先选择背景音乐并生成全部配音。'}</small></div>
+          <audio preload="none" data-overall-voice-player data-preview-kind="voice" data-audio-group="overall" hidden></audio>
+          <audio preload="none" data-overall-bgm-player data-preview-kind="bgm" data-audio-group="overall" loop hidden></audio>
         </section>
       </section>
       <details class="sound-option-panel">
@@ -145,39 +135,6 @@ export function bindSoundDesign(host, { bundle, store, refreshShell, navigate })
   const voiceDialog = host.querySelector('[data-voice-library-dialog]');
   const voiceResults = host.querySelector('[data-voice-library-results]');
   const voiceAudio = host.querySelector('[data-voice-library-audio]');
-  const volumeValue = selector => Math.max(0, Math.min(1, Number(host.querySelector(selector)?.value || 0)));
-  const overallPlayer = host.querySelector('[data-overall-audio-player]');
-  const overallStatus = host.querySelector('[data-overall-audio-status]');
-  host.addEventListener('play', event => {
-    const current = event.target;
-    if (String(current?.tagName || '').toLowerCase() !== 'audio') return;
-    host.querySelectorAll('audio').forEach(audio => {
-      if (audio !== current && !audio.paused) { audio.pause(); audio.currentTime = 0; }
-    });
-    host.querySelectorAll('[data-play-sound-preview]').forEach(button => {
-      const audio = button.parentElement?.querySelector('audio');
-      if (audio !== current && button.dataset.idleText) button.textContent = button.dataset.idleText;
-    });
-  }, true);
-  const resetOverallPreview = () => {
-    if (!overallPlayer) return;
-    overallPlayer.pause();
-    overallPlayer.currentTime = 0;
-    overallPlayer.removeAttribute('src');
-    overallPlayer.hidden = true;
-    if (overallStatus && !host.querySelector('[data-play-overall-audio]')?.disabled) overallStatus.textContent = '音量已改变，点击重新生成整体试听；不会再次调用语音供应商。';
-  };
-  const syncPreviewVolumes = () => {
-    const voiceVolume = volumeValue('[data-voice-volume]');
-    const bgmVolume = volumeValue('[data-bgm-volume]');
-    host.querySelectorAll('audio[data-preview-kind="voice"]').forEach(audio => { audio.volume = voiceVolume; });
-    host.querySelectorAll('audio[data-preview-kind="bgm"]').forEach(audio => { audio.volume = bgmVolume; });
-    const voiceOutput = host.querySelector('[data-voice-volume-value]'); if (voiceOutput) voiceOutput.textContent = `${Math.round(voiceVolume * 100)}%`;
-    const bgmOutput = host.querySelector('[data-bgm-volume-value]'); if (bgmOutput) bgmOutput.textContent = `${Math.round(bgmVolume * 100)}%`;
-  };
-  syncPreviewVolumes();
-  host.querySelector('[data-voice-volume]')?.addEventListener('input', () => { syncPreviewVolumes(); resetOverallPreview(); });
-  host.querySelector('[data-bgm-volume]')?.addEventListener('input', () => { syncPreviewVolumes(); resetOverallPreview(); });
   const setDialogFeedback = (selector, message = '', tone = 'danger') => {
     const feedback = host.querySelector(selector);
     if (!feedback) return;
@@ -229,6 +186,7 @@ export function bindSoundDesign(host, { bundle, store, refreshShell, navigate })
     const narrator = host.querySelector('[data-voice-select][data-voice-role="narrator"]')?.value || '';
     return { voice_id: narrator, voice_assignments: { narrator, speakers }, voice_volume: Number(host.querySelector('[data-voice-volume]')?.value || 1), bgm_volume: Number(host.querySelector('[data-bgm-volume]')?.value || 0.16), subtitle: host.querySelector('[data-subtitle-enabled]')?.value !== 'false' };
   };
+  const { syncPreviewVolumes } = bindLiveAudioPreview({ host, bundle, audioPlanPayload, request, setButtonBusy, toast });
   host.querySelectorAll('[data-open-voice-library]').forEach(button => button.addEventListener('click', () => {
     activeVoiceSelect = button.parentElement?.querySelector('[data-voice-select]');
     setDialogFeedback('[data-voice-library-feedback]');
@@ -276,23 +234,6 @@ export function bindSoundDesign(host, { bundle, store, refreshShell, navigate })
     const inlineProgress = host.querySelector('[data-tts-inline-progress]');
     try { if (inlineProgress) inlineProgress.hidden = false; setButtonBusy(event.currentTarget, true, '正在生成配音试听…', { elapsed: true }); const payload = audioPlanPayload(); if (host.querySelector('[data-audio-plan]')?.dataset.hasSpeech === 'true' && !payload.voice_id) throw new Error('当前没有可用音色，不能生成配音试听。'); await request(`/api/story-ad/projects/${encodeURIComponent(bundle.project.id)}/audio-plan`, { method: 'PUT', body: payload }); await store.runStage('tts', payload); toast('配音任务已提交，进度会在当前页面持续更新。', 'success'); } catch (error) { toast(error.message, 'danger'); if (inlineProgress) inlineProgress.hidden = true; } finally { setButtonBusy(event.currentTarget, false); }
   });
-  host.querySelector('[data-play-overall-audio]')?.addEventListener('click', async event => {
-    try {
-      setButtonBusy(event.currentTarget, true, '正在准备整体试听…', { elapsed: true });
-      const payload = audioPlanPayload();
-      await request(`/api/story-ad/projects/${encodeURIComponent(bundle.project.id)}/audio-plan`, { method: 'PUT', body: payload });
-      const result = await request(`/api/story-ad/projects/${encodeURIComponent(bundle.project.id)}/audio-mix-preview`, { method: 'POST', body: payload, timeoutMs: 120000 });
-      if (!result.preview?.audio_url) throw new Error('整体试听音频没有生成。');
-      overallPlayer.src = result.preview.audio_url;
-      overallPlayer.hidden = false;
-      if (overallStatus) overallStatus.textContent = `正在试听：配音 ${Math.round(result.preview.voice_volume * 100)}% + 背景音乐 ${Math.round(result.preview.bgm_volume * 100)}%`;
-      await overallPlayer.play();
-    } catch (error) {
-      resetOverallPreview();
-      toast(error.message, 'danger');
-      if (overallStatus) overallStatus.textContent = error.message || '整体试听生成失败。';
-    } finally { setButtonBusy(event.currentTarget, false); }
-  });
   host.querySelector('[data-confirm-audio]')?.addEventListener('click', async event => {
     try { setButtonBusy(event.currentTarget, true, '正在确认…'); await request(`/api/story-ad/projects/${encodeURIComponent(bundle.project.id)}/audio-confirm`, { method: 'POST', body: {} }); toast('声音已确认，正在进入视频与合成。', 'success'); navigate(`/story-ad/projects/${encodeURIComponent(bundle.project.id)}?view=compose`); } catch (error) { toast(error.message, 'danger'); } finally { setButtonBusy(event.currentTarget, false); }
   });
@@ -331,31 +272,6 @@ export function bindSoundDesign(host, { bundle, store, refreshShell, navigate })
         try { await importSound(row, event.currentTarget); toast('声音已绑定并写入许可账本。', 'success'); await refreshShell(); } catch (error) { toast(error.message, 'danger'); } finally { setButtonBusy(event.currentTarget, false); }
       });
     }).catch(error => { resultHost.innerHTML = `<small>${escapeHtml(error.message || '声音库暂时不可用，可稍后重试或上传自己的声音。')}</small>`; });
-  });
-
-  let previewTimer = null;
-  host.addEventListener('click', async event => {
-    const button = event.target.closest('[data-play-sound-preview]');
-    if (!button) return;
-    const audio = button.parentElement?.querySelector('audio');
-    if (!audio) return;
-    host.querySelectorAll('[data-play-sound-preview]').forEach(other => {
-      const otherAudio = other.parentElement?.querySelector('audio');
-      if (otherAudio && otherAudio !== audio) { otherAudio.pause(); otherAudio.currentTime = 0; }
-      if (other !== button && other.dataset.idleText) other.textContent = other.dataset.idleText;
-    });
-    if (!audio.paused) { audio.pause(); audio.currentTime = 0; button.textContent = button.dataset.idleText || button.textContent; return; }
-    if (previewTimer) clearTimeout(previewTimer);
-    button.dataset.idleText ||= button.textContent;
-    const seconds = Number(button.dataset.previewSeconds || 4) || 4;
-    try {
-      audio.currentTime = 0;
-      await audio.play();
-      button.textContent = `■ 停止试听（${seconds} 秒内）`;
-      const stop = () => { audio.pause(); audio.currentTime = 0; button.textContent = button.dataset.idleText; };
-      previewTimer = setTimeout(stop, seconds * 1000);
-      audio.addEventListener('ended', stop, { once: true });
-    } catch { button.textContent = button.dataset.idleText; toast('该声音暂时无法播放，请换一个候选。', 'warning'); }
   });
 
   host.querySelectorAll('[data-sound-shot]').forEach(row => {
