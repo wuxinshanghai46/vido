@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260901-production-v367';
-import { confirmDialog } from '../components/dialog.js?v=20260901-production-v367';
-export { ensureSubjectRecoveryReady } from './subjectRecoveryPreflightAction.js?v=20260901-production-v367';
+import { request } from '../api.js?v=20260901-production-v368';
+import { confirmDialog } from '../components/dialog.js?v=20260901-production-v368';
+export { ensureSubjectRecoveryReady } from './subjectRecoveryPreflightAction.js?v=20260901-production-v368';
 
 export async function loadBillingReviews({ bundle, lane = '', subjectId = '', sceneId = '' } = {}) {
   const taskId = bundle?.project?.id || '';
