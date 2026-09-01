@@ -22,17 +22,26 @@ function audioPath(track = {}) {
   return resolved && fs.existsSync(resolved) ? resolved : '';
 }
 function trackMap(tracks = []) {
-  return new Map(list(tracks).map((track, position) => [
-    Number(track.index || (Number.isFinite(Number(track.shot_index)) ? Number(track.shot_index) + 1 : position + 1)),
-    track,
-  ]));
+  const map = new Map();
+  list(tracks).forEach((track, position) => {
+    const shotId = String(track.shot_id || '').trim();
+    const shotIndex = Number(track.index || track.shot_index || position + 1);
+    if (shotId) map.set(`id:${shotId}`, track);
+    map.set(`index:${shotIndex}`, track);
+  });
+  return map;
+}
+function trackFor(map, shot = {}, fallbackIndex = 1) {
+  const shotId = String(shot.shot_id || shot.id || '').trim();
+  const shotIndex = Number(shot.shot_index || shot.index || fallbackIndex);
+  return (shotId ? map.get(`id:${shotId}`) : null) || map.get(`index:${shotIndex}`);
 }
 function describe(taskId) {
   const state = audioProduction.current(taskId);
   const bgm = soundDesign.resolvedBgm(taskId);
   const byShot = trackMap(state.tts.tracks);
   const spoken = state.speech.filter(row => list(row.units).length);
-  const ready = spoken.filter(row => audioPath(byShot.get(Number(row.shot_index)))).length;
+  const ready = spoken.filter((row, index) => audioPath(trackFor(byShot, row, index + 1))).length;
   return {
     bgm_selected: !!bgm,
     bgm_name: bgm?.name || '',
@@ -80,7 +89,7 @@ async function create(taskId, input = {}) {
   const placements = [];
   state.shots.forEach((shot, index) => {
     const shotIndex = Number(shot.shot_index || shot.index || index + 1) || index + 1;
-    const track = byShot.get(shotIndex);
+    const track = trackFor(byShot, shot, shotIndex);
     const filePath = audioPath(track);
     if (filePath) placements.push({ file_path: filePath, start_sec: cursor, duration_sec: Math.max(0.1, Number(shot.duration || shot.duration_sec || track.duration_sec || 3) || 3) });
     cursor += Math.max(0.1, Number(shot.duration || shot.duration_sec || 3) || 3);

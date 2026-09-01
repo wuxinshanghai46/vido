@@ -8,6 +8,7 @@ const generationUnits = require('./generationUnitService');
 const authorityLifecycle = require('./authorityLifecycleService');
 const targetProgress = require('./targetGenerationProgressService');
 const legacyTtsFailureRecovery = require('./legacyTtsFailureRecoveryService');
+const storyboardNarrativeRecovery = require('./storyboardNarrativeRecoveryService');
 
 const runningJobs = new Map();
 const EXECUTING_STAGES = new Set(['full', 'script_package', 'scene_config', 'production_assets', 'visual_assets', 'blueprint', 'storyboard', 'scene_asset', 'scene_panorama', 'keyframes', 'tts', 'video', 'compose', 'media']);
@@ -1007,6 +1008,8 @@ function runBackgroundReconciliation(label = 'startup') {
     if (label === 'startup') {
       const recovery = legacyTtsFailureRecovery.recoverAll();
       if (recovery.recovered) console.warn('[new-story-ad:tts] legacy failure recovery', recovery);
+      const narrativeRecovery = storyboardNarrativeRecovery.recoverAll();
+      if (narrativeRecovery.recovered || narrativeRecovery.blocked) console.warn('[new-story-ad:storyboard] narrative order recovery', narrativeRecovery);
     }
   } catch (error) {
     console.error(`[new-story-ad:jobs] ${label} reconciliation failed:`, String(error.message || error));

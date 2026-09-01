@@ -63,6 +63,7 @@ const voicePlan = require('./voicePlanService'), ttsContract = require('./ttsCon
 const videoInputFrames = require('./videoInputFrameService'), audioProduction = require('./audioProductionService'), storyAdTimeline = require('./storyAdTimelineService');
 const accountVoiceAssignment = require('./accountVoiceAssignmentService');
 const contentSkill = require('./contentSkillService'), contentDomainArtifacts = require('./contentDomainArtifactService');
+const storyboardNarrativeOrder = require('./storyboardNarrativeOrderService');
 const workAggregate = require('./workAggregateService');
 const { alignPersonAgeDescription, enforceAssistedPersonSpec } = require('./assistedPersonSpecService');
 /** 读取剧情广告兼容灰度开关；关闭时仍允许查看历史项目，但禁止新的付费视频提交。 */
@@ -755,11 +756,13 @@ function updateStoryboardTable(taskId, shots = [], user = {}, options = {}) {
   const ctx = storage.getOutput(taskId, 'context') || task.request || {};
   const sceneAssets = storage.getOutput(taskId, 'scene_assets') || ctx.scene_assets || [];
   const source = Array.isArray(shots) && shots.length ? shots : current;
-  const normalizedRaw = contentDomainArtifacts.tagShots(ctx, source
+  const blueprint = storage.getOutput(taskId, 'blueprint') || {};
+  const coveragePlan = storage.getOutput(taskId, 'storyboard_coverage_plan') || {};
+  const orderedSource = storyboardNarrativeOrder.canonicalize(source, { blueprint, coveragePlan }).shots;
+  const normalizedRaw = contentDomainArtifacts.tagShots(ctx, orderedSource
     .map((shot, index) => normalizeStoryboardShot(shot, index, current[index] || {}))
     .filter(shot => shot.visual || shot.action || shot.voiceover || shot.title));
   const continuityShots = withContinuityContracts(bindShotsToScenes(normalizedRaw, Array.isArray(sceneAssets) ? sceneAssets : [])); storyboardFlowConsistency.assertWhenPresent(continuityShots, storage.getOutput(taskId, 'story_flow_contract') || {}, { boundary: 'manual_storyboard_save' });
-  const blueprint = storage.getOutput(taskId, 'blueprint') || {};
   const compiled = temporalEvidenceLifecycle.compileForTask({ storage, taskId, ctx, blueprint, shots: continuityShots }), normalized = compiled.shots;
   const storyboardChanged = workflowTransition.storyboardFingerprint(current) !== workflowTransition.storyboardFingerprint(normalized);
   if (storyboardChanged) {
@@ -948,7 +951,9 @@ async function generateStoryboardStage(taskId, options = {}) {
     // 只有硬问题才定向重写；软建议随合同发布，禁止成为串行付费门禁。
     const issues = storyboardReviewPolicy.blockingRewriteIssues(review);
     if (!shots.length || !issues.length) break;
-    shots = await rewriteStoryboard(stageCtx, blueprint, shots, issues, { taskId }); storyboardFlowConsistency.assertMatches(shots, storyFlowContract, { boundary: `storyboard_rewrite_${attempt}` });
+    shots = await rewriteStoryboard(stageCtx, blueprint, shots, issues, { taskId });
+    shots = storyboardNarrativeOrder.canonicalize(shots, { blueprint, coveragePlan: generated.coverage_plan || expectedCoveragePlan }).shots;
+    storyboardFlowConsistency.assertMatches(shots, storyFlowContract, { boundary: `storyboard_rewrite_${attempt}` });
     await saveCheckpoint({ phase: `rewrite_${attempt}_reviewing`, shots, completed_indexes: shots.map(shot => Number(shot.index || 0)), expected_total: shots.length });
     assertBlueprintUnchanged();
     const nextReview = await reviewStoryboard(stageCtx, shots, { taskId });
@@ -979,6 +984,7 @@ async function generateStoryboardStage(taskId, options = {}) {
     throw err;
   }
   assertBlueprintUnchanged();
+  shots = storyboardNarrativeOrder.canonicalize(shots, { blueprint, coveragePlan: generated.coverage_plan || expectedCoveragePlan }).shots;
   const compiled = temporalEvidenceLifecycle.compileForTask({ storage, taskId, ctx: stageCtx, blueprint, shots }); shots = contentDomainArtifacts.tagShots(ctx, compiled.shots);
   const contractCtx = { ...stageCtx, temporal_evidence_graph: compiled.graph, knowledge_policy_snapshot: knowledgePolicyRuntime.pinTaskPolicy(storage, taskId) };
   const contracts = buildKeyframeContracts(contractCtx, shots);
@@ -2102,7 +2108,10 @@ async function ensureStoryboardForMedia(taskId) {
     shots = generated.shots || [];
   }
   if (!Array.isArray(shots) || !shots.length) throw new Error('当前项目没有可用分镜表，请先生成分镜。');
-  return shots;
+  return storyboardNarrativeOrder.canonicalize(shots, {
+    blueprint: storage.getOutput(taskId, 'blueprint') || {},
+    coveragePlan: storage.getOutput(taskId, 'storyboard_coverage_plan') || {},
+  }).shots;
 }
 
 async function ensureContractsForMedia(taskId, ctx, shots) {

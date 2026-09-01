@@ -11,6 +11,7 @@ const storyBeatShotCoverage = require('./storyBeatShotCoverageService');
 const actionSemantics = require('./actionSemanticsService');
 const transitionPerformance = require('./transitionPerformanceContractService');
 const generationConcurrency = require('./generationConcurrencyService');
+const narrativeOrder = require('./storyboardNarrativeOrderService');
 
 const { ensureChineseOutput } = require('./outputLanguageService');
 
@@ -789,13 +790,14 @@ Current beats: ${JSON.stringify(chunk)}
     throw error;
   }
 
-  const shots = normalizeShots(all, {
+  const normalizedShots = normalizeShots(all, {
     ...ctx,
     characters: normalizeCharacters(
       Array.isArray(blueprint.characters) && blueprint.characters.length ? blueprint.characters : ctx.characters,
       `${ctx.request_id || ''}|${ctx.brief || ''}|${ctx.product_subject || ''}`,
     ),
   });
+  const shots = narrativeOrder.canonicalize(normalizedShots, { blueprint, coveragePlan }).shots;
   return { shots, model_meta: meta, coverage_plan: coveragePlan };
 }
 

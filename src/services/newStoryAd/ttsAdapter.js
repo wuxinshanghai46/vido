@@ -241,14 +241,17 @@ async function generateShotAudio({
   const units = shotSpeechUnits(shot, voiceId, voiceAssignments);
   const text = units.map(unit => unit.text).join(' ');
   const signature = voiceSignature(shot, voiceId, voiceAssignments);
-  const base = safeBase(`nsa_${taskId || 'task'}_${String(index + 1).padStart(2, '0')}_${Date.now()}`);
+  const trackIndex = Math.max(1, Number(shot.shot_index || shot.index || index + 1) || index + 1);
+  const trackId = normalizeSpeechSegment(shot.shot_id || shot.id || '');
+  const base = safeBase(`nsa_${taskId || 'task'}_${String(trackIndex).padStart(2, '0')}_${Date.now()}`);
   const estimatedDuration = clamp(shot.duration_sec || shot.duration || Math.ceil(Math.max(1, text.length) / 5), 1.2, 10, 3);
   if (mode === 'silent') {
     const out = path.join(AUDIO_DIR, `${base}_silent.wav`);
     writeSilenceWav(out, estimatedDuration);
     return publicResult(out, {
-      shot_index: index,
-      index: index + 1,
+      shot_id: trackId,
+      shot_index: trackIndex,
+      index: trackIndex,
       text: '',
       duration_sec: estimatedDuration,
       provider_used: 'local/silent-shot',
@@ -257,14 +260,15 @@ async function generateShotAudio({
       speech_units: [],
     });
   }
-  if (!text) throw new Error(`第 ${index + 1} 镜没有可生成的旁白或台词`);
+  if (!text) throw new Error(`第 ${trackIndex} 镜没有可生成的旁白或台词`);
   if (process.env.NEW_STORY_AD_MOCK_TTS === '1') {
     const out = path.join(AUDIO_DIR, `${base}.wav`);
     writeSilenceWav(out, estimatedDuration);
     const hasDialogue = units.some(unit => unit.kind === 'dialogue');
     return publicResult(out, {
-      shot_index: index,
-      index: index + 1,
+      shot_id: trackId,
+      shot_index: trackIndex,
+      index: trackIndex,
       text,
       duration_sec: estimatedDuration,
       provider_used: 'mock/new-story-ad-tts',
@@ -310,8 +314,9 @@ async function generateShotAudio({
     cancellation.throwIfCancelled(taskId);
     if (!actual || !fs.existsSync(actual)) throw new Error(`所选音色 ${voiceId} 未生成有效配音文件`);
     return publicResult(actual, {
-      shot_index: index,
-      index: index + 1,
+      shot_id: trackId,
+      shot_index: trackIndex,
+      index: trackIndex,
       text,
       duration_sec: estimatedDuration,
       provider_used: [...new Set(units.map(unit => `${ttsService.voiceProviderForId(unit.voice_id) || 'shared-tts'}/${unit.voice_id}`))].join(','),
@@ -329,8 +334,9 @@ async function generateShotAudio({
     const fallback = path.join(AUDIO_DIR, `${base}_fallback.wav`);
     writeSilenceWav(fallback, estimatedDuration);
     return publicResult(fallback, {
-      shot_index: index,
-      index: index + 1,
+      shot_id: trackId,
+      shot_index: trackIndex,
+      index: trackIndex,
       text,
       duration_sec: estimatedDuration,
       provider_used: 'local/silent-audio-fallback',

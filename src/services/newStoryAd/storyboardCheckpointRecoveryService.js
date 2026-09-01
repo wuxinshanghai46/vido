@@ -20,6 +20,7 @@ const diagnostics = require('./diagnosticsService');
 const storyFlowAuthority = require('../storyAdWorkspace/storyFlowContractService');
 const { bindShotsToScenes } = require('./sceneBindingService');
 const storyboardFlowConsistency = require('./storyboardFlowConsistencyService');
+const storyboardNarrativeOrder = require('./storyboardNarrativeOrderService');
 
 function fail(message, code, status = 409, extra = {}) {
   return Object.assign(new Error(message), { code, status, ...extra });
@@ -57,7 +58,10 @@ function recoverAtomic(taskId, options = {}) {
       `${ctx.request_id || taskId}|${ctx.brief || ''}|${ctx.product_subject || ''}`,
     ),
   };
-  const reboundShots = bindShotsToScenes(checkpointShots, stageCtx.scene_assets);
+  const expectedCoveragePlan = storyboardCoverageLifecycle.expectedPlan(blueprint, ctx);
+  const coveragePlan = checkpoint.coverage_plan?.contract_version ? checkpoint.coverage_plan : expectedCoveragePlan;
+  const orderedCheckpointShots = storyboardNarrativeOrder.canonicalize(checkpointShots, { blueprint, coveragePlan }).shots;
+  const reboundShots = bindShotsToScenes(orderedCheckpointShots, stageCtx.scene_assets);
   storyboardFlowConsistency.assertMatches(reboundShots, storyFlowContract, { boundary: 'storyboard_checkpoint_recovery' });
   const review = storyboardReviewPolicy.publishableReview(localReview(stageCtx, reboundShots));
   if (review.blocking_issues.length) {
@@ -71,8 +75,6 @@ function recoverAtomic(taskId, options = {}) {
     knowledge_policy_snapshot: knowledgePolicyRuntime.pinTaskPolicy(storage, taskId),
   }, shots);
   if (contracts.length !== shots.length) throw fail('关键帧合同未覆盖全部镜头，不能自动恢复', 'STORYBOARD_CHECKPOINT_CONTRACT_INCOMPLETE');
-  const expectedCoveragePlan = storyboardCoverageLifecycle.expectedPlan(blueprint, ctx);
-  const coveragePlan = checkpoint.coverage_plan?.contract_version ? checkpoint.coverage_plan : expectedCoveragePlan;
   const recoveredAt = new Date().toISOString();
   storage.withWriteBatch(() => {
     storage.saveOutput(taskId, 'storyboard_coverage_plan', coveragePlan);

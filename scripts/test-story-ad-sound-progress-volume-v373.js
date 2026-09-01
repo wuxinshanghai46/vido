@@ -60,7 +60,7 @@ async function main() {
   assert(view.includes('data-tts-inline-progress') && view.includes('data-tts-progress-label'), '声音页必须在生成按钮附近展示逐段进度条');
   assert(ui.includes("tts: 'sound'") && ui.includes("view.stage === 'tts'"), 'TTS 全局与行内进度必须归属声音页');
   assert(view.includes("mode === 'offscreen_voiceover'"), '新版旁白合同不得再显示成无语音');
-  assert(view.includes('ttsTrackMap') && view.includes('track?.index'), '逐镜播放器必须按镜号匹配，不得依赖数组偶然顺序');
+  assert(view.includes('ttsTrackMap') && view.includes('ttsTrackFor') && view.includes('row.shot_id'), '逐镜播放器必须优先按镜头 ID 匹配，不得依赖数组偶然顺序');
   assert(view.includes('data-preview-kind="voice"') && view.includes('data-preview-kind="bgm"'), '人声和背景音乐必须分别接入试听音量');
   assert(view.includes('voice_volume: Number') && route.includes('voice_volume: production.plan.voice_volume ?? 1'), '人声音量必须贯通前端载荷和读取接口');
   assert(!ttsBlock.includes('assertVideoInputsReady'), '声音生成不得被人物或关键帧视频门禁误拦截');

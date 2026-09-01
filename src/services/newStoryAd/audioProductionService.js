@@ -4,6 +4,7 @@ const storage = require('./storageService');
 const ttsAdapter = require('./ttsAdapter');
 const voicePlan = require('./voicePlanService');
 const soundDesign = require('./soundDesignAssetService');
+const narrativeOrder = require('./storyboardNarrativeOrderService');
 
 const OUTPUT_KIND = 'audio_production_approval';
 const PLAN_KIND = 'audio_production_plan';
@@ -15,11 +16,15 @@ function current(taskId) {
   if (!task) throw Object.assign(new Error('项目不存在'), { code: 'TASK_NOT_FOUND', status: 404 });
   const context = storage.getOutput(taskId, 'context') || task.request || {};
   const plan = storage.getOutput(taskId, PLAN_KIND) || {};
-  const shots = list(storage.getOutput(taskId, 'storyboard_table'));
+  const shots = narrativeOrder.canonicalize(storage.getOutput(taskId, 'storyboard_table'), {
+    blueprint: storage.getOutput(taskId, 'blueprint') || {},
+    coveragePlan: storage.getOutput(taskId, 'storyboard_coverage_plan') || {},
+  }).shots;
   const tts = storage.getOutput(taskId, 'tts_audio') || {};
   const voiceId = clean(plan.voice_id || context.voice_id || tts.voice_id);
   const assignments = voicePlan.resolveVoiceAssignments(plan, context, tts, voiceId);
   const speech = shots.map((shot, index) => ({
+    shot_id: shot.shot_id || shot.id || '',
     shot_index: Number(shot.shot_index || shot.index || index + 1) || index + 1,
     mode: ttsAdapter.speechMode(shot),
     units: ttsAdapter.shotSpeechUnits(shot, voiceId, assignments),
