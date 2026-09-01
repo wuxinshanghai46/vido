@@ -63,8 +63,8 @@ assert(resolved.frames.every(frame => frame.qa.status === 'human_confirmed_story
 assert(storage.getOutput(taskId, 'keyframes') == null, '分镜适配不得写入或重复生成 keyframes');
 
 audioProduction.savePlan(taskId, { include_voiceover: false, subtitle: true, bgm_volume: 0.12 });
-assert.equal(audioProduction.confirm(taskId, { id: 'tester' }).approved, true, '无语音方案仍需显式确认后才能进入视频');
-audioProduction.assertApproved(taskId);
+assert.equal(audioProduction.current(taskId).include_voiceover, true, '有旁白或对白时不得通过旧参数切成无语音方案');
+assert.throws(() => audioProduction.confirm(taskId, { id: 'tester' }), error => error?.code === 'AUDIO_VOICE_REQUIRED', '剧情包含语音时必须先选择音色');
 audioProduction.savePlan(taskId, { include_voiceover: true, voice_id: 'voice-a', voice_assignments: { narrator: 'voice-a', speakers: { 甲: 'voice-a', 乙: 'voice-b' } } });
 assert.throws(() => audioProduction.confirm(taskId, { id: 'tester' }), error => error?.code === 'AUDIO_TTS_PREVIEW_REQUIRED', '多人对白未生成试听音轨时必须阻断确认');
 

@@ -18,9 +18,9 @@ function main() {
   const taskId = 'sound-layout-v347';
   storage.createTask({ id: taskId, request: {}, user_id: 'test-user' });
   const storyboard = [
-    { shot_id: 'shot_1', shot_index: 1, duration_sec: 4, ambient_sound: '安静展厅内轻微空调底噪', voiceover: '第一句旁白。', sfx: [] },
-    { shot_id: 'shot_2', shot_index: 2, duration_sec: 3, ambient_sound: '安静室内', voiceover: '第二句旁白。', sfx: ['手指划过金属表面的摩擦声'] },
-    { shot_id: 'shot_3', shot_index: 3, duration_sec: 8, ambient_sound: '远处空间底噪', voiceover: '第三句旁白。', sfx: [] },
+    { shot_id: 'shot_1', shot_index: 1, duration_sec: 4, ambient_sound: '安静展厅内轻微空调底噪', sfx: [] },
+    { shot_id: 'shot_2', shot_index: 2, duration_sec: 3, ambient_sound: '安静室内', sfx: ['手指划过金属表面的摩擦声'] },
+    { shot_id: 'shot_3', shot_index: 3, duration_sec: 8, ambient_sound: '远处空间底噪', sfx: [] },
   ];
   storage.saveOutput(taskId, 'storyboard_table', storyboard);
   const before = storage.canonicalFingerprint(storage.getOutput(taskId, 'storyboard_table'));
@@ -32,7 +32,7 @@ function main() {
   assert.strictEqual(soundDesign.shouldAutoRecommend({ ambient_sound: 'room tone', sfx: [] }), false);
   assert.strictEqual(soundDesign.shouldAutoRecommend({ ambient_sound: 'room tone', sfx: ['door close'] }), true);
 
-  audioProduction.savePlan(taskId, { include_voiceover: false, voice_id: '' });
+  audioProduction.savePlan(taskId, { include_voiceover: true, voice_id: '' });
   const confirmed = audioProduction.confirm(taskId);
   assert.strictEqual(confirmed.approved, true, '不采用场景音效和背景音乐也必须可以确认声音并继续');
   assert.strictEqual(confirmed.approval.sound_track_count, 0);

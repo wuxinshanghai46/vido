@@ -44,10 +44,9 @@ async function main() {
   const view = ['finalSoundDesignView.js', 'soundDesignFeature.js'].map(file => fs.readFileSync(path.join(root, 'public/story-ad/views', file), 'utf8')).join('\n');
   const css = fs.readFileSync(path.join(root, 'public/story-ad/workspace-ux.css'), 'utf8');
   const routes = fs.readFileSync(path.join(root, 'src/routes/storyAdWorkspace.js'), 'utf8');
-  assert(view.includes('type="radio" name="story-voice-mode"'), '人声选择必须使用两个有解释的单选卡，而不是裸复选框');
-  assert(!view.includes('type="checkbox" data-include-voiceover'), '不得继续显示含义不清的默认勾选框');
-  assert(view.includes('检测到 ${spokenShots} 个分镜写有旁白或对白'), '默认建议必须向用户展示实际检测依据');
-  assert(view.includes('这些文字会生成实际语音并加入成片'), '选项必须解释对成片的实际作用');
+  assert(!view.includes('name="story-voice-mode"') && !view.includes('data-include-voiceover'), '声音页不得重复询问剧情已经确定的旁白/对白开关');
+  assert(view.includes('声音内容已按剧情自动确定'), '声音页必须说明内容直接继承剧情合同');
+  assert(view.includes('旁白按旁白生成，对白按对应人物生成，两者并存时会自动组合'), '必须清楚说明旁白与人物对白的自动组合规则');
   assert(view.includes('data-open-bgm-library') && view.includes('data-bgm-library-dialog') && view.includes('data-search-bgm-library'), '背景音乐必须通过独立弹窗提供风格选择和搜索入口');
   assert(view.includes('data-import-bgm') && view.includes('切换为这首'), '每个背景音乐候选必须可以试听并切换');
   assert(view.includes("items.slice(0, 1).map(bgmCandidateMarkup)"), '页面默认推荐必须只展示一首，更多候选留在独立音乐库');
@@ -81,7 +80,7 @@ async function main() {
     axios.get = originalGet;
   }
 
-  console.log(JSON.stringify({ ok: true, voice_choice_explained: true, default_bgm_candidates_visible: 1, expanded_library_candidates: true, chinese_bgm_intent_expanded: true, bgm_tracks_after_switch: bgmRows.length, upstream_unchanged: true, model_calls: 0 }));
+  console.log(JSON.stringify({ ok: true, story_authoritative_voice: true, default_bgm_candidates_visible: 1, expanded_library_candidates: true, chinese_bgm_intent_expanded: true, bgm_tracks_after_switch: bgmRows.length, upstream_unchanged: true, model_calls: 0 }));
 }
 
 main().catch(error => { console.error(error); process.exitCode = 1; }).finally(() => fs.rmSync(temporaryRoot, { recursive: true, force: true }));

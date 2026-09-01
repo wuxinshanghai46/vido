@@ -1,5 +1,5 @@
-import { request } from '../api.js?v=20260901-production-v362';
-import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260901-production-v362';
+import { request } from '../api.js?v=20260901-production-v363';
+import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260901-production-v363';
 
 const TRACK_TYPES = [['room_tone', '空间底噪'], ['ambient', '环境声'], ['foley', '拟音'], ['sfx', '动作音效'], ['transition', '转场音'], ['bgm', '背景音乐']];
 function trackOptions(selected = 'room_tone') {
@@ -61,12 +61,9 @@ export function soundDesignMarkup(soundDesign = {}) {
     <div class="card-head"><div><h2>配音与对白</h2><p>先确认声音效果再进入视频生成。旁白/画外音不做口型；只有人物出镜对白才进行口型同步。</p></div><span class="status-badge ${production.approved ? 'success' : 'warning'}">${production.approved ? '声音已确认' : '待试听确认'}</span></div>
     <div class="card-body">
       <div class="guide"><b>当前主流程：</b>选择音色 → 生成并试听配音 → 从页面顶部确认并进入“视频与合成”。背景音乐和场景音效均为可选，不会改变前 5 步内容。</div>
-      <div class="voice-setup-panel" data-audio-plan>
-        <fieldset class="voice-mode-selector"><legend>分镜中的文字要不要被念出来</legend><p class="voice-mode-help">这里决定成片是否真的能听到分镜里写的旁白和人物对白。</p>
-          <label class="voice-mode-option ${production.include_voiceover ? 'is-selected' : ''}"><input type="radio" name="story-voice-mode" value="true" data-include-voiceover ${production.include_voiceover ? 'checked' : ''}><span><b>念出分镜里的旁白和对白 <em>推荐</em></b><small>检测到 ${spokenShots} 个分镜写有旁白或对白。选择后，这些文字会生成实际语音并加入成片。</small></span></label>
-          <label class="voice-mode-option ${!production.include_voiceover ? 'is-selected' : ''}"><input type="radio" name="story-voice-mode" value="false" data-include-voiceover ${!production.include_voiceover ? 'checked' : ''}><span><b>做成无旁白版本</b><small>成片不会念出旁白和对白文字；画面、字幕、背景音乐和场景音效仍然保留，适合纯画面＋字幕＋音乐的表达。</small></span></label>
-        </fieldset>
+      <div class="voice-setup-panel" data-audio-plan data-has-speech="${spokenShots > 0 ? 'true' : 'false'}">
         <div class="voice-settings-panel" data-voice-settings>
+          <div class="voice-story-contract"><b>声音内容已按剧情自动确定</b><small>${spokenShots > 0 ? `检测到 ${spokenShots} 个分镜包含旁白或人物对白；旁白按旁白生成，对白按对应人物生成，两者并存时会自动组合。` : '当前分镜没有旁白或人物对白，因此不会生成配音。'}</small></div>
           <div class="voice-settings-grid">
             ${production.has_speech !== false ? voicePickerMarkup({ value: production.voice_assignments?.narrator || production.voice_id || '', role: 'narrator', label: '旁白音色', sample: voiceSampleText(production) }) : ''}
             ${(production.speakers || []).map(speaker => voicePickerMarkup({ value: production.voice_assignments?.speakers?.[speaker] || '', speaker, label: `${speaker}的对白音色`, sample: voiceSampleText(production, speaker) })).join('')}
@@ -152,20 +149,8 @@ export function bindSoundDesign(host, { bundle, store, refreshShell, navigate })
     const speakers = {};
     host.querySelectorAll('[data-voice-select][data-speaker]').forEach(select => { if (select.value) speakers[select.dataset.speaker] = select.value; });
     const narrator = host.querySelector('[data-voice-select][data-voice-role="narrator"]')?.value || '';
-    return { include_voiceover: host.querySelector('[data-include-voiceover]:checked')?.value === 'true', voice_id: narrator, voice_assignments: { narrator, speakers }, bgm_volume: Number(host.querySelector('[data-bgm-volume]')?.value || 0.16), subtitle: host.querySelector('[data-subtitle-enabled]')?.value !== 'false' };
+    return { voice_id: narrator, voice_assignments: { narrator, speakers }, bgm_volume: Number(host.querySelector('[data-bgm-volume]')?.value || 0.16), subtitle: host.querySelector('[data-subtitle-enabled]')?.value !== 'false' };
   };
-  const updateVoiceModeUi = () => {
-    const enabled = host.querySelector('[data-include-voiceover]:checked')?.value === 'true';
-    host.querySelectorAll('.voice-mode-option').forEach(option => option.classList.toggle('is-selected', option.querySelector('input')?.checked === true));
-    const settings = host.querySelector('[data-voice-settings]');
-    if (settings) settings.classList.toggle('is-disabled', !enabled);
-    host.querySelectorAll('[data-voice-select]').forEach(select => { select.disabled = !enabled; });
-    host.querySelectorAll('[data-open-voice-library]').forEach(button => { button.disabled = !enabled; });
-    const generate = host.querySelector('[data-generate-audio]');
-    if (generate) { generate.disabled = !enabled; generate.textContent = enabled ? generate.dataset.generateLabel : '当前为无旁白版本'; }
-  };
-  host.querySelectorAll('[data-include-voiceover]').forEach(input => input.addEventListener('change', updateVoiceModeUi));
-  updateVoiceModeUi();
   host.querySelectorAll('[data-open-voice-library]').forEach(button => button.addEventListener('click', () => {
     activeVoiceSelect = button.parentElement?.querySelector('[data-voice-select]');
     setDialogFeedback('[data-voice-library-feedback]');
@@ -196,7 +181,7 @@ export function bindSoundDesign(host, { bundle, store, refreshShell, navigate })
     try { setButtonBusy(event.currentTarget, true, '保存中…'); await request(`/api/story-ad/projects/${encodeURIComponent(bundle.project.id)}/audio-plan`, { method: 'PUT', body: audioPlanPayload() }); toast('声音设置已保存。', 'success'); await refreshShell(); } catch (error) { toast(error.message, 'danger'); } finally { setButtonBusy(event.currentTarget, false); }
   });
   host.querySelector('[data-generate-audio]')?.addEventListener('click', async event => {
-    try { setButtonBusy(event.currentTarget, true, '正在生成配音试听…', { elapsed: true }); const payload = audioPlanPayload(); if (payload.include_voiceover && !payload.voice_id) throw new Error('当前没有可用音色，不能生成配音试听。'); await request(`/api/story-ad/projects/${encodeURIComponent(bundle.project.id)}/audio-plan`, { method: 'PUT', body: payload }); await store.runStage('tts', payload); toast('配音已生成，请逐段播放确认。', 'success'); await refreshShell(); } catch (error) { toast(error.message, 'danger'); } finally { setButtonBusy(event.currentTarget, false); }
+    try { setButtonBusy(event.currentTarget, true, '正在生成配音试听…', { elapsed: true }); const payload = audioPlanPayload(); if (host.querySelector('[data-audio-plan]')?.dataset.hasSpeech === 'true' && !payload.voice_id) throw new Error('当前没有可用音色，不能生成配音试听。'); await request(`/api/story-ad/projects/${encodeURIComponent(bundle.project.id)}/audio-plan`, { method: 'PUT', body: payload }); await store.runStage('tts', payload); toast('配音已生成，请逐段播放确认。', 'success'); await refreshShell(); } catch (error) { toast(error.message, 'danger'); } finally { setButtonBusy(event.currentTarget, false); }
   });
   host.querySelector('[data-confirm-audio]')?.addEventListener('click', async event => {
     try { setButtonBusy(event.currentTarget, true, '正在确认…'); await request(`/api/story-ad/projects/${encodeURIComponent(bundle.project.id)}/audio-confirm`, { method: 'POST', body: {} }); toast('声音已确认，正在进入视频与合成。', 'success'); navigate(`/story-ad/projects/${encodeURIComponent(bundle.project.id)}?view=compose`); } catch (error) { toast(error.message, 'danger'); } finally { setButtonBusy(event.currentTarget, false); }

@@ -30,8 +30,9 @@ function current(taskId) {
     .filter(unit => unit.kind === 'dialogue')
     .map(unit => clean(unit.speaker, 100))).filter(Boolean))];
   const hasSpeech = speech.some(row => row.units.length > 0);
-  const hasExplicitVoiceoverSetting = Object.prototype.hasOwnProperty.call(plan, 'include_voiceover');
-  const includeVoiceover = hasExplicitVoiceoverSetting ? plan.include_voiceover === true : hasSpeech;
+  // 旁白/对白是否进入成片由已确认分镜唯一决定。旧版本允许声音页再次关闭，
+  // 会让剧情合同与最终媒体合同互相矛盾；读取历史方案时也不再续用该旧状态。
+  const includeVoiceover = hasSpeech;
   const sound = soundDesign.compile(taskId);
   const signature = storage.canonicalFingerprint({
     storyboard: shots.map((shot, index) => ({
@@ -78,7 +79,7 @@ function savePlan(taskId, input = {}) {
     if (name && voice) speakerAssignments[name] = voice;
   });
   const narrator = clean(input.voice_assignments?.narrator || input.voiceAssignments?.narrator || input.voice_id || input.voiceId || state.voice_id, 120);
-  const includeVoiceover = input.include_voiceover === true || input.includeVoiceover === true;
+  const includeVoiceover = state.has_speech;
   const nextPlan = {
     schema_version: 1,
     include_voiceover: includeVoiceover,
@@ -98,8 +99,8 @@ function savePlan(taskId, input = {}) {
 }
 
 function applyPlan(taskId, context = {}) {
-  const plan = storage.getOutput(taskId, PLAN_KIND) || {};
-  return { ...context, ...plan };
+  const state = current(taskId);
+  return { ...context, ...state.plan, include_voiceover: state.include_voiceover };
 }
 
 function confirm(taskId, actor = {}) {

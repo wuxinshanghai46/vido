@@ -32,7 +32,14 @@ async function main() {
   await assert.rejects(async () => audioProduction.confirm(taskId), error => error.code === 'AUDIO_VOICE_REQUIRED');
 
   audioProduction.savePlan(taskId, { include_voiceover: false, voice_id: '' });
-  assert.strictEqual(audioProduction.current(taskId).include_voiceover, false, '用户明确关闭声音后必须保留决定');
+  assert.strictEqual(audioProduction.current(taskId).include_voiceover, true, '声音页旧参数不得覆盖剧情中真实存在的旁白和对白');
+  assert.strictEqual(audioProduction.applyPlan(taskId, { include_voiceover: false }).include_voiceover, true, '媒体运行合同必须使用分镜判定，不能续用旧的关闭状态');
+
+  const silentTaskId = 'sound-confirmation-v363-silent';
+  storage.createTask({ id: silentTaskId, request: {}, user_id: 'test-user' });
+  storage.saveOutput(silentTaskId, 'storyboard_table', [{ shot_index: 1, visual: '纯画面，无旁白和对白。' }]);
+  audioProduction.savePlan(silentTaskId, { include_voiceover: true, voice_id: 'legacy-voice' });
+  assert.strictEqual(audioProduction.current(silentTaskId).include_voiceover, false, '无旁白和对白的分镜不得被旧参数强行加入人声');
 
   assert.deepStrictEqual(soundDesign.openverseQueryCandidates('showroom ambience'), [
     'showroom ambience', 'indoor ambience', 'indoor room tone',

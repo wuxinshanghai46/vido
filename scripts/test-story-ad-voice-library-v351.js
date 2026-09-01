@@ -17,7 +17,8 @@ assert(view.includes('zhipu|智谱|aliyun-nls|智能语音交互') && view.inclu
 assert(css.includes('.voice-picker-trigger') && css.includes('.voice-library-item.is-selected'));
 assert(css.includes('.voice-settings-grid label{align-content:start}') && css.includes('.voice-settings-grid select{height:58px;min-height:58px}'), '音色按钮和字幕选择框必须固定等高且禁止网格拉伸');
 assert(view.includes('voice-library-provider-select') && css.includes('.voice-library-provider-select'), '供应商筛选必须使用工作台主题样式，禁止裸原生灰色控件');
-assert(css.includes('.voice-settings-panel.is-disabled .voice-settings-grid{opacity:1}'), '无旁白模式下字幕选择仍须保持正常可见');
+assert(css.includes('color-scheme:inherit') && css.includes(':root[data-theme="light"] .voice-library-dialog'), '音色弹窗和供应商下拉必须继承平台主题并显式支持浅色主题');
+assert(!css.includes('cursor:pointer;color-scheme:dark'), '音色供应商下拉不得写死深色系统控件');
 assert(tts.includes('strictProvider') && tts.includes("item.id === selectedProvider"), '显式试听必须锁定所选供应商');
 assert(avatar.includes('providerId: providerKey') && avatar.includes("err.code === 'TTS_PROVIDER_BILLING'"), '试听接口必须传递供应商并返回真实账户错误');
 console.log('story-ad voice library v351 checks passed');
