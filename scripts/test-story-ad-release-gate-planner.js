@@ -66,6 +66,7 @@ assert.deepEqual(plan(['scripts/test-story-ad-historical-asset-actions-v61.js'])
 assert.equal(plan(['src/services/storyAdWorkspace/authoritativeReferenceProjectionService.js']).profile, 'reference');
 assert(plan(['src/services/storyAdWorkspace/authoritativeReferenceProjectionService.js']).gates.some(row => row.id === 'reference'));
 assert.equal(plan(['src/services/newStoryAd/assetPlanService.js']).profile, 'asset_plan');
+assert.equal(plan(['src/services/newStoryAd/videoAdapterMediaRuntime.js']).profile, 'systemic');
 assert.equal(plan(['src/services/storyAdWorkspace/projectBundleMediaProjectionService.js']).profile, 'asset_plan');
 assert.equal(plan(['public/story-ad/views/soundDesignFeature.js']).profile, 'final_media');
 assert.equal(plan(['src/routes/assets.js', 'scripts/test-story-ad-character-library-v183.js']).profile, 'ui');

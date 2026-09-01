@@ -119,7 +119,7 @@ const DOMAIN_RULES = [
       /^src\/routes\/workbench\.js$/i,
       /^src\/services\/(?:pipelineModelService|deyunaiService|videoService)\.js$/i,
       /^src\/services\/(?:ttsService|voicePackEnrollmentService)\.js$/i,
-      /^src\/services\/newStoryAd\/(?:videoAdapter|lipSyncService|videoArtifactWorkflowService)\.js$/i,
+      /^src\/services\/newStoryAd\/(?:videoAdapter(?:MediaRuntime)?|lipSyncService|videoArtifactWorkflowService)\.js$/i,
       /^src\/services\/newStoryAd\/(?:productionGraphService|productionAssetOrchestratorService|revisionService)\.js$/i,
       /^src\/routes\/newStoryAd\/(?:personPlanGenerationRoute|propRoutes)\.js$/i,
       /^scripts\/test-story-ad-production-graph-/i,
