@@ -30,7 +30,7 @@ const OUTPUT_DIR = path.resolve(process.env.OUTPUT_DIR || path.join(__dirname, '
 const VIDEO_STAGE = 'new_story_ad.video';
 const VIDEO_MAX_CANDIDATES = Math.max(1, Math.min(5, Number(process.env.NEW_STORY_AD_VIDEO_MAX_CANDIDATES) || 4));
 const {
-  ensureDir, safeBase, publicVideoUrl, videoPathFromName, clamp, outputSize, probeDuration,
+  ensureDir, safeBase, publicVideoUrl, videoPathFromName, clamp, ratioSize, outputSize, execFfmpeg, probeDuration,
   encodingProfile, normalizeProviderClip, localImagePath, localAudioPath,
 } = require('./videoAdapterMediaRuntime').createVideoAdapterMediaRuntime({ videoDir: VIDEO_DIR });
 

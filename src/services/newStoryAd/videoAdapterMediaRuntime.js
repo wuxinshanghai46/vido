@@ -143,7 +143,7 @@ function createVideoAdapterMediaRuntime({ videoDir }) {
     return filePath && fs.existsSync(filePath) ? filePath : '';
   }
 
-  return { ensureDir, safeBase, publicVideoUrl, videoPathFromName, clamp, outputSize, probeDuration, encodingProfile, normalizeProviderClip, localImagePath, localAudioPath };
+  return { ensureDir, safeBase, publicVideoUrl, videoPathFromName, clamp, ratioSize, outputSize, execFfmpeg, probeDuration, encodingProfile, normalizeProviderClip, localImagePath, localAudioPath };
 }
 
 module.exports = { createVideoAdapterMediaRuntime };
