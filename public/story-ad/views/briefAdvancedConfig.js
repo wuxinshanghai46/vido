@@ -1,4 +1,4 @@
-import { renderBriefMaterialRows } from './briefMaterials.js?v=20260901-production-v355';
+import { renderBriefMaterialRows } from './briefMaterials.js?v=20260901-production-v356';
 
 function hasMaterials(bundle) {
   const reference = bundle?.reference || {};
