@@ -1,5 +1,5 @@
-import { request } from '../api.js?v=20260901-production-v353';
-import { escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260901-production-v353';
+import { request } from '../api.js?v=20260901-production-v354';
+import { escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260901-production-v354';
 
 function assetModal(title = '') {
   const previouslyFocused = document.activeElement;
