@@ -108,11 +108,16 @@ export function bindLiveAudioPreview({ host, bundle, audioPlanPayload, request, 
   const playOverall = async () => {
     await ensureGainGraph();
     syncPreviewVolumes();
-    await Promise.all([voicePlayer.play(), bgmPlayer.play()]);
+    const startPromise = Promise.all([voicePlayer.play(), bgmPlayer.play()]);
     overallState = 'playing';
     setPlayButton('⏸ 暂停');
     syncPreviewVolumes();
     armEndGuard();
+    startPromise.catch(error => {
+      stopOverall({ clearSource: true });
+      toast(error.message || '整体试听无法播放。', 'danger');
+      if (status) status.textContent = error.message || '整体试听无法播放。';
+    });
   };
 
   playButton?.addEventListener('click', async () => {
