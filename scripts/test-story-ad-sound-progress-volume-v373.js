@@ -54,6 +54,7 @@ async function main() {
   const ui = fs.readFileSync(path.join(root, 'public/story-ad/components/ui.js'), 'utf8');
   const route = fs.readFileSync(path.join(root, 'src/routes/storyAdWorkspace.js'), 'utf8');
   const service = fs.readFileSync(path.join(root, 'src/services/newStoryAd/storyAdService.js'), 'utf8');
+  const progressService = fs.readFileSync(path.join(root, 'src/services/newStoryAd/ttsProgressService.js'), 'utf8');
   const ttsStart = service.indexOf('async function generateTtsStage');
   const ttsBlock = service.slice(ttsStart, service.indexOf('/** 编译通用执行方案', ttsStart));
   assert(view.includes('data-tts-inline-progress') && view.includes('data-tts-progress-label'), '声音页必须在生成按钮附近展示逐段进度条');
@@ -63,7 +64,8 @@ async function main() {
   assert(view.includes('data-preview-kind="voice"') && view.includes('data-preview-kind="bgm"'), '人声和背景音乐必须分别接入试听音量');
   assert(view.includes('voice_volume: Number') && route.includes('voice_volume: production.plan.voice_volume ?? 1'), '人声音量必须贯通前端载荷和读取接口');
   assert(!ttsBlock.includes('assertVideoInputsReady'), '声音生成不得被人物或关键帧视频门禁误拦截');
-  assert(ttsBlock.includes('completedTracks') && ttsBlock.includes('voice_generating'), 'TTS 服务必须持久化可轮询的真实完成进度');
+  assert(ttsBlock.includes('ttsProgress.create') && ttsBlock.includes('onCheckpoint: progress.checkpoint'), 'TTS 阶段必须把真实检查点交给独立进度状态机');
+  assert(progressService.includes('voice_generating') && progressService.includes("storage.saveOutput(taskId, 'tts_audio'"), 'TTS 进度服务必须原子保存试听轨和可轮询完成数');
   assert(!view.includes('已将“'), '音乐检索不得展示无法由结果证明的识别结论');
 
   console.log(JSON.stringify({

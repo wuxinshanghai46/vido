@@ -49,7 +49,7 @@ const blueprintCharacterProjection = require('./blueprintCharacterProjectionServ
 const { normalizeAssistedStoryBeat } = storyBeatAssist, visualRealismPolicy = require('./visualRealismPolicyService'), sceneAssetLifecycle = require('./sceneAssetService');
 const sceneCheckpointProjection = require('./sceneCheckpointProjectionService');
 const sceneVisualAcceptance = require('./sceneVisualAcceptanceService');
-const stageProgress = require('./stageProgressService'), taskProgressSave = require('./taskProgressSaveService');
+const stageProgress = require('./stageProgressService'), taskProgressSave = require('./taskProgressSaveService'), ttsProgress = require('./ttsProgressService');
 const mediaResultProjection = require('./mediaResultProjectionService'), paidExecutionPolicy = require('./paidVideoExecutionPolicyService');
 const { compactPublicTaskBundle } = require('./taskBundleProjection'), temporalEvidenceLifecycle = require('./temporalEvidenceLifecycleService'), videoCore = require('../videoGenerationCore');
 const { createTaskViewService } = require('./taskViewService'), assetPlanPublication = require('./assetPlanPublicationService'), releaseBundle = require('../storyAdReleaseBundleService');
@@ -59,7 +59,7 @@ const propAssets = require('./propAssetService'), propTimeline = require('./prop
 const assetPlan = require('./assetPlanService'), workflowTransition = require('./workflowTransitionContractService'), { blueprintFingerprint } = workflowTransition;
 const assetPlanCheckpointLineage = require('./assetPlanCheckpointLineageService');
 const productionLimits = require('./productionLimitsService'), storySceneCoverage = require('./storySceneCoverageService');
-const voicePlan = require('./voicePlanService');
+const voicePlan = require('./voicePlanService'), ttsContract = require('./ttsContractService');
 const videoInputFrames = require('./videoInputFrameService'), audioProduction = require('./audioProductionService'), storyAdTimeline = require('./storyAdTimelineService');
 const accountVoiceAssignment = require('./accountVoiceAssignmentService');
 const contentSkill = require('./contentSkillService'), contentDomainArtifacts = require('./contentDomainArtifactService');
@@ -2176,49 +2176,23 @@ function assertVideoInputsReady({ ctx = {}, shots = [], keyframes = [], contract
   return true;
 }
 
-function resolveTtsVoiceId(options = {}, ctx = {}, existingTtsAudio = {}) {
-  if (Object.prototype.hasOwnProperty.call(options, 'voice_id') || Object.prototype.hasOwnProperty.call(options, 'voiceId')) {
-    return cleanText(options.voice_id ?? options.voiceId ?? '', 120);
-  }
-  if (Object.prototype.hasOwnProperty.call(ctx, 'voice_id') || Object.prototype.hasOwnProperty.call(ctx, 'voiceId')) {
-    return cleanText(ctx.voice_id ?? ctx.voiceId ?? '', 120);
-  }
-  return cleanText(
-    existingTtsAudio?.voice_id
-      || existingTtsAudio?.voiceId
-      || '',
-    120,
-  );
-}
-
-function silentTtsOutput(reason = 'voiceover_disabled') {
-  return {
-    tracks: [],
-    voice_id: '',
-    skipped: true,
-    reason,
-    provider_used: '',
-    warnings: [],
-  };
-}
-
 async function generateTtsStage(taskId, options = {}) {
   const task = storage.getTask(taskId);
   if (!task) throw new Error('没有找到对应项目。');
   const ctx = mediaRuntimeContext(taskId, storage.getOutput(taskId, 'context') || task.request || {});
   const shots = await ensureStoryboardForMedia(taskId);
   const existingTtsAudio = storage.getOutput(taskId, 'tts_audio') || {};
-  const voiceId = resolveTtsVoiceId(options, ctx, existingTtsAudio);
+  const voiceId = ttsContract.resolveVoiceId(options, ctx, existingTtsAudio);
   const voiceAssignments = voicePlan.resolveVoiceAssignments(options, ctx, existingTtsAudio, voiceId);
   const includeVoiceover = voicePlan.voiceoverEnabled(options, ctx, voiceId, voiceAssignments);
   const generationId = cleanText(options.generation_id || options.generationId || '', 80);
   const startedAt = new Date().toISOString();
-  let completedTracks = 0;
+  const progress = ttsProgress.create({ taskId, total: shots.length, generationId, voiceId, voiceAssignments, startedAt });
   storage.updateTask(taskId, { status: 'running', stage: 'tts' });
   storage.saveStage(taskId, 'tts', { status: 'running', input_summary: `${shots.length} shot voice tracks` });
-  stageProgress.update(taskId, { stage: 'tts', phase: 'voice_preparing', completed: 0, total: shots.length, generationId, startedAt, message: `正在准备 ${shots.length} 段配音` });
+  progress.preparing();
   if (!includeVoiceover) {
-    const tts_audio = silentTtsOutput();
+    const tts_audio = ttsContract.silentOutput();
     storage.saveOutput(taskId, 'tts_audio', tts_audio);
     storage.deleteOutput(taskId, audioProduction.OUTPUT_KIND);
     storage.saveStage(taskId, 'tts', {
@@ -2227,12 +2201,12 @@ async function generateTtsStage(taskId, options = {}) {
       diagnostics: { skipped: true, reason: tts_audio.reason },
     });
     storage.updateTask(taskId, { status: 'done', stage: 'tts_ready' });
-    stageProgress.update(taskId, { stage: 'tts', status: 'done', phase: 'voice_skipped', completed: shots.length, total: shots.length, generationId, startedAt, message: '当前分镜没有需要生成的旁白或对白' });
+    progress.skipped();
     return { tts_audio, skipped: true };
   }
   const reusedTts = ttsReuse.reuseExistingVoiceover({ storage, taskId, ttsAudio: existingTtsAudio, shots, voiceId, voiceAssignments, force: options.force_regenerate_tts === true || options.forceRegenerateTts === true });
   if (reusedTts) {
-    stageProgress.update(taskId, { stage: 'tts', status: 'done', phase: 'voice_reused', completed: shots.length, total: shots.length, generationId, startedAt, message: `已复用 ${shots.length} 段当前音色的有效配音` });
+    progress.reused();
     return reusedTts;
   }
   let tts_audio;
@@ -2244,14 +2218,10 @@ async function generateTtsStage(taskId, options = {}) {
       speed: options.speed || ctx.tts_speed || 1,
       allowSilentFallback: options.allow_silent_fallback === true || options.allowSilentFallback === true,
       existingTracks: (options.force_regenerate_tts === true || options.forceRegenerateTts === true) ? [] : (existingTtsAudio?.tracks || []),
-      onCheckpoint: (tracks, checkpoint = {}) => {
-        completedTracks = Number(checkpoint.completed ?? tracks.filter(Boolean).length) || 0;
-        storage.saveOutput(taskId, 'tts_audio', { tracks, voice_id: voiceId, voice_assignments: voiceAssignments, provider_used: tracks.find(track => track?.provider_used)?.provider_used || '', warnings: tracks.map(track => track?.warning).filter(Boolean), status: tracks.every(Boolean) ? 'ready' : 'running', updated_at: new Date().toISOString() });
-        stageProgress.update(taskId, { stage: 'tts', phase: 'voice_generating', completed: completedTracks, total: shots.length, generationId, startedAt, message: `已生成 ${completedTracks}/${shots.length} 段配音` });
-      },
+      onCheckpoint: progress.checkpoint,
     });
   } catch (error) {
-    stageProgress.update(taskId, { stage: 'tts', status: 'failed', phase: 'voice_failed', completed: completedTracks, total: shots.length, generationId, startedAt, message: error.message || '配音生成失败' });
+    progress.failed(error);
     throw error;
   }
   storage.saveOutput(taskId, 'tts_audio', tts_audio);
@@ -2265,7 +2235,7 @@ async function generateTtsStage(taskId, options = {}) {
     },
   });
   storage.updateTask(taskId, { status: 'done', stage: 'tts_ready' });
-  stageProgress.update(taskId, { stage: 'tts', status: 'done', phase: 'voice_ready', completed: shots.length, total: shots.length, generationId, startedAt, message: `${shots.length} 段配音已生成，可逐段试听` });
+  progress.ready();
   return { tts_audio };
 }
 
@@ -2460,7 +2430,7 @@ async function generateVideoStage(taskId, options = {}) { options = paidExecutio
   const preflightShotActions = new Map((preflightPlan.shots || []).map(item => [item.index, item]));
   let ttsAudio = storage.getOutput(taskId, 'tts_audio');
   const visualOnly = options.visual_only === true || options.visualOnly === true;
-  const selectedVoiceId = resolveTtsVoiceId(options, ctx, ttsAudio);
+  const selectedVoiceId = ttsContract.resolveVoiceId(options, ctx, ttsAudio);
   const voiceId = visualOnly ? '' : selectedVoiceId;
   const voiceAssignments = visualOnly ? {} : voicePlan.resolveVoiceAssignments(options, ctx, ttsAudio || {}, voiceId);
   const includeVoiceover = !visualOnly && voicePlan.voiceoverEnabled(options, ctx, voiceId, voiceAssignments);
@@ -2476,9 +2446,9 @@ async function generateVideoStage(taskId, options = {}) { options = paidExecutio
   const autoTtsEnabled = includeVoiceover && options.auto_tts === true;
   const ttsNeedsRefresh = includeVoiceover && !ttsAdapter.voiceoverReady(ttsAudio, shots, voiceId, voiceAssignments);
   if (visualOnly) {
-    ttsAudio = silentTtsOutput('visual_only_storyboard_video');
+    ttsAudio = ttsContract.silentOutput('visual_only_storyboard_video');
   } else if (!includeVoiceover) {
-    ttsAudio = silentTtsOutput();
+    ttsAudio = ttsContract.silentOutput();
     storage.saveOutput(taskId, 'tts_audio', ttsAudio);
   } else if (ttsNeedsRefresh && autoTtsEnabled) {
     const generatedTts = await generateTtsStage(taskId, options);
@@ -3341,13 +3311,13 @@ async function composeStage(taskId, options = {}) {
   const composeStartedAt = new Date().toISOString();
   stageProgress.update(taskId, { stage: 'compose', phase: 'audio_preparing', completed: 0, total: 3, generationId: composeGenerationId, startedAt: composeStartedAt, message: '正在检查配音、音乐和字幕配置' });
   let ttsAudio = storage.getOutput(taskId, 'tts_audio') || {};
-  const composeVoiceId = resolveTtsVoiceId(options, ctx, ttsAudio);
+  const composeVoiceId = ttsContract.resolveVoiceId(options, ctx, ttsAudio);
   const composeVoiceAssignments = voicePlan.resolveVoiceAssignments(options, ctx, ttsAudio, composeVoiceId);
   const includeVoiceover = voicePlan.voiceoverEnabled(options, ctx, composeVoiceId, composeVoiceAssignments);
   if (includeVoiceover && !ttsAdapter.voiceoverReady(ttsAudio, shots, composeVoiceId, composeVoiceAssignments)) {
     throw Object.assign(new Error('当前旁白或对白未完成试听确认，合成不会自动补做付费配音。'), { code: 'COMPOSE_TTS_APPROVAL_REQUIRED', status: 409, retryable: false });
   } else if (!includeVoiceover) {
-    ttsAudio = silentTtsOutput();
+    ttsAudio = ttsContract.silentOutput();
     storage.saveOutput(taskId, 'tts_audio', ttsAudio);
   }
   stageProgress.update(taskId, { stage: 'compose', phase: 'audio_ready', completed: 1, total: 3, generationId: composeGenerationId, startedAt: composeStartedAt, message: '音频配置已就绪，正在准备成片时间线' });
@@ -3772,7 +3742,7 @@ module.exports = {
   recoverStoryboardCheckpoint: storyboardCheckpointRecovery.recover,
   buildKeyframeContractStage,
   generateKeyframesStage,
-  resolveTtsVoiceId,
+  resolveTtsVoiceId: ttsContract.resolveVoiceId,
   generateTtsStage,
   projectVideoOutputContext,
   buildVideoPreflightPlan,

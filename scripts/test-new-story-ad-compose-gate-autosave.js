@@ -390,10 +390,10 @@ const ttsStart = service.indexOf('async function generateTtsStage');
 const ttsBlock = service.slice(ttsStart, service.indexOf('/** 编译通用执行方案', ttsStart));
 assert(ttsBlock.indexOf('assertVideoInputsReady') < 0, 'TTS must not be blocked by person/keyframe video QA that is unrelated to audio generation');
 assert(ttsBlock.indexOf('ensureStoryboardForMedia') >= 0 && ttsBlock.indexOf('ensureStoryboardForMedia') < ttsBlock.indexOf('ttsAdapter.generateVoiceover'), 'TTS must still require the authoritative storyboard before a paid voice call');
-assert(ttsBlock.includes("stageProgress.update(taskId, { stage: 'tts'"), 'TTS must publish real checkpoint progress for the sound page');
+assert(ttsBlock.includes('ttsProgress.create') && ttsBlock.includes('onCheckpoint: progress.checkpoint'), 'TTS must publish real checkpoint progress for the sound page');
 assert(ttsBlock.indexOf('if (!includeVoiceover)') < ttsBlock.indexOf('ttsAdapter.generateVoiceover'), 'disabled voiceover must return before any paid TTS call');
 const videoBlock = service.slice(service.indexOf('async function generateVideoStage'), service.indexOf('async function composeStage'));
-assert(videoBlock.includes('ttsAudio = silentTtsOutput()'), 'video generation must use empty audio tracks when voiceover is disabled');
+assert(videoBlock.includes('ttsAudio = ttsContract.silentOutput()'), 'video generation must use empty audio tracks when voiceover is disabled');
 assert(videoBlock.includes('videoLineage.buildShotLineage'), 'every clip must be linked to the current storyboard/person/product/scene/keyframe/audio contract');
 assert(videoBlock.includes('videoRepairPolicy.buildRepairPlan'), 'QA failures must use bounded structured auto-repair');
 assert(videoBlock.includes('sceneBlockService.buildSceneBlocks'), 'video stage must derive compatible generation units from current spatial contracts');
@@ -411,7 +411,7 @@ const composeBlock = service.slice(service.indexOf('async function composeStage'
 assert(!composeBlock.includes('generateVideoStage(taskId'), 'composition must never call the paid visual video generator');
 assert(composeBlock.includes("storage.getOutput(taskId, 'video_clips')"), 'composition must consume already-approved step 4 clips');
 assert(composeBlock.includes('hasBgmAssetOption'), 'explicit no-BGM selection must not restore an older BGM from task context');
-assert(composeBlock.includes('const composeVoiceId = resolveTtsVoiceId'), 'explicit no-voice selection must persist through compose');
+assert(composeBlock.includes('const composeVoiceId = ttsContract.resolveVoiceId'), 'explicit no-voice selection must persist through compose');
 
 const composeService = read('src/services/newStoryAd/composeService.js');
 assert(composeService.includes('async function muxVoiceTrack'), 'step 5 must mix voice locally without regenerating visual clips');
