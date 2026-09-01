@@ -40,6 +40,7 @@ try {
   assert(controller.includes("setPlayButton('⏸ 暂停')") && controller.includes("'▶ 继续试听'"), '整体试听必须由可暂停/继续的播放状态机控制');
   assert(controller.indexOf("overallState = 'playing'") < controller.indexOf('startPromise.catch'), '播放器启动 Promise 不得阻塞按钮进入可暂停状态');
   assert(!controller.includes('await Promise.all([voicePlayer.play(), bgmPlayer.play()])'), '不能等待双播放器启动 Promise 后才恢复按钮');
+  assert(!controller.includes('await ensureGainGraph()') && controller.includes('Promise.resolve(audioContext.resume()).catch'), 'Web Audio 恢复 Promise 不得阻塞试听按钮状态切换');
   assert(controller.includes("voicePlayer?.addEventListener('ended', finishOverall)"), '配音时间轴结束必须统一关闭两条播放器');
   assert(controller.includes('armEndGuard()') && controller.includes('clearEndGuard()'), '必须有基于成片时长的结束保护，避免背景音乐残留播放');
   assert(!controller.includes("setButtonBusy(event.currentTarget, true, '正在准备整体试听…'"), '试听按钮不得复用长任务耗时计时器');

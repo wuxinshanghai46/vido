@@ -34,7 +34,7 @@ export function bindLiveAudioPreview({ host, bundle, audioPlanPayload, request, 
     playButton.disabled = disabled;
     if (disabled) playButton.setAttribute('aria-busy', 'true'); else playButton.removeAttribute('aria-busy');
   };
-  const ensureGainGraph = async () => {
+  const ensureGainGraph = () => {
     const AudioContextClass = window.AudioContext || window.webkitAudioContext;
     if (!AudioContextClass || !voicePlayer || !bgmPlayer) return;
     if (!audioContext) {
@@ -46,7 +46,9 @@ export function bindLiveAudioPreview({ host, bundle, audioPlanPayload, request, 
       voicePlayer.volume = 1;
       bgmPlayer.volume = 1;
     }
-    if (audioContext.state === 'suspended') await audioContext.resume();
+    // Some browsers keep AudioContext.resume() pending while media is still
+    // buffering.  Never let that promise hold the click handler in "loading".
+    if (audioContext.state === 'suspended') Promise.resolve(audioContext.resume()).catch(() => {});
   };
   const clearEndGuard = () => { if (endGuard) clearTimeout(endGuard); endGuard = null; };
   const armEndGuard = () => {
@@ -106,7 +108,7 @@ export function bindLiveAudioPreview({ host, bundle, audioPlanPayload, request, 
   host.querySelector('[data-bgm-volume]')?.addEventListener('input', syncPreviewVolumes);
 
   const playOverall = async () => {
-    await ensureGainGraph();
+    ensureGainGraph();
     syncPreviewVolumes();
     const startPromise = Promise.all([voicePlayer.play(), bgmPlayer.play()]);
     overallState = 'playing';
