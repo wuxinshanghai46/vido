@@ -61,6 +61,9 @@ function ttsTrackMap(tracks = []) {
     return [shotIndex, track];
   }));
 }
+function trackPreviewUrl(track = {}) {
+  return String(track?.audio_url || track?.audioUrl || '').trim();
+}
 
 export function soundDesignMarkup(soundDesign = {}) {
   const assets = new Map((soundDesign.assets || []).map(item => [item.asset_id, item]));
@@ -70,6 +73,10 @@ export function soundDesignMarkup(soundDesign = {}) {
   const ttsByShot = ttsTrackMap(ttsTracks);
   const spokenShots = speechShotCount(production);
   const bgmRows = (soundDesign.timeline || []).filter(row => row.track_type === 'bgm');
+  const activeBgmRow = bgmRows.at(-1) || null;
+  const activeBgmAsset = assets.get(activeBgmRow?.asset_id) || null;
+  const readyVoiceTracks = (production.speech || []).filter(row => (row.units || []).length && trackPreviewUrl(ttsByShot.get(Number(row.shot_index)))).length;
+  const overallPreviewReady = !!activeBgmAsset?.file_url && spokenShots > 0 && readyVoiceTracks === spokenShots;
   const keySoundCount = shots.filter(item => item.auto_recommend_sound).length;
   return `<section class="card generation-section sound-journey-section">
     <div class="card-head"><div><h2>配音与对白</h2><p>先确认声音效果再进入视频生成。旁白/画外音不做口型；只有人物出镜对白才进行口型同步。</p></div><span class="status-badge ${production.approved ? 'success' : 'warning'}">${production.approved ? '声音已确认' : '待试听确认'}</span></div>
@@ -82,17 +89,29 @@ export function soundDesignMarkup(soundDesign = {}) {
             ${production.has_speech !== false ? voicePickerMarkup({ value: production.voice_assignments?.narrator || production.voice_id || '', role: 'narrator', label: '旁白音色', sample: voiceSampleText(production) }) : ''}
             ${(production.speakers || []).map(speaker => voicePickerMarkup({ value: production.voice_assignments?.speakers?.[speaker] || '', speaker, label: `${speaker}的对白音色`, sample: voiceSampleText(production, speaker) })).join('')}
             <label><span>字幕</span><select data-subtitle-enabled><option value="true" ${production.subtitle !== false ? 'selected' : ''}>显示字幕</option><option value="false" ${production.subtitle === false ? 'selected' : ''}>不显示字幕</option></select><small>字幕跟随最终确认的旁白与对白。</small></label>
-            <label class="sound-volume-field"><span>配音试听 / 混音音量 <output data-voice-volume-value>${Math.round(Number(production.voice_volume ?? 1) * 100)}%</output></span><input type="range" min="0.6" max="1" step="0.01" value="${Number(production.voice_volume ?? 1)}" data-voice-volume><small>同时调节逐镜配音试听和成片人声音量。</small></label>
           </div>
           <div class="voice-generation-bar"><div><b>生成并逐段试听</b><small>将按上方音色生成 ${spokenShots} 段配音。</small></div><div class="sound-primary-actions"><button class="btn" type="button" data-save-audio-plan>保存设置</button><button class="btn primary" type="button" data-generate-audio data-generate-label="生成 ${spokenShots || ''} 段配音试听">生成 ${spokenShots || ''} 段配音试听</button></div></div>
           <div class="voice-generation-progress" data-tts-inline-progress role="progressbar" aria-label="配音生成进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" hidden><div><span data-tts-progress-label>0/${spokenShots} 段 · 正在准备配音</span><b data-tts-progress-value>0%</b></div><div class="project-progress-track" aria-hidden="true"><i style="width:0%"></i></div></div>
           <dialog class="voice-library-dialog" data-voice-library-dialog aria-labelledby="voiceLibraryTitle"><header><div><small>试听后再选择</small><h2 id="voiceLibraryTitle">选择配音音色</h2><p>仅显示当前可用的字节豆包语音 2.0 音色；默认推荐项会高亮显示。</p></div><button class="icon-btn dialog-close-button" type="button" data-close-voice-library aria-label="关闭音色库">×</button></header><div class="voice-library-dialog-body"><div class="voice-library-toolbar"><input class="input" type="search" placeholder="搜索音色或风格" data-voice-library-query><select class="voice-library-provider-select" data-voice-library-provider><option value="">全部可用供应商</option></select></div><div class="dialog-inline-feedback" data-voice-library-feedback role="alert" hidden></div><div class="voice-library-results" data-voice-library-results><p>正在加载可试听音色…</p></div><audio data-voice-library-audio data-preview-kind="voice" preload="none" hidden></audio></div></dialog>
         </div>
       </div>
-      ${(production.speech || []).length ? `<div class="speech-preview-list">${production.speech.map(row => { const track = ttsByShot.get(Number(row.shot_index)); return `<article data-audio-track><header><b>SH${String(row.shot_index).padStart(2, '0')}</b><span>${escapeHtml(speechModeLabel(row.mode))}</span></header><p>${(row.units || []).map(unit => `${escapeHtml(unit.speaker || '旁白')}：${escapeHtml(unit.text)}`).join('<br>') || '本镜无对白'}</p><div>${track?.audio_url ? `<audio controls preload="metadata" data-preview-kind="voice" src="${escapeHtml(track.audio_url)}"></audio>` : '<em>尚未生成；生成成功后会在这里出现试听播放器</em>'}</div></article>`; }).join('')}</div>` : ''}
+      ${(production.speech || []).length ? `<div class="speech-preview-list">${production.speech.map(row => { const track = ttsByShot.get(Number(row.shot_index)); const previewUrl = trackPreviewUrl(track); return `<article data-audio-track><header><b>SH${String(row.shot_index).padStart(2, '0')}</b><span>${escapeHtml(speechModeLabel(row.mode))}</span></header><p>${(row.units || []).map(unit => `${escapeHtml(unit.speaker || '旁白')}：${escapeHtml(unit.text)}`).join('<br>') || '本镜无对白'}</p><div>${previewUrl ? `<audio controls preload="metadata" data-preview-kind="voice" src="${escapeHtml(previewUrl)}"></audio>` : '<em>尚未生成；生成成功后会在这里出现对应语音播放器</em>'}</div></article>`; }).join('')}</div>` : ''}
       <section class="sound-option-block">
         <div class="sound-section-heading"><div><span class="optional-badge">可选</span><h2>背景音乐</h2><p>先试听多首候选，再选择一首作为全片音乐；重新选择会替换原音乐，不会叠加两条 BGM。</p></div></div>
-        ${shots.length ? `<article class="bgm-picker" data-audio-track data-sound-shot="1" data-sound-query="${escapeHtml(soundDesign.bgm_query || 'cinematic background music')}" data-sound-track="bgm" data-sound-bound="${bgmRows.length ? 'true' : 'false'}" data-auto-recommend="true" data-preview-duration="8"><div class="bgm-current"><div><span>当前使用</span><b>${bgmRows.length ? escapeHtml(assets.get(bgmRows.at(-1)?.asset_id)?.name || '已采用背景音乐') : '尚未选择背景音乐'}</b><small>${bgmRows.length ? '选择其他音乐会直接替换当前音乐' : '不选择也可以继续进入视频与合成'}</small></div><label class="sound-volume-field"><span>背景音乐试听 / 混音音量 <output data-bgm-volume-value>${Math.round(Number(production.bgm_volume ?? 0.16) * 100)}%</output></span><input type="range" min="0" max="0.35" step="0.01" value="${Number(production.bgm_volume ?? 0.16)}" data-bgm-volume></label></div><div class="bgm-recommendations"><div class="bgm-recommendation-head"><div><b>为当前剧情推荐 1 首</b><small>默认只展示一首；需要更多候选时打开音乐库查询</small></div><button class="btn small" type="button" data-open-bgm-library>查询更多开源音乐</button></div><div data-auto-sound-recommendation><small>正在匹配一首可试听音乐…</small></div></div><dialog class="bgm-library-dialog" data-bgm-library-dialog aria-labelledby="bgmLibraryTitle"><header><div><small>可选 · 不采用也能继续</small><h2 id="bgmLibraryTitle">查询与选择背景音乐</h2><p>输入主题或风格后按回车查询开放授权器乐；曲库不保证收录同名商业歌曲。</p></div><button class="icon-btn dialog-close-button" type="button" data-close-bgm-library aria-label="关闭音乐库">×</button></header><div class="bgm-library-dialog-body"><div class="bgm-mood-list"><button type="button" data-bgm-query="elegant minimal background music">高级克制</button><button type="button" data-bgm-query="warm piano background music">温暖叙事</button><button type="button" data-bgm-query="upbeat corporate background music">轻快商业</button><button type="button" data-bgm-query="cinematic ambient background music">电影氛围</button></div><div class="bgm-search-bar"><input class="input" type="search" value="${escapeHtml(soundDesign.bgm_query || 'cinematic background music')}" placeholder="输入主题或音乐风格，按回车查询" data-bgm-library-query><button class="btn primary" type="button" data-search-bgm-library>查询音乐</button></div><div class="dialog-inline-feedback" data-bgm-library-feedback role="alert" hidden></div><div class="sound-library-results bgm-library-results" data-bgm-library-results><p>打开音乐库后会显示可试听候选。</p></div></div></dialog></article>` : ''}
+        ${shots.length ? `<article class="bgm-picker" data-audio-track data-sound-shot="1" data-sound-query="${escapeHtml(soundDesign.bgm_query || 'cinematic background music')}" data-sound-track="bgm" data-sound-bound="${bgmRows.length ? 'true' : 'false'}" data-auto-recommend="true" data-preview-duration="8"><div class="bgm-current"><div><span>当前使用</span><b>${bgmRows.length ? escapeHtml(activeBgmAsset?.name || '已采用背景音乐') : '尚未选择背景音乐'}</b><small>${bgmRows.length ? '选择其他音乐会直接替换当前音乐' : '先选择一首，才能与整段配音对白一起试听'}</small>${activeBgmAsset?.file_url ? `<audio controls preload="metadata" data-preview-kind="bgm" src="${escapeHtml(activeBgmAsset.file_url)}"></audio>` : ''}</div></div><div class="bgm-recommendations"><div class="bgm-recommendation-head"><div><b>为当前剧情推荐 1 首</b><small>默认只展示一首；需要更多候选时打开音乐库查询</small></div><button class="btn small" type="button" data-open-bgm-library>查询更多开源音乐</button></div><div data-auto-sound-recommendation><small>正在匹配一首可试听音乐…</small></div></div><dialog class="bgm-library-dialog" data-bgm-library-dialog aria-labelledby="bgmLibraryTitle"><header><div><small>可选 · 不采用也能继续</small><h2 id="bgmLibraryTitle">查询与选择背景音乐</h2><p>输入主题或风格后按回车查询开放授权器乐；曲库不保证收录同名商业歌曲。</p></div><button class="icon-btn dialog-close-button" type="button" data-close-bgm-library aria-label="关闭音乐库">×</button></header><div class="bgm-library-dialog-body"><div class="bgm-mood-list"><button type="button" data-bgm-query="elegant minimal background music">高级克制</button><button type="button" data-bgm-query="warm piano background music">温暖叙事</button><button type="button" data-bgm-query="upbeat corporate background music">轻快商业</button><button type="button" data-bgm-query="cinematic ambient background music">电影氛围</button></div><div class="bgm-search-bar"><input class="input" type="search" value="${escapeHtml(soundDesign.bgm_query || 'cinematic background music')}" placeholder="输入主题或音乐风格，按回车查询" data-bgm-library-query><button class="btn primary" type="button" data-search-bgm-library>查询音乐</button></div><div class="dialog-inline-feedback" data-bgm-library-feedback role="alert" hidden></div><div class="sound-library-results bgm-library-results" data-bgm-library-results><p>打开音乐库后会显示可试听候选。</p></div></div></dialog></article>` : ''}
+        <section class="overall-audio-preview" data-overall-audio-preview>
+          <div class="overall-audio-preview-head"><div><b>整体声音试听</b><small>按成片时间轴试听唯一背景音乐与全部旁白/对白，不重复生成语音。</small></div><span class="status-badge ${overallPreviewReady ? 'success' : 'warning'}">${overallPreviewReady ? '素材已齐' : '等待声音素材'}</span></div>
+          <div class="overall-audio-source-grid">
+            <article><span>背景音乐</span><b>${activeBgmAsset ? escapeHtml(activeBgmAsset.name || '已选择背景音乐') : '尚未选择'}</b><small>${activeBgmAsset ? '全片只使用这一首背景音乐' : '请从右侧推荐或音乐库选择一首'}</small></article>
+            <article><span>整体配音对白</span><b>${readyVoiceTracks}/${spokenShots} 段已生成</b><small>${readyVoiceTracks === spokenShots && spokenShots > 0 ? '包含上方每个镜头的旁白与人物对白' : '请先完成全部逐镜配音生成'}</small></article>
+          </div>
+          <div class="overall-audio-volume-grid">
+            <label class="sound-volume-field"><span>配音对白音量 <output data-voice-volume-value>${Math.round(Number(production.voice_volume ?? 1) * 100)}%</output></span><input type="range" min="0.6" max="1.2" step="0.01" value="${Number(production.voice_volume ?? 1)}" data-voice-volume><small>用于整体试听和最终成片。</small></label>
+            <label class="sound-volume-field"><span>背景音乐音量 <output data-bgm-volume-value>${Math.round(Number(production.bgm_volume ?? 0.16) * 100)}%</output></span><input type="range" min="0" max="0.35" step="0.01" value="${Number(production.bgm_volume ?? 0.16)}" data-bgm-volume><small>用于整体试听和最终成片。</small></label>
+          </div>
+          <div class="overall-audio-actions"><button class="btn primary" type="button" data-play-overall-audio ${overallPreviewReady ? '' : 'disabled'}>▶ 试听背景音乐 + 配音对白</button><small data-overall-audio-status>${overallPreviewReady ? '点击后生成本地混合试听，不会再次调用语音供应商。' : '需要先选择背景音乐并生成全部配音。'}</small></div>
+          <audio controls preload="none" data-overall-audio-player hidden></audio>
+        </section>
       </section>
       <details class="sound-option-panel">
         <summary><span><span class="optional-badge">可选</span><b>场景音效</b><small>当前剧情明确音效 ${keySoundCount} 处；普通环境描述默认不添加</small></span><span>展开设置</span></summary>
@@ -119,6 +138,16 @@ export function bindSoundDesign(host, { bundle, store, refreshShell, navigate })
   const voiceResults = host.querySelector('[data-voice-library-results]');
   const voiceAudio = host.querySelector('[data-voice-library-audio]');
   const volumeValue = selector => Math.max(0, Math.min(1, Number(host.querySelector(selector)?.value || 0)));
+  const overallPlayer = host.querySelector('[data-overall-audio-player]');
+  const overallStatus = host.querySelector('[data-overall-audio-status]');
+  const resetOverallPreview = () => {
+    if (!overallPlayer) return;
+    overallPlayer.pause();
+    overallPlayer.currentTime = 0;
+    overallPlayer.removeAttribute('src');
+    overallPlayer.hidden = true;
+    if (overallStatus && !host.querySelector('[data-play-overall-audio]')?.disabled) overallStatus.textContent = '音量已改变，点击重新生成整体试听；不会再次调用语音供应商。';
+  };
   const syncPreviewVolumes = () => {
     const voiceVolume = volumeValue('[data-voice-volume]');
     const bgmVolume = volumeValue('[data-bgm-volume]');
@@ -128,8 +157,8 @@ export function bindSoundDesign(host, { bundle, store, refreshShell, navigate })
     const bgmOutput = host.querySelector('[data-bgm-volume-value]'); if (bgmOutput) bgmOutput.textContent = `${Math.round(bgmVolume * 100)}%`;
   };
   syncPreviewVolumes();
-  host.querySelector('[data-voice-volume]')?.addEventListener('input', syncPreviewVolumes);
-  host.querySelector('[data-bgm-volume]')?.addEventListener('input', syncPreviewVolumes);
+  host.querySelector('[data-voice-volume]')?.addEventListener('input', () => { syncPreviewVolumes(); resetOverallPreview(); });
+  host.querySelector('[data-bgm-volume]')?.addEventListener('input', () => { syncPreviewVolumes(); resetOverallPreview(); });
   const setDialogFeedback = (selector, message = '', tone = 'danger') => {
     const feedback = host.querySelector(selector);
     if (!feedback) return;
@@ -227,6 +256,23 @@ export function bindSoundDesign(host, { bundle, store, refreshShell, navigate })
   host.querySelector('[data-generate-audio]')?.addEventListener('click', async event => {
     const inlineProgress = host.querySelector('[data-tts-inline-progress]');
     try { if (inlineProgress) inlineProgress.hidden = false; setButtonBusy(event.currentTarget, true, '正在生成配音试听…', { elapsed: true }); const payload = audioPlanPayload(); if (host.querySelector('[data-audio-plan]')?.dataset.hasSpeech === 'true' && !payload.voice_id) throw new Error('当前没有可用音色，不能生成配音试听。'); await request(`/api/story-ad/projects/${encodeURIComponent(bundle.project.id)}/audio-plan`, { method: 'PUT', body: payload }); await store.runStage('tts', payload); toast('配音任务已提交，进度会在当前页面持续更新。', 'success'); } catch (error) { toast(error.message, 'danger'); if (inlineProgress) inlineProgress.hidden = true; } finally { setButtonBusy(event.currentTarget, false); }
+  });
+  host.querySelector('[data-play-overall-audio]')?.addEventListener('click', async event => {
+    try {
+      setButtonBusy(event.currentTarget, true, '正在准备整体试听…', { elapsed: true });
+      const payload = audioPlanPayload();
+      await request(`/api/story-ad/projects/${encodeURIComponent(bundle.project.id)}/audio-plan`, { method: 'PUT', body: payload });
+      const result = await request(`/api/story-ad/projects/${encodeURIComponent(bundle.project.id)}/audio-mix-preview`, { method: 'POST', body: payload, timeoutMs: 120000 });
+      if (!result.preview?.audio_url) throw new Error('整体试听音频没有生成。');
+      overallPlayer.src = result.preview.audio_url;
+      overallPlayer.hidden = false;
+      if (overallStatus) overallStatus.textContent = `正在试听：配音 ${Math.round(result.preview.voice_volume * 100)}% + 背景音乐 ${Math.round(result.preview.bgm_volume * 100)}%`;
+      await overallPlayer.play();
+    } catch (error) {
+      resetOverallPreview();
+      toast(error.message, 'danger');
+      if (overallStatus) overallStatus.textContent = error.message || '整体试听生成失败。';
+    } finally { setButtonBusy(event.currentTarget, false); }
   });
   host.querySelector('[data-confirm-audio]')?.addEventListener('click', async event => {
     try { setButtonBusy(event.currentTarget, true, '正在确认…'); await request(`/api/story-ad/projects/${encodeURIComponent(bundle.project.id)}/audio-confirm`, { method: 'POST', body: {} }); toast('声音已确认，正在进入视频与合成。', 'success'); navigate(`/story-ad/projects/${encodeURIComponent(bundle.project.id)}?view=compose`); } catch (error) { toast(error.message, 'danger'); } finally { setButtonBusy(event.currentTarget, false); }

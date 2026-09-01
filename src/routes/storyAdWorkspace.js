@@ -20,6 +20,7 @@ const mediaCatalog = require('../services/newStoryAd/mediaCatalogService');
 const mediaModelSelection = require('../services/newStoryAd/mediaGenerationModelSelectionService');
 const soundDesignAssets = require('../services/newStoryAd/soundDesignAssetService');
 const audioProduction = require('../services/newStoryAd/audioProductionService');
+const audioMixPreview = require('../services/newStoryAd/audioMixPreviewService');
 const storyAdTimeline = require('../services/newStoryAd/storyAdTimelineService');
 
 const router = express.Router();
@@ -448,6 +449,11 @@ router.post('/projects/:taskId/audio-confirm', asyncRoute(async (req, res) => {
   projectForRequest(req);
   const state = audioProduction.confirm(req.params.taskId, currentUser(req));
   res.json({ success: true, task_id: req.params.taskId, approved: state.approved, approval: state.approval });
+}));
+
+router.post('/projects/:taskId/audio-mix-preview', asyncRoute(async (req, res) => {
+  projectForRequest(req);
+  res.json({ success: true, task_id: req.params.taskId, preview: await audioMixPreview.create(req.params.taskId, req.body || {}) });
 }));
 
 router.get('/projects/:taskId/timeline', asyncRoute(async (req, res) => {
