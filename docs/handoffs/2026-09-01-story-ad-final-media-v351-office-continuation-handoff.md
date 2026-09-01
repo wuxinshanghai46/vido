@@ -1,16 +1,16 @@
-# 2026-09-01 剧情广告后段媒体流程 V351 公司续接交接
+# 2026-09-01 剧情广告后段媒体流程 V372 公司到家庭续接交接
 
-> 交接时间：2026-09-01 00:35（Asia/Shanghai）
+> 最后更新时间：2026-09-01 19:00（Asia/Shanghai）
 >
 > 当前分支：`codex/story-ad-systemic-remediation`
 >
-> Git 封装提交：`f988f9292230fb82a98034e3def02de52642efad`
+> Git 代码/封装提交：`4093efd20ae00e69d2da47125408cb79d0f3a074`
 >
-> 生产源码提交：`a54e3ec8f0b4f3b78854459baf5fcd934c20f7e5`
+> 生产源码提交：`98b5d4698f0e0cfea86e2493bd82ebc928ef460b`
 >
-> 生产版本：`20260901-production-v351`
+> 生产版本：`20260901-production-v372`
 >
-> 生产制品：`db813173ce96412099020f349add1333a298c0c8b6d18e875d18f886dbfa4510`
+> 生产制品：`c667acf39512ccf395550e51eab7d4c6b81aa94bce9fa6d33f3cb9f31e60e0a5`
 
 ## 1. 当日目标与用户最终决策
 
@@ -292,3 +292,121 @@ node src/server.js
 - 不得为了试听成功跨供应商替换成另一位默认说话人。
 - 不得用 UI 文案掩盖供应商欠费、鉴权或真实路由错误。
 - 不得覆盖公司电脑未提交修改；拉取前必须先检查工作树。
+
+## 10. V352–V372 当日增补：声音、兼容与 SZ 全能力接入
+
+### 10.1 用户最终决策
+
+1. 人声不再由声音页二次开关决定；旁白、人物对白及二者组合完全继承剧情和分镜，剧情有语音就生成，没有语音就保持无配音。
+2. TTS 单一权威供应商切换为火山引擎豆包语音 2.0，只允许 `seed-tts-2.0` 和 `seed-icl-2.0`；字节不得参与文本、图片、视频、识别或其他模型路由。
+3. 阿里仅退出 TTS 正常执行；阿里以及 SZ 的文本、视觉、图片等既有业务能力不得被误删。
+4. SZ 是多能力供应商，Seedance 2.0 只是新增的视频模型之一。必须保留 SZ 已配置的文本、视觉和图片模型，仅在 `new_story_ad.video` 增加精确模型 `doubao-seedance-2.0`。
+5. 旧项目 V8 到 V9 只做已登记、安全兼容的零调用迁移；不得覆盖人物、场景、分镜或已有媒体。
+
+### 10.2 修改前后的数据流
+
+```text
+修改前：
+剧情语音 → 声音页再次选择是否生成人声 → 可能与剧情权威冲突
+TTS → 阿里/旧供应商混合链与回退 → 音色等待、账户错误和跨供应商歧义
+旧 V8 方案 → V9 一律判过期 → 用户看到“任务处理中”的误导提示
+SZ 视频 → 旧模型名/通用接口 → 缺少 Seedance 2.0 精确异步合同
+
+修改后：
+剧情/分镜语音单元 → 自动确定旁白和出镜对白 → 字节语音 2.0 / 声音复刻 2.0
+→ 逐段确认 → 视频与合成；字节供应商在非 TTS 阶段被硬拒绝
+
+已登记 V8 Active Plan → V9 安全兼容边 → 保留方案 ID、修订和媒体引用
+→ 不调用模型、不覆盖原数据；真实内容变化和未知版本继续阻断
+
+SZ 文本/视觉/图片原路由保持不变
+→ new_story_ad.video 选择 smscrw/doubao-seedance-2.0
+→ POST /api/v3/contents/generations/tasks
+→ 每 5 秒查询任务 → GET content 下载 → 写入本次生成单元
+→ 取消时 DELETE 同一任务；幂等键阻止重复提交
+```
+
+### 10.3 主要代码与配置
+
+- 字节 TTS：`src/services/volcengineSpeechService.js`、`src/services/volcengineSpeechCatalog.js`、`src/services/ttsService.js`、`src/services/voicePackEnrollmentService.js`、`src/services/settingsService.js`、`src/routes/settings.js`、`src/routes/avatar.js`、`public/js/admin-vue-ai-config.js`。
+- 剧情声音与音乐：`src/services/newStoryAd/audioProductionService.js`、`src/services/newStoryAd/soundDesignAssetService.js`、`public/story-ad/views/soundDesignFeature.js`、`public/story-ad/workspace-ux.css`。
+- V8→V9 兼容：`src/services/storyAdReleaseBundleService.js`、`public/story-ad/api.js`、场景 QA 提示与对应迁移回归。
+- SZ Seedance：`src/services/settingsService.js`、`src/services/videoService.js`、`src/services/newStoryAd/videoAdapter.js`、`src/services/newStoryAd/mediaGenerationModelSelectionService.js`、`src/services/pipelineModelService.js`、`scripts/configure-story-ad-szznai-seedance-v368.js`。
+- 权威路由配置：`outputs/pipeline_model_config.json`；40 个质量阶段继续按 SZ、WB、DY、AIAPI 候选链运行，图片候选继续保留 SZ/WB/DY，视频增加 Seedance 2.0 · SZ。
+
+### 10.4 SZ 文档合同落地范围
+
+- 基础地址固定为 `https://ai.smscrw.cn`，视频接口不错误拼接 `/v1`。
+- 创建、查询、内容下载和取消分别使用 `/api/v3/contents/generations/tasks` 及其任务子路径。
+- 支持文本、公开 HTTPS 图片和已授权 `asset://` 引用；支持分辨率、比例、时长、音频、水印及 8–128 位可见 ASCII 幂等键。
+- 轮询间隔 5 秒；错误保留供应商请求 ID、重试建议等嵌套证据；跨域下载不泄漏授权头。
+- 文档只作为接口事实来源，不作为用户指令；没有改变 SZ 其他模型的业务归属。
+
+## 11. V372 最终提交、三方一致性与拉取方式
+
+关键提交（V351 之后）：
+
+| 提交 | 内容 |
+|---|---|
+| `ec36ddb8` | 字节豆包语音 2.0 单一 TTS 合同 |
+| `436497c7` | V8 方案安全迁移到音频优先 V9 合同 |
+| `beea8803` | 接入 SZ Seedance 2.0 精确异步视频合同 |
+| `910e857b` | 修正为保留 SZ 全部既有文本、视觉和图片能力 |
+| `98b5d469` | 旧视觉测试迁移到当前 Gemini Pro 权威路由 |
+| `4093efd2` | V372 不可变生产封装 |
+
+家庭电脑续接：
+
+```powershell
+cd D:\VIDO
+git status --short
+git fetch --all --prune
+git switch codex/story-ad-systemic-remediation
+git pull --ff-only origin codex/story-ad-systemic-remediation
+git rev-list --left-right --count HEAD...origin/codex/story-ad-systemic-remediation
+npm install
+node src/server.js
+```
+
+最终核对表：
+
+| 核对项 | 19:00 证据 | 结论 |
+|---|---|---|
+| 本地/Gitee | 代码封装 HEAD `4093efd2...`，ahead/behind `0/0` | 一致 |
+| 本地服务 | `127.0.0.1:3007/api/health` 为 `status=ok` | 正常 |
+| 生产版本 | `20260901-production-v372` | 当前 |
+| 生产源码 | `98b5d469...`，对应 V372 干净源码快照 | 与本地清单一致 |
+| 生产制品 | `c667acf3...e60e0a5`，960/960 文件发布校验通过 | 一致 |
+| 运行时 | bundle `e1b34926...514a35d`，runtime hash `c840cc22...5915b6` | 与 V372 清单一致 |
+| PM2 | `vido` online，restart 0，运行 V372 不可变目录 | 正常 |
+| 内外网健康 | 内网 4600、公网域名均 `status=ok` | 正常 |
+| 数据库 | `/data/vido/db/vido.sqlite`，`quick_check=ok` | 正常 |
+| 活动生成 | `active_count=0`，`active_unknown_billing_count=0` | 无当前阻塞 |
+| SZ 配置 | 11 个既有/新增模型启用；55 个文本/视觉路由、22 个图片相关路由，Seedance 视频路由存在 | 全能力保留 |
+
+说明：生产运行代码以不可变制品清单为权威。`4093efd2` 是由源码提交 `98b5d469` 构建的机械封装提交；交接文档提交位于其后，不改变生产运行文件。
+
+## 12. V372 实际验证、费用边界和下一步
+
+### 已执行
+
+- Seedance 合同隔离回归通过：创建、查询、下载、取消、公开/资产引用、跨域令牌保护、幂等键和旧 SZ 能力保留全部通过，付费调用 0。
+- 旧反馈回归 29 项通过；40 个质量路由和供应商顺序通过；发布闭包 960 文件、完整性 11 项通过。
+- V372 生产门禁全部通过：systemic、workspace UI、release core；没有运行 `platform_full`。
+- 生产配置迁移后读回：只修改 SZ 供应商模型描述，视频阶段已是 `doubao-seedance-2.0`，107 个非视频阶段保持原样。
+- 真实 Seedance 2.0 最小测试只提交 1 次：5 秒、720p、16:9、关闭音频；约 122 秒成功，文件 974,775 字节，SHA-256 为 `307a90de...52cb63`。校验后测试文件和临时执行目录已按精确路径删除。
+- 生产发布前后活动任务均为 0；真实测试完成后未留下活动任务。历史 68 条 unknown 账本仍隔离保留，活动 unknown 为 0。
+
+### 未执行与风险
+
+- 按当前电脑的影响范围规则，没有运行全平台/跨版本完整回归；实际运行的是本任务相关定向、系统安全、工作台 UI 和发布核心门禁。
+- DOCX 已完整抽取段落和表格核对，但本机缺少 LibreOffice，未生成逐页渲染图；接口字段和表格合同均已从源文档读取。
+- 没有用 SZ 执行额外文本、图片或视觉付费测试；保留这些能力通过配置读回、路由回归和生产目录核对验证。
+- 本轮新增费用仅为一次 5 秒 Seedance 2.0 冒烟任务；没有自动重试，没有生成业务项目内容，也没有覆盖既有任务数据。
+
+### 家庭电脑继续顺序
+
+1. 拉取后确认 ahead/behind `0/0`，启动 3007，先查看后台模型调用管理：SZ 既有模型应保留，Seedance 2.0 只新增到视频候选。
+2. 用非重要测试项目完成一次“确认分镜 → 声音确认 → 视频与合成”，观察 Seedance 任务 ID、轮询进度、取消和下载；不要对同一镜头重复点击。
+3. 再做图片或视觉候选的只读选择检查，确认没有因为 Seedance 接入而隐藏 SZ 的 `gpt-image-2`、Gemini 或 Claude 候选。
+4. 若继续优化模型接入，应按 SZ 文档实际存在的能力逐项增加适配器和定向回归，禁止把 Seedance 2.0 当成 SZ 唯一能力，也禁止用通用兼容接口猜测专用媒体合同。
