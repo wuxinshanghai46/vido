@@ -45,6 +45,7 @@ try {
   assert(controller.includes("voicePlayer?.addEventListener('ended', finishOverall)"), '配音时间轴结束必须统一关闭两条播放器');
   assert(controller.includes('armEndGuard()') && controller.includes('clearEndGuard()'), '必须有基于成片时长的结束保护，避免背景音乐残留播放');
   assert(!controller.includes("setButtonBusy(event.currentTarget, true, '正在准备整体试听…'"), '试听按钮不得复用长任务耗时计时器');
+  assert(controller.includes('prepareOverallPreview().catch(() => {})') && !controller.includes("setPlayButton('正在加载试听…'"), '整体试听地址必须在页面打开后静默预取，按钮不得显示准备任务文案');
   assert(controller.includes('createMediaElementSource') && controller.includes('voiceGain.gain.value = voiceVolume'), '超过 100% 的试听音量必须通过 Web Audio 增益真实生效');
   assert(view.includes('candidate?.classList.add(\'is-selected\')') && css.includes('.bgm-candidate.is-selected'), '点击候选后必须立即把选中框移动到当前候选');
   assert(compose.includes('clampVolume(voiceVolume, 1, 0.6, 1.5)') && compose.includes('clampVolume(bgmVolume, 0.16, 0, 1)'), '最终成片必须使用与试听一致的新音量上限');

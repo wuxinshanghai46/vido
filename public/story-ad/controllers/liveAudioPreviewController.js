@@ -27,6 +27,7 @@ export function bindLiveAudioPreview({ host, bundle, audioPlanPayload, request, 
   let audioContext = null;
   let voiceGain = null;
   let bgmGain = null;
+  let overallPreparation = null;
 
   const setPlayButton = (label, disabled = false) => {
     if (!playButton) return;
@@ -107,6 +108,22 @@ export function bindLiveAudioPreview({ host, bundle, audioPlanPayload, request, 
   host.querySelector('[data-voice-volume]')?.addEventListener('input', syncPreviewVolumes);
   host.querySelector('[data-bgm-volume]')?.addEventListener('input', syncPreviewVolumes);
 
+  const prepareOverallPreview = () => {
+    if (voicePlayer?.src && bgmPlayer?.src) return Promise.resolve();
+    if (overallPreparation) return overallPreparation;
+    const payload = audioPlanPayload();
+    overallPreparation = request(`/api/story-ad/projects/${encodeURIComponent(bundle.project.id)}/audio-mix-preview`, { method: 'POST', body: payload, timeoutMs: 120000 })
+      .then(result => {
+        if (!result.preview?.voice_audio_url || !result.preview?.bgm_audio_url) throw new Error('整体试听的配音轨或背景音乐轨没有准备完成。');
+        voicePlayer.src = result.preview.voice_audio_url;
+        bgmPlayer.src = result.preview.bgm_audio_url;
+        expectedDuration = Math.max(0, Number(result.preview.duration_sec || 0));
+      })
+      .finally(() => { overallPreparation = null; });
+    return overallPreparation;
+  };
+  if (playButton && !playButton.disabled) setTimeout(() => { prepareOverallPreview().catch(() => {}); }, 0);
+
   const playOverall = () => {
     ensureGainGraph();
     syncPreviewVolumes();
@@ -137,19 +154,11 @@ export function bindLiveAudioPreview({ host, bundle, audioPlanPayload, request, 
         return;
       }
       overallState = 'loading';
-      setPlayButton('正在加载试听…', true);
       const payload = audioPlanPayload();
-      await request(`/api/story-ad/projects/${encodeURIComponent(bundle.project.id)}/audio-plan`, { method: 'PUT', body: payload });
-      if (!voicePlayer?.src || !bgmPlayer?.src) {
-        const result = await request(`/api/story-ad/projects/${encodeURIComponent(bundle.project.id)}/audio-mix-preview`, { method: 'POST', body: payload, timeoutMs: 120000 });
-        if (!result.preview?.voice_audio_url || !result.preview?.bgm_audio_url) throw new Error('整体试听的配音轨或背景音乐轨没有准备完成。');
-        voicePlayer.src = result.preview.voice_audio_url;
-        bgmPlayer.src = result.preview.bgm_audio_url;
-        expectedDuration = Math.max(0, Number(result.preview.duration_sec || 0));
-      }
+      request(`/api/story-ad/projects/${encodeURIComponent(bundle.project.id)}/audio-plan`, { method: 'PUT', body: payload }).catch(error => toast(error.message || '音量设置暂未保存。', 'warning'));
+      await prepareOverallPreview();
       voicePlayer.currentTime = 0;
       bgmPlayer.currentTime = 0;
-      setPlayButton('▶ 整体试听');
       playOverall();
     } catch (error) {
       stopOverall({ clearSource: true });
