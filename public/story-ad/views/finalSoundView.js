@@ -1,5 +1,5 @@
-import { request } from '../api.js?v=20260901-production-v371';
-import { bindSoundDesign, soundDesignMarkup } from './finalSoundDesignView.js?v=20260901-production-v371';
+import { request } from '../api.js?v=20260901-production-v372';
+import { bindSoundDesign, soundDesignMarkup } from './finalSoundDesignView.js?v=20260901-production-v372';
 
 export async function mount(host, context) {
   const { bundle, store } = context;
