@@ -1,5 +1,5 @@
-import { request } from '../api.js?v=20260901-production-v365';
-import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260901-production-v365';
+import { request } from '../api.js?v=20260901-production-v366';
+import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260901-production-v366';
 
 const TRACK_TYPES = [['room_tone', '空间底噪'], ['ambient', '环境声'], ['foley', '拟音'], ['sfx', '动作音效'], ['transition', '转场音'], ['bgm', '背景音乐']];
 function trackOptions(selected = 'room_tone') {
