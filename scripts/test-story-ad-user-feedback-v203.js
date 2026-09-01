@@ -35,7 +35,7 @@ async function main() {
     '实时对话必须包含微众 Luna 候选',
   );
   assert.ok(
-    pipeline.getStageDefaults('new_story_ad.reference_video_vision').some(item => item.enabled !== false && item.provider_id === 'webang-maas' && item.model_id === 'gemini-2.5-flash'),
+    pipeline.getStageDefaults('new_story_ad.reference_video_vision').some(item => item.enabled !== false && item.provider_id === 'webang-maas' && item.model_id === 'gemini-2.5-pro'),
     '参考内容识别必须包含微众 Gemini 视觉候选',
   );
   assert.deepEqual(
