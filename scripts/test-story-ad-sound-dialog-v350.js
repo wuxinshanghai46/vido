@@ -16,9 +16,8 @@ function main() {
   assert(view.includes("request('/api/avatar/preview-voice'"), '音色试听必须调用现有真实 TTS 试听接口');
   assert(view.includes("responseType: 'blob'"), '音色试听必须读取真实音频流而不是展示假状态');
   assert(!view.includes('可能产生少量语音费用') && !view.includes('不会自动计费'), '声音选择说明不得用计费提示干扰业务含义');
-  assert(view.includes('分镜中的文字要不要被念出来') && view.includes('做成无旁白版本'), '人声选项必须直接解释它控制成片是否念出分镜文字');
-  assert(view.includes('纯画面＋字幕＋音乐') && view.includes('背景音乐和场景音效仍然保留'), '无旁白版本必须解释最终成片形态和保留内容');
-  assert(!view.includes('<b>本片不使用人声</b>'), '废弃的含糊人声文案不得继续参与当前页面');
+  assert(!view.includes('分镜中的文字要不要被念出来') && !view.includes('做成无旁白版本'), '声音页不得恢复已废弃的人声二次选择');
+  assert(view.includes('声音内容已按剧情自动确定') && view.includes('两者并存时会自动组合'), '旁白与对白必须按剧情合同自动组合');
 
   assert(view.includes('data-open-bgm-library') && view.includes('<dialog class="bgm-library-dialog"'), '背景音乐查询必须恢复为独立弹窗');
   assert(view.includes('查询与选择背景音乐') && view.includes('输入歌名或风格后按回车即可查询'), '弹窗必须说明输入内容和回车查询方式');
@@ -32,7 +31,7 @@ function main() {
   assert(view.includes('dialog-close-button') && css.includes('height:42px;min-height:42px;flex:0 0 42px'), '弹窗关闭按钮必须保持固定正方形');
   assert(avatar.includes("router.post('/preview-voice'") && avatar.includes('previewVoiceCacheDir'), '真实音色试听接口与缓存必须仍然存在');
 
-  console.log(JSON.stringify({ ok: true, voice_preview: true, semantic_voice_choice: true, bgm_enter_search: true, stable_close_button: true, upstream_changed: 0 }));
+  console.log(JSON.stringify({ ok: true, voice_preview: true, story_authoritative_voice: true, bgm_enter_search: true, stable_close_button: true, upstream_changed: 0 }));
 }
 
 main();

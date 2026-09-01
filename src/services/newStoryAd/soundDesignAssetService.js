@@ -117,7 +117,8 @@ function generatedSoundSource(queryOrKind = '') {
 function openverseQueryCandidates(query = '', { trackType = '' } = {}) {
   const original = clean(query, 120);
   if (!original) return [];
-  const candidates = [original];
+  const containsChinese = /[\u3400-\u9fff]/u.test(original);
+  const candidates = trackType === 'bgm' && containsChinese ? [] : [original];
   const rules = [
     [/showroom|exhibition|gallery/i, ['indoor ambience', 'indoor room tone']],
     [/room ambience/i, ['indoor ambience', 'indoor room tone']],
@@ -129,13 +130,26 @@ function openverseQueryCandidates(query = '', { trackType = '' } = {}) {
   ];
   const fallback = rules.find(([pattern]) => pattern.test(original))?.[1] || [];
   const bgmFallback = trackType === 'bgm'
-    ? (/星|月|夜|神话|古风|国风|东方/u.test(original)
-      ? ['Chinese traditional instrumental music', 'traditional instrumental music']
-      : /温暖|治愈|柔和|钢琴/u.test(original)
-        ? ['warm piano instrumental music', 'instrumental music']
-        : ['instrumental music', 'background music'])
+    ? (/相思|思念|怀念|离别|故乡|乡愁/u.test(original)
+      ? ['guzheng music', 'erhu music', 'Chinese flute music', 'traditional Chinese music']
+      : /星|月|夜|神话|古风|国风|东方/u.test(original)
+        ? ['guzheng music', 'Chinese flute music', 'traditional Chinese music']
+        : /温暖|治愈|柔和|钢琴/u.test(original)
+          ? ['warm piano instrumental music', 'soft piano music']
+          : /紧张|悬疑|悬念|压迫/u.test(original)
+            ? ['cinematic suspense music', 'dark tension soundtrack']
+            : /轻快|活力|商业|欢快/u.test(original)
+              ? ['upbeat acoustic background music', 'positive corporate instrumental music']
+              : containsChinese
+                ? ['cinematic background music', 'ambient instrumental music']
+                : ['instrumental music', 'background music'])
     : [];
   return [...new Set([...candidates, ...fallback, ...bgmFallback].map(value => clean(value, 120)).filter(Boolean))];
+}
+
+function likelyBackgroundMusic(item = {}) {
+  const title = clean(item.name, 240).toLowerCase().replace(/[_-]+/g, ' ');
+  return !/cat|protest|speech|interview|applause|crowd|walla|rehearsal|children.*sing|funeral|middle east|south american|door|footstep|room tone|field recording|sound effect|gong(?:\.|$)/i.test(title);
 }
 
 async function searchOpenverseOnce(query = '') {
@@ -156,10 +170,13 @@ async function searchOpenverse(query = '', { trackType = '' } = {}) {
   const merged = [];
   const seen = new Set();
   const matchedQueries = [];
+  const queryCandidates = openverseQueryCandidates(q, { trackType });
+  const similarOpenLicense = trackType === 'bgm' && !queryCandidates.includes(q);
   const targetCount = trackType === 'bgm' || /music|bgm|音乐/i.test(q) ? 8 : 1;
-  for (const candidate of openverseQueryCandidates(q, { trackType })) {
+  for (const candidate of queryCandidates) {
     try {
-      const results = await searchOpenverseOnce(candidate);
+      const found = await searchOpenverseOnce(candidate);
+      const results = trackType === 'bgm' ? found.filter(likelyBackgroundMusic) : found;
       completedRequest = true;
       if (results.length) matchedQueries.push(candidate);
       for (const item of results) {
@@ -180,6 +197,8 @@ async function searchOpenverse(query = '', { trackType = '' } = {}) {
     requested_query: q,
     selected_query: matchedQueries.join(' + ') || q,
     selected_queries: matchedQueries,
+    match_mode: similarOpenLicense ? 'similar_open_license' : 'open_license_search',
+    reference_query: similarOpenLicense ? q : '',
     fallback_used: matchedQueries.some(candidate => candidate !== q),
     license_note: `系统合并 ${matchedQueries.length || 1} 组相关关键词；仅展示允许商用与修改的 CC0、PDM、CC BY 音频，CC BY 会自动写入署名清单。`,
   };

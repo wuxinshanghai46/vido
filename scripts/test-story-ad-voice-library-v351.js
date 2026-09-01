@@ -9,6 +9,7 @@ const avatar = fs.readFileSync(path.join(root, 'src/routes/avatar.js'), 'utf8');
 const tts = fs.readFileSync(path.join(root, 'src/services/ttsService.js'), 'utf8');
 
 assert(view.includes('data-voice-library-query'), '音色弹窗必须支持搜索');
+assert(view.includes("/api/avatar/voice-list?scope=story"), '剧情声音页必须使用不等待数字人供应商的快速音色目录');
 assert(view.includes('data-voice-library-provider'), '音色弹窗必须支持供应商筛选');
 assert(view.includes('data-preview-library-voice') && view.includes('data-choose-library-voice'), '试听和选择必须在弹窗内');
 assert(view.includes('data-voice-select') && view.includes('hidden'), '必须保留原声音方案字段，避免破坏保存合同');
@@ -21,4 +22,6 @@ assert(css.includes('color-scheme:inherit') && css.includes(':root[data-theme="l
 assert(!css.includes('cursor:pointer;color-scheme:dark'), '音色供应商下拉不得写死深色系统控件');
 assert(tts.includes('strictProvider') && tts.includes("item.id === selectedProvider"), '显式试听必须锁定所选供应商');
 assert(avatar.includes('providerId: providerKey') && avatar.includes("err.code === 'TTS_PROVIDER_BILLING'"), '试听接口必须传递供应商并返回真实账户错误');
+assert(avatar.includes("req.query.scope") && avatar.includes('if (!storyScope)') && avatar.includes("scope: storyScope ? 'story' : 'all'"), '剧情音色目录必须跳过无关的 Hifly 与 Topview 远程目录');
+assert(view.includes("error.code === 'TTS_PROVIDER_BILLING'") && view.includes('story-ad-blocked-voice-providers'), '供应商级合成失败后必须停止展示该服务的全部音色，禁止逐个重复报错');
 console.log('story-ad voice library v351 checks passed');

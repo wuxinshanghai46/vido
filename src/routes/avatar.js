@@ -1774,6 +1774,7 @@ router.get('/voice-list', async (req, res) => {
     }
     if (blockedProviders.length) console.log('[voice-list] 已屏蔽测试失败的供应商:', blockedProviders.join(','));
     const badPreviewVoices = _readBadPreviewVoices();
+    const storyScope = String(req.query.scope || '').toLowerCase() === 'story';
     let hiflyVoices = [];
 
     // 供应商名 → id 反查表（用于 ttsService 返回的对象）
@@ -1834,7 +1835,7 @@ router.get('/voice-list', async (req, res) => {
         });
     } catch (e) { console.warn('[voice-list] listVoices failed:', e.message); }
 
-    if (trustedProviders.has('hifly')) {
+    if (!storyScope && trustedProviders.has('hifly')) {
       try {
         const hifly = require('../services/hiflyService');
         const list = await hifly.listVoices({ page: 1, size: 300 });
@@ -1870,14 +1871,16 @@ router.get('/voice-list', async (req, res) => {
     }
 
     let topviewVoices = [];
-    try {
-      const topview = require('../services/topviewService');
-      topviewVoices = await topview.listVoices({ language: 'zh-CN', pageSize: 50 });
-    } catch (e) {
-      console.warn('[voice-list] Topview voices failed:', e.message);
+    if (!storyScope) {
+      try {
+        const topview = require('../services/topviewService');
+        topviewVoices = await topview.listVoices({ language: 'zh-CN', pageSize: 50 });
+      } catch (e) {
+        console.warn('[voice-list] Topview voices failed:', e.message);
+      }
     }
     const voices = [
-      { id: '', name: '自动（按可用链回退）', gender: 'auto', provider: '系统', providerIcon: '⚡' },
+      ...(storyScope ? [] : [{ id: '', name: '自动（按可用链回退）', gender: 'auto', provider: '系统', providerIcon: '⚡' }]),
       ...topviewVoices,
       ...clonedVoices,
       ...hiflyVoices,
@@ -1902,7 +1905,8 @@ router.get('/voice-list', async (req, res) => {
       }
     }
 
-    res.json({ success: true, voices, blocked: blockedProviders });
+    if (storyScope) res.setHeader('Cache-Control', 'private, max-age=60');
+    res.json({ success: true, voices, blocked: blockedProviders, scope: storyScope ? 'story' : 'all' });
   } catch (err) {
     console.error('[voice-list] error:', err.message);
     res.json({ success: true, voices: [{ id: '', name: '自动', gender: 'auto', provider: '系统' }] });
