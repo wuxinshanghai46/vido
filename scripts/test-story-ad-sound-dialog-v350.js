@@ -7,7 +7,11 @@ const path = require('path');
 
 function main() {
   const root = path.resolve(__dirname, '..');
-  const view = ['finalSoundDesignView.js', 'soundDesignFeature.js'].map(file => fs.readFileSync(path.join(root, 'public/story-ad/views', file), 'utf8')).join('\n');
+  const view = [
+    path.join(root, 'public/story-ad/views/finalSoundDesignView.js'),
+    path.join(root, 'public/story-ad/views/soundDesignFeature.js'),
+    path.join(root, 'public/story-ad/controllers/liveAudioPreviewController.js'),
+  ].map(file => fs.readFileSync(file, 'utf8')).join('\n');
   const css = fs.readFileSync(path.join(root, 'public/story-ad/workspace-ux.css'), 'utf8');
   const avatar = fs.readFileSync(path.join(root, 'src/routes/avatar.js'), 'utf8');
 
