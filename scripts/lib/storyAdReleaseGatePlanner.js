@@ -68,7 +68,7 @@ const DOMAIN_RULES = [
     risk: 'final_media',
     patterns: [
       /^src\/services\/newStoryAd\/(?:videoInputFrame|audioProduction|storyAdTimeline|compose|soundDesignAsset)Service\.js$/i,
-      /^public\/story-ad\/views\/(?:final|finalSound|finalEdit|finalSoundDesign)View\.js$/i,
+      /^public\/story-ad\/views\/(?:(?:final|finalSound|finalEdit|finalSoundDesign)View|soundDesignFeature)\.js$/i,
       /^scripts\/(?:test-story-ad-(?:final-media-flow|timeline-render)-v341|test-story-ad-sound-confirmation-flow-v345|test-story-ad-sound-layout-v347|test-story-ad-dialogue-lipsync-v348|test-story-ad-sound-picker-v349|test-story-ad-sound-dialog-v350|test-new-story-ad-keyframe-submission|test-story-ad-workflow-scene-sound-v197)\.js$/i,
     ],
   },
@@ -154,7 +154,7 @@ const DOMAIN_RULES = [
     patterns: [
       /(?:assetPlan|PlanningDetails|PlanRelease|PlanMigration|scenePlanStatus|contextBuilder|subjectAssetBundle)/i,
       /^src\/services\/newStoryAd\/(?:assistSubjectProfileService|assistedPersonSpecService|independentPersonPlanService|personIdentityContractService|personDossierCompiler|personGenerationPromptService|subjectProfileTextService)\.js$/i,
-      /^src\/services\/storyAdWorkspace\/(?:personLookProjectionService|personOwnedPropProjectionService|projectBundleService|sceneSpatialProjectionService)\.js$/i,
+      /^src\/services\/storyAdWorkspace\/(?:personLookProjectionService|personOwnedPropProjectionService|projectBundleService|projectBundleMediaProjectionService|sceneSpatialProjectionService)\.js$/i,
       /^src\/services\/storyAdWorkspace\/sceneWorldService\.js$/i,
       /^scripts\/test-story-ad-person-plan/i,
       /^scripts\/test-story-ad-person-prompt-separation-v\d+\.js$/i,

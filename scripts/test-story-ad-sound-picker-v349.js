@@ -41,7 +41,7 @@ function main() {
   assert.strictEqual(storage.canonicalFingerprint(storage.getOutput(taskId, 'storyboard_table')), upstreamBefore, '背景音乐切换不得回写前五步分镜');
 
   const root = path.resolve(__dirname, '..');
-  const view = fs.readFileSync(path.join(root, 'public/story-ad/views/finalSoundDesignView.js'), 'utf8');
+  const view = ['finalSoundDesignView.js', 'soundDesignFeature.js'].map(file => fs.readFileSync(path.join(root, 'public/story-ad/views', file), 'utf8')).join('\n');
   const css = fs.readFileSync(path.join(root, 'public/story-ad/workspace-ux.css'), 'utf8');
   const routes = fs.readFileSync(path.join(root, 'src/routes/storyAdWorkspace.js'), 'utf8');
   assert(view.includes('type="radio" name="story-voice-mode"'), '人声选择必须使用两个有解释的单选卡，而不是裸复选框');

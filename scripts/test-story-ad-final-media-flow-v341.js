@@ -85,7 +85,7 @@ const routeSource = fs.readFileSync(path.join(root, 'src/routes/newStoryAd.js'),
 const finalView = fs.readFileSync(path.join(root, 'public/story-ad/views/finalView.js'), 'utf8');
 const soundPage = fs.readFileSync(path.join(root, 'public/story-ad/views/finalSoundView.js'), 'utf8');
 const editView = fs.readFileSync(path.join(root, 'public/story-ad/views/finalEditView.js'), 'utf8');
-const soundView = fs.readFileSync(path.join(root, 'public/story-ad/views/finalSoundDesignView.js'), 'utf8');
+const soundView = ['finalSoundDesignView.js', 'soundDesignFeature.js'].map(file => fs.readFileSync(path.join(root, 'public/story-ad/views', file), 'utf8')).join('\n');
 assert.match(routeSource, /LEGACY_KEYFRAME_GENERATION_DISABLED/);
 assert.doesNotMatch(finalView, /data-generate-keyframes/);
 assert.match(finalView, /已确认分镜 \/ 视频首帧/);

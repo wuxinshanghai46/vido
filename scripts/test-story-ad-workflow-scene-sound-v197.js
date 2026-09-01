@@ -33,7 +33,7 @@ const matrix = fs.readFileSync(path.join(__dirname, '../public/story-ad/views/sc
 const finalView = fs.readFileSync(path.join(__dirname, '../public/story-ad/views/finalView.js'), 'utf8');
 const finalSoundView = fs.readFileSync(path.join(__dirname, '../public/story-ad/views/finalSoundView.js'), 'utf8');
 const finalEditView = fs.readFileSync(path.join(__dirname, '../public/story-ad/views/finalEditView.js'), 'utf8');
-const finalSoundDesignView = fs.readFileSync(path.join(__dirname, '../public/story-ad/views/finalSoundDesignView.js'), 'utf8');
+const finalSoundDesignView = ['finalSoundDesignView.js', 'soundDesignFeature.js'].map(file => fs.readFileSync(path.join(__dirname, '../public/story-ad/views', file), 'utf8')).join('\n');
 assert(app.includes("['brief', 'plot', 'assets', 'scene', 'storyboard', 'sound', 'compose', 'edit', 'workflow']"));
 assert(app.includes("plot: ['2', '剧情与对白']"));
 assert(app.includes("scene: ['4', '场景世界']"));

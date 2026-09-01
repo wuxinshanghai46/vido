@@ -44,7 +44,7 @@ const app = read('public/story-ad/app.js');
 const soundView = read('public/story-ad/views/finalSoundView.js');
 const composeView = read('public/story-ad/views/finalView.js');
 const editView = read('public/story-ad/views/finalEditView.js');
-const soundWorkbench = read('public/story-ad/views/finalSoundDesignView.js');
+const soundWorkbench = read('public/story-ad/views/finalSoundDesignView.js') + read('public/story-ad/views/soundDesignFeature.js');
 const css = read('public/story-ad/workspace-ux.css');
 
 assert.match(app, /rawView === 'final' \? 'sound'/, '历史 final 链接必须迁移到声音页');

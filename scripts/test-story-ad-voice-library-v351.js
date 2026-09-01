@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 
 const root = path.resolve(__dirname, '..');
-const view = fs.readFileSync(path.join(root, 'public/story-ad/views/finalSoundDesignView.js'), 'utf8');
+const view = ['finalSoundDesignView.js', 'soundDesignFeature.js'].map(file => fs.readFileSync(path.join(root, 'public/story-ad/views', file), 'utf8')).join('\n');
 const css = fs.readFileSync(path.join(root, 'public/story-ad/workspace-ux.css'), 'utf8');
 const avatar = fs.readFileSync(path.join(root, 'src/routes/avatar.js'), 'utf8');
 const tts = fs.readFileSync(path.join(root, 'src/services/ttsService.js'), 'utf8');

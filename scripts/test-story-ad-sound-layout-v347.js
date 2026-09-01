@@ -39,7 +39,7 @@ function main() {
   assert.strictEqual(storage.canonicalFingerprint(storage.getOutput(taskId, 'storyboard_table')), before, '声音页不得回写前五步分镜');
 
   const root = path.resolve(__dirname, '..');
-  const view = fs.readFileSync(path.join(root, 'public/story-ad/views/finalSoundDesignView.js'), 'utf8');
+  const view = ['finalSoundDesignView.js', 'soundDesignFeature.js'].map(file => fs.readFileSync(path.join(root, 'public/story-ad/views', file), 'utf8')).join('\n');
   const shell = fs.readFileSync(path.join(root, 'public/story-ad/views/finalSoundView.js'), 'utf8');
   const css = fs.readFileSync(path.join(root, 'public/story-ad/workspace-ux.css'), 'utf8');
   const compose = fs.readFileSync(path.join(root, 'src/services/newStoryAd/composeService.js'), 'utf8');

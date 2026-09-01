@@ -69,7 +69,7 @@ async function main() {
   }
 
   const root = path.resolve(__dirname, '..');
-  const soundView = fs.readFileSync(path.join(root, 'public/story-ad/views/finalSoundDesignView.js'), 'utf8');
+  const soundView = ['finalSoundDesignView.js', 'soundDesignFeature.js'].map(file => fs.readFileSync(path.join(root, 'public/story-ad/views', file), 'utf8')).join('\n');
   const shellView = fs.readFileSync(path.join(root, 'public/story-ad/views/finalSoundView.js'), 'utf8');
   assert(!soundView.includes('自动（按可用链回退）'), '页面不得再展示没有落到真实音色的自动选项');
   assert(!soundView.includes('data-preview-sound'), '搜索按钮不得再伪装成已经存在的试听声音');
