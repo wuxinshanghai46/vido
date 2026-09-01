@@ -107,7 +107,7 @@ export function soundDesignMarkup(soundDesign = {}) {
             <label class="sound-volume-field"><span>配音对白音量 <output data-voice-volume-value>${Math.round(Number(production.voice_volume ?? 1) * 100)}%</output></span><input type="range" min="0.6" max="1.5" step="0.01" value="${Number(production.voice_volume ?? 1)}" data-voice-volume><small>可放大到 150%，同时作用于整体试听和最终成片。</small></label>
             <label class="sound-volume-field"><span>背景音乐音量 <output data-bgm-volume-value>${Math.round(Number(production.bgm_volume ?? 0.16) * 100)}%</output></span><input type="range" min="0" max="1" step="0.01" value="${Number(production.bgm_volume ?? 0.16)}" data-bgm-volume><small>可调到 100%，同时作用于整体试听和最终成片。</small></label>
           </div>
-          <div class="overall-audio-actions"><button class="btn primary" type="button" data-play-overall-audio ${overallPreviewReady ? '' : 'disabled'}>▶ 整体试听</button><small data-overall-audio-status>${overallPreviewReady ? '点击后可边听边调两路音量，不会再次调用语音供应商。' : '需要先选择背景音乐并生成全部配音。'}</small></div>
+          <div class="overall-audio-actions"><button class="btn primary" type="button" aria-label="试听背景音乐 + 配音对白" data-play-overall-audio ${overallPreviewReady ? '' : 'disabled'}>▶ 整体试听</button><small data-overall-audio-status>${overallPreviewReady ? '点击后可边听边调两路音量，不会再次调用语音供应商。' : '需要先选择背景音乐并生成全部配音。'}</small></div>
           <audio preload="none" data-overall-voice-player data-preview-kind="voice" data-audio-group="overall" hidden></audio>
           <audio preload="none" data-overall-bgm-player data-preview-kind="bgm" data-audio-group="overall" hidden></audio>
         </section>
