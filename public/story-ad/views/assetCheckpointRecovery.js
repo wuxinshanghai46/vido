@@ -1,5 +1,5 @@
-import { escapeHtml } from '../components/ui.js?v=20260902-production-v384';
-import { renderCheckpointRecoveryBanner } from './billingRecoveryBanner.js?v=20260902-production-v384';
+import { escapeHtml } from '../components/ui.js?v=20260902-production-v385';
+import { renderCheckpointRecoveryBanner } from './billingRecoveryBanner.js?v=20260902-production-v385';
 
 export function checkpointRecoverySummary(people = []) {
   const rows = people.filter(item => item.checkpoint_recovery_summary);
