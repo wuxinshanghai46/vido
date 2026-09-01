@@ -1,4 +1,4 @@
-import { escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260901-production-v352';
+import { escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260901-production-v353';
 
 const REFERENCE_ROLE_META = [
   [/^person_identity_/u, ['人物', '人物身份参考']], [/^cast_identity_board$/u, ['人物', '人物组合身份板']],

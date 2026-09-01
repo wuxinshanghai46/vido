@@ -1,1 +1,1 @@
-export { bindSoundDesign, soundDesignMarkup } from './soundDesignFeature.js?v=20260901-production-v352';
+export { bindSoundDesign, soundDesignMarkup } from './soundDesignFeature.js?v=20260901-production-v353';
