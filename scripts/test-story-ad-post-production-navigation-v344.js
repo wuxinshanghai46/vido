@@ -65,7 +65,8 @@ assert.match(soundWorkbench, /voice-setup-panel/);
 assert.match(soundWorkbench, /sound-primary-actions/);
 assert.match(soundWorkbench, /sound-option-panel/);
 assert.match(soundWorkbench, /bgm-picker/);
-assert.match(css, /\.voice-setup-panel\{[^}]*minmax\(320px/);
+assert.match(css, /\.voice-setup-panel\{[^}]*grid-template-columns:minmax\(0,1fr\)/, '剧情权威声音合同必须使用单列设置区，不得恢复旧人声模式双栏');
+assert.match(soundWorkbench, /voice-story-contract/, '声音页必须解释旁白与对白由剧情自动决定');
 assert.match(css, /\.post-stage-summary\{[^}]*repeat\(3,minmax\(0,1fr\)\)/);
 
 console.log(JSON.stringify({ passed: true, checks: 28, no_video_editor_hidden: true, legacy_final_redirected: true, post_production_views: ['sound', 'compose', 'edit'], upstream_steps_changed: 0 }));
