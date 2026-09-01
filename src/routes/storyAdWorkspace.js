@@ -466,7 +466,7 @@ router.post('/projects/:taskId/sound-assets', asyncRoute(async (req, res) => {
 
 router.get('/projects/:taskId/sound-library', asyncRoute(async (req, res) => {
   projectForRequest(req);
-  res.json({ success: true, task_id: req.params.taskId, ...(await soundDesignAssets.searchOpenverse(req.query.q || '')) });
+  res.json({ success: true, task_id: req.params.taskId, ...(await soundDesignAssets.searchOpenverse(req.query.q || '', { trackType: req.query.track_type || '' })) });
 }));
 
 router.post('/projects/:taskId/sound-assets/openverse', asyncRoute(async (req, res) => {

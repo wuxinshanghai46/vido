@@ -1745,7 +1745,7 @@ router.post('/preview-voice', async (req, res) => {
     const { isTtsVoiceError } = require('../services/ttsService');
     if (!isTopviewVoice && isTtsVoiceError(err)) _markBadPreviewVoice(safeVoiceId, err.message);
     const message = err.code === 'TTS_PROVIDER_BILLING'
-      ? '该音色所属语音服务当前余额不足或账户状态异常，已从可选列表移除；请充值后重新检测，或改选其他可用供应商。'
+      ? '当前语音服务未通过可用性检查。请到后台 AI 配置中检测或更换可用的语音服务后重试。'
       : err.code === 'TTS_PROVIDER_NOT_CONFIGURED'
       ? '该音色所属语音服务尚未配置可用 API Key，已从可选列表移除。'
       : err.message;

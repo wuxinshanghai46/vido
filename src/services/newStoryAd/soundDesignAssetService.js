@@ -114,7 +114,7 @@ function generatedSoundSource(queryOrKind = '') {
   };
 }
 
-function openverseQueryCandidates(query = '') {
+function openverseQueryCandidates(query = '', { trackType = '' } = {}) {
   const original = clean(query, 120);
   if (!original) return [];
   const candidates = [original];
@@ -128,7 +128,14 @@ function openverseQueryCandidates(query = '') {
     [/cinematic|background music|corporate music/i, ['instrumental music', 'piano music']],
   ];
   const fallback = rules.find(([pattern]) => pattern.test(original))?.[1] || [];
-  return [...new Set([...candidates, ...fallback].map(value => clean(value, 120)).filter(Boolean))];
+  const bgmFallback = trackType === 'bgm'
+    ? (/星|月|夜|神话|古风|国风|东方/u.test(original)
+      ? ['Chinese traditional instrumental music', 'traditional instrumental music']
+      : /温暖|治愈|柔和|钢琴/u.test(original)
+        ? ['warm piano instrumental music', 'instrumental music']
+        : ['instrumental music', 'background music'])
+    : [];
+  return [...new Set([...candidates, ...fallback, ...bgmFallback].map(value => clean(value, 120)).filter(Boolean))];
 }
 
 async function searchOpenverseOnce(query = '') {
@@ -141,7 +148,7 @@ async function searchOpenverseOnce(query = '') {
     .slice(0, 20);
 }
 
-async function searchOpenverse(query = '') {
+async function searchOpenverse(query = '', { trackType = '' } = {}) {
   const q = clean(query, 120);
   if (!q) return { results: [], license_note: '请输入要查找的环境声、拟音或动作音效。' };
   let lastError = null;
@@ -149,8 +156,8 @@ async function searchOpenverse(query = '') {
   const merged = [];
   const seen = new Set();
   const matchedQueries = [];
-  const targetCount = /music|bgm|音乐/i.test(q) ? 8 : 1;
-  for (const candidate of openverseQueryCandidates(q)) {
+  const targetCount = trackType === 'bgm' || /music|bgm|音乐/i.test(q) ? 8 : 1;
+  for (const candidate of openverseQueryCandidates(q, { trackType })) {
     try {
       const results = await searchOpenverseOnce(candidate);
       completedRequest = true;
@@ -176,7 +183,7 @@ async function searchOpenverse(query = '') {
     fallback_used: matchedQueries.some(candidate => candidate !== q),
     license_note: `系统合并 ${matchedQueries.length || 1} 组相关关键词；仅展示允许商用与修改的 CC0、PDM、CC BY 音频，CC BY 会自动写入署名清单。`,
   };
-  const generated = generatedSoundSource(q);
+  const generated = generatedSoundSource(trackType === 'bgm' ? 'ambient_music' : q);
   return {
     results: [generated], requested_query: q, selected_query: 'VIDO 本地安全声音', fallback_used: true,
     online_search_error: !completedRequest && lastError ? clean(lastError.code || lastError.message, 80) : '',
