@@ -16,8 +16,8 @@ function main() {
   assert(view.includes("request('/api/avatar/preview-voice'"), '音色试听必须调用现有真实 TTS 试听接口');
   assert(view.includes("responseType: 'blob'"), '音色试听必须读取真实音频流而不是展示假状态');
   assert(view.includes('可能产生少量语音费用') && view.includes('优先使用缓存'), '音色试听必须说明费用和缓存边界');
-  assert(view.includes('不生成旁白或人物对白'), '关闭人声选项必须直接说明关闭的内容');
-  assert(view.includes('这里只关闭人声；背景音乐和场景音效仍可在下方单独选择'), '关闭人声不得让用户误以为音乐和音效也会关闭');
+  assert(view.includes('全片不生成人声'), '关闭人声选项必须直接说明关闭的内容');
+  assert(view.includes('旁白和人物对白都不会生成音频') && view.includes('背景音乐和场景音效不受影响'), '关闭人声必须同时说明费用和不受影响的声音轨');
   assert(!view.includes('<b>本片不使用人声</b>'), '废弃的含糊人声文案不得继续参与当前页面');
 
   assert(view.includes('data-open-bgm-library') && view.includes('<dialog class="bgm-library-dialog"'), '背景音乐查询必须恢复为独立弹窗');
@@ -26,6 +26,8 @@ function main() {
   assert(!view.includes('data-toggle-bgm-library'), '旧的页面内展开音乐库入口必须退出当前合同');
   assert(css.includes('v350 voice preview and background-music library dialog'));
   assert(css.includes('.voice-library-dialog::backdrop') && css.includes('.bgm-library-dialog::backdrop'));
+  assert(view.includes('data-voice-library-feedback') && view.includes('data-bgm-library-feedback'), '弹窗内必须有不会被顶层对话框遮挡的错误反馈区');
+  assert(css.includes('.dialog-inline-feedback'), '弹窗错误反馈必须具备独立可见样式');
   assert(avatar.includes("router.post('/preview-voice'") && avatar.includes('previewVoiceCacheDir'), '真实音色试听接口与缓存必须仍然存在');
 
   console.log(JSON.stringify({ ok: true, voice_preview: true, clear_no_voice_copy: true, bgm_dialog: true, bgm_preview_and_select: true, upstream_changed: 0 }));

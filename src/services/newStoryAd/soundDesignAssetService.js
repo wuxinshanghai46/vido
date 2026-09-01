@@ -146,17 +146,21 @@ async function searchOpenverse(query = '') {
   if (!q) return { results: [], license_note: '请输入要查找的环境声、拟音或动作音效。' };
   let lastError = null;
   let completedRequest = false;
+  const merged = [];
+  const seen = new Set();
+  const matchedQueries = [];
+  const targetCount = /music|bgm|音乐/i.test(q) ? 8 : 1;
   for (const candidate of openverseQueryCandidates(q)) {
     try {
       const results = await searchOpenverseOnce(candidate);
       completedRequest = true;
-      if (results.length) return {
-        results,
-        requested_query: q,
-        selected_query: candidate,
-        fallback_used: candidate !== q,
-        license_note: `系统按“${candidate}”匹配；仅展示允许商用与修改的 CC0、PDM、CC BY 音频，CC BY 会自动写入署名清单。`,
-      };
+      if (results.length) matchedQueries.push(candidate);
+      for (const item of results) {
+        if (seen.has(item.id)) continue;
+        seen.add(item.id);
+        merged.push(item);
+      }
+      if (merged.length >= targetCount) break;
     } catch (error) {
       lastError = error;
       // 网络不可用时继续尝试更多关键词只会把同一次页面等待放大数倍；
@@ -164,6 +168,14 @@ async function searchOpenverse(query = '') {
       break;
     }
   }
+  if (merged.length) return {
+    results: merged.slice(0, 20),
+    requested_query: q,
+    selected_query: matchedQueries.join(' + ') || q,
+    selected_queries: matchedQueries,
+    fallback_used: matchedQueries.some(candidate => candidate !== q),
+    license_note: `系统合并 ${matchedQueries.length || 1} 组相关关键词；仅展示允许商用与修改的 CC0、PDM、CC BY 音频，CC BY 会自动写入署名清单。`,
+  };
   const generated = generatedSoundSource(q);
   return {
     results: [generated], requested_query: q, selected_query: 'VIDO 本地安全声音', fallback_used: true,
