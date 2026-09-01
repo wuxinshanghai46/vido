@@ -38,7 +38,8 @@ try {
   assert(view.includes('max="1.5"') && view.includes('max="1"'), '两路音量范围必须分别扩展到 150% 和 100%');
   assert(!view.includes('data-overall-bgm-player data-preview-kind="bgm" data-audio-group="overall" loop'), '整体背景音乐不能依赖无限 loop 属性');
   assert(controller.includes("setPlayButton('⏸ 暂停')") && controller.includes("'▶ 继续试听'"), '整体试听必须由可暂停/继续的播放状态机控制');
-  assert(controller.indexOf("overallState = 'playing'") < controller.indexOf('startPromise.catch'), '播放器启动 Promise 不得阻塞按钮进入可暂停状态');
+  assert(controller.indexOf("overallState = 'playing'") < controller.indexOf('Promise.all([voicePlayer.play(), bgmPlayer.play()])'), '播放器启动不得阻塞按钮进入可暂停状态');
+  assert(controller.includes('setTimeout(() => {') && controller.includes('Promise.all([voicePlayer.play(), bgmPlayer.play()])'), '媒体播放必须离开点击事件栈后异步启动');
   assert(!controller.includes('await Promise.all([voicePlayer.play(), bgmPlayer.play()])'), '不能等待双播放器启动 Promise 后才恢复按钮');
   assert(!controller.includes('await ensureGainGraph()') && controller.includes('Promise.resolve(audioContext.resume()).catch'), 'Web Audio 恢复 Promise 不得阻塞试听按钮状态切换');
   assert(controller.includes("voicePlayer?.addEventListener('ended', finishOverall)"), '配音时间轴结束必须统一关闭两条播放器');

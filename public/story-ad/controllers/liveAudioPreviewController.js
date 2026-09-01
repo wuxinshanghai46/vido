@@ -107,19 +107,22 @@ export function bindLiveAudioPreview({ host, bundle, audioPlanPayload, request, 
   host.querySelector('[data-voice-volume]')?.addEventListener('input', syncPreviewVolumes);
   host.querySelector('[data-bgm-volume]')?.addEventListener('input', syncPreviewVolumes);
 
-  const playOverall = async () => {
+  const playOverall = () => {
     ensureGainGraph();
     syncPreviewVolumes();
-    const startPromise = Promise.all([voicePlayer.play(), bgmPlayer.play()]);
     overallState = 'playing';
     setPlayButton('⏸ 暂停');
     syncPreviewVolumes();
     armEndGuard();
-    startPromise.catch(error => {
-      stopOverall({ clearSource: true });
-      toast(error.message || '整体试听无法播放。', 'danger');
-      if (status) status.textContent = error.message || '整体试听无法播放。';
-    });
+    // Leave the click event stack before invoking media playback. Some browser
+    // engines synchronously wait for remote media startup inside play().
+    setTimeout(() => {
+      Promise.all([voicePlayer.play(), bgmPlayer.play()]).catch(error => {
+        stopOverall({ clearSource: true });
+        toast(error.message || '整体试听无法播放。', 'danger');
+        if (status) status.textContent = error.message || '整体试听无法播放。';
+      });
+    }, 0);
   };
 
   playButton?.addEventListener('click', async () => {
@@ -130,7 +133,7 @@ export function bindLiveAudioPreview({ host, bundle, audioPlanPayload, request, 
         return;
       }
       if (overallState === 'paused' && voicePlayer?.src && bgmPlayer?.src) {
-        await playOverall();
+        playOverall();
         return;
       }
       overallState = 'loading';
@@ -147,7 +150,7 @@ export function bindLiveAudioPreview({ host, bundle, audioPlanPayload, request, 
       voicePlayer.currentTime = 0;
       bgmPlayer.currentTime = 0;
       setPlayButton('▶ 整体试听');
-      await playOverall();
+      playOverall();
     } catch (error) {
       stopOverall({ clearSource: true });
       toast(error.message, 'danger');
