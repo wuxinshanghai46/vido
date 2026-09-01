@@ -39,11 +39,16 @@ function desiredProvider(current = {}) {
   const preset = settingsService.PROVIDER_PRESETS[PROVIDER_ID];
   const defaults = settingsService.PROVIDER_ADAPTER_DEFAULTS[PROVIDER_ID];
   const currentModels = Array.isArray(current.models) ? current.models : [];
-  const exact = preset.defaultModels.find(model => model.id === VIDEO_MODEL);
-  const models = currentModels
-    .filter(model => model?.id !== VIDEO_MODEL)
-    .map(model => ({ ...model, enabled: false }));
-  models.push({ ...exact, enabled: true });
+  const models = preset.defaultModels.map(model => ({
+    ...model,
+    ...(currentModels.find(item => item?.id === model.id) || {}),
+    id: model.id,
+    enabled: true,
+  }));
+  for (const model of currentModels) {
+    if (!model?.id || models.some(item => item.id === model.id) || /doubao-seedance-2-0-260128/i.test(model.id)) continue;
+    models.push({ ...model });
+  }
   return {
     ...current,
     id: current.id || PROVIDER_ID,
@@ -64,17 +69,14 @@ function desiredProvider(current = {}) {
 }
 
 function desiredStages(config = {}) {
-  const stageIds = new Set([...Object.keys(config.stages || {}), VIDEO_STAGE]);
-  const stages = {};
-  for (const stageId of stageIds) {
-    const previous = Array.isArray(config.stages?.[stageId]) ? config.stages[stageId] : pipeline.getStageDefaults(stageId);
-    const withoutSmscrw = previous.filter(route => !isSmscrw(route));
-    const next = stageId === VIDEO_STAGE
-      ? [{ provider_id: PROVIDER_ID, model_id: VIDEO_MODEL, enabled: true }, ...withoutSmscrw]
-      : withoutSmscrw;
-    stages[stageId] = next.map((route, index) => ({ ...route, priority: index + 1 }));
-  }
-  return stages;
+  const previous = Array.isArray(config.stages?.[VIDEO_STAGE])
+    ? config.stages[VIDEO_STAGE]
+    : pipeline.getStageDefaults(VIDEO_STAGE);
+  const withoutLegacySzVideo = previous.filter(route => !isSmscrw(route));
+  return {
+    [VIDEO_STAGE]: [{ provider_id: PROVIDER_ID, model_id: VIDEO_MODEL, enabled: true }, ...withoutLegacySzVideo]
+      .map((route, index) => ({ ...route, priority: index + 1 })),
+  };
 }
 
 function apply({ write = false } = {}) {
@@ -115,7 +117,7 @@ function apply({ write = false } = {}) {
     changed_stage_count: changedStages.length,
     enabled_smscrw_models: nextProvider.models.filter(model => model.enabled !== false).map(model => model.id),
     smscrw_routes: smscrwRoutes,
-    non_video_smscrw_routes: smscrwRoutes.filter(route => route.stage_id !== VIDEO_STAGE).length,
+    preserved_non_video_stages: Object.keys(config.stages || {}).filter(stageId => stageId !== VIDEO_STAGE).length,
   };
 }
 

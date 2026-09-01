@@ -142,21 +142,23 @@ async function verifyAdapterContract() {
 assert.equal(videoAdapter.isSmscrwSeedanceModel({ provider_id: 'smscrw', model_id: 'doubao-seedance-2.0' }), true);
 assert.equal(videoAdapter.isSmscrwSeedanceModel({ provider_id: 'smscrw', model_id: 'doubao-seedance-2-0-260128' }), true);
 const dryRun = migration.apply({ write: false });
-assert.deepEqual(dryRun.enabled_smscrw_models, ['doubao-seedance-2.0']);
+assert(dryRun.enabled_smscrw_models.includes('claude-opus-4-8'));
+assert(dryRun.enabled_smscrw_models.includes('gpt-image-2'));
+assert(dryRun.enabled_smscrw_models.includes('doubao-seedance-2.0'));
 assert.deepEqual(dryRun.smscrw_routes, [{ stage_id: 'new_story_ad.video', model_id: 'doubao-seedance-2.0' }]);
-assert.equal(dryRun.non_video_smscrw_routes, 0);
+assert.equal(dryRun.preserved_non_video_stages, 2);
 assert.equal(fs.existsSync(migration.BACKUP_PATH), false);
 
 const applied = migration.apply({ write: true });
 assert.equal(applied.applied, true);
 const provider = settingsService.loadSettings().providers.find(migration.isSmscrw);
 assert.equal(provider.api_key, 'test-secret-not-real');
-assert.deepEqual(provider.models.filter(model => model.enabled !== false).map(model => model.id), ['doubao-seedance-2.0']);
+assert(provider.models.filter(model => model.enabled !== false).some(model => model.id === 'claude-sonnet-4-6'));
+assert(provider.models.filter(model => model.enabled !== false).some(model => model.id === 'gpt-image-2'));
+assert(provider.models.filter(model => model.enabled !== false).some(model => model.id === 'doubao-seedance-2.0'));
 assert.equal(pipeline.getStageConfig('new_story_ad.video')[0].model_id, 'doubao-seedance-2.0');
-for (const [stageId, routes] of Object.entries(pipeline.loadConfig().stages || {})) {
-  if (stageId === 'new_story_ad.video') continue;
-  assert.equal(routes.some(migration.isSmscrw), false, `${stageId} 不得保留 SZ 非视频路由`);
-}
+assert(pipeline.getStageConfig('new_story_ad.scene_asset').some(migration.isSmscrw), 'SZ 图片路由必须保留');
+assert(pipeline.getStageConfig('new_story_ad.sound_generation').some(migration.isSmscrw), '已有 SZ 业务路由不得被 Seedance 迁移删除');
 assert.equal(videoAdapter.videoCandidates({}, { includeCircuitOpen: true })[0].provider_id, 'smscrw');
 const rotated = childProcess.spawnSync(process.execPath, [
   path.join(__dirname, 'configure-smscrw-image-provider.js'), '--stdin', '--provider-only',
@@ -167,8 +169,8 @@ const rotated = childProcess.spawnSync(process.execPath, [
 assert.equal(rotated.status, 0, rotated.stderr || rotated.stdout);
 const rotatedProvider = settingsService.loadSettings().providers.find(migration.isSmscrw);
 assert.equal(rotatedProvider.api_key, 'rotated-test-secret-not-real');
-assert.deepEqual(rotatedProvider.models.filter(model => model.enabled !== false).map(model => model.id), ['doubao-seedance-2.0']);
-assert.equal(migration.apply({ write: false }).non_video_smscrw_routes, 0);
+assert(rotatedProvider.models.filter(model => model.enabled !== false).some(model => model.id === 'gpt-image-2'));
+assert.equal(migration.apply({ write: false }).preserved_non_video_stages, 2);
 const backupText = fs.readFileSync(migration.BACKUP_PATH, 'utf8');
 assert.equal(backupText.includes('test-secret-not-real'), false);
 assert.equal(migration.apply({ write: false }).changed_stage_count, 0);
@@ -176,7 +178,7 @@ assert.equal(migration.commit().committed, true);
 assert.equal(fs.existsSync(migration.BACKUP_PATH), false);
 
 verifyAdapterContract().then(() => {
-  console.log(JSON.stringify({ passed: true, video_model: 'doubao-seedance-2.0', create_query_download_cancel: true, public_and_asset_references: true, cross_origin_token_redaction: true, idempotency_checked: true, non_video_smscrw_routes: 0, paid_model_calls: 0 }));
+  console.log(JSON.stringify({ passed: true, video_model: 'doubao-seedance-2.0', create_query_download_cancel: true, public_and_asset_references: true, cross_origin_token_redaction: true, idempotency_checked: true, existing_smscrw_capabilities_preserved: true, paid_model_calls: 0 }));
   fs.rmSync(outputDir, { recursive: true, force: true });
 }).catch(error => {
   fs.rmSync(outputDir, { recursive: true, force: true });
