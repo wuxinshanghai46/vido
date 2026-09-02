@@ -90,4 +90,17 @@ function fixture() {
   assert.match(shots[1].transition_reason, /展台.+家居展厅/);
 }
 
+{
+  const crossScene = fixture();
+  crossScene.currentWork.scene_assets = [
+    { id: 'space_01_showroom', name: '现代展厅' },
+    { id: 'space_02_exhibition', name: '商业展台' },
+  ];
+  crossScene.historicalWork.storyboard_table[1].scene_id = 'space_02_exhibition';
+  const recovered = recoveryService.buildRecovery(crossScene);
+  assert.equal(recovered.storyboard_table[1].transition_type, 'dissolve');
+  assert.equal(recovered.storyboard_table[1].transition_duration_sec, 0.45,
+    '缺失时长的跨场景叠化必须使用连续性合同默认值，不能被早期归一化的 0 覆盖');
+}
+
 console.log('story-ad historical domain recovery v399 tests passed');

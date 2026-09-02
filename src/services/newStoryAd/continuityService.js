@@ -102,6 +102,7 @@ function continuityContract(shot = {}, previousShot = null, index = 0) {
   const transitionDurationDefault = ['dissolve', 'fade'].includes(normalizedTransition)
     ? recommendation.duration_sec || 0.45
     : 0;
+  const authoredTransitionDuration = Number(shot.transition_duration_sec ?? shot.transitionDurationSec);
   const audioBridge = clean(shot.audio_bridge || shot.audioBridge || '', 180);
   const transitionDesign = transitionPerformance.normalizeTransitionDesign(
     shot.transition_design || shot.transitionDesign || shot.transition_motif || {},
@@ -122,12 +123,10 @@ function continuityContract(shot = {}, previousShot = null, index = 0) {
     camera_movement: clean(shot.camera_movement || shot.cameraMovement || shot.camera || '', 160),
     object_states: shotDesign.structuredText(shot.object_states || shot.objectStates || '', 320),
     transition_type: normalizedTransition,
-    transition_duration_sec: numberInRange(
-      shot.transition_duration_sec ?? shot.transitionDurationSec,
-      transitionDurationDefault,
-      0,
-      2,
-    ),
+    transition_duration_sec: ['dissolve', 'fade'].includes(normalizedTransition)
+      && !(authoredTransitionDuration > 0)
+      ? transitionDurationDefault
+      : numberInRange(authoredTransitionDuration, transitionDurationDefault, 0, 2),
     transition_match_anchor: clean(
       shot.transition_match_anchor || shot.transitionMatchAnchor
         || shot.match_anchor || shot.matchAnchor || '',
