@@ -1,4 +1,4 @@
-import { escapeHtml } from '../components/ui.js?v=20260902-production-v406';
+import { escapeHtml } from '../components/ui.js?v=20260902-production-v407';
 
 export function previewSeconds(value = 4, cap = 6) {
   return Math.max(1, Math.min(cap, Math.round((Number(value) || 4) * 10) / 10));
