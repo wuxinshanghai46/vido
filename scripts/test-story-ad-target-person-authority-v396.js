@@ -40,6 +40,11 @@ assert.throws(() => repair.assertExpectedSource(
   { id: repair.TARGET_TASK_ID, title: '佛山智造 · 不锈钢品牌广告', active_generation_id: 'active' },
   { id: repair.TARGET_PERSON_ID },
 ), /活动生成/u);
+assert.equal(repair.assertExpectedSource({
+  id: repair.TARGET_TASK_ID,
+  title: '佛山智造 · 不锈钢品牌广告',
+  active_generation_id: '',
+}, cleaned), 'clean_intermediate');
 
 console.log(JSON.stringify({
   passed: true,

@@ -62,9 +62,13 @@ function assertExpectedSource(task, profile) {
   if (!task || task.id !== TARGET_TASK_ID || task.title !== TARGET_TITLE) throw new Error('目标任务身份不匹配，拒绝迁移');
   if (task.active_generation_id) throw new Error(`目标任务存在活动生成 ${task.active_generation_id}，拒绝迁移`);
   if (!profile || profile.id !== TARGET_PERSON_ID) throw new Error('目标人物身份不匹配，拒绝迁移');
-  for (const [field, expected] of Object.entries(EXPECTED_HASHES)) {
-    if (sha256(profile[field]) !== expected) throw new Error(`${field} 已变化，拒绝覆盖未经复核的新数据`);
-  }
+  const polluted = Object.entries(EXPECTED_HASHES).every(([field, expected]) => sha256(profile[field]) === expected);
+  const equivalent = value => String(value || '').trim().replace(/[。；，]+$/u, '');
+  const alreadyClean = Object.entries(CLEAN_FIELDS).every(([field, value]) => equivalent(profile[field]) === equivalent(value))
+    && profile.generation_prompt_source === 'compiled_from_profile'
+    && !/紫色晚礼服|黑色高跟鞋/u.test(profile.wardrobeText || '');
+  if (!polluted && !alreadyClean) throw new Error('人物档案既不是已复核旧指纹，也不是本迁移生成的干净中间态，拒绝覆盖');
+  return polluted ? 'polluted' : 'clean_intermediate';
 }
 
 async function run(taskId, { apply = false } = {}, deps = {}) {
@@ -74,14 +78,15 @@ async function run(taskId, { apply = false } = {}, deps = {}) {
   const task = store.getTask(taskId);
   const context = store.getOutput(taskId, 'context') || task?.request || {};
   const profile = (context.cast_profiles || []).find(item => item?.id === TARGET_PERSON_ID);
-  assertExpectedSource(task, profile);
-  const cleaned = cleanProfile(profile);
+  const sourceState = assertExpectedSource(task, profile);
+  const cleaned = sourceState === 'polluted' ? cleanProfile(profile) : profile;
   planService.assertDetailedPersonProfiles([cleaned]);
   const report = {
     ok: true,
     task_id: taskId,
     mode: apply ? 'apply' : 'dry_run',
     source_content_revision: Number(task.content_revision || 1),
+    source_state: sourceState,
     person_id: cleaned.id,
     generated_prompt_hash: sha256(cleaned.generation_prompt),
     contradictory_purple_dress_removed: !/紫色晚礼服|黑色高跟鞋/u.test(cleaned.wardrobeText),
@@ -91,7 +96,7 @@ async function run(taskId, { apply = false } = {}, deps = {}) {
   if (!apply) return report;
   const beforeCalls = store.listModelCalls(taskId).length;
   const castProfiles = context.cast_profiles.map(item => item?.id === TARGET_PERSON_ID ? cleaned : item);
-  const updated = await service.updateTaskRequest(taskId, {
+  const updated = sourceState === 'polluted' ? await service.updateTaskRequest(taskId, {
     cast_profiles: castProfiles,
     person_spec: {
       ...(context.person_spec || {}),
@@ -107,10 +112,11 @@ async function run(taskId, { apply = false } = {}, deps = {}) {
     progress_stage: 'scene_config_done',
     base_content_revision: task.content_revision,
     asset_setup_confirmed: false,
-  }, { id: task.user_id || '', userId: task.user_id || '' });
+  }, { id: task.user_id || '', userId: task.user_id || '' }) : { invalidated_outputs: [] };
   planService.persistIndependentPersonProfiles(taskId, [cleaned], {
     migration: 'target_person_authority_v396',
     model_call_count: 0,
+    person_plan_authority: true,
   });
   store.deleteOutput(taskId, 'person_contract');
   store.deleteOutput(taskId, 'person_visual_refresh');
