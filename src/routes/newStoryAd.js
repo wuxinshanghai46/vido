@@ -38,6 +38,7 @@ const publicFailure = require('../services/newStoryAd/publicFailureProjectionSer
 const scenePromptConfirmation = require('../services/newStoryAd/scenePromptConfirmationService');
 const mediaModelSelection = require('../services/newStoryAd/mediaGenerationModelSelectionService');
 const storyAdErrorPermission = require('../services/newStoryAd/storyAdErrorPermissionService');
+const taskListAccess = require('../services/newStoryAd/taskListAccessService');
 const db = require('../models/database');
 function userFromReq(req) {
   return req.user || req.auth || {};
@@ -147,6 +148,7 @@ function queueTaskStage(req, res, stage, execute, options = {}) {
     idempotencyKey,
     explicitUserRetry: true,
     acknowledgeBillingUnknown: body.acknowledge_billing_unknown === true,
+    allowUnacknowledgedBillingUnknownRetry: options.allowUnacknowledgedBillingUnknownRetry === true,
     scopeId: typeof options.scopeId === 'function'
       ? options.scopeId(task, body)
       : (options.scopeId || ''),
@@ -1067,16 +1069,17 @@ router.get('/compose/:filename', (req, res) => {
 
 router.get('/tasks', asyncRoute(async (req, res) => {
   const user = userFromReq(req);
-  const canListAll = String(user.role || '').toLowerCase() === 'admin' && String(req.query.all || '') === '1';
+  const access = taskListAccess.resolveListScope(user, req.query || {});
   const result = service.listTaskSummaries({
     limit: req.query.limit || 50,
     page: req.query.page || 1,
     status: req.query.status || '',
-    userId: canListAll ? '' : (user.id || user.userId || ''),
+    userId: access.user_id,
   });
   res.json({
     success: true,
     ...result,
+    scope: access.scope,
   });
 }));
 
@@ -1844,7 +1847,13 @@ router.post('/tasks/:id/blueprint', asyncRoute(async (req, res) => {
       });
     }
   }
-  return queueTaskStage(req, res, 'blueprint', job => service.generateBlueprintStage(req.params.id, { ...job, force_regenerate: forceRegenerate }));
+  return queueTaskStage(
+    req,
+    res,
+    'blueprint',
+    job => service.generateBlueprintStage(req.params.id, { ...job, force_regenerate: forceRegenerate }),
+    { allowUnacknowledgedBillingUnknownRetry: true },
+  );
 }));
 
 router.post('/tasks/:id/script-package', asyncRoute(async (req, res) => {
@@ -1853,7 +1862,10 @@ router.post('/tasks/:id/script-package', asyncRoute(async (req, res) => {
     res,
     'script_package',
     job => service.generateScriptPackageStage(req.params.id, job),
-    { deadlineMs: task => service.longFormStageBudgetMs(task.id, 'script_package') },
+    {
+      deadlineMs: task => service.longFormStageBudgetMs(task.id, 'script_package'),
+      allowUnacknowledgedBillingUnknownRetry: true,
+    },
   );
 }));
 

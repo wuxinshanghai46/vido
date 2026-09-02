@@ -472,6 +472,7 @@ function queueStage({
   scopeId = '',
   explicitUserRetry = true,
   acknowledgeBillingUnknown = false,
+  allowUnacknowledgedBillingUnknownRetry = false,
 }) {
   if (!taskId || !stage || typeof execute !== 'function') throw new Error('剧情广告后台任务参数不完整');
   if (stage === 'scene_qa') {
@@ -547,6 +548,7 @@ function queueStage({
   }, {
     explicit_user_retry: explicitUserRetry === true,
     acknowledge_billing_unknown: acknowledgeBillingUnknown === true,
+    allow_unacknowledged_billing_unknown_retry: allowUnacknowledgedBillingUnknownRetry === true,
   });
   if (!unitClaim.claimed) {
     const prior = unitClaim.unit || {};

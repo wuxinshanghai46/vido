@@ -601,6 +601,7 @@ function classifyError(error) {
   if (/SensitiveContentDetected|sensitive content/i.test(msg)) return { code: 'INPUT_SENSITIVE_CONTENT', retryable: false };
   if (/AuditSubmitIllegal|submit.*illegal|content audit|审核|违规|safety|policy/i.test(msg)) return { code: 'PROVIDER_CONTENT_AUDIT', retryable: false };
   if (/prompt:\s*size must be between|prompt.*(?:too long|length|limit)/i.test(msg)) return { code: 'INVALID_PROVIDER_INPUT', retryable: false };
+  if (/(?:temperature.*deprecated|deprecated.*temperature)/i.test(msg)) return { code: 'MODEL_REQUEST_PARAMETER_UNSUPPORTED', retryable: true };
   if (/InvalidParameter|BadRequest|parameter .* not valid|cannot be mixed/i.test(msg)) return { code: 'INVALID_PROVIDER_INPUT', retryable: false };
   if (/timeout|timed\s*out|ETIMEDOUT|ECONNRESET|socket hang up|connection error|fetch failed|upstream connect error|disconnect\/reset|reset before headers|connection termination/i.test(msg)) return { code: 'TIMEOUT_OR_NETWORK', retryable: true };
   if (/insufficient quota|account balance not enough|insufficient balance|balance not enough|["']code["']\s*:\s*(1005|1102)/i.test(msg)) return { code: 'PROVIDER_BILLING', retryable: false };

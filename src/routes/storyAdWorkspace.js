@@ -22,6 +22,7 @@ const soundDesignAssets = require('../services/newStoryAd/soundDesignAssetServic
 const audioProduction = require('../services/newStoryAd/audioProductionService');
 const audioMixPreview = require('../services/newStoryAd/audioMixPreviewService');
 const storyAdTimeline = require('../services/newStoryAd/storyAdTimelineService');
+const taskListAccess = require('../services/newStoryAd/taskListAccessService');
 
 const router = express.Router();
 
@@ -103,15 +104,15 @@ function graphForRequest(req, options = {}) {
 
 router.get('/projects', asyncRoute(async (req, res) => {
   const user = currentUser(req);
-  const isAdmin = String(user.role || '').toLowerCase() === 'admin';
+  const access = taskListAccess.resolveListScope(user, req.query || {});
   const result = projectBundles.listProjects({
     limit: req.query.limit || 50,
     page: req.query.page || 1,
     status: req.query.status || '',
-    userId: isAdmin && String(req.query.all || '') === '1' ? '' : (user.id || user.userId || ''),
+    userId: access.user_id,
   });
   res.setHeader('Cache-Control', 'private, no-store, no-cache, must-revalidate');
-  res.json({ success: true, ...result });
+  res.json({ success: true, ...result, scope: access.scope });
 }));
 
 router.post('/projects', asyncRoute(async (req, res) => {

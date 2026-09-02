@@ -1,27 +1,27 @@
-import { request } from '../api.js?v=20260902-production-v386';
-import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260902-production-v386';
-import { bindMediaLightbox } from './mediaLightbox.js?v=20260902-production-v386';
-import { confirmDialog } from '../components/dialog.js?v=20260902-production-v386';
-import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260902-production-v386';
-import { ensureSubjectRecoveryReady, recoveryRequestKey } from './assetCenterBillingRetry.js?v=20260902-production-v386';
-import { renderPersonLookTiles } from './assetCenterPersonLooks.js?v=20260902-production-v386';
-import { mediaSection } from './assetCenterDossierSections.js?v=20260902-production-v386';
-import { assetCardMedia } from './sceneDossierCard.js?v=20260902-production-v386';
-import { assertSavedPerson, personAgeDisplay, personAssetState, personLookSummary } from './assetCenterPersonState.js?v=20260902-production-v386';
-import { renderPersonEvolutionSummary } from './assetCenterPersonEvolution.js?v=20260902-production-v386';
-import { createKeyedRequestGuard } from './assetCenterRequestGuard.js?v=20260902-production-v386';
-import { checkpointRecoverySummary } from './assetCheckpointRecovery.js?v=20260902-production-v386';
-import { bindGenerationModelPicker, loadGenerationModelPicker } from './generationModelPicker.js?v=20260902-production-v386';
+import { request } from '../api.js?v=20260902-production-v387';
+import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260902-production-v387';
+import { bindMediaLightbox } from './mediaLightbox.js?v=20260902-production-v387';
+import { confirmDialog } from '../components/dialog.js?v=20260902-production-v387';
+import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260902-production-v387';
+import { ensureSubjectRecoveryReady, recoveryRequestKey } from './assetCenterBillingRetry.js?v=20260902-production-v387';
+import { renderPersonLookTiles } from './assetCenterPersonLooks.js?v=20260902-production-v387';
+import { mediaSection } from './assetCenterDossierSections.js?v=20260902-production-v387';
+import { assetCardMedia } from './sceneDossierCard.js?v=20260902-production-v387';
+import { assertSavedPerson, personAgeDisplay, personAssetState, personLookSummary } from './assetCenterPersonState.js?v=20260902-production-v387';
+import { renderPersonEvolutionSummary } from './assetCenterPersonEvolution.js?v=20260902-production-v387';
+import { createKeyedRequestGuard } from './assetCenterRequestGuard.js?v=20260902-production-v387';
+import { checkpointRecoverySummary } from './assetCheckpointRecovery.js?v=20260902-production-v387';
+import { bindGenerationModelPicker, loadGenerationModelPicker } from './generationModelPicker.js?v=20260902-production-v387';
 if (typeof document !== 'undefined' && !document.getElementById('person-dossier-style')) {
   const style = document.createElement('link');
   style.id = 'person-dossier-style';
   style.rel = 'stylesheet';
-  style.href = '/story-ad/person-dossier.css?v=20260902-production-v386';
+  style.href = '/story-ad/person-dossier.css?v=20260902-production-v387';
   document.head.append(style);
 }
 const GROUPS = [['people', '人物'], ['animals', '动物'], ['products', '商品 / 展示主体'], ['logos', 'LOGO']];
 const GENERATABLE = new Set(['people', 'animals']);
-const loadAssetCenterStage = globalThis.__loadAssetCenterStage || (() => import('./assetCenterStageView.js?v=20260902-production-v386'));
+const loadAssetCenterStage = globalThis.__loadAssetCenterStage || (() => import('./assetCenterStageView.js?v=20260902-production-v387'));
 function groupLabel(group = '') {
   return GROUPS.find(([id]) => id === group)?.[1] || '资产';
 }
@@ -183,6 +183,7 @@ function assetCard(item, group) {
     ? personState !== 'complete_dossier'
     : (GENERATABLE.has(group) && !hasGeneratedMedia(item));
   const needsProductVerification = group === 'products' && Boolean(item.image_url) && item.status !== 'verified';
+  const needsPersonVerification = group === 'people' && hasGeneratedMedia(item) && item.status !== 'verified';
   const recovery = item.checkpoint_recovery_summary || {};
   const retryBlocked = group === 'people' && recovery.retry_blocked === true;
   const cardMedia = assetCardMedia(item, group);
@@ -201,6 +202,7 @@ function assetCard(item, group) {
     <div class="asset-card-actions">
       <button class="btn small" type="button" data-history-safe data-asset-group="${group}" data-asset-id="${escapeHtml(item.id)}">${group === 'people' ? '查看完整视图' : `查看${group === 'scenes' ? '完整场景档案' : '完整视图'}`}</button>
       ${group === 'people' && item.status === 'verified' && !item.provider_asset_id ? `<button class="btn small" type="button" data-history-safe data-sync-person-provider="${escapeHtml(item.id)}">同步 / 重试 Seedance 人物 ID</button>` : ''}
+      ${needsPersonVerification ? `<button class="btn small primary" type="button" data-history-safe data-verify-person="${escapeHtml(item.id)}">重新验证人物一致性</button>` : ''}
       ${group === 'products' ? `<button class="btn small" type="button" data-upload-product="${escapeHtml(item.id)}">${materialReference.materialSurface ? (materialReference.realSample ? '更换真实材料样片' : '上传真实材料样片') : (item.image_url ? '更换主体图片' : '上传主体图片')}</button>` : ''}
       ${group === 'products' && materialReference.materialSurface ? `<button class="btn small" type="button" data-generate-product-reference="${escapeHtml(item.id)}">${materialReference.generatedNeutral ? '重新生成中性参考图（1 张，可能计费）' : '生成中性参考图（1 张，可能计费）'}</button>` : ''}
       ${group === 'scenes' ? `<button class="btn small" type="button" data-edit-scene-world="${escapeHtml(item.id)}">查看 / 修改场景设定</button>` : ''}
@@ -236,8 +238,8 @@ function knowledgePolicyTrace(item = {}) {
   const short = value => value ? `${value.slice(0, 12)}…` : '—'; return `<details class="raw-view-details knowledge-policy-trace"><summary>本资产使用的知识规则</summary><div class="meta-list"><div class="meta-row"><span>匹配规则</span><b>${ruleIds.length}</b></div><div class="meta-row"><span>生成规则指纹</span><b title="${escapeHtml(generation)}">${escapeHtml(short(generation))}</b></div><div class="meta-row"><span>质检规则指纹</span><b title="${escapeHtml(qa)}">${escapeHtml(short(qa))}</b></div></div><p class="drawer-section-note">这里只显示规则追踪信息，不加载知识库正文，也不会增加模型调用。</p></details>`;
 }
 let planningDetailsPromise; let personFormPromise; async function openDrawer(item, group, handlers = {}) {
-  planningDetailsPromise ||= import('./assetCenterPlanningDetails.js?v=20260902-production-v386');
-  personFormPromise ||= import('./assetCenterPersonForm.js?v=20260902-production-v386');
+  planningDetailsPromise ||= import('./assetCenterPlanningDetails.js?v=20260902-production-v387');
+  personFormPromise ||= import('./assetCenterPersonForm.js?v=20260902-production-v387');
   const [planningDetails, personForm] = await Promise.all([planningDetailsPromise, personFormPromise]);
   return planningDetails.openAssetDrawer(item, group, handlers, {
     groupLabel: groupLabel(group), generatable: GENERATABLE.has(group),
@@ -268,7 +270,7 @@ export async function mount(host, context) {
   const narrative = contentMode === 'narrative_story';
   const assetGroups = narrative ? GROUPS.filter(([key]) => !['products', 'logos'].includes(key)) : GROUPS;
   let assistModulePromise;
-  const runAssist = async (kind, ...args) => (await (assistModulePromise ||= import('./assetCenterAssist.js?v=20260902-production-v386'))).createAssetAssistHandlers(bundle)[kind](...args);
+  const runAssist = async (kind, ...args) => (await (assistModulePromise ||= import('./assetCenterAssist.js?v=20260902-production-v387'))).createAssetAssistHandlers(bundle)[kind](...args);
   const assistScene = (...args) => runAssist('assistScene', ...args);
   const total = assetGroups.reduce((sum, [key]) => sum + (assets[key]?.length || 0), 0);
   const planEligibility = bundle?.navigation?.asset_plan_eligibility || {};
@@ -451,6 +453,31 @@ export async function mount(host, context) {
     }
   };
 
+  const verifyPerson = async (item, button = null) => {
+    if (!await confirmDialog('将使用当前已经生成的人物视图重新执行一次一致性审核，不会重新生成人物图片。', {
+      title: `重新验证人物：${item.name || '当前人物'}`,
+      confirmText: '开始重新验证',
+    })) return false;
+    try {
+      setButtonBusy(button, true, '正在验证…', { elapsed: true });
+      const data = await request(`/api/new-story-ad/tasks/${encodeURIComponent(bundle.project.id)}/person-verify`, {
+        method: 'POST', body: {}, timeoutMs: 360000,
+      });
+      const status = data.person_contract?.status || '';
+      if (status !== 'verified') {
+        toast(status === 'rejected' ? '人物素材未通过一致性验证，请查看原因或重新生成人物。' : '人物验证服务暂时不可用，请稍后重试。', 'warning');
+        await context.refreshShell();
+        return false;
+      }
+      toast('人物素材已通过一致性验证，可继续生成视频。', 'success');
+      await context.refreshShell();
+      return true;
+    } catch (error) {
+      toast(error.message, 'danger');
+      return false;
+    } finally { setButtonBusy(button, false); }
+  };
+
   host.querySelectorAll('[data-asset-filter]').forEach(button => button.addEventListener('click', () => {
     const filter = button.dataset.assetFilter;
     host.querySelectorAll('[data-asset-filter]').forEach(item => item.classList.toggle('active', item === button));
@@ -470,6 +497,11 @@ export async function mount(host, context) {
     event.stopPropagation();
     const item = (assets.products || []).find(asset => String(asset.id) === button.dataset.verifyProduct);
     if (item) verifyProduct(item, button);
+  }));
+  host.querySelectorAll('[data-verify-person]').forEach(button => button.addEventListener('click', event => {
+    event.stopPropagation();
+    const item = (assets.people || []).find(asset => String(asset.id) === button.dataset.verifyPerson);
+    if (item) verifyPerson(item, button);
   }));
   host.querySelectorAll('[data-upload-product]').forEach(button => button.addEventListener('click', event => {
     event.stopPropagation();

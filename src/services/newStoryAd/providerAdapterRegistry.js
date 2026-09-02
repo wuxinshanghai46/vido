@@ -445,6 +445,11 @@ function openAICompatibleSdkOptions(config = {}, timeoutMs = 90000) {
   return sdkOpts;
 }
 
+function openAICompatibleTemperatureSupported(modelId = '') {
+  const normalized = String(modelId || '').trim().toLowerCase();
+  return !isGpt5FamilyModel(normalized) && !/^claude(?:-|$)/.test(normalized);
+}
+
 async function callOpenAICompatible(config, systemPrompt, userPrompt, opts = {}) {
   const sdkOpts = openAICompatibleSdkOptions(config, opts.timeoutMs);
   const client = opts._client || new OpenAI(sdkOpts);
@@ -469,7 +474,7 @@ async function callOpenAICompatible(config, systemPrompt, userPrompt, opts = {})
       ...(isGpt5FamilyModel(config.modelId)
         ? { max_completion_tokens: tokenLimit }
         : { max_tokens: tokenLimit }),
-      ...(!isGpt5FamilyModel(config.modelId) && Number.isFinite(Number(opts.temperature))
+      ...(openAICompatibleTemperatureSupported(config.modelId) && Number.isFinite(Number(opts.temperature))
         ? { temperature: Math.max(0, Math.min(2, Number(opts.temperature))) }
         : {}),
       ...(responseFormat ? { response_format: responseFormat } : {}),
@@ -585,6 +590,7 @@ module.exports = {
   isStructuredOutputUnsupportedError,
   callOpenAICompatible,
   openAICompatibleSdkOptions,
+  openAICompatibleTemperatureSupported,
   validateDeyunaiTextContract,
   providerRequestId,
   attachProviderErrorEvidence,

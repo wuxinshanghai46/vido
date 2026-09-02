@@ -329,7 +329,7 @@ function assertVerifiedPerson(ctx = {}) {
     if (contract.status === 'verified' && contract.cross_view_qa?.pass === true
       && contract.cross_view_qa?.member_count_pass === true && verified) return contract;
   } else if (contract?.status === 'verified' && normalizeQa(contract.cross_view_qa).pass) return contract;
-  const error = new Error('人物参考尚未通过身份、年龄、服装和体态一致性验证，请先重新验证人物资产');
+  const error = new Error('人物参考尚未通过身份、年龄、服装和体态一致性验证，请返回“人物资产”点击“重新验证人物一致性”');
   error.code = 'PERSON_VERIFICATION_REQUIRED';
   error.status = 422;
   error.retryable = true;

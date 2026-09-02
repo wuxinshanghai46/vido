@@ -1,7 +1,7 @@
-import { createProjectStore } from './store/projectStore.js?v=20260902-production-v386';
-import { bindHoverVideoPreviews, escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, syncInlineGenerationProgress, toast } from './components/ui.js?v=20260902-production-v386';
-import { assertCurrentRelease, startReleaseHeartbeat } from './api.js?v=20260902-production-v386';
-import { confirmDialog } from './components/dialog.js?v=20260902-production-v386';
+import { createProjectStore } from './store/projectStore.js?v=20260902-production-v387';
+import { bindHoverVideoPreviews, escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, syncInlineGenerationProgress, toast } from './components/ui.js?v=20260902-production-v387';
+import { assertCurrentRelease, startReleaseHeartbeat } from './api.js?v=20260902-production-v387';
+import { confirmDialog } from './components/dialog.js?v=20260902-production-v387';
 
 await assertCurrentRelease().then(() => startReleaseHeartbeat()).catch(error => {
   if (error?.code === 'CLIENT_BUILD_EXPIRED') throw error;
@@ -28,15 +28,15 @@ const VIEW_META = {
   workflow: ['⌘', '工作流画布'],
 };
 const VIEW_MODULES = {
-  brief: () => import('./views/briefView.js?v=20260902-production-v386'),
-  assets: () => import('./views/assetCenterView.js?v=20260902-production-v386'),
-  scene: () => import('./views/sceneWorldPage.js?v=20260902-production-v386'),
-  plot: () => import('./views/plotRoomView.js?v=20260902-production-v386'),
-  storyboard: () => import('./views/storyboardView.js?v=20260902-production-v386'),
-  sound: () => import('./views/finalSoundView.js?v=20260902-production-v386'),
-  compose: () => import('./views/finalView.js?v=20260902-production-v386'),
-  edit: () => import('./views/finalEditView.js?v=20260902-production-v386'),
-  workflow: () => import('./views/workflowView.js?v=20260902-production-v386'),
+  brief: () => import('./views/briefView.js?v=20260902-production-v387'),
+  assets: () => import('./views/assetCenterView.js?v=20260902-production-v387'),
+  scene: () => import('./views/sceneWorldPage.js?v=20260902-production-v387'),
+  plot: () => import('./views/plotRoomView.js?v=20260902-production-v387'),
+  storyboard: () => import('./views/storyboardView.js?v=20260902-production-v387'),
+  sound: () => import('./views/finalSoundView.js?v=20260902-production-v387'),
+  compose: () => import('./views/finalView.js?v=20260902-production-v387'),
+  edit: () => import('./views/finalEditView.js?v=20260902-production-v387'),
+  workflow: () => import('./views/workflowView.js?v=20260902-production-v387'),
 };
 const VIEW_SECTIONS = Object.freeze({
   brief: 'summary,reference',
@@ -123,7 +123,7 @@ function statCards(stats = {}) {
 }
 
 function renderCenter() {
-  const { projects, stats, loading, error } = store.state;
+  const { projects, stats, projectListScope, loading, error } = store.state;
   const stageOptions = [...new Set(projects.map(project => statusView(project).label).filter(Boolean))]
     .sort((a, b) => a.localeCompare(b, 'zh-CN'));
   const statusProjects = projects.filter(project => {
@@ -152,7 +152,7 @@ function renderCenter() {
           <div class="stat-grid">${statCards(stats)}</div>
           <section class="project-table-card">
             <div class="table-toolbar">
-              <div><h2>项目</h2><p>只显示当前账号真实任务，不使用演示数据。</p></div>
+              <div><h2>项目</h2><p>${projectListScope === 'all_users' ? '超管视图：显示全部用户真实任务。' : '显示当前账号真实任务，不使用演示数据。'}</p></div>
               <button class="btn" type="button" data-refresh-projects>刷新</button>
             </div>
             <div class="project-query" aria-label="项目查询条件">
@@ -421,7 +421,7 @@ document.addEventListener('input', async ({ target }) => {
   else if (target.matches('[data-project-type-filter]')) centerQuery.taskType = target.value || 'all';
   else if (target.matches('[data-project-stage-filter]')) centerQuery.stage = target.value || 'all';
   else return;
-  const filters = await import('./projectCenterFilters.js?v=20260902-production-v386');
+  const filters = await import('./projectCenterFilters.js?v=20260902-production-v387');
   centerVisibleIds = filters.matchingProjectIds(store.state.projects.map(project => ({
     id: project.id, title: project.title, type: project.content_mode, stage: statusView(project).label,
   })), centerQuery);
