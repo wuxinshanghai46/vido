@@ -14,6 +14,7 @@ const mediaAdapter = require('../src/services/newStoryAd/mediaAdapter');
 const videoInputFrames = require('../src/services/newStoryAd/videoInputFrameService');
 const audioProduction = require('../src/services/newStoryAd/audioProductionService');
 const timeline = require('../src/services/newStoryAd/storyAdTimelineService');
+const storyboardLineage = require('../src/services/newStoryAd/storyboardImageLineageService');
 
 const taskId = 'final-media-v341';
 const context = {
@@ -47,6 +48,7 @@ const imageRows = shots.map((shot, index) => {
     shot_index: index + 1,
     image_url: `/api/new-story-ad/assets/${filename}`,
     file_sha256: `image_hash_${index + 1}`,
+    shot_contract_fingerprint: storyboardLineage.legacyShotContractFingerprint(shot, index),
     subject_qa_policy_version: 2,
     subject_count_qa: { pass: true },
   };
