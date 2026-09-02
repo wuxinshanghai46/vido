@@ -1,38 +1,11 @@
 import { request } from '../api.js?v=20260902-production-v389';
 import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260902-production-v389';
 import { bgmCandidateMarkup, bindLiveAudioPreview, previewSeconds, soundPreviewMarkup } from '../controllers/liveAudioPreviewController.js?v=20260902-production-v389';
+import { recommendedVoice, speechShotCount, voiceSampleText } from './soundDesignVoiceCatalog.js?v=20260902-production-v389';
 
 const TRACK_TYPES = [['room_tone', '空间底噪'], ['ambient', '环境声'], ['foley', '拟音'], ['sfx', '动作音效'], ['transition', '转场音'], ['bgm', '背景音乐']];
 function trackOptions(selected = 'room_tone') {
   return TRACK_TYPES.map(([value, label]) => `<option value="${value}" ${value === selected ? 'selected' : ''}>${label}</option>`).join('');
-}
-function speechShotCount(production = {}) {
-  return (production.speech || []).filter(row => (row.units || []).length).length;
-}
-function voiceSampleText(production = {}, speaker = '') {
-  const units = (production.speech || []).flatMap(row => row.units || []);
-  const matched = speaker ? units.find(unit => String(unit.speaker || '') === String(speaker)) : units.find(unit => unit.text);
-  return String(matched?.text || units.find(unit => unit.text)?.text || '你好，这是当前选择的配音音色试听。').trim().slice(0, 80);
-}
-function usableStoryVoice(voice = {}) {
-  const id = String(voice.id || '').trim();
-  const provider = `${voice.providerId || ''} ${voice.provider || ''}`.toLowerCase();
-  if (!id || /topview|windows|系统|zhipu|智谱|aliyun|阿里|cosyvoice|智能语音交互|\bnls\b/.test(provider)) return false;
-  if (voice.isCloned === true || /^custom[_:]/.test(id)) return voice.has_volc === true && /volcengine-tts|字节|豆包|声音复刻/.test(provider);
-  return /volcengine-tts|字节豆包语音/.test(provider);
-}
-function recommendedVoice(voices = [], currentId = '', role = 'narrator') {
-  const usable = voices.filter(usableStoryVoice);
-  const current = usable.find(voice => String(voice.id) === String(currentId || ''));
-  if (current) return current;
-  return usable.map((voice, index) => {
-    const descriptor = `${voice.name || ''} ${voice.tag || ''}`;
-    const provider = `${voice.providerId || ''} ${voice.provider || ''}`;
-    const score = (/推荐/.test(descriptor) ? 30 : 0)
-      + (/volcengine-tts|字节|豆包/.test(provider) ? 20 : 0)
-      + (role === 'narrator' && /知性|沉稳|讲述|播报|权威|精准/.test(descriptor) ? 8 : 0);
-    return { voice, index, score };
-  }).sort((a, b) => b.score - a.score || a.index - b.index)[0]?.voice || null;
 }
 function voicePickerMarkup({ value = '', role = '', speaker = '', label = '音色', sample = '' } = {}) {
   return `<label><span>${escapeHtml(label)}</span><div class="voice-picker-summary"><select data-voice-select ${role ? `data-voice-role="${escapeHtml(role)}"` : ''} ${speaker ? `data-speaker="${escapeHtml(speaker)}"` : ''} hidden><option value="${escapeHtml(value)}">${escapeHtml(value)}</option></select><button class="voice-picker-trigger" type="button" data-open-voice-library data-preview-text="${escapeHtml(sample)}"><span><b data-selected-voice-name>${escapeHtml(value ? '正在加载音色名称…' : '正在选择可用音色…')}</b><small data-selected-voice-provider>点击打开音色库，可在弹窗内搜索、试听和选择</small></span><em>选择音色</em></button></div>${role === 'narrator' ? '<small data-voice-recommendation-status>正在加载剧情音色目录…</small>' : ''}</label>`;
