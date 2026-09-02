@@ -94,6 +94,25 @@ function stripHistoricalContinuity(shots = []) {
   });
 }
 
+function compileSceneTransitionReasons(shots = [], scenes = []) {
+  const names = new Map((Array.isArray(scenes) ? scenes : []).map((scene, index) => [
+    clean(scene.scene_id || scene.id),
+    clean(scene.name || scene.title || `场景${index + 1}`),
+  ]));
+  let previousSceneId = '';
+  return shots.map((source, index) => {
+    const shot = clone(source);
+    const sceneId = clean(shot.scene_id || shot.sceneId || shot.scene_asset_id || shot.sceneAssetId);
+    if (index > 0 && previousSceneId && sceneId && sceneId !== previousSceneId) {
+      const from = names.get(previousSceneId) || previousSceneId;
+      const to = names.get(sceneId) || sceneId;
+      shot.transition_reason = `剧情从“${from}”切换到“${to}”，进入下一段已确认的镜头内容。`;
+    }
+    previousSceneId = sceneId || previousSceneId;
+    return shot;
+  });
+}
+
 function audioCompatibility(shots = [], tracks = []) {
   const byShot = new Map(tracks.map(track => [clean(track.shot_id || track.shotId), track]));
   const issues = [];
@@ -132,11 +151,13 @@ function buildRecovery({ currentWork = {}, historicalWork = {} } = {}) {
 
   const blueprint = patchBlueprintCharacters(historicalBlueprint, context);
   const characters = currentCharacters(context);
-  const storyboard = storyboardTable.normalizeShots(stripHistoricalContinuity(historicalShots), {
+  const storyboard = storyboardTable.normalizeShots(
+    compileSceneTransitionReasons(stripHistoricalContinuity(historicalShots), scenes), {
     ...context,
     characters,
     scene_assets: scenes,
-  });
+    },
+  );
   const compatibility = audioCompatibility(storyboard, historicalTracks);
   if (!compatibility.compatible) {
     throw failure('RECOVERY_AUDIO_INCOMPATIBLE', '历史配音与恢复后的分镜不完全一致，禁止复用', compatibility);
@@ -176,6 +197,7 @@ function buildRecovery({ currentWork = {}, historicalWork = {} } = {}) {
 module.exports = {
   audioCompatibility,
   buildRecovery,
+  compileSceneTransitionReasons,
   currentCharacters,
   patchBlueprintCharacters,
   spokenText,

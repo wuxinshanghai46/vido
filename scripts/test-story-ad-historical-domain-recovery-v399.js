@@ -81,4 +81,13 @@ function fixture() {
   assert.equal(aggregate.tts_audio.tracks.length, 2);
 }
 
+{
+  const shots = recoveryService.compileSceneTransitionReasons([
+    { id: 'a', scene_id: 'scene_a' },
+    { id: 'b', scene_id: 'scene_b' },
+  ], [{ id: 'scene_a', name: '展台' }, { id: 'scene_b', name: '家居展厅' }]);
+  assert.equal(shots[0].transition_reason, undefined);
+  assert.match(shots[1].transition_reason, /展台.+家居展厅/);
+}
+
 console.log('story-ad historical domain recovery v399 tests passed');
