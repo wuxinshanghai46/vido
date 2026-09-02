@@ -119,6 +119,8 @@ const BASE_FILES = [
   'scripts/migrate-story-ad-active-plan-release.js',
   'scripts/migrate-story-ad-public-media-models-v262.js',
   'scripts/recover-story-ad-storyboard-checkpoint-v289.js',
+  'scripts/recover-story-ad-historical-domains-v399.js',
+  'scripts/test-story-ad-historical-domain-recovery-v399.js',
   'scripts/repair-story-ad-spatial-storyboard-v302.js',
   'scripts/repair-story-ad-target-narrative-order-v319.js',
   'scripts/test-model-usage-ledger-pagination-v319.js',

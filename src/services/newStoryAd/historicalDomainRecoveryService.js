@@ -68,6 +68,28 @@ function tracksFrom(payload) {
   return Array.isArray(payload?.tracks) ? payload.tracks : [];
 }
 
+function stripHistoricalContinuity(shots = []) {
+  const staleFields = [
+    'continuity', 'continuity_from', 'continuityFrom', 'entry_frame_state', 'entryFrameState',
+    'action_start', 'actionStart', 'requires_previous_frame', 'requiresPreviousFrame',
+    'same_scene_as_previous', 'transition_recommendation', 'boundary_mode',
+  ];
+  return shots.map(source => {
+    const shot = clone(source);
+    staleFields.forEach(field => { delete shot[field]; });
+    if (shot.temporal_state && typeof shot.temporal_state === 'object') {
+      shot.temporal_state = { ...shot.temporal_state, continuity_links: [] };
+    }
+    if (shot.temporal_evidence?.shot_state && typeof shot.temporal_evidence.shot_state === 'object') {
+      shot.temporal_evidence = {
+        ...shot.temporal_evidence,
+        shot_state: { ...shot.temporal_evidence.shot_state, continuity_links: [] },
+      };
+    }
+    return shot;
+  });
+}
+
 function audioCompatibility(shots = [], tracks = []) {
   const byShot = new Map(tracks.map(track => [clean(track.shot_id || track.shotId), track]));
   const issues = [];
@@ -106,7 +128,7 @@ function buildRecovery({ currentWork = {}, historicalWork = {} } = {}) {
 
   const blueprint = patchBlueprintCharacters(historicalBlueprint, context);
   const characters = currentCharacters(context);
-  const storyboard = storyboardTable.normalizeShots(clone(historicalShots), {
+  const storyboard = storyboardTable.normalizeShots(stripHistoricalContinuity(historicalShots), {
     ...context,
     characters,
     scene_assets: scenes,
@@ -122,6 +144,7 @@ function buildRecovery({ currentWork = {}, historicalWork = {} } = {}) {
       asset_confirmed: true,
       scene_confirmed: scenes.length > 0,
       shot_confirmed: true,
+      shot_design_confirmed: true,
     },
     blueprint,
     storyboard_table: storyboard,
@@ -152,6 +175,7 @@ module.exports = {
   currentCharacters,
   patchBlueprintCharacters,
   spokenText,
+  stripHistoricalContinuity,
   trackText,
   tracksFrom,
 };

@@ -19,7 +19,7 @@ function fixture() {
     },
     storyboard_table: [
       { id: 'shot_1', index: 1, duration: 3, scene_id: 'space_01_showroom', visual: '展厅全景', voiceover: '看见材料真正的质感。' },
-      { id: 'shot_2', index: 2, duration: 3, scene_id: 'space_01_showroom', visual: '纹理特写', voiceover: '细节决定最终品质。' },
+      { id: 'shot_2', index: 2, duration: 3, scene_id: 'space_01_showroom', visual: '纹理特写', voiceover: '细节决定最终品质。', requires_previous_frame: true, camera_axis: 'opposite', temporal_state: { continuity_links: ['旧人物动作'] } },
     ],
     tts_audio: { voice_id: 'voice_narrator', tracks: [
       { shot_id: 'shot_1', text: '看见材料真正的质感。', audio_url: '/audio/shot_1.mp3' },
@@ -38,6 +38,9 @@ function fixture() {
   assert.deepEqual(recovered.invalidated_domains, ['keyframes', 'video', 'compose']);
   assert.equal(recovered.diagnostics.reused_visual_outputs, 0);
   assert.equal(recovered.context.shot_confirmed, true);
+  assert.equal(recovered.context.shot_design_confirmed, true);
+  assert.equal(recovered.storyboard_table[1].requires_previous_frame, false);
+  assert.deepEqual(recovered.storyboard_table[1].temporal_state.continuity_links, []);
 }
 
 {
