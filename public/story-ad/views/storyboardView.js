@@ -1,9 +1,9 @@
-import { request } from '../api.js?v=20260902-production-v409';
-import { elapsedTimeTag, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260902-production-v409';
-import { bindMediaLightbox } from './mediaLightbox.js?v=20260902-production-v409';
-import { bindGenerationModelPicker, loadGenerationModelPicker } from './generationModelPicker.js?v=20260902-production-v409';
-import { generationModelPickerPlaceholder } from './generationModelPlaceholder.js?v=20260902-production-v409';
-import { openStoryboardPromptEditor, referenceItemsFor, sketchReferenceMarkup } from './storyboardPromptEditorDialog.js?v=20260902-production-v409';
+import { request } from '../api.js?v=20260902-production-v410';
+import { elapsedTimeTag, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260902-production-v410';
+import { bindMediaLightbox } from './mediaLightbox.js?v=20260902-production-v410';
+import { bindGenerationModelPicker, loadGenerationModelPicker } from './generationModelPicker.js?v=20260902-production-v410';
+import { generationModelPickerPlaceholder } from './generationModelPlaceholder.js?v=20260902-production-v410';
+import { openStoryboardPromptEditor, referenceItemsFor, sketchReferenceMarkup } from './storyboardPromptEditorDialog.js?v=20260902-production-v410';
 export function friendlyBindings(bundle = {}, shot = {}) {
   const assets = bundle.assets || {};
   const scenes = Array.isArray(assets.scenes) ? assets.scenes : [];
@@ -204,7 +204,7 @@ function storyboardProgressMarkup({ batch = null, progress = {}, active = false,
 
 export async function mount(host, context) {
   if (context.route?.params?.get('stage') === 'shot') {
-    const shotDesigner = await import('./shotDesignerView.js?v=20260902-production-v409');
+    const shotDesigner = await import('./shotDesignerView.js?v=20260902-production-v410');
     return shotDesigner.mount(host, context);
   }
   const { bundle, store } = context;
