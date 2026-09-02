@@ -1,4 +1,4 @@
-import { followConversationAfter } from './briefConversationScroll.js?v=20260902-production-v400';
+import { followConversationAfter } from './briefConversationScroll.js?v=20260902-production-v401';
 
 export function referenceDialogueStatus(reference = {}) {
   const status = String(reference.status || '').toLowerCase();
