@@ -75,18 +75,18 @@ function inspect(taskId) {
       }
     }
   });
-  // A stale lineage marker means the existing image should be reviewed or
-  // regenerated per shot. It is not the same as a missing production result:
-  // explicit user confirmation may accept the current completed storyboard.
-  const ready = shots.length > 0 && !missing.length;
+  // Current lineage and subject-QA evidence are part of the production
+  // contract. A completed image with stale evidence is a candidate for review,
+  // not an authoritative frame that may enter paid video generation.
+  const ready = shots.length > 0 && !missing.length && !stale.length;
   return {
     ready,
     code: ready ? '' : 'STORYBOARD_IMAGES_REQUIRED',
     reason: ready
-      ? (stale.length
-        ? `全部人物场景分镜图均已生成；镜头 ${stale.join('、')} 建议逐镜复核，确认后仍可进入下一步。`
-        : '全部人物场景分镜图已准备好，可以继续生成后续画面。')
-      : `请先生成全部人物场景分镜图（当前已生成 ${Math.max(0, shots.length - missing.length)}/${shots.length}）。`,
+      ? '全部人物场景分镜图已准备好，可以继续生成后续画面。'
+      : (stale.length
+        ? `镜头 ${stale.join('、')} 的人物、主体或场景质检血缘已过期，请逐镜重新生成并通过当前质检后继续。`
+        : `请先生成全部人物场景分镜图（当前已生成 ${Math.max(0, shots.length - missing.length)}/${shots.length}）。`),
     total: shots.length,
     confirmed: Math.max(0, shots.length - missing.length),
     missing_indexes: missing,
