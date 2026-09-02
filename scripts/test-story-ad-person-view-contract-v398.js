@@ -67,8 +67,22 @@ async function main() {
 
   const workspaceCss = read('public/story-ad/workspace.css');
   assert.match(workspaceCss,
-    /\.asset-card\.is-subject \.asset-card-person-entry \.media\{[^}]*height:210px;[^}]*object-fit:cover;[^}]*object-position:center 24%/u,
-    '人物卡半身裁切规则必须比主体素材通用 contain 规则更具体，并固定为卡片预览高度');
+    /\.asset-card\.is-subject \.asset-card-person-entry \.media\{[^}]*height:320px;[^}]*object-fit:cover;[^}]*object-position:center top/u,
+    '人物卡半身裁切必须从头部开始并保留足够高度，不能把头顶裁出预览框');
+
+  const personStateUi = loadBrowserModule('public/story-ad/views/assetCenterPersonState.js', ['personAssetState']);
+  const generatedProfile = {
+    displayName: '陈默', roleName: '背景出镜人物', age: 'young_adult_17_25',
+    continuityText: '保持同一人物。', negativeText: '禁止更换服装。',
+    look_profiles: [{ id: 'look-1', name: '现代造型', story_state: '展示状态', wardrobeText: '米白上衣。', hairMakeupText: '黑色直发。', negativeText: '禁止礼服。', scene_ids: ['scene-1'] }],
+  };
+  const completePerson = {
+    dossier_sheet: { image_url: '/dossier.png' }, visual_asset_contract_version: 2,
+    profile: { ...generatedProfile, continuityText: '保持同一人物', negativeText: '禁止更换服装', look_profiles: [{ ...generatedProfile.look_profiles[0], wardrobeText: '米白上衣', hairMakeupText: '黑色直发', negativeText: '禁止礼服' }] },
+    generated_profile: generatedProfile, look_assets: [{ id: 'look-1', image_url: '/look.png' }],
+  };
+  assert.equal(personStateUi.personAssetState(completePerson), 'complete_dossier', '仅句末标点不同不得误报人物档案待同步');
+  assert.equal(personStateUi.personAssetState({ ...completePerson, profile: { ...completePerson.profile, negativeText: '禁止更换人物身份' } }), 'profile_upgrade_required', '实质人物设定变化仍必须要求同步档案');
 
   const legacyQa = personIdentity.normalizeQa({
     pass: true, identity_score: 1, age_score: 1, wardrobe_score: 1, body_score: 1,
@@ -91,7 +105,7 @@ async function main() {
     /same plain light-gray casting studio.*No scene/iu,
     '人物动作生成源头必须明确禁止剧情场景');
 
-  console.log('story-ad person view contract v404: 12 assertions passed');
+  console.log('story-ad person view contract v405: 14 assertions passed');
 }
 
 main().catch(error => { console.error(error); process.exitCode = 1; });

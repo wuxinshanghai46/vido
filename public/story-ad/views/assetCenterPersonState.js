@@ -28,12 +28,18 @@ export function personAssetState(item = {}) {
       story_state: String(state?.story_state || ''), scene_ids: (state?.scene_ids || []).map(String),
     })) : [];
   };
+  const semanticText = value => String(value || '').replace(/\s+/gu, ' ').trim().replace(/[。；;，,、.!！?？]+$/gu, '');
   const profileSnapshot = profile => JSON.stringify({
-    displayName: String(profile?.displayName || ''), roleName: String(profile?.roleName || ''),
+    displayName: semanticText(profile?.displayName), roleName: semanticText(profile?.roleName),
     age: ageValue(profile), appearanceText: String(profile?.appearanceText || ''),
-    performanceText: String(profile?.performanceText || ''), continuityText: String(profile?.continuityText || ''),
-    ethnicity: String(profile?.ethnicity || profile?.ethnic_appearance || ''),
-    negativeText: String(profile?.negativeText || ''), looks: lookSnapshot(profile),
+    performanceText: semanticText(profile?.performanceText), continuityText: semanticText(profile?.continuityText),
+    ethnicity: semanticText(profile?.ethnicity || profile?.ethnic_appearance),
+    negativeText: semanticText(profile?.negativeText), looks: lookSnapshot(profile).map(look => ({
+      ...look,
+      name: semanticText(look.name), story_state: semanticText(look.story_state),
+      wardrobeText: semanticText(look.wardrobeText), hairMakeupText: semanticText(look.hairMakeupText),
+      negativeText: semanticText(look.negativeText),
+    })),
     identity_id: String(profile?.identity_id || profile?.id || ''),
     lineage_identity_id: String(profile?.lineage_identity_id || profile?.source_identity_id || profile?.id || ''),
     identity_continuity: canonicalContinuity(profile),
