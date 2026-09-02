@@ -65,6 +65,11 @@ async function main() {
   assert.match(card, /src="\/body\.png"/u, '人物卡必须默认显示单人物身体母版');
   assert.doesNotMatch(card, /bad-face-contact-sheet/u, '人物卡不得优先显示误标为头像的拼图');
 
+  const workspaceCss = read('public/story-ad/workspace.css');
+  assert.match(workspaceCss,
+    /\.asset-card\.is-subject \.asset-card-person-entry \.media\{[^}]*height:210px;[^}]*object-fit:cover;[^}]*object-position:center 24%/u,
+    '人物卡半身裁切规则必须比主体素材通用 contain 规则更具体，并固定为卡片预览高度');
+
   const legacyQa = personIdentity.normalizeQa({
     pass: true, identity_score: 1, age_score: 1, wardrobe_score: 1, body_score: 1,
     photographic_realism_score: 1, checked_at: '2026-09-01T00:00:00.000Z',
@@ -86,7 +91,7 @@ async function main() {
     /same plain light-gray casting studio.*No scene/iu,
     '人物动作生成源头必须明确禁止剧情场景');
 
-  console.log('story-ad person view contract v403: 11 assertions passed');
+  console.log('story-ad person view contract v404: 12 assertions passed');
 }
 
 main().catch(error => { console.error(error); process.exitCode = 1; });
