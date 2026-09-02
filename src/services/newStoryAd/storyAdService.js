@@ -1005,15 +1005,7 @@ async function generateStoryboardStage(taskId, options = {}) {
   storage.saveOutput(taskId, 'sound_journey', buildSoundJourney(shots)); storage.saveOutput(taskId, soundDesignAssets.PROFILE_KIND, soundDesignAssets.compile(taskId).profiles);
   storage.saveOutput(taskId, 'quality_review', review);
   keyframeContractFreshness.persist(taskId, contracts);
-  const replacement = forceRegenerate
-    ? storyboardReplacementLifecycle.finalizeForcedReplacement({ storage, taskId, previousTtsAudio, nextShots: shots, audioApprovalKind: audioProduction.OUTPUT_KIND })
-    : null;
-  if (replacement) storage.saveOutput(taskId, 'storyboard_meta', {
-    ...(storage.getOutput(taskId, 'storyboard_meta') || {}),
-    forced_replacement_at: new Date().toISOString(),
-    downstream_invalidated: replacement.invalidated_kinds,
-    tts_preserved: replacement.audio_preserved,
-  });
+  if (forceRegenerate) storyboardReplacementLifecycle.finalizeForcedReplacement({ storage, taskId, previousTtsAudio, nextShots: shots, audioApprovalKind: audioProduction.OUTPUT_KIND });
   storage.saveStage(taskId, 'storyboard', { status: 'done', output_summary: `${shots.length} 个镜头`, diagnostics: review });
   storage.saveStage(taskId, 'keyframe_contract', { status: 'done', output_summary: `${contracts.length} 个关键帧合同` });
   storage.updateTask(taskId, { status: 'done', stage: 'keyframe_contract_ready', diagnostics: diagnostics.summarizeTask({ task, review }) });

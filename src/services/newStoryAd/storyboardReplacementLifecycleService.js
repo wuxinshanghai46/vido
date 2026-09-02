@@ -30,11 +30,18 @@ function finalizeForcedReplacement({ storage, taskId, previousTtsAudio, nextShot
   };
   storage.saveOutput(taskId, 'context', nextContext);
   storage.updateTask(taskId, { request: nextContext, updated_at: new Date().toISOString() });
-  return {
+  const result = {
     audio_preserved: compatibility.compatible,
     audio_compatibility_issues: compatibility.issues,
     invalidated_kinds: [...VISUAL_DOWNSTREAM_KINDS, ...(compatibility.compatible ? [] : [...AUDIO_DOWNSTREAM_KINDS, audioApprovalKind].filter(Boolean))],
   };
+  storage.saveOutput(taskId, 'storyboard_meta', {
+    ...(storage.getOutput(taskId, 'storyboard_meta') || {}),
+    forced_replacement_at: new Date().toISOString(),
+    downstream_invalidated: result.invalidated_kinds,
+    tts_preserved: result.audio_preserved,
+  });
+  return result;
 }
 
 module.exports = { AUDIO_DOWNSTREAM_KINDS, VISUAL_DOWNSTREAM_KINDS, finalizeForcedReplacement };
