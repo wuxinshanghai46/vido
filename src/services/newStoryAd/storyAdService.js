@@ -1018,9 +1018,7 @@ async function buildKeyframeContractStage(taskId) {
   let ctx = { ...baseCtx, scene_assets: Array.isArray(sceneAssets) ? sceneAssets : [], production_graph: storage.getOutput(taskId, 'production_graph_v1') || null, knowledge_policy_snapshot: knowledgePolicyRuntime.pinTaskPolicy(storage, taskId) };
   let shots = storage.getOutput(taskId, 'storyboard_table');
   if (!Array.isArray(shots) || !shots.length) throw new Error('请先生成分镜表');
-  const storyFlowContract = storage.getOutput(taskId, 'story_flow_contract') || {};
-  shots = storyboardFlowConsistency.rebaseWhenPresent(shots, storyFlowContract, { boundary: 'keyframe_contract_build' }).shots;
-  shots = bindShotsToScenes(shots, ctx.scene_assets); storyboardFlowConsistency.assertWhenPresent(shots, storyFlowContract, { boundary: 'keyframe_contract_build' });
+  const storyFlowContract = storage.getOutput(taskId, 'story_flow_contract') || {}; shots = bindShotsToScenes(storyboardFlowConsistency.rebaseWhenPresent(shots, storyFlowContract, { boundary: 'keyframe_contract_build' }).shots, ctx.scene_assets); storyboardFlowConsistency.assertWhenPresent(shots, storyFlowContract, { boundary: 'keyframe_contract_build' });
   const blueprint = storage.getOutput(taskId, 'blueprint') || {};
   const compiled = temporalEvidenceLifecycle.compileForTask({ storage, taskId, ctx, blueprint, shots });
   shots = compiled.shots; ctx = { ...ctx, temporal_evidence_graph: compiled.graph };
@@ -1392,9 +1390,7 @@ function previewShotPrompts(taskId, options = {}) {
   const draft = options.shot && typeof options.shot === 'object' ? options.shot : {};
   const merged = normalizeStoryboardShot({ ...stored[index], ...draft }, index, stored[index - 1] || {});
   const shots = stored.map((shot, shotIndex) => shotIndex === index ? merged : shot);
-  const storyFlowContract = storage.getOutput(taskId, 'story_flow_contract') || {};
-  const rebasedShots = storyboardFlowConsistency.rebaseWhenPresent(shots, storyFlowContract, { boundary: 'prompt_preview' }).shots;
-  let boundShots = bindShotsToScenes(rebasedShots, ctx.scene_assets); storyboardFlowConsistency.assertWhenPresent(boundShots, storyFlowContract, { boundary: 'prompt_preview' });
+  const storyFlowContract = storage.getOutput(taskId, 'story_flow_contract') || {}; let boundShots = bindShotsToScenes(storyboardFlowConsistency.rebaseWhenPresent(shots, storyFlowContract, { boundary: 'prompt_preview' }).shots, ctx.scene_assets); storyboardFlowConsistency.assertWhenPresent(boundShots, storyFlowContract, { boundary: 'prompt_preview' });
   const previewCompiled = temporalEvidenceLifecycle.compileForTask({ storage, taskId, ctx, blueprint, shots: boundShots, persist: false });
   boundShots = previewCompiled.shots; ctx = { ...ctx, temporal_evidence_graph: previewCompiled.graph };
   const contracts = buildKeyframeContracts(ctx, boundShots);
@@ -1434,9 +1430,7 @@ async function generateKeyframesStage(taskId, options = {}) {
     shots = generated.shots || [];
   }
   if (!Array.isArray(shots) || !shots.length) throw new Error('当前项目没有可用分镜表，请先生成分镜。'); storyboardImageConfirmationGate.assertReady(taskId);
-  const storyFlowContract = storage.getOutput(taskId, 'story_flow_contract') || {};
-  const rebasedShots = storyboardFlowConsistency.rebaseWhenPresent(shots, storyFlowContract, { boundary: 'keyframe_generation' }).shots;
-  const boundShots = bindShotsToScenes(rebasedShots, ctx.scene_assets); storyboardFlowConsistency.assertWhenPresent(boundShots, storyFlowContract, { boundary: 'keyframe_generation' });
+  const storyFlowContract = storage.getOutput(taskId, 'story_flow_contract') || {}; const boundShots = bindShotsToScenes(storyboardFlowConsistency.rebaseWhenPresent(shots, storyFlowContract, { boundary: 'keyframe_generation' }).shots, ctx.scene_assets); storyboardFlowConsistency.assertWhenPresent(boundShots, storyFlowContract, { boundary: 'keyframe_generation' });
   if (JSON.stringify(boundShots) !== JSON.stringify(shots)) {
     shots = boundShots;
     storage.saveOutput(taskId, 'storyboard_table', shots);

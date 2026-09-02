@@ -115,7 +115,7 @@ axios.get = async url => String(url).endsWith('/v1/audio/')
   ? { data: { results: [{ id: 'open-audio-1', title: 'Showroom ambience', creator: 'CC Artist', license: 'by', license_url: 'https://creativecommons.org/licenses/by/4.0/', foreign_landing_url: 'https://freesound.org/s/1', url: 'https://cdn.freesound.org/previews/1/1.mp3', duration: 4 }] } }
   : (String(url).includes('/v1/audio/open-audio-1/')
     ? { data: { id: 'open-audio-1', title: 'Showroom ambience', creator: 'CC Artist', license: 'by', license_url: 'https://creativecommons.org/licenses/by/4.0/', foreign_landing_url: 'https://freesound.org/s/1', url: 'https://cdn.freesound.org/previews/1/1.mp3', duration: 4 } }
-    : { data: Buffer.alloc(1600, 1), headers: { 'content-type': 'audio/mpeg' } });
+    : { data: Buffer.concat([Buffer.from('ID3'), Buffer.alloc(1597, 1)]), headers: { 'content-type': 'audio/mpeg' } });
 
 (async () => {
   const library = await sound.searchOpenverse('showroom ambience');
