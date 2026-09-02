@@ -211,7 +211,7 @@ function assetCard(item, group) {
       ${needsPersonVerification ? `<button class="btn small primary" type="button" data-history-safe data-verify-person="${escapeHtml(item.id)}">重新验证人物一致性</button>` : ''}
       ${needsPersonRegeneration ? `<button class="btn small primary" type="button" data-regenerate-person="${escapeHtml(item.id)}">重新生成人物资产</button>` : ''}
       ${group === 'products' ? `<button class="btn small" type="button" data-upload-product="${escapeHtml(item.id)}">${materialReference.materialSurface ? (materialReference.realSample ? '更换真实材料样片' : '上传真实材料样片') : (item.image_url ? '更换主体图片' : '上传主体图片')}</button>` : ''}
-      ${group === 'products' && materialReference.materialSurface ? `<button class="btn small" type="button" data-generate-product-reference="${escapeHtml(item.id)}">${materialReference.generatedNeutral ? '重新生成中性参考图（1 张，可能计费）' : '生成中性参考图（1 张，可能计费）'}</button>` : ''}
+      ${group === 'products' && materialReference.materialSurface ? `<button class="btn small" type="button" data-generate-product-reference="${escapeHtml(item.id)}">${materialReference.generatedNeutral ? '重新生成中性参考图' : '生成中性参考图'}</button>` : ''}
       ${group === 'scenes' ? `<button class="btn small" type="button" data-edit-scene-world="${escapeHtml(item.id)}">查看 / 修改场景设定</button>` : ''}
       ${needsProductVerification ? `<button class="btn small primary" type="button" data-history-safe data-verify-product="${escapeHtml(item.id)}">验证商品素材</button>` : ''}
     </div>
@@ -494,10 +494,15 @@ export async function mount(host, context) {
     });
   }));
 
-  const showAsset = button => {
+  const showAsset = async button => {
     const group = button.dataset.assetGroup;
     const item = (assets[group] || []).find(asset => String(asset.id) === button.dataset.assetId);
-    if (item) openDrawer(item, group, { readOnly: historicalReadOnly, generationActive, initialPersonTab: group === 'people' ? 'images' : '', onGenerate: generate, onGenerateScene: generateScene, onGenerateProduct: generateProduct, onVerifyProduct: verifyProduct, onSavePerson: savePerson, onSaveProduct: saveProduct, onSaveScene: saveScene, onAssistScene: assistScene, onUploadProduct: () => openUpload('products'), returnFocus: button });
+    if (!item) return toast('当前资产已更新，请刷新页面后重试。', 'warning');
+    try {
+      await openDrawer(item, group, { readOnly: historicalReadOnly, generationActive, initialPersonTab: group === 'people' ? 'images' : '', onGenerate: generate, onGenerateScene: generateScene, onGenerateProduct: generateProduct, onVerifyProduct: verifyProduct, onSavePerson: savePerson, onSaveProduct: saveProduct, onSaveScene: saveScene, onAssistScene: assistScene, onUploadProduct: () => openUpload('products'), returnFocus: button });
+    } catch (error) {
+      toast(`完整视图加载失败：${error.message}`, 'danger');
+    }
   };
   host.querySelectorAll('[data-asset-id]').forEach(button => button.addEventListener('click', () => showAsset(button)));
   host.querySelectorAll('[data-verify-product]').forEach(button => button.addEventListener('click', event => {

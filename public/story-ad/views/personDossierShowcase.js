@@ -7,7 +7,12 @@ const labels = {
 };
 
 const text = (value, fallback = '未填写') => escapeHtml(String(value || '').trim() || fallback);
-const list = value => Array.isArray(value) ? value.filter(item => item?.image_url) : [];
+const normalizeImage = item => {
+  if (!item || typeof item !== 'object') return null;
+  const imageUrl = item.image_url || item.imageUrl || item.url || item.file_url || '';
+  return imageUrl ? { ...item, image_url: imageUrl } : null;
+};
+const list = value => Array.isArray(value) ? value.map(normalizeImage).filter(Boolean) : [];
 const byKey = (rows, key, fallbackIndex = 0) => rows.find(item => item.key === key) || rows[fallbackIndex] || null;
 const localizedLabel = (view = {}, fallback = '人物素材') => labels[view.key] || view.label || fallback;
 
@@ -58,8 +63,8 @@ export function personDossierShowcase(item = {}) {
   const identity = list(item.identity_views);
   const expressions = list(item.expressions);
   const actions = list(item.base_actions);
-  const nativeFace = item.native_masters?.face?.image_url ? item.native_masters.face : null;
-  const nativeBody = item.native_masters?.body?.image_url ? item.native_masters.body : null;
+  const nativeFace = normalizeImage(item.native_masters?.face);
+  const nativeBody = normalizeImage(item.native_masters?.body);
   const generatedAccessories = list(item.accessory_details).filter(view => view.detail_mode === 'generated_high_resolution');
   const generatedWardrobe = list(item.wardrobe_details).filter(view => view.detail_mode === 'generated_high_resolution');
   const groupRoot = `person-dossier-${item.id || profile.id || 'current'}`;
@@ -74,10 +79,11 @@ export function personDossierShowcase(item = {}) {
     masters: `${groupRoot}-native-masters`,
   };
   const displayName = item.name || profile.displayName || '人物档案';
-  const dossier = item.dossier_sheet?.image_url
+  const normalizedDossier = normalizeImage(item.dossier_sheet);
+  const dossier = normalizedDossier?.image_url
     && item.dossier_sheet?.layout === 'elegant_character_archive_v5'
     && Number(item.visual_asset_contract_version || 0) >= 2
-    ? item.dossier_sheet
+    ? normalizedDossier
     : null;
   const partial = item.partial_checkpoint === true;
   const portrait = nativeFace || byKey(identity, 'face_front', 0) || identity[0] || null;

@@ -160,6 +160,14 @@ function serializeAsset(asset, options = {}) {
   const fullBody = nativeMasters.body?.image_url
     || bodyViews.find(view => ['front', 'body_front'].includes(String(view.key || view.id || '').toLowerCase()))?.image_url
     || imageUrl;
+  const portraitFallbackUrls = [...new Set([
+    portrait,
+    ...identityViews.map(view => view.image_url),
+    fullBody,
+    ...bodyViews.map(view => view.image_url),
+    dossierSheet?.image_url,
+    imageUrl,
+  ].map(normalizeLocalPublicUrl).filter(Boolean))].slice(0, 8);
   const libraryReady = verifiedCharacterLibraryEvidence(personContract)
     && bodyViews.length >= 4 && identityViews.length >= 1 && expressions.length >= 6
     && Boolean(String(dossierSheet?.image_url || '').trim())
@@ -209,6 +217,7 @@ function serializeAsset(asset, options = {}) {
       portrait_image_url: portrait,
       full_body_image_url: fullBody,
       dossier_image_url: dossierSheet?.image_url || '',
+      portrait_fallback_urls: portraitFallbackUrls,
       body_views: bodyViews,
       identity_views: identityViews,
       expressions,
@@ -239,6 +248,7 @@ function serializeAsset(asset, options = {}) {
       },
       character_library: {
         portrait_image_url: serialized.character_library.portrait_image_url,
+        portrait_fallback_urls: serialized.character_library.portrait_fallback_urls,
         filters: serialized.character_library.filters,
         summary_only: true,
       },

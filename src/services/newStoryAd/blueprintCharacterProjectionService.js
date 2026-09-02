@@ -1,5 +1,6 @@
 const { cleanText, cleanMultilineText } = require('./contextBuilder');
 const personGenerationPrompt = require('./personGenerationPromptService');
+const subjectProfileText = require('./subjectProfileTextService');
 
 function projectCharacters(context = {}, blueprint = {}) {
   const current = Array.isArray(context.cast_profiles) ? context.cast_profiles : [];
@@ -10,6 +11,9 @@ function projectCharacters(context = {}, blueprint = {}) {
     const id = cleanText(character.id || `character_${index + 1}`, 80);
     const name = cleanText(character.name || `角色${index + 1}`, 120);
     const prior = byId.get(id) || byName.get(name) || {};
+    const priorEdited = new Set(subjectProfileText.userEditedFields(prior));
+    const priorAuthority = subjectProfileText.profileFieldAuthority(prior);
+    const priorPromptIsUserOwned = priorEdited.has('generation_prompt') || priorAuthority.generation_prompt === 'user';
     const projectedAge = cleanText(character.age_range || character.age || prior.age || '', 60);
     const declaredAgeSource = cleanText(character.age_source || character.age_contract?.source || '', 40);
     const ageSource = projectedAge
@@ -30,8 +34,8 @@ function projectCharacters(context = {}, blueprint = {}) {
       performanceText: cleanText(character.performanceText || character.performance
         || prior.performanceText || prior.performance
         || (/背景出镜人物/u.test(character.role || prior.role || '') ? character.description : ''), 600),
-      generation_prompt: cleanMultilineText(character.generation_prompt || character.generationPrompt || prior.generation_prompt || '', 8000),
-      generation_prompt_source: character.generation_prompt || character.generationPrompt ? 'blueprint_model' : (prior.generation_prompt_source || ''),
+      generation_prompt: cleanMultilineText(character.generation_prompt || character.generationPrompt || (priorPromptIsUserOwned ? prior.generation_prompt : '') || '', 8000),
+      generation_prompt_source: character.generation_prompt || character.generationPrompt ? 'blueprint_model' : (priorPromptIsUserOwned ? 'user' : 'compiled_from_profile'),
       owned_props: Array.isArray(character.owned_props || character.ownedProps)
         ? personGenerationPrompt.normalizeOwnedProps(character)
         : personGenerationPrompt.normalizeOwnedProps(prior),

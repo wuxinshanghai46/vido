@@ -694,8 +694,10 @@ function normalizePlan(source = {}, ctx = {}, options = {}) {
         const before = cleanText(existing?.[field] || '', field === 'appearanceText' ? 800 : 1200);
         const generated = cleanText(profile?.[field] || profile?.[field.replace('Text', '')] || '', field === 'appearanceText' ? 800 : 1200);
         if (!before || !userOwned(field)) return generated;
-        if (!generated || generated.includes(before)) return generated || before;
-        return cleanText(`${before}；AI补充：${generated}`, field === 'appearanceText' ? 800 : 1200);
+        // Do not blend two independently authored contracts. If the existing
+        // field is authoritative, it wins verbatim; otherwise the new planner
+        // output replaces it as a whole.
+        return before;
       };
       const resolvedWardrobe = preserveDetail('wardrobeText') || cleanText(withLooks.wardrobeText || '', 1200);
       const resolvedHairMakeup = preserveDetail('hairMakeupText') || '自然真实的发型与妆容，严格匹配人物外貌、年龄和职业气质';

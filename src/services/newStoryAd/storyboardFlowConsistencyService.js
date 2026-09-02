@@ -76,8 +76,12 @@ function rebaseWhenPresent(shots = [], contract = {}, options = {}) {
         : `第 ${Number(shot.index || shot.shot_index || index + 1)} 镜引用了当前剧本不存在的剧情节点 ${beatId}`);
       return shot;
     }
+    // The scene id and its revision are one authority unit. Keeping the old
+    // revision while rebasing only the id creates an impossible r2/r5 pair,
+    // which is later rejected by sceneBindingService before prompt generation.
+    const { scene_revision: _staleSceneRevision, sceneRevision: _staleSceneRevisionAlias, ...current } = shot;
     return {
-      ...shot,
+      ...current,
       scene_id: text(unit.scene_id),
       scene_asset_id: text(unit.scene_id),
       story_flow_contract_fingerprint: text(contract.contract_fingerprint),

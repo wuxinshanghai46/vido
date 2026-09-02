@@ -3,8 +3,45 @@
 const storage = require('./storageService');
 const assetPlan = require('./assetPlanService');
 const subjectProfileText = require('./subjectProfileTextService');
+const personGenerationPrompt = require('./personGenerationPromptService');
 const generationConcurrency = require('./generationConcurrencyService');
 const { assertContextConsistent } = require('./contextBuilder');
+
+function mergeGeneratedProfile(profile = {}, generated = {}, subjectKind = 'human') {
+  const edited = new Set(subjectProfileText.userEditedFields(profile));
+  let merged = {
+    ...profile, ...generated,
+    subject_kind: subjectKind,
+    id: profile.id,
+    displayName: profile.displayName || profile.name || generated.displayName,
+    name: profile.name || profile.displayName || generated.name,
+    roleName: profile.roleName || profile.role || generated.roleName,
+    role: profile.role || profile.roleName || generated.role,
+    age: profile.age || generated.age,
+    ethnicity: profile.ethnicity || profile.ethnic_appearance || generated.ethnicity,
+    field_authority: profile.field_authority || profile.fieldAuthority || {},
+    user_edited_fields: subjectProfileText.userEditedFields(profile),
+  };
+  subjectProfileText.ASSIST_DETAIL_FIELDS.forEach(field => {
+    if (edited.has(field) && profile[field]) merged[field] = profile[field];
+    else if (generated[field]) merged[field] = generated[field];
+  });
+  const authoredPrompt = edited.has('generation_prompt') && profile.generation_prompt;
+  if (authoredPrompt) merged.generation_prompt = profile.generation_prompt;
+  else {
+    delete merged.generation_prompt;
+    delete merged.generationPrompt;
+    merged.generation_prompt_source = 'compiled_from_profile';
+  }
+  const looks = Array.isArray(merged.look_profiles) ? merged.look_profiles : [];
+  if (looks.length) merged.look_profiles = looks.map((look, lookIndex) => lookIndex ? look : ({
+    ...look,
+    wardrobeText: merged.wardrobeText,
+    hairMakeupText: merged.hairMakeupText,
+    negativeText: merged.negativeText,
+  }));
+  return personGenerationPrompt.project(merged);
+}
 
 async function complete(taskId, options = {}, deps = {}) {
   const assistBrief = deps.assistBrief;
@@ -57,23 +94,9 @@ async function complete(taskId, options = {}, deps = {}) {
           _internal_model_stage: 'new_story_ad.person_plan_character',
         }, options.user || {});
         const generated = response.cast_profiles?.[0] || {};
-        const edited = new Set(subjectProfileText.userEditedFields(profile));
-        const merged = {
-          ...profile, ...generated,
-          subject_kind: subjectKind,
-          id: profile.id,
-          displayName: profile.displayName || profile.name || generated.displayName,
-          name: profile.name || profile.displayName || generated.name,
-          roleName: profile.roleName || profile.role || generated.roleName,
-          role: profile.role || profile.roleName || generated.role,
-          age: profile.age || generated.age,
-          ethnicity: profile.ethnicity || profile.ethnic_appearance || generated.ethnicity,
-          field_authority: profile.field_authority || profile.fieldAuthority || {},
-          user_edited_fields: subjectProfileText.userEditedFields(profile),
-        };
-        subjectProfileText.ASSIST_DETAIL_FIELDS.forEach(field => {
-          if (edited.has(field) && profile[field]) merged[field] = subjectProfileText.dedupeClauses(`${profile[field]}；${generated[field] || ''}`, 800);
-        });
+        // A field has exactly one authority. User-owned text is preserved as
+        // written; replaceable text is replaced by the new model result.
+        const merged = mergeGeneratedProfile(profile, generated, subjectKind);
         assetPlan.assertDetailedPersonProfiles([merged]);
         checkpoints[profile.id] = { status: 'done', profile: merged, model_meta: response.model_meta || {}, updated_at: new Date().toISOString() };
         storage.saveOutput(taskId, checkpointKind, checkpoints);
@@ -102,4 +125,4 @@ async function complete(taskId, options = {}, deps = {}) {
   return saved.cast_profiles || completedProfiles;
 }
 
-module.exports = { complete };
+module.exports = { complete, mergeGeneratedProfile };

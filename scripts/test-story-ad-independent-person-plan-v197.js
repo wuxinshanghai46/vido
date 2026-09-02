@@ -57,8 +57,8 @@ const rich = id => ({
   const subjectSource = fs.readFileSync(path.join(__dirname, '../src/services/newStoryAd/subjectAssetBundleService.js'), 'utf8');
   assert.match(subjectSource, /generationConcurrency\.map\([\s\S]*subject_people:[\s\S]*humans\.map/, '人物图片必须按主体并行调度');
   assert.doesNotMatch(subjectSource, /for \(let index = 0; index < humans\.length/, '人物图片不得退回串行 for/await 链路');
-  const storyboardSource = fs.readFileSync(path.join(__dirname, '../public/story-ad/views/storyboardView.js'), 'utf8');
-  assert.match(storyboardSource, /对白与声音表演[\s\S]*data-shot-speech-mode[\s\S]*dialogue_lines/, '声音与对白设置必须位于线稿分镜并持久化下游字段');
+  const plotBeatSource = fs.readFileSync(path.join(__dirname, '../public/story-ad/views/plotBeatEditor.js'), 'utf8');
+  assert.match(plotBeatSource, /dialogue_lines_json[\s\S]*dialogue_lines/, '当前合同的对白必须由剧情节点编辑器持久化为结构化 dialogue_lines');
   const personFormSource = fs.readFileSync(path.join(__dirname, '../public/story-ad/views/assetCenterPersonForm.js'), 'utf8');
   assert.doesNotMatch(personFormSource, /renderPersonVoiceBinding|声音与对白表演/, '人物外观生成表单不得再显示声音与对白设置');
 

@@ -68,10 +68,46 @@ function actorLibraryFilters(actor = {}) {
   };
 }
 
+function imageCandidates(value = []) {
+  const rows = Array.isArray(value) ? value : [value];
+  return [...new Set(rows.map(row => String(row || '').trim()).filter(Boolean))];
+}
+
+function actorPortraitCandidates(actor = {}) {
+  const library = actor.character_library || {};
+  return imageCandidates([
+    library.portrait_image_url,
+    ...(library.portrait_fallback_urls || []),
+    actor.native_masters?.face?.image_url,
+    ...(actor.identity_views || []).map(view => view?.image_url || view?.url),
+    actor.cover_image_url,
+    actor.image_url,
+    library.full_body_image_url,
+    ...(actor.body_views || []).map(view => view?.image_url || view?.url),
+    actor.dossier_sheet?.image_url,
+  ]);
+}
+
 function actorLibraryImage(url = '', label = '', className = '', options = {}) {
-  return `<div class="${className}">${url
-    ? mediaPreview({ image_url: url }, { label, width: options.width || 520, symbol: '人物素材', loading: options.loading, fetchPriority: options.fetchPriority, zoomable: options.zoomable === true, zoomGroup: options.zoomGroup || 'actor-library' })
+  const candidates = imageCandidates(url);
+  return `<div class="${className}" data-actor-image-fallbacks="${escapeHtml(JSON.stringify(candidates))}">${candidates[0]
+    ? mediaPreview({ image_url: candidates[0] }, { label, width: options.width || 520, symbol: '人物素材', loading: options.loading, fetchPriority: options.fetchPriority, zoomable: options.zoomable === true, zoomGroup: options.zoomGroup || 'actor-library' })
     : '<div class="media-placeholder"><span>该项待补充</span></div>'}</div>`;
+}
+
+function bindActorImageFallbacks(scope) {
+  scope.querySelectorAll('[data-actor-image-fallbacks]').forEach(host => {
+    const image = host.querySelector('img');
+    if (!image) return;
+    let candidates = [];
+    try { candidates = JSON.parse(host.dataset.actorImageFallbacks || '[]'); } catch {}
+    let index = -1;
+    image.addEventListener('error', () => {
+      index += 1;
+      if (index < candidates.length) { image.src = candidates[index]; return; }
+      host.innerHTML = '<div class="media-placeholder"><span>头像文件不可用</span></div>';
+    });
+  });
 }
 
 function actorLibraryFeatured(actor = {}, expanded = false) {
@@ -79,13 +115,14 @@ function actorLibraryFeatured(actor = {}, expanded = false) {
   const profile = actorLibraryProfile(actor);
   const expressionRows = Array.isArray(library.expressions) ? library.expressions.slice(0, 6) : [];
   const bodyRows = Array.isArray(library.body_views) ? library.body_views.slice(0, 4) : [];
-  const portrait = library.portrait_image_url || actor.cover_image_url || actor.image_url || '';
+  const portraits = actorPortraitCandidates(actor);
+  const portrait = portraits[0] || '';
   const fullBody = library.full_body_image_url || bodyRows[0]?.image_url || actor.image_url || '';
   const dossier = library.dossier_image_url || actor.dossier_sheet?.image_url || '';
   const tags = [profile.roleName, actorLibraryFilters(actor).gender, actorLibraryFilters(actor).age, actorLibraryFilters(actor).era]
     .filter(Boolean);
   if (library.summary_only === true) {
-    return `<section class="actor-library-featured is-loading" data-library-featured><header><div><h3>${escapeHtml(actor.name || profile.displayName || '人物角色')}</h3><div class="actor-library-tags">${tags.map(tag => `<span>${escapeHtml(tag)}</span>`).join('')}</div></div></header><div class="actor-library-summary-loading">${actorLibraryImage(portrait, `${actor.name || '人物'}头像`, 'is-portrait', { loading: 'eager', fetchPriority: 'high', width: 420 })}<div><b>人物头像已就绪</b><span>正在按需读取该人物的完整视角和表情档案…</span></div></div></section>`;
+    return `<section class="actor-library-featured is-loading" data-library-featured><header><div><h3>${escapeHtml(actor.name || profile.displayName || '人物角色')}</h3><div class="actor-library-tags">${tags.map(tag => `<span>${escapeHtml(tag)}</span>`).join('')}</div></div></header><div class="actor-library-summary-loading">${actorLibraryImage(portraits, `${actor.name || '人物'}头像`, 'is-portrait', { loading: 'eager', fetchPriority: 'high', width: 420 })}<div><b>人物头像已就绪</b><span>正在按需读取该人物的完整视角和表情档案…</span></div></div></section>`;
   }
   const viewRows = bodyRows.length ? bodyRows : [
     { image_url: fullBody, label: '全身标准图' },
@@ -140,9 +177,10 @@ export async function openActorLibrary({ store, context }) {
         <div class="actor-library-toolbar"><button class="btn" type="button" data-toggle-library-filters>角色筛选</button><span>只展示已通过人物身份与跨视角一致性验证的资产</span></div>
         ${actorLibraryFilterPanel()}
         <div class="actor-library-carousel">${visible.map((actor, index) => {
-          const profile = actorLibraryProfile(actor); const portrait = actor.character_library?.portrait_image_url || actor.cover_image_url || actor.image_url;
+          const effectiveActor = state.details.get(actor.id) || actor;
+          const profile = actorLibraryProfile(effectiveActor); const portraits = actorPortraitCandidates(effectiveActor);
           return `<button type="button" class="actor-library-card ${actor.id === state.selectedId ? 'is-selected' : ''}" data-actor-id="${escapeHtml(actor.id)}">
-            ${actorLibraryImage(portrait, `${actor.name || '人物'}头像`, 'actor-library-card-image')}
+            ${actorLibraryImage(portraits, `${actor.name || '人物'}头像`, 'actor-library-card-image')}
             <b>${escapeHtml(actor.name || profile.displayName || `人物 ${index + 1}`)}</b><span>${escapeHtml(profile.roleName || '人物资产')}</span>
           </button>`;
         }).join('')}</div>
@@ -170,6 +208,7 @@ export async function openActorLibrary({ store, context }) {
         } catch (error) { toast(error.message, 'danger'); setButtonBusy(button, false); }
       });
       bindMediaLightbox(modal.body);
+      bindActorImageFallbacks(modal.body);
     };
     render();
     loadSelectedDetail(state.selectedId);
