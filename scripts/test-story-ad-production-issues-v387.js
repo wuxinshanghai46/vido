@@ -69,6 +69,7 @@ async function main() {
   const assetView = read('public/story-ad/views/assetCenterView.js');
   assert.match(assetView, /data-verify-person=/, '未验证人物必须有可执行的重新验证入口');
   assert.match(assetView, /\/person-verify/, '重新验证入口必须调用真实服务端验证接口');
+  assert.match(assetView, /data-regenerate-person=/, '验证已明确拒绝的人物必须提供重新生成入口，不能无限重复审核');
 
   console.log(JSON.stringify({
     passed: true,

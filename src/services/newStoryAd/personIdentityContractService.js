@@ -329,7 +329,14 @@ function assertVerifiedPerson(ctx = {}) {
     if (contract.status === 'verified' && contract.cross_view_qa?.pass === true
       && contract.cross_view_qa?.member_count_pass === true && verified) return contract;
   } else if (contract?.status === 'verified' && normalizeQa(contract.cross_view_qa).pass) return contract;
-  const error = new Error('人物参考尚未通过身份、年龄、服装和体态一致性验证，请返回“人物资产”点击“重新验证人物一致性”');
+  const rejectedReasons = [
+    ...(Array.isArray(contract?.verification?.reasons) ? contract.verification.reasons : []),
+    ...(Array.isArray(contract?.cross_view_qa?.mismatch_reasons) ? contract.cross_view_qa.mismatch_reasons : []),
+  ].map(reason => cleanText(reason, 160)).filter(Boolean);
+  const rejected = contract?.status === 'rejected' || contract?.verification?.state === 'rejected';
+  const error = new Error(rejected
+    ? `人物素材未通过一致性验证${rejectedReasons[0] ? `：${rejectedReasons[0]}` : ''}，请返回“人物资产”重新生成人物资产`
+    : '人物参考尚未完成身份、年龄、服装和体态一致性验证，请返回“人物资产”点击“重新验证人物一致性”');
   error.code = 'PERSON_VERIFICATION_REQUIRED';
   error.status = 422;
   error.retryable = true;

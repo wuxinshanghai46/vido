@@ -171,6 +171,8 @@ function peopleAssets(context = {}, projectedProps = []) {
       owned_props: ownedProps,
       generation_runtime: personGenerationRuntime.inspect({ look_count: canonical.look_profiles?.length || 1, generation_settings: personGenerationSettingsProjection.runtimeSettings(canonical, item, Boolean(dossierUrl)) }),
       status: clean(item.person_contract?.status || item.verification_status || context.person_contract?.status || 'draft', 50),
+      verification: item.person_contract?.verification || context.person_contract?.verification || null,
+      cross_view_qa: item.person_contract?.cross_view_qa || context.person_contract?.cross_view_qa || null,
       revision: Number(item.person_revision || item.revision || context.person_contract?.person_revision || 0) || 0,
       source: clean(item.source || master?.source, 100), knowledge_policy: knowledgePolicyRuntime.trace(item.knowledge_policy || item.knowledge_policy_trace || {}),
     };

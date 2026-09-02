@@ -167,6 +167,10 @@ function assetCard(item, group) {
         ? '随场景生成，不需要独立商品图'
         : (item.image_url ? '已有独立素材' : '无独立商品图')),
   ] : [];
+  const personVerificationReasons = group === 'people'
+    ? [...(item.verification?.reasons || []), ...(item.cross_view_qa?.mismatch_reasons || [])]
+      .map(value => String(value || '').trim()).filter(Boolean)
+    : [];
   const detail = (group === 'scenes' ? sceneDetail : (group === 'products' ? productDetail : [
     item.partial_checkpoint ? `已保留 ${item.completed_checkpoint_units || 0} 个成功单元 · 档案待补齐` : '',
     personState === 'legacy_views' ? '仅历史四视图 · 尚未生成完整档案' : '',
@@ -177,13 +181,15 @@ function assetCard(item, group) {
     item.role,
     views ? `${views} 个视图` : '',
     item.revision ? `版本 ${item.revision}` : '',
+    item.status === 'rejected' && personVerificationReasons.length ? `未通过：${personVerificationReasons[0]}` : '',
   ]))
     .filter(Boolean).join(' · ');
   const needsGeneration = group === 'people'
     ? personState !== 'complete_dossier'
     : (GENERATABLE.has(group) && !hasGeneratedMedia(item));
   const needsProductVerification = group === 'products' && Boolean(item.image_url) && item.status !== 'verified';
-  const needsPersonVerification = group === 'people' && hasGeneratedMedia(item) && item.status !== 'verified';
+  const needsPersonVerification = group === 'people' && hasGeneratedMedia(item) && !['verified', 'rejected'].includes(item.status);
+  const needsPersonRegeneration = group === 'people' && hasGeneratedMedia(item) && item.status === 'rejected';
   const recovery = item.checkpoint_recovery_summary || {};
   const retryBlocked = group === 'people' && recovery.retry_blocked === true;
   const cardMedia = assetCardMedia(item, group);
@@ -203,6 +209,7 @@ function assetCard(item, group) {
       <button class="btn small" type="button" data-history-safe data-asset-group="${group}" data-asset-id="${escapeHtml(item.id)}">${group === 'people' ? '查看完整视图' : `查看${group === 'scenes' ? '完整场景档案' : '完整视图'}`}</button>
       ${group === 'people' && item.status === 'verified' && !item.provider_asset_id ? `<button class="btn small" type="button" data-history-safe data-sync-person-provider="${escapeHtml(item.id)}">同步 / 重试 Seedance 人物 ID</button>` : ''}
       ${needsPersonVerification ? `<button class="btn small primary" type="button" data-history-safe data-verify-person="${escapeHtml(item.id)}">重新验证人物一致性</button>` : ''}
+      ${needsPersonRegeneration ? `<button class="btn small primary" type="button" data-regenerate-person="${escapeHtml(item.id)}">重新生成人物资产</button>` : ''}
       ${group === 'products' ? `<button class="btn small" type="button" data-upload-product="${escapeHtml(item.id)}">${materialReference.materialSurface ? (materialReference.realSample ? '更换真实材料样片' : '上传真实材料样片') : (item.image_url ? '更换主体图片' : '上传主体图片')}</button>` : ''}
       ${group === 'products' && materialReference.materialSurface ? `<button class="btn small" type="button" data-generate-product-reference="${escapeHtml(item.id)}">${materialReference.generatedNeutral ? '重新生成中性参考图（1 张，可能计费）' : '生成中性参考图（1 张，可能计费）'}</button>` : ''}
       ${group === 'scenes' ? `<button class="btn small" type="button" data-edit-scene-world="${escapeHtml(item.id)}">查看 / 修改场景设定</button>` : ''}
@@ -502,6 +509,11 @@ export async function mount(host, context) {
     event.stopPropagation();
     const item = (assets.people || []).find(asset => String(asset.id) === button.dataset.verifyPerson);
     if (item) verifyPerson(item, button);
+  }));
+  host.querySelectorAll('[data-regenerate-person]').forEach(button => button.addEventListener('click', event => {
+    event.stopPropagation();
+    const item = (assets.people || []).find(asset => String(asset.id) === button.dataset.regeneratePerson);
+    if (item) generate(item, 'people', button);
   }));
   host.querySelectorAll('[data-upload-product]').forEach(button => button.addEventListener('click', event => {
     event.stopPropagation();
