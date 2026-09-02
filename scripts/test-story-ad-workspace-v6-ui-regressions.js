@@ -86,7 +86,7 @@ assert.match(sceneQaActions, /LEGACY_SCENE_FIX_DISABLED/u, '旧单场景修复�
 assert.doesNotMatch(sceneRuntimeFailure, /provider_id|model_id|provider_request_id|provider_task_id|http_status|error_code/u,
   'ordinary scene runtime card must not expose provider/model/request internals');
 assert.match(sceneDossierCard, /function assetCardMedia/);
-assert.match(sceneDossierCard, /const portrait = \(item\.native_masters\?\.face\?\.image_url/, '人物主卡必须优先显示单人物标准人像');
+assert.match(sceneDossierCard, /const portrait = \(item\.native_masters\?\.body\?\.image_url/, '人物主卡必须优先显示可裁切为半身构图的单人物身体母版');
 assert.match(sceneDossierCard, /asset-people-portraits/, '人物主卡必须使用独立人像预览组，而不是完整档案拼图');
 assert.match(personDossierShowcase, /完整人物档案尚未合成/);
 assert.match(personDossierShowcase, /人物标准视图 · 点击查看高清大图/u);

@@ -89,7 +89,7 @@ export function personDossierShowcase(item = {}) {
   const portrait = nativeFace || byKey(identity, 'face_front', 0) || identity[0] || null;
   // The generated dossier sheet also contains expression/action evidence. It is not a
   // person-only view and must never replace the clean identity/body image in the hero.
-  const globalImage = portrait || nativeBody || byKey(body, 'front', 0) || body[0] || dossier || null;
+  const globalImage = nativeBody || byKey(body, 'front', 0) || body[0] || portrait || dossier || null;
   const avatarRows = uniqueImages([nativeFace, ...identity].filter(Boolean));
   const viewRows = uniqueImages([nativeBody, ...body].filter(Boolean));
   const chips = keywords(profile);

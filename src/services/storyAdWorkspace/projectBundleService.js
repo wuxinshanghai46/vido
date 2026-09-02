@@ -27,12 +27,15 @@ function list(value) { return Array.isArray(value) ? value.filter(Boolean) : [];
 function personCoverUrl(item = {}, views = []) {
   const identity = projectedDossierItems(item.identity_views);
   const keyed = (rows, keys) => rows.find(row => keys.includes(clean(row?.key || row?.id, 80).toLowerCase()));
-  return mediaUrl(item.native_masters?.face)
-    || mediaUrl(keyed(identity, ['face_front', 'front', 'portrait']))
-    || mediaUrl(identity[0])
-    || mediaUrl(item.native_masters?.body)
+  // Card covers are presentation media, not identity anchors. Prefer the clean
+  // single-person body master so a provider-returned contact sheet can never
+  // occupy the default portrait card.
+  return mediaUrl(item.native_masters?.body)
     || mediaUrl(keyed(views, ['front', 'body_front']))
     || mediaUrl(views[0])
+    || mediaUrl(item.native_masters?.face)
+    || mediaUrl(keyed(identity, ['face_front', 'front', 'portrait']))
+    || mediaUrl(identity[0])
     || mediaUrl(item)
     || mediaUrl(item.dossier_sheet);
 }

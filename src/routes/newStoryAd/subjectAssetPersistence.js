@@ -3,12 +3,12 @@ function restoreGeneratedDossierFields(persistedCast = [], generatedCast = []) {
     const generated = generatedCast[index] || {};
     const identity = Array.isArray(generated.identity_views) ? generated.identity_views : [];
     const body = Array.isArray(generated.body_views) ? generated.body_views : [];
-    const personOnlyCover = generated.native_masters?.face?.image_url
-      || identity.find(view => ['face_front', 'front', 'portrait'].includes(String(view?.key || '').toLowerCase()))?.image_url
-      || identity[0]?.image_url
-      || generated.native_masters?.body?.image_url
+    const personOnlyCover = generated.native_masters?.body?.image_url
       || body.find(view => ['front', 'body_front'].includes(String(view?.key || '').toLowerCase()))?.image_url
       || body[0]?.image_url
+      || generated.native_masters?.face?.image_url
+      || identity.find(view => ['face_front', 'front', 'portrait'].includes(String(view?.key || '').toLowerCase()))?.image_url
+      || identity[0]?.image_url
       || generated.image_url
       || generated.dossier_sheet?.image_url
       || row.image_url

@@ -1266,7 +1266,7 @@ async function generateSubjectBundle(options = {}, deps = {}) {
     const lookAssets = [{
       ...declaredLooks[0],
       image_url: compiled.native_masters?.body?.image_url || bodyFront?.image_url || '',
-      cover_image_url: compiled.native_masters?.face?.image_url || compiled.identity_views?.[0]?.image_url || compiled.native_masters?.body?.image_url || compiled.body_views?.[0]?.image_url || dossierSheet.image_url,
+      cover_image_url: compiled.native_masters?.body?.image_url || compiled.body_views?.[0]?.image_url || compiled.native_masters?.face?.image_url || compiled.identity_views?.[0]?.image_url || dossierSheet.image_url,
       dossier_sheet: dossierSheet,
       native_masters: compiled.native_masters,
       category_atlases: compiled.category_atlases,
@@ -1336,7 +1336,7 @@ async function generateSubjectBundle(options = {}, deps = {}) {
       lookAssets.push({
         ...look,
         image_url: variantCompiled.native_masters?.body?.image_url || variantCompiled.body_views?.[0]?.image_url || '',
-        cover_image_url: variantCompiled.native_masters?.face?.image_url || variantCompiled.identity_views?.[0]?.image_url || variantCompiled.native_masters?.body?.image_url || variantCompiled.body_views?.[0]?.image_url || variantSheet.image_url,
+        cover_image_url: variantCompiled.native_masters?.body?.image_url || variantCompiled.body_views?.[0]?.image_url || variantCompiled.native_masters?.face?.image_url || variantCompiled.identity_views?.[0]?.image_url || variantSheet.image_url,
         dossier_sheet: variantSheet,
         native_masters: variantCompiled.native_masters,
         category_atlases: variantCompiled.category_atlases,
@@ -1357,7 +1357,7 @@ async function generateSubjectBundle(options = {}, deps = {}) {
       visual_medium: member.visual_medium || 'auto',
       image_url: compiled.native_masters?.body?.image_url || views[0]?.url || '', extra_image_urls: views.slice(1).map(view => view.url).filter(Boolean),
       view_images: views, view_count: views.length, description: humanPrompt(member, humans.length),
-      cover_image_url: compiled.native_masters?.face?.image_url || compiled.identity_views?.[0]?.image_url || compiled.native_masters?.body?.image_url || compiled.body_views?.[0]?.image_url || dossierSheet.image_url,
+      cover_image_url: compiled.native_masters?.body?.image_url || compiled.body_views?.[0]?.image_url || compiled.native_masters?.face?.image_url || compiled.identity_views?.[0]?.image_url || dossierSheet.image_url,
       dossier_sheet: dossierSheet,
       dossier_schema_version: compiled.schema_version,
       quality_status: compiled.quality_status,
