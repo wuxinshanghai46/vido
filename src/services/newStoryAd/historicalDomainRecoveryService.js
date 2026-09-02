@@ -71,8 +71,12 @@ function tracksFrom(payload) {
 function stripHistoricalContinuity(shots = []) {
   const staleFields = [
     'continuity', 'continuity_from', 'continuityFrom', 'entry_frame_state', 'entryFrameState',
-    'action_start', 'actionStart', 'requires_previous_frame', 'requiresPreviousFrame',
-    'same_scene_as_previous', 'transition_recommendation', 'boundary_mode',
+    'exit_frame_state', 'exitFrameState', 'action_start', 'actionStart', 'action_end', 'actionEnd',
+    'requires_previous_frame', 'requiresPreviousFrame', 'same_scene_as_previous',
+    'transition_type', 'transitionType', 'transition', 'transition_reason', 'transitionReason',
+    'transition_source', 'transitionSource', 'transition_recommendation', 'transition_match_anchor',
+    'transitionMatchAnchor', 'transition_duration_sec', 'transitionDurationSec', 'boundary_mode',
+    'camera_axis', 'cameraAxis', 'screen_direction', 'screenDirection', 'eyeline', 'eyeLine',
   ];
   return shots.map(source => {
     const shot = clone(source);
