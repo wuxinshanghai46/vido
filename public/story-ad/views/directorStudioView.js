@@ -1,6 +1,6 @@
-import * as THREE from '../vendor/three.module.min.js?v=20260902-production-v398';
-import { request, uploadAsset } from '../api.js?v=20260902-production-v398';
-import { escapeHtml, toast } from '../components/ui.js?v=20260902-production-v398';
+import * as THREE from '../vendor/three.module.min.js?v=20260902-production-v399';
+import { request, uploadAsset } from '../api.js?v=20260902-production-v399';
+import { escapeHtml, toast } from '../components/ui.js?v=20260902-production-v399';
 
 const VERSION = '20260830-director-clarity-v11';
 
