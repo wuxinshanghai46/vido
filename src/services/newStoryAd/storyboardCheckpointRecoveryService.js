@@ -61,7 +61,12 @@ function recoverAtomic(taskId, options = {}) {
   const expectedCoveragePlan = storyboardCoverageLifecycle.expectedPlan(blueprint, ctx);
   const coveragePlan = checkpoint.coverage_plan?.contract_version ? checkpoint.coverage_plan : expectedCoveragePlan;
   const orderedCheckpointShots = storyboardNarrativeOrder.canonicalize(checkpointShots, { blueprint, coveragePlan }).shots;
-  const reboundShots = bindShotsToScenes(orderedCheckpointShots, stageCtx.scene_assets);
+  const authoritativeShots = storyboardFlowConsistency.rebaseWhenPresent(
+    orderedCheckpointShots,
+    storyFlowContract,
+    { boundary: 'storyboard_checkpoint_recovery' },
+  ).shots;
+  const reboundShots = bindShotsToScenes(authoritativeShots, stageCtx.scene_assets, { context: stageCtx });
   storyboardFlowConsistency.assertMatches(reboundShots, storyFlowContract, { boundary: 'storyboard_checkpoint_recovery' });
   const review = storyboardReviewPolicy.publishableReview(localReview(stageCtx, reboundShots));
   if (review.blocking_issues.length) {

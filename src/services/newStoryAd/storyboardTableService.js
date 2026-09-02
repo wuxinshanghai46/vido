@@ -12,6 +12,7 @@ const actionSemantics = require('./actionSemanticsService');
 const transitionPerformance = require('./transitionPerformanceContractService');
 const generationConcurrency = require('./generationConcurrencyService');
 const narrativeOrder = require('./storyboardNarrativeOrderService');
+const storyboardFlowConsistency = require('./storyboardFlowConsistencyService');
 
 const { ensureChineseOutput } = require('./outputLanguageService');
 
@@ -326,8 +327,13 @@ function normalizeShots(rows, ctx) {
   const sorted = (Array.isArray(rows) ? rows : [])
     .sort((a, b) => Number(a?.index || a?.shot_index || 0) - Number(b?.index || b?.shot_index || 0));
   const normalized = normalizeDurations(sorted, ctx).map((shot, idx) => ({ ...shot, index: idx + 1 }));
+  const authoritative = storyboardFlowConsistency.rebaseWhenPresent(
+    normalized,
+    ctx.story_flow_contract,
+    { boundary: 'storyboard_table_normalize' },
+  ).shots;
   return brandEnding.applyToShots(
-    withContinuityContracts(bindShotsToScenes(normalized, ctx.scene_assets || [], { context: ctx })),
+    withContinuityContracts(bindShotsToScenes(authoritative, ctx.scene_assets || [], { context: ctx })),
     ctx,
   );
 }

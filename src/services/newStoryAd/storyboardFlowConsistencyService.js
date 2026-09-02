@@ -67,6 +67,7 @@ function rebaseWhenPresent(shots = [], contract = {}, options = {}) {
   }
   const unitByBeat = new Map(list(contract.units).map(unit => [text(unit.beat_id), unit]));
   const missing = [];
+  const seenBeatIds = new Set();
   const rebased = list(shots).map((shot, index) => {
     const beatId = text(shot.source_beat_id || shot.source_story_beat_id || shot.flow_beat_id);
     const unit = unitByBeat.get(beatId);
@@ -76,6 +77,8 @@ function rebaseWhenPresent(shots = [], contract = {}, options = {}) {
         : `第 ${Number(shot.index || shot.shot_index || index + 1)} 镜引用了当前剧本不存在的剧情节点 ${beatId}`);
       return shot;
     }
+    const firstShotForBeat = !seenBeatIds.has(beatId);
+    seenBeatIds.add(beatId);
     // The scene id and its revision are one authority unit. Keeping the old
     // revision while rebasing only the id creates an impossible r2/r5 pair,
     // which is later rejected by sceneBindingService before prompt generation.
@@ -84,6 +87,10 @@ function rebaseWhenPresent(shots = [], contract = {}, options = {}) {
       ...current,
       scene_id: text(unit.scene_id),
       scene_asset_id: text(unit.scene_id),
+      // Scene transitions are confirmed story-flow authority, not optional
+      // model prose. A split beat carries the boundary only on its first shot.
+      transition_from: firstShotForBeat ? text(unit.transition_from) : '',
+      transition_reason: firstShotForBeat ? text(unit.transition_reason) : '',
       story_flow_contract_fingerprint: text(contract.contract_fingerprint),
     };
   });
