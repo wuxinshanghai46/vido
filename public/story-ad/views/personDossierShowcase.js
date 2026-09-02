@@ -87,7 +87,9 @@ export function personDossierShowcase(item = {}) {
     : null;
   const partial = item.partial_checkpoint === true;
   const portrait = nativeFace || byKey(identity, 'face_front', 0) || identity[0] || null;
-  const globalImage = dossier || portrait || nativeBody || byKey(body, 'front', 0) || body[0] || null;
+  // The generated dossier sheet also contains expression/action evidence. It is not a
+  // person-only view and must never replace the clean identity/body image in the hero.
+  const globalImage = portrait || nativeBody || byKey(body, 'front', 0) || body[0] || dossier || null;
   const avatarRows = uniqueImages([nativeFace, ...identity].filter(Boolean));
   const viewRows = uniqueImages([nativeBody, ...body].filter(Boolean));
   const chips = keywords(profile);
@@ -95,7 +97,7 @@ export function personDossierShowcase(item = {}) {
     <header class="character-dossier-title">
       <div><small>CHARACTER PRODUCTION DOSSIER</small><h2>人物制作档案 · ${escapeHtml(displayName)}</h2><p>${text(profile.roleName || item.role, '剧情广告人物')} · 身份一致、服装一致、动作可复用</p></div><span class="status-tag ${nativeFace && nativeBody ? 'is-success' : 'is-warning'}">${nativeFace && nativeBody ? '原生高清母版可用' : '历史档案 · 建议升级母版'}</span>
     </header>
-    ${globalImage ? `<div class="character-dossier-hero ${dossier ? 'is-global-dossier' : 'is-avatar-fallback'}" data-person-global-image data-global-image-state="${dossier ? 'complete' : 'avatar_fallback'}">${image(globalImage, dossier ? `${displayName}完整全局人物图` : `${displayName}人物头像`, groups.sheet, dossier ? 2400 : 1600)}<p>${dossier ? '完整全局人物图 · 点击查看高清大图' : '完整全局人物图尚未生成，当前展示人物头像'}</p></div>` : '<div class="character-dossier-regenerate-notice"><b>人物形象尚未生成</b><p>当前没有可展示的人物头像或完整全局人物图。</p></div>'}
+    ${globalImage ? `<div class="character-dossier-hero ${globalImage === dossier ? 'is-global-dossier' : 'is-avatar-fallback'}" data-person-global-image data-global-image-state="${globalImage === dossier ? 'legacy_dossier_fallback' : 'person_only'}">${image(globalImage, globalImage === dossier ? `${displayName}历史合成档案` : `${displayName}人物标准视图`, groups.sheet, globalImage === dossier ? 2400 : 1600)}<p>${globalImage === dossier ? '当前仅有历史合成档案；重新生成后将优先展示独立人物标准视图' : '人物标准视图 · 点击查看高清大图'}</p></div>` : '<div class="character-dossier-regenerate-notice"><b>人物形象尚未生成</b><p>当前没有可展示的人物头像或人物标准视图。</p></div>'}
     ${partial ? '<div class="character-dossier-regenerate-notice"><b>完整人物档案尚未合成</b><p>已成功的人物头像、视图和分类素材均已保留；缺失单元完成后才会合成为完整全局人物图。</p></div>' : ''}
     <div class="person-image-categories" data-person-image-categories>
       ${gallerySection('人物头像', '单人半身身份图与面部角度', avatarRows, groups.masters, 'is-avatar-category')}

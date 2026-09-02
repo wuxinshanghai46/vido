@@ -499,7 +499,7 @@ export async function mount(host, context) {
     const item = (assets[group] || []).find(asset => String(asset.id) === button.dataset.assetId);
     if (!item) return toast('当前资产已更新，请刷新页面后重试。', 'warning');
     try {
-      await openDrawer(item, group, { readOnly: historicalReadOnly, generationActive, initialPersonTab: group === 'people' ? 'images' : '', onGenerate: generate, onGenerateScene: generateScene, onGenerateProduct: generateProduct, onVerifyProduct: verifyProduct, onSavePerson: savePerson, onSaveProduct: saveProduct, onSaveScene: saveScene, onAssistScene: assistScene, onUploadProduct: () => openUpload('products'), returnFocus: button });
+      await openDrawer(item, group, { readOnly: historicalReadOnly, generationActive, initialPersonTab: group === 'people' ? 'images' : '', onGenerate: generate, onGenerateProduct: generateProduct, onVerifyProduct: verifyProduct, onSavePerson: savePerson, onSaveProduct: saveProduct, onSaveScene: saveScene, onAssistScene: assistScene, onUploadProduct: () => openUpload('products'), returnFocus: button });
     } catch (error) {
       toast(`完整视图加载失败：${error.message}`, 'danger');
     }

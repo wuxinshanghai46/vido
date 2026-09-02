@@ -7,7 +7,7 @@ const verification = require('./visualVerificationService');
 const personLooks = require('./personLookProfileService');
 
 const PERSON_VIEW_KEYS = ['front', 'side', 'back', 'action'];
-const THRESHOLDS = Object.freeze({ identity: 0.82, age: 0.8, wardrobe: 0.85, body: 0.75, photographic_realism: 0.82 });
+const THRESHOLDS = Object.freeze({ identity: 0.82, age: 0.8, wardrobe: 0.85, body: 0.75, photographic_realism: 0.82, studio_background: 0.9 });
 
 function score(value) {
   const n = Number(value);
@@ -36,7 +36,7 @@ function personViews(asset = {}) {
   return normalized;
 }
 
-function normalizeQa(input = {}) {
+function normalizeQa(input = {}, { fresh = false } = {}) {
   const rawReasons = Array.isArray(input.raw_mismatch_reasons || input.mismatch_reasons || input.conflicts)
     ? (input.raw_mismatch_reasons || input.mismatch_reasons || input.conflicts).map(value => cleanText(value, 240)).filter(Boolean)
     : [];
@@ -50,6 +50,11 @@ function normalizeQa(input = {}) {
     photographic_realism_score: input.photographic_realism_score == null
       ? 1
       : score(input.photographic_realism_score),
+    // Historical contracts predate this field. Fresh model output must provide it;
+    // otherwise a provider can silently pass a scene-backed action frame.
+    studio_background_score: input.studio_background_score == null
+      ? (fresh ? 0 : 1)
+      : score(input.studio_background_score),
     mismatch_reasons: reasons,
     raw_mismatch_reasons: rawReasons,
     checked_at: input.checked_at || new Date().toISOString(),
@@ -61,6 +66,7 @@ function normalizeQa(input = {}) {
     && qa.wardrobe_score >= THRESHOLDS.wardrobe
     && qa.body_score >= THRESHOLDS.body
     && qa.photographic_realism_score >= THRESHOLDS.photographic_realism
+    && qa.studio_background_score >= THRESHOLDS.studio_background
     && qa.mismatch_reasons.length === 0;
   return qa;
 }
@@ -188,13 +194,13 @@ async function verifyPersonAsset({ taskId = '', asset = {}, spec = {}, revision 
         'You are a strict cross-view identity inspector for a general-purpose commercial video platform.',
         'The images may depict any lawful person, age group, ethnicity, wardrobe, occupation or visual style requested by the current task. Never assume a fixed country, industry, name or character template.',
         'All mismatch_reasons shown to users must be concise, natural Simplified Chinese. Keep JSON keys and numeric fields unchanged.',
-        'Compare whether all views show the same intended person and the same locked wardrobe/body attributes. Also reject beauty-filter, plastic/waxy skin, illustration/CGI facial rendering, age-inappropriate styling, flat shadowless faces and implausible light direction. Return strict JSON only.',
+        'Compare whether all views show the same intended person and the same locked wardrobe/body attributes. Every person reference must use one plain neutral casting-studio background; reject rooms, corridors, elevators, streets, offices, homes, showrooms or other narrative scenery. Also reject beauty-filter, plastic/waxy skin, illustration/CGI facial rendering, age-inappropriate styling, flat shadowless faces and implausible light direction. Return strict JSON only.',
       ].join('\n'),
-      userPrompt: `Person contract: ${JSON.stringify(contract)}\nReturn {"pass":boolean,"identity_score":0..1,"age_score":0..1,"wardrobe_score":0..1,"body_score":0..1,"photographic_realism_score":0..1,"mismatch_reasons":string[]}. Reject extra people, inconsistent identity/age/hair/skin/wardrobe/body, missing or inconsistent mandatory footwear/accessories/hair accessories/makeup where the corresponding view should visibly show them, beauty-filter or plastic/waxy skin, illustration/CGI facial rendering, flat or physically inconsistent face lighting, watermarks, collage borders or malformed anatomy.`,
+      userPrompt: `Person contract: ${JSON.stringify(contract)}\nReturn {"pass":boolean,"identity_score":0..1,"age_score":0..1,"wardrobe_score":0..1,"body_score":0..1,"photographic_realism_score":0..1,"studio_background_score":0..1,"mismatch_reasons":string[]}. Reject extra people, any room/corridor/elevator/street/office/home/showroom or other narrative scene background, inconsistent identity/age/hair/skin/wardrobe/body, missing or inconsistent mandatory footwear/accessories/hair accessories/makeup where the corresponding view should visibly show them, beauty-filter or plastic/waxy skin, illustration/CGI facial rendering, flat or physically inconsistent face lighting, watermarks, collage borders or malformed anatomy.`,
       maxTokens: 2200,
     });
       const parsed = await repair.parseOrRepair({ raw: result.text, expected: 'object', modelGateway: gateway, taskId, stage: 'new_story_ad.json_repair' });
-      contract.cross_view_qa = normalizeQa({ ...parsed, used_model: result.used_model });
+      contract.cross_view_qa = normalizeQa({ ...parsed, used_model: result.used_model }, { fresh: true });
       contract.status = contract.cross_view_qa.pass ? 'verified' : 'rejected';
       contract.qa_unavailable = false;
       contract.verification_error_code = '';

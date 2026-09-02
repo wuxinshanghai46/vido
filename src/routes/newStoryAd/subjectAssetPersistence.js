@@ -1,9 +1,21 @@
 function restoreGeneratedDossierFields(persistedCast = [], generatedCast = []) {
   return persistedCast.map((row, index) => {
     const generated = generatedCast[index] || {};
+    const identity = Array.isArray(generated.identity_views) ? generated.identity_views : [];
+    const body = Array.isArray(generated.body_views) ? generated.body_views : [];
+    const personOnlyCover = generated.native_masters?.face?.image_url
+      || identity.find(view => ['face_front', 'front', 'portrait'].includes(String(view?.key || '').toLowerCase()))?.image_url
+      || identity[0]?.image_url
+      || generated.native_masters?.body?.image_url
+      || body.find(view => ['front', 'body_front'].includes(String(view?.key || '').toLowerCase()))?.image_url
+      || body[0]?.image_url
+      || generated.image_url
+      || generated.dossier_sheet?.image_url
+      || row.image_url
+      || '';
     return {
       ...row,
-      cover_image_url: generated.cover_image_url || generated.dossier_sheet?.image_url || row.image_url || '',
+      cover_image_url: personOnlyCover,
       dossier_sheet: generated.dossier_sheet || null,
       dossier_schema_version: generated.dossier_schema_version || 0,
       quality_status: generated.quality_status || 'legacy_view_only',

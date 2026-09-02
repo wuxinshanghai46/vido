@@ -98,7 +98,7 @@ export function sceneEditForm(item = {}) {
 }
 
 export function openAssetDrawer(item, group, handlers = {}, renderers = {}) {
-  const { readOnly = false, generationActive = false, initialPersonTab = '', onGenerate, onVerifyProduct, onSavePerson, onSaveProduct, onSaveScene, onAssistScene, onGenerateScene, onGenerateProduct, onUploadProduct, returnFocus } = handlers;
+  const { readOnly = false, generationActive = false, initialPersonTab = '', onGenerate, onVerifyProduct, onSavePerson, onSaveProduct, onSaveScene, onAssistScene, onGenerateProduct, onUploadProduct, returnFocus } = handlers;
   const { groupLabel, generatable, mediaSection, profileDetails, checkpointDetails = () => '', knowledgePolicyTrace = () => '', personEditForm } = renderers;
   const views = Array.isArray(item.view_images) ? item.view_images : [];
   const dossier = item.dossier_sheet?.image_url ? { image_url: item.dossier_sheet.image_url } : null;

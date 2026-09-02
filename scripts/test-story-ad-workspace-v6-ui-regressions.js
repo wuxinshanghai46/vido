@@ -89,7 +89,7 @@ assert.match(sceneDossierCard, /function assetCardMedia/);
 assert.match(sceneDossierCard, /const portrait = \(item\.native_masters\?\.face\?\.image_url/, '人物主卡必须优先显示单人物标准人像');
 assert.match(sceneDossierCard, /asset-people-portraits/, '人物主卡必须使用独立人像预览组，而不是完整档案拼图');
 assert.match(personDossierShowcase, /完整人物档案尚未合成/);
-assert.match(personDossierShowcase, /完整全局人物图尚未生成，当前展示人物头像/u);
+assert.match(personDossierShowcase, /人物标准视图 · 点击查看高清大图/u);
 ['人物头像', '人物视图', '穿搭', '服饰与配饰', '表情', '动作'].forEach(label => assert.match(personDossierShowcase, new RegExp(label)));
 
 const briefView = read('public/story-ad/views/briefView.js');

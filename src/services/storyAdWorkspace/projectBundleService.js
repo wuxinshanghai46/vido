@@ -24,6 +24,18 @@ const MAX_MEDIA_ITEMS = 120;
 function clean(value = '', max = 240) { return String(value || '').replace(/\s+/g, ' ').trim().slice(0, max); }
 function cleanMultiline(value = '', max = 5000) { return multilineTextContract.normalize(value, max); }
 function list(value) { return Array.isArray(value) ? value.filter(Boolean) : []; }
+function personCoverUrl(item = {}, views = []) {
+  const identity = projectedDossierItems(item.identity_views);
+  const keyed = (rows, keys) => rows.find(row => keys.includes(clean(row?.key || row?.id, 80).toLowerCase()));
+  return mediaUrl(item.native_masters?.face)
+    || mediaUrl(keyed(identity, ['face_front', 'front', 'portrait']))
+    || mediaUrl(identity[0])
+    || mediaUrl(item.native_masters?.body)
+    || mediaUrl(keyed(views, ['front', 'body_front']))
+    || mediaUrl(views[0])
+    || mediaUrl(item)
+    || mediaUrl(item.dossier_sheet);
+}
 function displayId(task = {}) {
   const date = new Date(task.created_at || task.updated_at || Date.now());
   const stamp = Number.isNaN(date.getTime())
@@ -129,7 +141,7 @@ function peopleAssets(context = {}, projectedProps = []) {
     const canonical = personLookProjection.personProfile(personGenerationSettingsProjection.profileInput({ profile, item, contentMode: context.content_mode }), index);
     const views = projectedViews(item);
     const dossierUrl = mediaUrl(item.dossier_sheet || {});
-    const coverUrl = clean(item.cover_image_url, 1200) || dossierUrl || mediaUrl(item) || views[0]?.image_url || '';
+    const coverUrl = personCoverUrl(item, views);
     const assetId = clean(item.id || item.actor_asset_id || item.person_id || canonical.id || `person-${index + 1}`, 120);
     const ownedProps = personOwnedPropProjection.ownedProps(canonical, item, projectedProps, index, { clean, list });
     return {
@@ -568,4 +580,4 @@ function buildProjectBundle(taskId, { sections = '', user = {} } = {}) {
   return bundle;
 }
 
-module.exports = { buildProjectBundle, cleanMultiline, displayId, listProjects, projectSceneCamera, projectStats, projectSummary, sceneAssets, workspaceStage };
+module.exports = { buildProjectBundle, cleanMultiline, displayId, listProjects, personCoverUrl, projectSceneCamera, projectStats, projectSummary, sceneAssets, workspaceStage };
