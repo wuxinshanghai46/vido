@@ -36,6 +36,7 @@ storage.withWriteBatch(() => {
   storage.saveOutput(taskId, 'context', recovered.context, { content_revision: revision });
   storage.saveOutput(taskId, 'blueprint', recovered.blueprint, { content_revision: revision });
   storage.saveOutput(taskId, 'storyboard_table', recovered.storyboard_table, { content_revision: revision });
+  storage.saveOutput(taskId, 'storyboard_meta', recovered.storyboard_meta, { content_revision: revision });
   storage.saveOutput(taskId, 'tts_audio', recovered.tts_audio, { content_revision: revision });
   storage.saveOutput(taskId, 'sound_journey', recovered.sound_journey, { content_revision: revision });
   storage.deleteOutputs(taskId, visualKinds);

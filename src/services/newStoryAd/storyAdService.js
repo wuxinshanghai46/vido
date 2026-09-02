@@ -6,6 +6,7 @@ const { buildContext, contextPrompt, cleanText, normalizeCharacters, assertConte
 const sceneExperienceAssist = require('./sceneExperienceAssistService'), assistKnowledgePolicy = require('./assistKnowledgePolicyService'), blueprintLifecycle = require('./blueprintLifecycleService');
 const { generateStoryboardTable, rewriteStoryboard } = require('./storyboardTableService');
 const storyboardReviewPolicy = require('./storyboardReviewPolicyService'), storyboardFlowConsistency = require('./storyboardFlowConsistencyService');
+const storyboardReplacementLifecycle = require('./storyboardReplacementLifecycleService');
 const storyboardCoverageLifecycle = require('./storyboardCoverageLifecycleService'), storyboardGenerationPreflight = require('./storyboardGenerationPreflightService'), storyboardImageConfirmationGate = require('../storyAdWorkspace/storyboardImageConfirmationGateService'), storyFlowPlanning = require('../storyAdWorkspace/storyFlowPlanningService');
 const { reviewStoryboard } = require('./qualityReviewService'), storyboardContinuityGate = require('./storyboardContinuityGateService'), storyboardCheckpointRecovery = require('./storyboardCheckpointRecoveryService');
 const { buildKeyframeContracts } = require('./keyframeContractService'), knowledgePolicyRuntime = require('./knowledgePolicyRuntimeService');
@@ -886,11 +887,13 @@ async function generateStoryboardStage(taskId, options = {}) {
   const generationId = cleanText(options.generation_id || options.generationId || '', 80);
   const existingMeta = storage.getOutput(taskId, 'storyboard_meta') || {};
   const existingShots = storage.getOutput(taskId, 'storyboard_table') || [];
+  const previousTtsAudio = storage.getOutput(taskId, 'tts_audio') || null;
+  const forceRegenerate = options.force_regenerate === true || options.forceRegenerate === true;
   const existingContracts = storage.getOutput(taskId, 'keyframe_contracts') || [];
   const expectedCoveragePlan = storyboardCoverageLifecycle.expectedPlan(blueprint, ctx);
   const existingCoveragePlan = storage.getOutput(taskId, 'storyboard_coverage_plan') || null;
   const coverageCurrent = storyboardCoverageLifecycle.cacheCurrent(existingMeta, existingCoveragePlan, expectedCoveragePlan);
-  if (existingMeta.status === 'ready' && existingMeta.blueprint_fingerprint === sourceFingerprint && existingMeta.story_flow_contract_fingerprint === storyFlowContract.contract_fingerprint
+  if (!forceRegenerate && existingMeta.status === 'ready' && existingMeta.blueprint_fingerprint === sourceFingerprint && existingMeta.story_flow_contract_fingerprint === storyFlowContract.contract_fingerprint
     && coverageCurrent && existingShots.length && existingContracts.length === existingShots.length) {
     storyboardFlowConsistency.assertMatches(existingShots, storyFlowContract, { boundary: 'storyboard_cache_reuse' }); storage.saveStage(taskId, 'storyboard', { status: 'done', output_summary: `${existingShots.length} 个镜头（蓝图未变化，已复用）`, diagnostics: { cache_hit: true, blueprint_fingerprint: sourceFingerprint } });
     stageProgress.update(taskId, { stage: 'storyboard', status: 'done', phase: 'fingerprint_reused', completed: existingShots.length, total: existingShots.length, processed: existingShots.length, percent: 100, generationId, message: '蓝图指纹一致，已复用完整分镜和关键帧合同' });
@@ -898,7 +901,7 @@ async function generateStoryboardStage(taskId, options = {}) {
   }
   const startedAt = storage.getTask(taskId)?.generation_started_at || new Date().toISOString();
   const savedCheckpoint = storage.getOutput(taskId, 'storyboard_checkpoint') || null;
-  const resumeShots = savedCheckpoint?.blueprint_fingerprint === sourceFingerprint && storyboardCoverageLifecycle.checkpointMatchesStoryFlow(savedCheckpoint, storyFlowContract.contract_fingerprint) && Array.isArray(savedCheckpoint.shots) ? savedCheckpoint.shots : [];
+  const resumeShots = !forceRegenerate && savedCheckpoint?.blueprint_fingerprint === sourceFingerprint && storyboardCoverageLifecycle.checkpointMatchesStoryFlow(savedCheckpoint, storyFlowContract.contract_fingerprint) && Array.isArray(savedCheckpoint.shots) ? savedCheckpoint.shots : [];
   const characterSeed = `${ctx.request_id || taskId}|${ctx.brief || ''}|${ctx.product_subject || ''}`;
   const stageCtx = {
     ...ctx, story_flow_contract: storyFlowContract,
@@ -1002,6 +1005,15 @@ async function generateStoryboardStage(taskId, options = {}) {
   storage.saveOutput(taskId, 'sound_journey', buildSoundJourney(shots)); storage.saveOutput(taskId, soundDesignAssets.PROFILE_KIND, soundDesignAssets.compile(taskId).profiles);
   storage.saveOutput(taskId, 'quality_review', review);
   keyframeContractFreshness.persist(taskId, contracts);
+  const replacement = forceRegenerate
+    ? storyboardReplacementLifecycle.finalizeForcedReplacement({ storage, taskId, previousTtsAudio, nextShots: shots, audioApprovalKind: audioProduction.OUTPUT_KIND })
+    : null;
+  if (replacement) storage.saveOutput(taskId, 'storyboard_meta', {
+    ...(storage.getOutput(taskId, 'storyboard_meta') || {}),
+    forced_replacement_at: new Date().toISOString(),
+    downstream_invalidated: replacement.invalidated_kinds,
+    tts_preserved: replacement.audio_preserved,
+  });
   storage.saveStage(taskId, 'storyboard', { status: 'done', output_summary: `${shots.length} 个镜头`, diagnostics: review });
   storage.saveStage(taskId, 'keyframe_contract', { status: 'done', output_summary: `${contracts.length} 个关键帧合同` });
   storage.updateTask(taskId, { status: 'done', stage: 'keyframe_contract_ready', diagnostics: diagnostics.summarizeTask({ task, review }) });

@@ -20,6 +20,7 @@ const lineage = require('../src/services/newStoryAd/storyboardImageLineageServic
 const imageGate = require('../src/services/storyAdWorkspace/storyboardImageConfirmationGateService');
 const quality = require('../src/services/newStoryAd/qualityReviewService');
 const sceneAcceptance = require('../src/services/newStoryAd/sceneVisualAcceptanceService');
+const subjectQa = require('../src/services/newStoryAd/storyboardSubjectQaService');
 
 function createReadyTask(taskId, shots) {
   storyAd.createTask({ task_id: taskId, brief: '分镜简化回归', cast_mode: 'no_human' }, { id: 'v289-owner', role: 'user' });
@@ -65,13 +66,18 @@ function testGeneratedImageNeedsNoSecondConfirmation() {
   createReadyTask(taskId, shots);
   storage.saveOutput(taskId, 'storyboard_images', [{
     shot_index: 1, status: 'draft', image_url: '/storyboard-1.png',
-    shot_contract_fingerprint: lineage.legacyShotContractFingerprint(shots[0], 0),
+    lineage_schema_version: 2,
+    shot_contract_fingerprint: lineage.shotContractFingerprint(shots[0], 0),
+    reference_pack_fingerprint: 'no-reference-required',
+    scene_planning_fingerprint: 'no-scene-required',
+    subject_qa_policy_version: subjectQa.QA_POLICY_VERSION,
+    subject_count_qa: { pass: true },
   }]);
   const gate = imageGate.inspect(taskId);
   assert.equal(gate.ready, true);
   assert.equal(gate.confirmed, 1);
   assert.deepEqual(gate.unconfirmed_indexes, []);
-  assert.deepEqual(gate.review_indexes, [1], '旧 QA/血缘只应提示逐镜复核，不得把已生成图片当成缺失');
+  assert.deepEqual(gate.review_indexes, [], '当前 QA/血缘完整的已生成图片无需二次确认');
 
   storage.saveOutput(taskId, 'storyboard_images', []);
   const missing = imageGate.inspect(taskId);

@@ -249,7 +249,7 @@ export async function mount(host, context) {
   const gateBlocked = shots.length > 0 && !sketchGate.ready && !completedHistorical && !isReferenceDraft && !sketchBatchActive;
   const mainSketchAction = shots.length
     ? (gateBlocked
-      ? `<button class="btn primary" type="button" data-prepare-storyboard-sketch ${storyboardActive ? 'disabled' : ''}>${storyboardActive ? '正在生成分镜…' : '重新生成分镜'}</button>`
+      ? `<button class="btn primary" type="button" data-regenerate-storyboard-structure ${storyboardActive ? 'disabled' : ''}>${storyboardActive ? '正在重建镜头结构…' : '重新生成镜头结构'}</button>`
       : (missingSketchCount
       ? `<button class="btn primary" type="button" data-generate-sketch-batch ${sketchBatchActive || !sketchGate.ready ? 'disabled' : ''}>${sketchBatchActive ? '分镜生成中' : `继续生成分镜（${missingSketchCount}）`}</button>`
       : `<button class="btn" type="button" data-generate-sketch-batch data-regenerate-all="true" ${sketchBatchActive || !sketchGate.ready ? 'disabled' : ''}>${sketchBatchActive ? '分镜生成中' : `全部重新生成（${shots.length}）`}</button>`))
@@ -260,7 +260,7 @@ export async function mount(host, context) {
       ? '<span class="status-tag is-neutral">历史完成内容 · 只读</span>'
       : '');
   const primaryAction = !isReferenceDraft && !(completedHistorical && !sketchGate.ready)
-    ? `${sketchModelPicker.html}${mainSketchAction}${shots.length && generatedSketchCount === shots.length ? '<button class="btn primary" type="button" data-confirm-storyboard>确认分镜，进入视频生成</button>' : ''}`
+    ? `${gateBlocked ? '' : sketchModelPicker.html}${mainSketchAction}${shots.length && generatedSketchCount === shots.length && sketchGate.ready ? '<button class="btn primary" type="button" data-confirm-storyboard>确认分镜，进入视频生成</button>' : ''}`
     : '';
   host.innerHTML = `
     <div class="storyboard-simple-view">
@@ -269,6 +269,7 @@ export async function mount(host, context) {
         ${headerAction ? `<div class="view-actions">${headerAction}</div>` : ''}
       </section>
       ${primaryAction ? `<div class="storyboard-primary-actions">${primaryAction}</div>` : ''}
+      ${gateBlocked ? `<section class="card storyboard-structure-repair-notice" role="alert"><div class="card-body"><b>当前镜头结构与已确认剧情不一致</b><p>${escapeHtml(sketchGate.reason || '请先重新生成镜头结构；完成前不会生成或复用旧分镜图。')}</p></div></section>` : ''}
       ${sceneSequenceMarkup(bundle, displayShots)}
       <div data-sketch-batch-host>${storyboardProgressMarkup({
         batch: storyboardActive || (String(sketchBatch?.status || '') === 'succeeded' && missingSketchCount > 0) ? null : sketchBatch,
@@ -287,7 +288,7 @@ export async function mount(host, context) {
 
   bindMediaLightbox(host);
   let selectedSketchModel = bindGenerationModelPicker(host, sketchModelPicker);
-  if (!storyboardActive) {
+  if (!storyboardActive && !gateBlocked) {
     loadGenerationModelPicker(bundle.project.id, 'new_story_ad.storyboard_image', { label: '分镜模型' }).then(loaded => {
       if (!host.isConnected) return;
       const shell = host.querySelector('[data-generation-model-picker="new_story_ad.storyboard_image"]');
@@ -353,19 +354,20 @@ export async function mount(host, context) {
 
   const generateStoryboard = async (button, options = {}) => {
     let accepted = false;
+    const structureOnly = options.structureOnly === true;
     try {
       setButtonBusy(button, true, '正在提交…', { elapsed: true });
       const optimisticTotal = Math.max(1, checkpointTotal || bundle?.story_flow?.contract?.units?.length || 1);
       store.beginStageSubmission?.('storyboard', optimisticTotal, checkpointShots.length
         ? `正在继续生成分镜；已完成 ${checkpointShots.length}/${optimisticTotal}，只处理未完成镜头。`
-        : '正在启动分镜生成；系统会自动匹配人物与场景。', {
+        : (structureOnly ? '正在重建镜头结构；本次不会生成分镜图片。' : '正在启动分镜生成；系统会自动匹配人物与场景。'), {
         processed: checkpointShots.length,
         completed: checkpointShots.length,
         current_index: Math.min(optimisticTotal, checkpointShots.length + 1),
       });
       await store.runStage('storyboard', options);
       accepted = true;
-      toast('分镜生成已开始，画面会逐镜保存并显示。', 'success');
+      toast(structureOnly ? '镜头结构重建已开始；完成后再由你生成分镜图片。' : '分镜生成已开始，画面会逐镜保存并显示。', 'success');
       return true;
     } catch (error) {
       toast(error.message, 'danger');
@@ -383,6 +385,14 @@ export async function mount(host, context) {
       confirmed: true,
       user_initiated_direct_generation: true,
       image_model: model,
+      client_request_id: globalThis.crypto?.randomUUID?.() || `${Date.now()}`,
+    });
+  });
+  host.querySelector('[data-regenerate-storyboard-structure]')?.addEventListener('click', async event => {
+    await generateStoryboard(event.currentTarget, {
+      force_regenerate: true,
+      generate_images: false,
+      structureOnly: true,
       client_request_id: globalThis.crypto?.randomUUID?.() || `${Date.now()}`,
     });
   });

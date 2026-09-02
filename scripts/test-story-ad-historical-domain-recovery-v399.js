@@ -39,8 +39,11 @@ function fixture() {
   assert.equal(recovered.diagnostics.reused_visual_outputs, 0);
   assert.equal(recovered.context.asset_setup_confirmed, true);
   assert.equal(recovered.context.scene_setup_confirmed, true);
-  assert.equal(recovered.context.shot_confirmed, true);
-  assert.equal(recovered.context.shot_design_confirmed, true);
+  assert.equal(recovered.context.shot_confirmed, false);
+  assert.equal(recovered.context.shot_design_confirmed, false);
+  assert.equal(recovered.storyboard_meta.status, 'recovered_reference');
+  assert.equal(recovered.storyboard_meta.requires_regeneration, true);
+  assert.equal(recovered.task_patch.stage, 'storyboard_recovery_review_required');
   assert.equal(recovered.storyboard_table[1].requires_previous_frame, false);
   assert.equal(recovered.storyboard_table[1].transition_type, 'hard_cut');
   assert.equal(recovered.storyboard_table[1].camera_axis, '');

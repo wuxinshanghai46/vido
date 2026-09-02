@@ -255,7 +255,7 @@ async function testGeneratedImageLineageAndPackInvalidation() {
     },
   };
   const compositionService = { assertSingleFrame: async () => ({ passed: true }) };
-  const subjectQaService = { assert: async () => ({ pass: true, policy_version: 1, status: 'verified' }) };
+  const subjectQaService = { assert: async () => ({ pass: true, policy_version: 2, status: 'verified' }) };
   const result = await sketches.generateSketch(taskId, 5, {
     confirmed: true,
     client_request_id: 'fixture-generation:shot-5',
@@ -263,7 +263,7 @@ async function testGeneratedImageLineageAndPackInvalidation() {
   const pack = storage.getOutput(taskId, 'shot_reference_packs')[4];
   const image = result.sketch;
   assert.equal(image.lineage_schema_version, 2);
-  assert.equal(image.subject_qa_policy_version, 1);
+  assert.equal(image.subject_qa_policy_version, 2);
   assert.equal(image.subject_count_qa.pass, true);
   assert.match(capturedRequest.prompt, /同一身份不得因动作路径、镜面、时间阶段或构图需要被复制/);
   assert.match(capturedRequest.prompt, /本张图只呈现这个决定性瞬间/);
@@ -325,6 +325,8 @@ async function testModernImageInvalidatesWhenSceneAuthorityChanges() {
     scene_planning_fingerprint: prepared.sceneAsset.scene_planning_fingerprint,
     shot_contract_fingerprint: sketches.shotContractFingerprint(prepared.shot, 4),
     source_content_revision: 1,
+    subject_qa_policy_version: 2,
+    subject_count_qa: { pass: true },
   }]);
   assert.ok(!imageGate.inspect(taskId).stale_indexes.includes(5));
   const changedAssets = storage.getOutput(taskId, 'scene_assets').map(asset => (
@@ -363,7 +365,8 @@ async function testLegacyImageCompatibilityAndChangeInvalidation() {
     source_content_revision: 1,
   }]);
   const compatible = imageGate.inspect(taskId);
-  assert.equal(compatible.ready, true, '旧图片缺少新版 lineage 时应先按旧镜头指纹兼容读取');
+  assert.equal(compatible.ready, false, '旧图片缺少当前 QA/血缘时不得继续作为可生成视频的权威首帧');
+  assert.deepEqual(compatible.stale_reasons[1], ['SUBJECT_COUNT_QA_POLICY_OUTDATED']);
 
   storage.saveOutput(taskId, 'scene_assets', [sceneAsset('legacy-scene', '旧任务场景', 2)]);
   storage.updateTask(taskId, { content_revision: 2 });

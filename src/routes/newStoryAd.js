@@ -1877,7 +1877,8 @@ router.post('/tasks/:id/storyboard', asyncRoute(async (req, res) => {
   // A complete checkpoint is reviewed and published locally before a new job is
   // queued. This removes the former paid rewrite loop after a provider timeout;
   // the queued job then sees a current storyboard cache and proceeds to images.
-  if (body.force_regenerate !== true) {
+  const forceRegenerate = body.force_regenerate === true || body.forceRegenerate === true;
+  if (!forceRegenerate) {
     try {
       service.recoverStoryboardCheckpoint(req.params.id, { reason: 'user_resume_complete_checkpoint' });
     } catch (error) {
@@ -1889,7 +1890,10 @@ router.post('/tasks/:id/storyboard', asyncRoute(async (req, res) => {
     res,
     'storyboard',
     async job => {
-      const storyboard = await service.generateStoryboardStage(req.params.id, { generation_id: job.generationId });
+      const storyboard = await service.generateStoryboardStage(req.params.id, {
+        generation_id: job.generationId,
+        force_regenerate: forceRegenerate,
+      });
       if (body.generate_images !== true) return { storyboard };
       if (body.confirmed !== true) {
         const error = new Error('生成分镜图前需要确认本次图片调用');
