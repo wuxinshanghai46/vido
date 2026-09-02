@@ -1,6 +1,6 @@
-import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260902-production-v404';
-import { bindMoreMedia, moreMediaButton } from './finalMediaPagination.js?v=20260902-production-v404';
-import { bindGenerationModelPicker, loadGenerationModelPicker } from './generationModelPicker.js?v=20260902-production-v404';
+import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260902-production-v405';
+import { bindMoreMedia, moreMediaButton } from './finalMediaPagination.js?v=20260902-production-v405';
+import { bindGenerationModelPicker, loadGenerationModelPicker } from './generationModelPicker.js?v=20260902-production-v405';
 
 function itemIndex(item = {}, index = 0) {
   const value = Number(item.shot_index ?? item.shotIndex ?? item.index);
