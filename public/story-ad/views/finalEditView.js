@@ -1,5 +1,5 @@
-import { request } from '../api.js?v=20260902-production-v397';
-import { escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260902-production-v397';
+import { request } from '../api.js?v=20260902-production-v398';
+import { escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260902-production-v398';
 
 function videoUrl(item = {}) { return item.video_url || item.videoUrl || item.url || ''; }
 
