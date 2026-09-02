@@ -167,7 +167,9 @@ function buildRecovery({ currentWork = {}, historicalWork = {} } = {}) {
     context: {
       ...context,
       asset_confirmed: true,
+      asset_setup_confirmed: true,
       scene_confirmed: scenes.length > 0,
+      scene_setup_confirmed: scenes.length > 0,
       shot_confirmed: true,
       shot_design_confirmed: true,
     },
