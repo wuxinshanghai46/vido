@@ -97,10 +97,25 @@ function commitGeneratedSubjectAssets(taskId, bundle = {}, spec = {}, options = 
   const oldRevision = Math.max(1, Number(previousCtx.revisions?.person || 1) || 1);
   const castAssets = Array.isArray(bundle.cast_assets) ? bundle.cast_assets : [];
   const petProfiles = Array.isArray(bundle.pet_profiles) ? bundle.pet_profiles : [];
+  const personContract = bundle.person_contract || null;
+  if (castAssets.length && (personContract?.status !== 'verified'
+    || personContract?.verification?.state === 'rejected'
+    || personContract?.verification?.state === 'unavailable')) {
+    const rejected = personContract?.status === 'rejected' || personContract?.verification?.state === 'rejected';
+    const error = new Error(rejected
+      ? '人物候选未通过身份、年龄、发型、服装和体态的跨视角一致性验证，已保留候选证据但未替换当前人物资产'
+      : '人物一致性验证尚未完成，已保留候选证据但未替换当前人物资产');
+    error.code = rejected ? 'PERSON_ASSET_QA_REJECTED' : 'PERSON_ASSET_QA_REQUIRED';
+    error.status = rejected ? 422 : 409;
+    error.retryable = !rejected;
+    error.person_contract = personContract;
+    error.candidate_cast_assets = castAssets;
+    throw error;
+  }
   const personRevision = oldRevision + 1;
   const changeScope = personChangeScope(options);
   const semanticRevision = Number(previousCtx.revisions?.person_semantic ?? oldRevision) || oldRevision;
-  const personContract = bundle.person_contract ? carryContract(bundle.person_contract, personRevision) : null;
+  const committedPersonContract = personContract ? carryContract(personContract, personRevision) : null;
   const personAsset = castAssets.length ? {
     id: `cast_bundle_${taskId}_${personRevision}`,
     actor_asset_id: `cast_bundle_${taskId}_${personRevision}`,
@@ -115,9 +130,9 @@ function commitGeneratedSubjectAssets(taskId, bundle = {}, spec = {}, options = 
     view_images: castAssets[0]?.view_images || [],
     cast_assets: castAssets,
     person_revision: personRevision,
-    person_contract: personContract,
+    person_contract: committedPersonContract,
     subject_board_url: bundle.subject_board_url || '',
-    production_usable_actor: personContract?.status === 'verified',
+    production_usable_actor: committedPersonContract?.status === 'verified',
   } : null;
   const previousProfiles = Array.isArray(previousCtx.cast_profiles) ? previousCtx.cast_profiles : [];
   const castProfiles = castAssets.map((asset, index) => {
@@ -160,7 +175,7 @@ function commitGeneratedSubjectAssets(taskId, bundle = {}, spec = {}, options = 
     expected_animals: petProfiles.length,
     person_spec: spec && typeof spec === 'object' ? spec : (previousCtx.person_spec || {}),
     person_asset: personAsset,
-    person_contract: personContract,
+    person_contract: committedPersonContract,
     cast_profiles: castProfiles,
     pet_profiles: petProfiles,
     pet_contract: bundle.pet_contract || null,
@@ -176,11 +191,11 @@ function commitGeneratedSubjectAssets(taskId, bundle = {}, spec = {}, options = 
   };
   const invalidated = revisionService.invalidateOutputs(storage, taskId, changeScope);
   if (options.deferContextWrite !== true) storage.saveOutput(taskId, 'context', next);
-  if (personContract) storage.saveOutput(taskId, 'person_contract', personContract);
+  if (committedPersonContract) storage.saveOutput(taskId, 'person_contract', committedPersonContract);
   if (bundle.pet_contract) storage.saveOutput(taskId, 'pet_contract', bundle.pet_contract);
   if (options.deferContextWrite !== true) storage.updateTask(taskId, { request: next, updated_at: new Date().toISOString() });
   storage.saveStage(taskId, 'person_asset', {
-    status: (!personContract || personContract.status === 'verified') && (!bundle.pet_contract || bundle.pet_contract.status === 'verified') ? 'done' : 'review',
+    status: (!committedPersonContract || committedPersonContract.status === 'verified') && (!bundle.pet_contract || bundle.pet_contract.status === 'verified') ? 'done' : 'review',
     output_summary: `主体资产已建立：${castAssets.length}个人物、${petProfiles.length}个宠物`,
   });
   const visualRefresh = {
@@ -192,7 +207,7 @@ function commitGeneratedSubjectAssets(taskId, bundle = {}, spec = {}, options = 
   };
   storage.saveOutput(taskId, 'person_visual_refresh', visualRefresh);
   return {
-    person_asset: personAsset, person_contract: personContract, cast_profiles: castProfiles,
+    person_asset: personAsset, person_contract: committedPersonContract, cast_profiles: castProfiles,
     pet_profiles: petProfiles, pet_contract: bundle.pet_contract || null,
     subject_board_url: bundle.subject_board_url || '', invalidated_outputs: invalidated, visual_refresh: visualRefresh,
   };

@@ -61,4 +61,39 @@ function assertWhenPresent(shots = [], contract = {}, options = {}) {
   return assertMatches(shots, contract, options);
 }
 
-module.exports = { collapse, inspect, assertMatches, assertWhenPresent };
+function rebaseWhenPresent(shots = [], contract = {}, options = {}) {
+  if (!contract || !list(contract.units).length || !text(contract.contract_fingerprint)) {
+    return { shots: list(shots), changed: false, skipped: true, reason: 'legacy_story_flow_contract_absent' };
+  }
+  const unitByBeat = new Map(list(contract.units).map(unit => [text(unit.beat_id), unit]));
+  const missing = [];
+  const rebased = list(shots).map((shot, index) => {
+    const beatId = text(shot.source_beat_id || shot.source_story_beat_id || shot.flow_beat_id);
+    const unit = unitByBeat.get(beatId);
+    if (!beatId || !unit) {
+      missing.push(!beatId
+        ? `第 ${Number(shot.index || shot.shot_index || index + 1)} 镜缺少 source_beat_id`
+        : `第 ${Number(shot.index || shot.shot_index || index + 1)} 镜引用了当前剧本不存在的剧情节点 ${beatId}`);
+      return shot;
+    }
+    return {
+      ...shot,
+      scene_id: text(unit.scene_id),
+      scene_asset_id: text(unit.scene_id),
+      story_flow_contract_fingerprint: text(contract.contract_fingerprint),
+    };
+  });
+  if (missing.length) {
+    throw Object.assign(new Error(`分镜无法重绑定到当前剧本：${missing.join('；')}`), {
+      code: 'STORYBOARD_FLOW_REBASE_UNSAFE', status: 422, retryable: false,
+      boundary: options.boundary || '', errors: missing,
+    });
+  }
+  return {
+    shots: rebased,
+    changed: JSON.stringify(rebased) !== JSON.stringify(list(shots)),
+    rebased: true,
+  };
+}
+
+module.exports = { collapse, inspect, assertMatches, assertWhenPresent, rebaseWhenPresent };

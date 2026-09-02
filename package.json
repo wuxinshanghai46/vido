@@ -4,6 +4,7 @@
   "description": "AI Video Generation Platform with auto story writing",
   "main": "src/server.js",
   "scripts": {
+    "story-ad:v391:test": "node scripts/test-story-ad-systemic-new-task-v391.js",
     "story-ad:v241:test": "node scripts/test-new-story-ad-previz-comic-style-knowledge-v241.js",
     "story-ad:v242:test": "node scripts/test-story-ad-transition-micro-expression-v242.js",
     "story-ad:release:build": "node scripts/build-story-ad-release.js",

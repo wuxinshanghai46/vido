@@ -55,6 +55,10 @@ try {
       // aliases name/role/age_range/age_source.
       subject_profile: { id: 'yun-zhiyue', displayName: '云知月', roleName: '现代转世之人', apparent_age: 'young adult' },
     }],
+    person_contract: {
+      status: 'verified', verification: { state: 'verified' }, cross_view_qa: { pass: true },
+      member_contracts: [{ status: 'verified', verification: { state: 'verified' }, cross_view_qa: { pass: true } }],
+    },
   }, {}, { change_kind: 'visual_dossier' });
   const afterContext = storage.getOutput(taskId, 'context');
   assert.equal(assetPlan.fingerprint(storage.getTask(taskId), afterContext), before,

@@ -45,6 +45,10 @@ const committed = people.commitGeneratedSubjectAssets(taskId, {
     view_images: [{ key: 'front', image_url: '/front.png' }],
   }],
   pet_profiles: [],
+  person_contract: {
+    status: 'verified', verification: { state: 'verified' }, cross_view_qa: { pass: true },
+    member_contracts: [{ status: 'verified', verification: { state: 'verified' }, cross_view_qa: { pass: true } }],
+  },
 }, {}, { change_kind: 'visual_dossier' });
 
 assert.equal(committed.visual_refresh.change_scope, 'person_visual');

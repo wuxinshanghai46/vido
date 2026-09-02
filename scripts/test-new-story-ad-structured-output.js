@@ -221,10 +221,10 @@ async function testAssistSemanticFailureContinuesToNextCandidate() {
   assert(result.failed_models.every(item => item.code === 'PROVIDER_RESPONSE_INVALID'));
 }
 
-async function testStoryFactsTimeoutStopsBeforeFallback() {
+async function testStoryFactsTimeoutContinuesWithinAuthorizedFallbackChain() {
   const candidates = [1, 2, 3].map(index => ({ provider_id: `story-provider-${index}`, model_id: `story-model-${index}`, priority: index }));
   let attempts = 0;
-  await assert.rejects(() => modelGateway.generateText({
+  const result = await modelGateway.generateText({
     taskId: 'story-facts-mixed-fallback',
     stage: 'new_story_ad.story_facts',
     systemPrompt: 'Return story facts JSON',
@@ -237,8 +237,10 @@ async function testStoryFactsTimeoutStopsBeforeFallback() {
       if (attempts === 1) { const error = new Error('network timeout'); error.code = 'TIMEOUT_OR_NETWORK'; throw error; }
       return { text: '{"story_seed":{"plot_beats":[]}}' };
     },
-  }), error => error.billing_state === 'unknown' && error.provider_submission_state === 'submitted_unknown');
-  assert.equal(attempts, 1, '文本请求超时后禁止自动切换候选，以免供应商已接单时重复付费');
+  });
+  assert.equal(attempts, 2, '同一次用户授权的文本生成必须继续切换到下一独立供应商');
+  assert.equal(result.failed_models[0].billing_state, 'unknown', '超时供应商的未知计费证据必须继续保留');
+  assert.equal(result.used_model, 'story-provider-2/story-model-2');
 }
 
 async function testNonJsonDiagnosticsAndPlainTextCompatibility() {
@@ -310,7 +312,7 @@ async function main() {
   await testConcurrentRequestRejectionsDoNotOpenCircuit();
   await testPlainRequest400UsesProviderDiagnosticsAndCooldown();
   await testAssistSemanticFailureContinuesToNextCandidate();
-  await testStoryFactsTimeoutStopsBeforeFallback();
+  await testStoryFactsTimeoutContinuesWithinAuthorizedFallbackChain();
   await testNonJsonDiagnosticsAndPlainTextCompatibility();
   console.log('new story ad structured output: ok');
 }

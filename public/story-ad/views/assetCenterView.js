@@ -497,7 +497,7 @@ export async function mount(host, context) {
   const showAsset = button => {
     const group = button.dataset.assetGroup;
     const item = (assets[group] || []).find(asset => String(asset.id) === button.dataset.assetId);
-    if (item) openDrawer(item, group, { readOnly: historicalReadOnly, generationActive, onGenerate: generate, onGenerateScene: generateScene, onGenerateProduct: generateProduct, onVerifyProduct: verifyProduct, onSavePerson: savePerson, onSaveProduct: saveProduct, onSaveScene: saveScene, onAssistScene: assistScene, onUploadProduct: () => openUpload('products'), returnFocus: button });
+    if (item) openDrawer(item, group, { readOnly: historicalReadOnly, generationActive, initialPersonTab: group === 'people' ? 'images' : '', onGenerate: generate, onGenerateScene: generateScene, onGenerateProduct: generateProduct, onVerifyProduct: verifyProduct, onSavePerson: savePerson, onSaveProduct: saveProduct, onSaveScene: saveScene, onAssistScene: assistScene, onUploadProduct: () => openUpload('products'), returnFocus: button });
   };
   host.querySelectorAll('[data-asset-id]').forEach(button => button.addEventListener('click', () => showAsset(button)));
   host.querySelectorAll('[data-verify-product]').forEach(button => button.addEventListener('click', event => {

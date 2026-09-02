@@ -879,7 +879,10 @@ async function generateText({
         fallback_rank: i + 1,
         ...billingEvidence,
       });
-      if (billingEvidence.billing_state === 'unknown') break;
+      // This loop is one user-authorized text generation request. An ambiguous
+      // submission must remain visible in the billing audit, but it must not
+      // suppress the next independent provider in the configured A -> B -> C
+      // chain. Media generation is routed elsewhere and remains user-selected.
       if (['INPUT_PERSON_PRIVACY', 'INPUT_SENSITIVE_CONTENT', 'PROVIDER_CONTENT_AUDIT', 'INVALID_PROVIDER_INPUT']
         .includes(classified.code)) break;
       if (['PROVIDER_RESPONSE_INVALID', 'MODEL_JSON', 'PROVIDER_EMPTY_RESPONSE'].includes(classified.code)

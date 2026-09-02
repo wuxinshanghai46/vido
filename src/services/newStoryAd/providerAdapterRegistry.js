@@ -445,8 +445,21 @@ function openAICompatibleSdkOptions(config = {}, timeoutMs = 90000) {
   return sdkOpts;
 }
 
-function openAICompatibleTemperatureSupported(modelId = '') {
-  const normalized = String(modelId || '').trim().toLowerCase();
+function openAICompatibleTemperatureSupported(input = '') {
+  const config = input && typeof input === 'object' ? input : { modelId: input };
+  const declarations = [
+    config.providerModel?.capabilities?.temperature,
+    config.providerModel?.supports_temperature,
+    config.provider?.capabilities?.temperature,
+    config.provider?.adapter_config?.temperature,
+    config.provider?.supports_temperature,
+  ];
+  const declared = declarations.find(value => value !== undefined);
+  if (declared !== undefined) return declared === true || declared?.enabled === true;
+  const normalized = String(config.modelId || '').trim().toLowerCase();
+  // GPT-5 compatible endpoints and current Claude-compatible proxies reject
+  // this legacy control. Unknown third-party Claude transports are treated
+  // conservatively until their model capability explicitly enables it.
   return !isGpt5FamilyModel(normalized) && !/^claude(?:-|$)/.test(normalized);
 }
 
@@ -474,7 +487,7 @@ async function callOpenAICompatible(config, systemPrompt, userPrompt, opts = {})
       ...(isGpt5FamilyModel(config.modelId)
         ? { max_completion_tokens: tokenLimit }
         : { max_tokens: tokenLimit }),
-      ...(openAICompatibleTemperatureSupported(config.modelId) && Number.isFinite(Number(opts.temperature))
+      ...(openAICompatibleTemperatureSupported(config) && Number.isFinite(Number(opts.temperature))
         ? { temperature: Math.max(0, Math.min(2, Number(opts.temperature))) }
         : {}),
       ...(responseFormat ? { response_format: responseFormat } : {}),

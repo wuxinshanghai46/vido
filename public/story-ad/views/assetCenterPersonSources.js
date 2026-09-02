@@ -1,5 +1,6 @@
 import { request } from '../api.js?v=20260902-production-v390';
 import { escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260902-production-v390';
+import { bindMediaLightbox } from './mediaLightbox.js?v=20260902-production-v390';
 
 function assetModal(title = '') {
   const previouslyFocused = document.activeElement;
@@ -69,11 +70,11 @@ function actorLibraryFilters(actor = {}) {
 
 function actorLibraryImage(url = '', label = '', className = '', options = {}) {
   return `<div class="${className}">${url
-    ? mediaPreview({ image_url: url }, { label, width: options.width || 520, symbol: '人物素材', loading: options.loading, fetchPriority: options.fetchPriority })
+    ? mediaPreview({ image_url: url }, { label, width: options.width || 520, symbol: '人物素材', loading: options.loading, fetchPriority: options.fetchPriority, zoomable: options.zoomable === true, zoomGroup: options.zoomGroup || 'actor-library' })
     : '<div class="media-placeholder"><span>该项待补充</span></div>'}</div>`;
 }
 
-function actorLibraryFeatured(actor = {}) {
+function actorLibraryFeatured(actor = {}, expanded = false) {
   const library = actor.character_library || {};
   const profile = actorLibraryProfile(actor);
   const expressionRows = Array.isArray(library.expressions) ? library.expressions.slice(0, 6) : [];
@@ -86,17 +87,19 @@ function actorLibraryFeatured(actor = {}) {
   if (library.summary_only === true) {
     return `<section class="actor-library-featured is-loading" data-library-featured><header><div><h3>${escapeHtml(actor.name || profile.displayName || '人物角色')}</h3><div class="actor-library-tags">${tags.map(tag => `<span>${escapeHtml(tag)}</span>`).join('')}</div></div></header><div class="actor-library-summary-loading">${actorLibraryImage(portrait, `${actor.name || '人物'}头像`, 'is-portrait', { loading: 'eager', fetchPriority: 'high', width: 420 })}<div><b>人物头像已就绪</b><span>正在按需读取该人物的完整视角和表情档案…</span></div></div></section>`;
   }
+  const viewRows = bodyRows.length ? bodyRows : [
+    { image_url: fullBody, label: '全身标准图' },
+    { image_url: portrait, label: '面部身份图' },
+  ].filter(row => row.image_url);
   return `<section class="actor-library-featured" data-library-featured>
     <header><div><h3>${escapeHtml(actor.name || profile.displayName || '人物角色')}</h3><div class="actor-library-tags">${tags.map(tag => `<span>${escapeHtml(tag)}</span>`).join('')}</div></div></header>
-    <div class="actor-library-featured-grid">
-      ${actorLibraryImage(fullBody, `${actor.name || '人物'}全身标准图`, 'is-full-body', { loading: 'eager', fetchPriority: 'high', width: 620 })}
-      ${actorLibraryImage(portrait, `${actor.name || '人物'}面部身份图`, 'is-portrait', { loading: 'eager', fetchPriority: 'high', width: 520 })}
-      <div class="actor-library-expression-board">${expressionRows.length
-        ? expressionRows.map((row, index) => actorLibraryImage(row.image_url, `${actor.name || '人物'}表情${index + 1}`, '')).join('')
-        : bodyRows.map((row, index) => actorLibraryImage(row.image_url, `${actor.name || '人物'}视角${index + 1}`, '')).join('')}</div>
-      ${actorLibraryImage(dossier || bodyRows[1]?.image_url || fullBody, `${actor.name || '人物'}完整制作档案`, 'is-dossier', { width: 900 })}
+    <div class="actor-library-featured-grid">${viewRows.map((row, index) => actorLibraryImage(row.image_url, `${actor.name || '人物'}${row.label || `视角${index + 1}`}`, 'is-person-view', { loading: index < 2 ? 'eager' : 'lazy', fetchPriority: index === 0 ? 'high' : 'auto', width: 720, zoomable: true })).join('')}</div>
+    <div class="actor-library-full-details" ${expanded ? '' : 'hidden'}>
+      ${actorLibraryImage(portrait, `${actor.name || '人物'}面部身份图`, 'is-portrait', { width: 720, zoomable: true })}
+      <div class="actor-library-expression-board">${expressionRows.map((row, index) => actorLibraryImage(row.image_url, `${actor.name || '人物'}表情${index + 1}`, '', { zoomable: true })).join('')}</div>
+      ${actorLibraryImage(dossier || fullBody, `${actor.name || '人物'}完整制作档案`, 'is-dossier', { width: 1400, zoomable: true })}
     </div>
-    <footer><p>${escapeHtml(profile.appearanceText || actor.description || '已通过人物身份与跨视角一致性验证，可作为后续分镜和视频的人物参考。')}</p><button class="btn primary" type="button" data-apply-selected-actor>应用到当前项目</button></footer>
+    <footer><p>${escapeHtml(profile.appearanceText || actor.description || '已通过人物身份与跨视角一致性验证，可作为后续分镜和视频的人物参考。')}</p><div><button class="btn" type="button" data-toggle-actor-library-details>${expanded ? '收起完整档案' : '查看全部人物档案'}</button><button class="btn primary" type="button" data-apply-selected-actor>应用到当前项目</button></div></footer>
   </section>`;
 }
 
@@ -115,7 +118,7 @@ export async function openActorLibrary({ store, context }) {
   try {
     const data = await request('/api/assets?type=character&character_library=1&view=summary&fast=1&limit=60');
     const rows = Array.isArray(data.data) ? data.data : [];
-    const state = { selectedId: rows[0]?.id || '', filters: {}, details: new Map(), detailRequest: 0 };
+    const state = { selectedId: rows[0]?.id || '', filters: {}, details: new Map(), detailRequest: 0, detailsExpanded: false };
     const loadSelectedDetail = async id => {
       if (!id || state.details.has(id)) return;
       const requestNo = ++state.detailRequest;
@@ -133,7 +136,7 @@ export async function openActorLibrary({ store, context }) {
       const selectedSummary = rows.find(actor => actor.id === state.selectedId) || visible[0];
       const selected = state.details.get(selectedSummary?.id) || selectedSummary;
       modal.body.innerHTML = rows.length ? `<div class="actor-library-shell">
-        ${selected ? actorLibraryFeatured(selected) : '<div class="mini-empty">当前筛选下没有人物。</div>'}
+        ${selected ? actorLibraryFeatured(selected, state.detailsExpanded) : '<div class="mini-empty">当前筛选下没有人物。</div>'}
         <div class="actor-library-toolbar"><button class="btn" type="button" data-toggle-library-filters>角色筛选</button><span>只展示已通过人物身份与跨视角一致性验证的资产</span></div>
         ${actorLibraryFilterPanel()}
         <div class="actor-library-carousel">${visible.map((actor, index) => {
@@ -154,7 +157,8 @@ export async function openActorLibrary({ store, context }) {
         button.addEventListener('click', () => { state.filters[key] = state.filters[key] === button.dataset.filterValue ? '' : button.dataset.filterValue; render(); });
       });
       modal.body.querySelector('[data-clear-library-filters]')?.addEventListener('click', () => { state.filters = {}; render(); });
-      modal.body.querySelectorAll('[data-actor-id]').forEach(button => button.addEventListener('click', () => { state.selectedId = button.dataset.actorId; render(); loadSelectedDetail(state.selectedId); }));
+      modal.body.querySelectorAll('[data-actor-id]').forEach(button => button.addEventListener('click', () => { state.selectedId = button.dataset.actorId; state.detailsExpanded = false; render(); loadSelectedDetail(state.selectedId); }));
+      modal.body.querySelector('[data-toggle-actor-library-details]')?.addEventListener('click', () => { state.detailsExpanded = !state.detailsExpanded; render(); });
       modal.body.querySelector('[data-apply-selected-actor]')?.addEventListener('click', async event => {
         const actor = state.details.get(state.selectedId) || rows.find(row => row.id === state.selectedId); if (!actor) return;
         const button = event.currentTarget; setButtonBusy(button, true, '正在写入项目…', { elapsed: true });
@@ -165,6 +169,7 @@ export async function openActorLibrary({ store, context }) {
           modal.close(); await context.refreshShell();
         } catch (error) { toast(error.message, 'danger'); setButtonBusy(button, false); }
       });
+      bindMediaLightbox(modal.body);
     };
     render();
     loadSelectedDetail(state.selectedId);

@@ -20,7 +20,7 @@ const models = [{ provider_id: 'billing-test', model_id: 'text-model', enabled: 
       _generateText: async () => { throw Object.assign(new Error('socket hang up'), { code: 'TIMEOUT_OR_NETWORK' }); },
     }), error => error.billing_state === 'unknown' && error.provider_submission_state === 'submitted_unknown');
     const timeoutCalls = storage.getTaskBundle('timeout-task').model_calls;
-    assert.equal(timeoutCalls.length, 1);
+    assert.equal(timeoutCalls.length, 2);
     assert.equal(timeoutCalls[0].billing_state, 'unknown');
     assert.equal(timeoutCalls[0].provider_submission_state, 'submitted_unknown');
 
@@ -48,7 +48,7 @@ const models = [{ provider_id: 'billing-test', model_id: 'text-model', enabled: 
       { provider_id: 'independent', model_id: 'm3', endpoint: 'https://other.example/v1', wallet: 'other' },
     ]);
     assert.deepEqual(diversified.map(item => item.provider_id), ['alias-a', 'independent', 'alias-b']);
-    console.log(JSON.stringify({ passed: true, timeout_quarantined: true, automatic_fallback_after_unknown: 0, success_confirmed: true, rejected_not_billed: true }));
+    console.log(JSON.stringify({ passed: true, timeout_audited: true, fallback_after_unknown_within_authorized_request: 1, success_confirmed: true, rejected_not_billed: true }));
   } finally {
     fs.rmSync(process.env.OUTPUT_DIR, { recursive: true, force: true });
   }

@@ -98,7 +98,7 @@ export function sceneEditForm(item = {}) {
 }
 
 export function openAssetDrawer(item, group, handlers = {}, renderers = {}) {
-  const { readOnly = false, generationActive = false, onGenerate, onVerifyProduct, onSavePerson, onSaveProduct, onSaveScene, onAssistScene, onGenerateScene, onGenerateProduct, onUploadProduct, returnFocus } = handlers;
+  const { readOnly = false, generationActive = false, initialPersonTab = '', onGenerate, onVerifyProduct, onSavePerson, onSaveProduct, onSaveScene, onAssistScene, onGenerateScene, onGenerateProduct, onUploadProduct, returnFocus } = handlers;
   const { groupLabel, generatable, mediaSection, profileDetails, checkpointDetails = () => '', knowledgePolicyTrace = () => '', personEditForm } = renderers;
   const views = Array.isArray(item.view_images) ? item.view_images : [];
   const dossier = item.dossier_sheet?.image_url ? { image_url: item.dossier_sheet.image_url } : null;
@@ -120,7 +120,9 @@ export function openAssetDrawer(item, group, handlers = {}, renderers = {}) {
   const personGenerationStarted = group === 'people' && Boolean(hasPersonMedia || generationActive
     || item.active_generation_id || item.generation_runtime?.started_at
     || ['queued', 'running', 'processing', 'generating'].includes(String(item.generation_status || item.generation_runtime?.status || '').toLowerCase()));
-  const personDefaultTab = personGenerationStarted ? 'images' : 'prompt';
+  const personDefaultTab = ['prompt', 'images'].includes(initialPersonTab)
+    ? initialPersonTab
+    : (personGenerationStarted ? 'images' : 'prompt');
   const personPromptPanel = group === 'people'
     ? (editablePerson ? personEditor : profileDetails(item, group))
     : '';
@@ -129,7 +131,7 @@ export function openAssetDrawer(item, group, handlers = {}, renderers = {}) {
     : '';
   const personTabs = group === 'people' ? `<div class="person-detail-tabs" role="tablist" aria-label="人物详情">
       <button type="button" role="tab" aria-selected="${personDefaultTab === 'prompt'}" data-person-detail-tab="prompt">提示词</button>
-      <button type="button" role="tab" aria-selected="${personDefaultTab === 'images'}" data-person-detail-tab="images">人物形象</button>
+      <button type="button" role="tab" aria-selected="${personDefaultTab === 'images'}" data-person-detail-tab="images">人物视图</button>
     </div>
     <section class="person-detail-panel" role="tabpanel" data-person-detail-panel="prompt" ${personDefaultTab === 'prompt' ? '' : 'hidden'}>${personPromptPanel}</section>
     <section class="person-detail-panel" role="tabpanel" data-person-detail-panel="images" ${personDefaultTab === 'images' ? '' : 'hidden'}>${personImagePanel}</section>` : '';
@@ -159,7 +161,7 @@ export function openAssetDrawer(item, group, handlers = {}, renderers = {}) {
     personTabPanels.forEach(panel => { panel.hidden = panel.dataset.personDetailPanel !== selected; });
   };
   const rememberedPersonTab = recalledPersonTab();
-  if (rememberedPersonTab) selectPersonTab(rememberedPersonTab);
+  if (!initialPersonTab && rememberedPersonTab) selectPersonTab(rememberedPersonTab);
   personTabButtons.forEach(button => button.addEventListener('click', async () => {
     const selected = button.dataset.personDetailTab;
     if (selected !== 'prompt') { try { await personAutosave?.flush(); } catch { return; } }
