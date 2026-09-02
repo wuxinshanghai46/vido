@@ -1909,7 +1909,12 @@ router.post('/tasks/:id/storyboard', asyncRoute(async (req, res) => {
       });
       return { storyboard, images };
     },
-    { deadlineMs: task => service.longFormStageBudgetMs(task.id, 'storyboard') },
+    {
+      deadlineMs: task => service.longFormStageBudgetMs(task.id, 'storyboard'),
+      // “重新生成镜头结构”本身就是用户对这次文本重建的明确授权。
+      // 历史计费未知记录继续保留用于审计，但不得在模型调用前永久拦住新的结构重建。
+      allowUnacknowledgedBillingUnknownRetry: forceRegenerate,
+    },
   );
 }));
 

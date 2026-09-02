@@ -57,6 +57,11 @@ const view = fs.readFileSync(path.join(root, 'public/story-ad/views/storyboardVi
 const service = fs.readFileSync(path.join(root, 'src/services/newStoryAd/storyAdService.js'), 'utf8');
 assert.match(route, /const forceRegenerate = body\.force_regenerate === true \|\| body\.forceRegenerate === true/, '路由必须识别强制重建意图');
 assert.match(route, /force_regenerate: forceRegenerate/, '路由必须把强制重建意图传到服务层');
+assert.match(
+  route,
+  /allowUnacknowledgedBillingUnknownRetry:\s*forceRegenerate/,
+  '用户明确点击结构重建后，历史计费未知记录只能保留审计，不能要求再次确认或阻断排队',
+);
 assert.match(service, /if \(!forceRegenerate && existingMeta\.status === 'ready'/, '强制重建不得命中旧分镜缓存');
 assert.match(service, /const resumeShots = !forceRegenerate &&/, '强制重建不得续用旧检查点镜头');
 assert.match(view, /data-regenerate-storyboard-structure/, '错位状态必须展示镜头结构重建入口');
