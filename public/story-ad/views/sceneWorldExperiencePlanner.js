@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260903-production-v424';
-import { promptDialog } from '../components/dialog.js?v=20260903-production-v424';
-import { escapeHtml, toast } from '../components/ui.js?v=20260903-production-v424';
+import { request } from '../api.js?v=20260903-production-v425';
+import { promptDialog } from '../components/dialog.js?v=20260903-production-v425';
+import { escapeHtml, toast } from '../components/ui.js?v=20260903-production-v425';
 
 async function saveSceneWorld(taskId, world, patch = {}) {
   return request(`/api/story-ad/projects/${encodeURIComponent(taskId)}/scene-worlds/${encodeURIComponent(world.id)}`, {

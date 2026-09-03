@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260903-production-v424';
-import { escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260903-production-v424';
-import { bindMediaLightbox } from './mediaLightbox.js?v=20260903-production-v424';
+import { request } from '../api.js?v=20260903-production-v425';
+import { escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260903-production-v425';
+import { bindMediaLightbox } from './mediaLightbox.js?v=20260903-production-v425';
 
 function assetModal(title = '') {
   const previouslyFocused = document.activeElement;
