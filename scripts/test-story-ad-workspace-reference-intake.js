@@ -808,9 +808,9 @@ async function testFamilyRecognitionAndSequentialWorkflowGates() {
     bundle = bundles.buildProjectBundle(taskId, { sections: 'all', user });
     assert.equal(bundle.navigation.steps.storyboard.completed, true);
     assert.equal(bundle.navigation.steps.final.enabled, true);
-    assert.equal(bundle.navigation.steps.sound.enabled, true);
-    assert.equal(bundle.navigation.steps.compose.enabled, false);
-    assert.equal(bundle.navigation.current, 'sound');
+    assert.equal(bundle.navigation.steps.sound.enabled, false, '声音编辑只在初版成片后开放');
+    assert.equal(bundle.navigation.steps.compose.enabled, true, '确认分镜后直接进入原生音视频生成');
+    assert.equal(bundle.navigation.current, 'compose');
   } finally {
     modelGateway.generateText = originalGenerateText;
     modelGateway.generateVision = originalGenerateVision;
