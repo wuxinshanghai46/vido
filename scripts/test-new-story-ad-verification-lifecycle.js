@@ -188,7 +188,7 @@ async function main() {
       },
     },
     repair: {
-      parseOrRepair: async () => ({ pass: true, identity_score: 0.96, age_score: 0.94, wardrobe_score: 0.95, body_score: 0.9, mismatch_reasons: [] }),
+      parseOrRepair: async () => ({ pass: true, identity_score: 0.96, age_score: 0.94, wardrobe_score: 0.95, body_score: 0.9, photographic_realism_score: 0.95, studio_background_score: 0.98, mismatch_reasons: [] }),
     },
   });
   assert.equal(personQaAttempts, 2, '人物验证基础设施失败时应自动重试同一组图片');

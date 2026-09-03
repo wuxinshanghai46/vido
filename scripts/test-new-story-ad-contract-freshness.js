@@ -384,8 +384,13 @@ async function testPreProviderFailureVoidsAuthorization() {
   storage.saveOutput(taskId, 'context', nextCtx);
   storage.saveOutput(taskId, 'video_cost_authorization', { status: 'authorized', fingerprint: 'test-authorization' });
   const beforeCalls = storage.getTaskBundle(taskId).model_calls.length;
-  await assert.rejects(
-    () => service.generateTtsStage(taskId, { include_voiceover: false }),
+  const silent = await service.generateTtsStage(taskId, { include_voiceover: false });
+  assert.strictEqual(silent.skipped, true, '关闭配音是零调用操作，不得复用旧版声音/视频耦合门禁');
+  assert.throws(
+    () => require('../src/services/newStoryAd/videoSubmissionGateService').validateBeforeProvider({
+      storage, taskId,
+      validate: () => require('../src/services/newStoryAd/sceneBindingService').assertVerifiedSceneAssets(nextCtx.scene_assets),
+    }),
     error => error?.code === 'SCENE_VERIFICATION_REQUIRED',
   );
   const authorization = storage.getOutput(taskId, 'video_cost_authorization');
