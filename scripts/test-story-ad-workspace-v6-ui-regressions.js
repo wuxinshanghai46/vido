@@ -201,7 +201,7 @@ assert.match(briefWorldSettings, /具体时期 <em>根据内容同步<\/em>/, '�
 assert.match(briefWorldSettings, /国家 \/ 地区 <em>AI 可识别<\/em>/, '国家地区必须明确提示可由 AI 识别');
 assert.match(briefWorldSettings, /formOwner = settings\.formId/, '移动到右侧的字段必须通过 form owner 参与保存');
 const briefStyles = read('public/story-ad/styles.css');
-const workspaceStyles = read('public/story-ad/workspace.css');
+const workspaceStyles = read('public/story-ad/workspace.css') + read('public/story-ad/storyboard-images.css');
 assert.match(workspaceStyles, /\.reference-recovery-actions\s*\{[^}]*width:\s*min\(760px/,
   '失败恢复操作必须使用对话式紧凑宽度，不能继续铺满工作区');
 assert.match(workspaceStyles, /\.material-list\[hidden\]\s*\{\s*display:\s*none;?\s*\}/, '选择不使用参考材料时，上传入口不得被 grid 样式重新显示');
@@ -933,7 +933,7 @@ assert.doesNotMatch(finalView, /mediaPreview\(finalVideo/);
 assert.doesNotMatch(finalView, /data-save-timeline|data-trim-start/, '视频与合成页不得提前出现剪辑控件');
 assert.match(finalEditView, /data-save-timeline/);
 
-const workspaceCss = read('public/story-ad/workspace.css');
+const workspaceCss = read('public/story-ad/workspace.css') + read('public/story-ad/storyboard-images.css');
 assert.match(workspaceCss, /\.drawer\s*\{[^}]*grid-template-rows:\s*auto minmax\(0,\s*1fr\) auto;[^}]*overflow:\s*hidden;/s, '抽屉必须只滚动正文，底部操作栏不得遮挡表单');
 assert.match(workspaceCss, /\.drawer-content\s*\{[^}]*overflow-y:\s*auto;/s);
 const referenceProgressCss = read('public/story-ad/reference-progress.css');
