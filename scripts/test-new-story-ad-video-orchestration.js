@@ -162,16 +162,18 @@ function testPersistedShotMonitor() {
 }
 
 /** 验证人工接受现有视频不会触发新的付费生成。 */
-function testManualVideoAcceptanceDoesNotGenerate() {
+async function testManualVideoAcceptanceDoesNotGenerate() {
   const taskId = 'manual-video-accept-task';
   const clipPath = path.join(tempDir, 'manual-accept.mp4');
-  fs.writeFileSync(clipPath, 'existing paid video');
+  await videoAdapter.renderLocalClip({ outputPath: clipPath, durationSec: 3, aspectRatio: '16:9' });
+  const nativeQa = await require('../src/services/newStoryAd/nativeAudioQaService').review({ taskId, clip: { file_path: clipPath }, shot: { index: 1, title: '镜头 1' }, index: 0 });
   storage.createTask({ id: taskId, title: '人工接受视频测试', user_id: 'user-a', request: {} });
   storage.saveOutput(taskId, 'storyboard_table', [{ index: 1, title: '镜头 1' }]);
   storage.saveOutput(taskId, 'video_clips', [{
     shot_index: 0,
     file_path: clipPath,
     video_url: '/existing.mp4',
+    native_audio_qa: nativeQa,
     lineage_fingerprint: 'current-lineage',
     qa: { pass: false, problems: ['minor framing crop'], failure_dimensions: ['framing'] },
     error: '视频抽帧 QA 未通过',
@@ -192,7 +194,7 @@ function testManualVideoAcceptanceDoesNotGenerate() {
     await testQaFailureStopsLaterPaidUnits();
     testUniversalNonSpeakingDefault();
     testPersistedShotMonitor();
-    testManualVideoAcceptanceDoesNotGenerate();
+    await testManualVideoAcceptanceDoesNotGenerate();
     console.log('new story ad video orchestration: ok');
   } finally {
     fs.rmSync(tempDir, { recursive: true, force: true });

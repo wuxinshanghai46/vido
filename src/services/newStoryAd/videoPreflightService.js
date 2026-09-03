@@ -219,7 +219,7 @@ function economyShotPlan({ shot, keyframe, contract, clip, status, index }) {
     changes.push('以已确认关键帧中的人物/手部为准，修正人数与场景审核冲突');
     return { index, shot_index: index + 1, title, action: 'review_only', label: '只复审现有视频', paid: false, changes };
   }
-  if (cameraOnlyShot(shot, keyframe, contract)) {
+  if (!require('./nativeAudioWorkflowService').wantsSound(shot) && cameraOnlyShot(shot, keyframe, contract)) {
     changes.push('改用已确认关键帧的本地缓慢运镜，不再调用视频模型，也不会凭空增加人物');
     return { index, shot_index: index + 1, title, action: 'local_motion', label: '本地确定性运镜（不调用视频模型）', paid: false, changes };
   }

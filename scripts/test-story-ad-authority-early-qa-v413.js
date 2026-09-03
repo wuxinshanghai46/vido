@@ -58,7 +58,7 @@ async function main() {
   const originalGenerate = ttsAdapter.generateVoiceover;
   let ttsCalls = 0;
   ttsAdapter.generateVoiceover = async () => { ttsCalls += 1; throw new Error('unexpected paid TTS'); };
-  try { await assert.rejects(service.generateTtsStage(id, { include_voiceover: true, voice_id: 'fixture-voice' }), e => e.code === 'STORYBOARD_IMAGES_REQUIRED'); }
+  try { await assert.rejects(service.generateTtsStage(id, { include_voiceover: true, voice_id: 'fixture-voice' }), e => e.code === 'AUDIO_EDIT_FINAL_REQUIRED'); }
   finally { ttsAdapter.generateVoiceover = originalGenerate; }
   assert.equal(ttsCalls, 0);
   await images.generateSketch(id, 2, { confirmed: true, review_only: true }, { ...deps, visualQaService: { review: async () => ({ pass: true, policy_version: visual.POLICY_VERSION, identity_fingerprint: visual.identityFingerprint(ctx) }) } });

@@ -47,8 +47,10 @@ function save(taskId, input = {}) {
       transition_duration_sec: clamp(patch.transition_duration_sec, 0.35, 0, 2),
     };
   });
+  const clips = storage.getOutput(taskId, 'video_clips') || [];
+  items.forEach((edit, index) => require('./audioTimelineIntegrityService').editedSpeech(clips[index], edit));
   storage.saveOutput(taskId, OUTPUT_KIND, items);
-  storage.deleteOutput(taskId, 'final_video');
+  // Publish a replacement only after rendering and audiovisual QA succeed.
   return items;
 }
 

@@ -27,6 +27,7 @@ try {
   const taskId = 'audio-picker-playback-v380';
   storage.createTask({ id: taskId, request: {}, user_id: 'test-user' });
   storage.saveOutput(taskId, 'storyboard_table', [{ shot_id: 'shot_1', shot_index: 1, duration_sec: 5 }]);
+  storage.saveOutput(taskId, 'final_video', { video_url: '/fixture-initial-final.mp4' });
   const state = audioProduction.savePlan(taskId, { voice_volume: 9, bgm_volume: 9 });
   assert.strictEqual(state.plan.voice_volume, 1.5, '配音必须允许提升到 150% 并限制异常值');
   assert.strictEqual(state.plan.bgm_volume, 1, '背景音乐必须允许提升到 100% 并限制异常值');
@@ -49,10 +50,9 @@ try {
   assert(controller.includes('createMediaElementSource') && controller.includes('voiceGain.gain.value = voiceVolume'), '超过 100% 的试听音量必须通过 Web Audio 增益真实生效');
   assert(view.includes('candidate?.classList.add(\'is-selected\')') && css.includes('.bgm-candidate.is-selected'), '点击候选后必须立即把选中框移动到当前候选');
   const confirmRequestOffset = view.indexOf('/audio-confirm');
-  const navigationRefreshOffset = view.indexOf("store.refreshSections('summary')", confirmRequestOffset);
-  const composeNavigationOffset = view.indexOf('?view=compose', confirmRequestOffset);
-  assert(confirmRequestOffset >= 0 && navigationRefreshOffset > confirmRequestOffset && composeNavigationOffset > navigationRefreshOffset, '声音确认后必须先刷新服务端导航状态，再进入视频与合成');
-  assert(view.includes('refreshedBundle?.navigation?.steps?.compose') && view.includes('composeStep?.enabled !== true'), '确认后的跳转必须以刷新后的 compose 权限为准');
+  const applyOffset = view.indexOf("store.runStage('compose', { apply_audio_edits: true })", confirmRequestOffset);
+  assert(confirmRequestOffset >= 0 && applyOffset > confirmRequestOffset, '替换声音必须经过试听确认后显式应用');
+  assert(!view.includes('?view=compose'), '声音编辑应留在成片剪辑中');
   assert(compose.includes('clampVolume(voiceVolume, 1, 0.6, 1.5)') && compose.includes('clampVolume(bgmVolume, 0.16, 0, 1)'), '最终成片必须使用与试听一致的新音量上限');
 
   console.log(JSON.stringify({
@@ -62,7 +62,7 @@ try {
     playback_states: ['idle', 'loading', 'playing', 'paused', 'ended'],
     voice_max_percent: 150,
     bgm_max_percent: 100,
-    confirmation_navigation: 'server_state_refreshed_before_compose',
+    confirmation_navigation: 'explicit_postproduction_apply',
     paid_calls: 0,
   }));
 } finally {

@@ -344,7 +344,7 @@ async function importOpenverseAsset(taskId, input = {}) {
   };
   storage.saveOutput(taskId, LEDGER_KIND, [...state.ledger.filter(item => item.asset_id !== assetId), ledger]);
   storage.deleteOutput(taskId, 'audio_production_approval');
-  storage.deleteOutput(taskId, 'final_video');
+  // A soundtrack draft must not remove the currently playable movie.
   return { asset, timeline, ledger };
 }
 

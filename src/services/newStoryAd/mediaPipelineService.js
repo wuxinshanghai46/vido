@@ -16,7 +16,7 @@ function voiceoverPlanIsReady(taskId = '', voiceId = '', voiceAssignments = {}, 
 }
 
 /**
- * 执行一次完整媒体任务：先准备可选配音，再生成纯视觉连续段，最后本地混音合成。
+ * 执行一次完整媒体任务：生成包含剧情声音的分镜视频，再合成初版；声音修改由成片剪辑单独触发。
  */
 async function runMediaPipeline({
   taskId = '',
@@ -27,26 +27,8 @@ async function runMediaPipeline({
   ttsAdapter = defaultTtsAdapter,
 } = {}) {
   if (!service) throw new Error('媒体流水线缺少剧情广告服务。');
-  const context = mediaConfiguration.persistMediaConfiguration(taskId, options, storage);
-  const payload = {
-    ...options,
-    generation_id: generationId,
-    voice_id: context.voice_id || '',
-    voice_name: context.voice_name || '',
-    voice_assignments: context.voice_assignments || {},
-    include_voiceover: context.include_voiceover === true,
-    bgm_asset: context.bgm_asset || null,
-  };
-  if (payload.include_voiceover && !voiceoverPlanIsReady(taskId, payload.voice_id, payload.voice_assignments, storage, ttsAdapter)) {
-    await service.generateTtsStage(taskId, payload);
-  }
-  const videoResult = await service.generateVideoStage(taskId, {
-    ...payload,
-    missing_only: true,
-    visual_only: true,
-    include_voiceover: false,
-    auto_tts: false,
-  });
+  const payload = { ...options, generation_id: generationId, ...require('./nativeAudioWorkflowService').context({}), apply_audio_edits: false };
+  const videoResult = await service.generateVideoStage(taskId, { ...payload, missing_only: true, auto_tts: false });
   if (videoResult?.partial === true) {
     const indexes = Array.isArray(videoResult.remaining_unapproved_indexes) ? videoResult.remaining_unapproved_indexes : [];
     const error = new Error(`视频审核尚未完成${indexes.length ? `：第 ${indexes.map(index => index + 1).join('、')} 镜` : ''}，已停止最终封装`);

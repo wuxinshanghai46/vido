@@ -33,6 +33,7 @@ async function main() {
   storage.saveOutput(taskId, 'storyboard_table', shots);
   const generated = await ttsAdapter.generateVoiceover({ taskId, shots, voiceId: 'mock-voice', voiceAssignments: { narrator: 'mock-voice', speakers: {} }, concurrency: 3 });
   storage.saveOutput(taskId, 'tts_audio', generated);
+  storage.saveOutput(taskId, 'final_video', { video_url: '/fixture-initial-final.mp4' });
   audioProduction.savePlan(taskId, { voice_id: 'mock-voice', voice_volume: 0.8, bgm_volume: 0.12 });
   await soundDesign.importOpenverseAsset(taskId, { openverse_id: 'vido_generated_ambient_music_v1', shot_index: 1, track_type: 'bgm' });
 

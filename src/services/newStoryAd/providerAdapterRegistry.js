@@ -525,7 +525,7 @@ async function callOpenAICompatible(config, systemPrompt, userPrompt, opts = {})
     try { completion = JSON.parse(completion); } catch (_) {}
   }
   let text = textFromCompletion(completion);
-  if ((!completion?.choices?.length || !text) && reasoningBudgetExhausted(completion, maxTokenValue)) {
+  if (opts.retryEmptyResponse !== false && (!completion?.choices?.length || !text) && reasoningBudgetExhausted(completion, maxTokenValue)) {
     const retryTokenValue = Math.min(32000, Math.max(maxTokenValue + 6000, Math.ceil(maxTokenValue * 2)));
     if (retryTokenValue > maxTokenValue) {
       try {
@@ -561,7 +561,7 @@ async function callOpenAICompatible(config, systemPrompt, userPrompt, opts = {})
   };
 }
 
-async function generateText({ model, systemPrompt, userPrompt, messages = null, maxTokens = 4096, temperature = 0.3, timeoutMs = 90000, signal = cancellation.signal(), structuredOutput = null, _client = null } = {}) {
+async function generateText({ model, systemPrompt, userPrompt, messages = null, maxTokens = 4096, temperature = 0.3, timeoutMs = 90000, signal = cancellation.signal(), structuredOutput = null, retryEmptyResponse = true, _client = null } = {}) {
   const config = resolveTextAdapter(model);
   const effectiveSystemPrompt = structuredOutput ? structuredPrompt(systemPrompt, structuredOutput) : systemPrompt;
   let result;
@@ -571,7 +571,7 @@ async function generateText({ model, systemPrompt, userPrompt, messages = null, 
     result = await callDeyunaiClaudeMessages(config, effectiveSystemPrompt, userPrompt, { messages, maxTokens, temperature, timeoutMs, signal });
   } else {
     result = await callOpenAICompatible(config, systemPrompt, userPrompt, {
-      messages, maxTokens, temperature, timeoutMs, signal, structuredOutput, _client,
+      messages, maxTokens, temperature, timeoutMs, signal, structuredOutput, retryEmptyResponse, _client,
     });
   }
   return {

@@ -29,6 +29,7 @@ async function main() {
   const initial = audioProduction.current(taskId);
   assert.strictEqual(initial.include_voiceover, true, '有旁白或对白的新任务必须默认启用声音');
   assert.deepStrictEqual(initial.speakers, ['苏晚'], '旁白不得再次出现在人物对白音色列表');
+  storage.saveOutput(taskId, 'final_video', { video_url: '/fixture-initial-final.mp4' });
   await assert.rejects(async () => audioProduction.confirm(taskId), error => error.code === 'AUDIO_VOICE_REQUIRED');
 
   audioProduction.savePlan(taskId, { include_voiceover: false, voice_id: '' });
@@ -38,6 +39,7 @@ async function main() {
   const silentTaskId = 'sound-confirmation-v363-silent';
   storage.createTask({ id: silentTaskId, request: {}, user_id: 'test-user' });
   storage.saveOutput(silentTaskId, 'storyboard_table', [{ shot_index: 1, visual: '纯画面，无旁白和对白。' }]);
+  storage.saveOutput(silentTaskId, 'final_video', { video_url: '/fixture-initial-final.mp4' });
   audioProduction.savePlan(silentTaskId, { include_voiceover: true, voice_id: 'legacy-voice' });
   assert.strictEqual(audioProduction.current(silentTaskId).include_voiceover, false, '无旁白和对白的分镜不得被旧参数强行加入人声');
 
@@ -77,10 +79,10 @@ async function main() {
 
   const root = path.resolve(__dirname, '..');
   const soundView = ['finalSoundDesignView.js', 'soundDesignFeature.js'].map(file => fs.readFileSync(path.join(root, 'public/story-ad/views', file), 'utf8')).join('\n');
-  const shellView = fs.readFileSync(path.join(root, 'public/story-ad/views/finalSoundView.js'), 'utf8');
+  const shellView = fs.readFileSync(path.join(root, 'public/story-ad/views/finalEditView.js'), 'utf8');
   assert(!soundView.includes('自动（按可用链回退）'), '页面不得再展示没有落到真实音色的自动选项');
   assert(!soundView.includes('data-preview-sound'), '搜索按钮不得再伪装成已经存在的试听声音');
-  assert(shellView.includes('确认声音并进入视频与合成'));
+  assert(shellView.includes('确认并应用声音修改'));
   assert(soundView.includes('data-auto-sound-recommendation'));
   assert(shellView.includes('navigate: context.navigate'));
 

@@ -42,6 +42,7 @@ async function main() {
   assert(generated.tracks.every((track, index) => track.index === index + 1 && track.audio_url), '每条轨必须保留一基镜号与试听 URL');
 
   storage.saveOutput(taskId, 'tts_audio', generated);
+  storage.saveOutput(taskId, 'final_video', { video_url: '/fixture-initial-final.mp4' });
   let state = audioProduction.savePlan(taskId, { voice_id: 'mock-voice', voice_volume: 0.72, bgm_volume: 0.11 });
   assert.strictEqual(state.plan.voice_volume, 0.72, '配音音量必须持久化');
   assert.strictEqual(state.plan.bgm_volume, 0.11, '背景音乐音量必须独立持久化');
@@ -58,7 +59,7 @@ async function main() {
   const ttsStart = service.indexOf('async function generateTtsStage');
   const ttsBlock = service.slice(ttsStart, service.indexOf('/** 编译通用执行方案', ttsStart));
   assert(view.includes('data-tts-inline-progress') && view.includes('data-tts-progress-label'), '声音页必须在生成按钮附近展示逐段进度条');
-  assert(ui.includes("tts: 'sound'") && ui.includes("view.stage === 'tts'"), 'TTS 全局与行内进度必须归属声音页');
+  assert(ui.includes("tts: 'edit'") && ui.includes("view.stage === 'tts'"), 'TTS 全局与行内进度必须归属成片剪辑');
   assert(view.includes("mode === 'offscreen_voiceover'"), '新版旁白合同不得再显示成无语音');
   assert(view.includes('ttsTrackMap') && view.includes('ttsTrackFor') && view.includes('row.shot_id'), '逐镜播放器必须优先按镜头 ID 匹配，不得依赖数组偶然顺序');
   assert(view.includes('data-preview-kind="voice"') && view.includes('data-preview-kind="bgm"'), '人声和背景音乐必须分别接入试听音量');

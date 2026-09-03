@@ -19,10 +19,10 @@ const context = { project_name: '测试', brief: '测试后段导航', shot_desi
 const build = outputs => navigation.build({ task: { title: '测试' }, context, outputs: { ...baseOutputs, ...outputs }, counts: {}, clean, list });
 
 const beforeSound = build({});
-assert.equal(beforeSound.steps.sound.enabled, true);
-assert.equal(beforeSound.steps.compose.enabled, false, '声音未确认时不得进入视频与合成');
+assert.equal(beforeSound.steps.sound.enabled, false);
+assert.equal(beforeSound.steps.compose.enabled, true, '视频生成不再依赖声音确认');
 assert.equal(beforeSound.steps.edit.enabled, false, '没有初版成片时不得进入剪辑');
-assert.equal(beforeSound.current, 'sound');
+assert.equal(beforeSound.current, 'compose');
 
 const soundApproval = { confirmed: true, signature: 'persisted-audio-signature' };
 const afterSound = build({ audio_production_approval: soundApproval });
@@ -47,10 +47,10 @@ const editView = read('public/story-ad/views/finalEditView.js');
 const soundWorkbench = read('public/story-ad/views/finalSoundDesignView.js') + read('public/story-ad/views/soundDesignFeature.js');
 const css = read('public/story-ad/workspace-ux.css');
 
-assert.match(app, /rawView === 'final' \? 'sound'/, '历史 final 链接必须迁移到声音页');
+assert.match(app, /rawView === 'final' \? 'compose'/, '历史 final 链接必须迁移到合成页');
 assert.match(app, /view !== 'edit' \|\| Number\(counts\.final_videos \|\| 0\) > 0/, '剪辑导航必须在初版成片存在后出现');
-assert.match(soundView, /<h1>声音<\/h1>/);
-assert.match(soundView, /soundDesignMarkup/);
+assert.match(soundView, /view=edit/);
+assert.match(editView, /soundDesignMarkup/);
 assert.doesNotMatch(soundView, /data-generate-video|data-compose|data-save-timeline/);
 assert.match(composeView, /<h1>视频与合成<\/h1>/);
 assert.match(composeView, /data-generate-video/);
@@ -71,8 +71,7 @@ assert.match(soundWorkbench, /sound-option-panel/);
 assert.match(soundWorkbench, /bgm-picker/);
 assert.match(css, /\.voice-setup-panel\{[^}]*grid-template-columns:minmax\(0,1fr\)/, '剧情权威声音合同必须使用单列设置区，不得恢复旧人声模式双栏');
 assert.match(soundWorkbench, /voice-story-contract/, '声音页必须解释旁白与对白由剧情自动决定');
-assert.match(soundWorkbench, /store\.refreshSections\('summary'\)/, '声音确认成功后必须刷新持久化导航状态');
-assert.ok(soundWorkbench.indexOf("store.refreshSections('summary')") < soundWorkbench.indexOf('?view=compose'), '刷新后的服务端导航状态必须先于 compose 跳转生效');
+assert.match(soundWorkbench, /apply_audio_edits: true/, '声音修改必须显式提交后期替换');
 assert.match(css, /\.post-stage-summary\{[^}]*repeat\(3,minmax\(0,1fr\)\)/);
 
-console.log(JSON.stringify({ passed: true, checks: 30, confirmation_navigation_refresh: true, no_video_editor_hidden: true, legacy_final_redirected: true, post_production_views: ['sound', 'compose', 'edit'], upstream_steps_changed: 0 }));
+console.log(JSON.stringify({ passed: true, checks: 30, native_audio_workflow: true, no_video_editor_hidden: true, legacy_final_redirected: true, post_production_views: ['compose', 'edit'], upstream_steps_changed: 0 }));

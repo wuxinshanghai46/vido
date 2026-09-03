@@ -63,8 +63,6 @@ async function main() {
     return { shot_index: index + 1, shot_contract_fingerprint: require('../src/services/newStoryAd/storyboardImageLineageService').shotContractFingerprint(shots[index], index), image_url: `/api/new-story-ad/assets/${filename}`, subject_qa_policy_version: 2, subject_count_qa: { pass: true }, visual_qa: require('./lib/storyboardVisualQaFixture').verified('boundary-compose-block') };
   }));
   storage.saveOutput('boundary-compose-block', 'video_clips', clips);
-  audioProduction.savePlan('boundary-compose-block', { include_voiceover: false, subtitle: true });
-  audioProduction.confirm('boundary-compose-block', { id: 'owner-1' });
   await assert.rejects(
     () => storyAd.composeStage('boundary-compose-block', {}),
     error => error.code === 'COMPOSE_VIDEO_ARTIFACT_INCOMPATIBLE',

@@ -384,8 +384,7 @@ async function testPreProviderFailureVoidsAuthorization() {
   storage.saveOutput(taskId, 'context', nextCtx);
   storage.saveOutput(taskId, 'video_cost_authorization', { status: 'authorized', fingerprint: 'test-authorization' });
   const beforeCalls = storage.getTaskBundle(taskId).model_calls.length;
-  const silent = await service.generateTtsStage(taskId, { include_voiceover: false });
-  assert.strictEqual(silent.skipped, true, '关闭配音是零调用操作，不得复用旧版声音/视频耦合门禁');
+  await assert.rejects(service.generateTtsStage(taskId, { include_voiceover: false }), { code: 'AUDIO_EDIT_FINAL_REQUIRED' });
   assert.throws(
     () => require('../src/services/newStoryAd/videoSubmissionGateService').validateBeforeProvider({
       storage, taskId,
@@ -428,6 +427,7 @@ async function testMatchingTtsIsReusedBeforeProviderCall() {
   let providerCalls = 0;
   ttsAdapter.generateVoiceover = async () => { providerCalls += 1; throw new Error('不应调用配音供应商'); };
   try {
+    storage.saveOutput(taskId, 'final_video', { video_url: '/fixture-existing-final.mp4' });
     const result = await service.generateTtsStage(taskId, { voice_id: 'voice-a', include_voiceover: true });
     assert.strictEqual(result.reused, true);
     assert.strictEqual(result.skipped, true);

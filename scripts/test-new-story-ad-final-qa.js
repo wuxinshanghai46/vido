@@ -168,24 +168,25 @@ async function testShortVoiceTrackCannotTruncateVisual() {
 async function testFinalQaFailureIsNotPersisted() {
   const taskId = 'final-qa-persistence-gate';
   const clipPath = path.join(tempDir, 'approved-input.mp4');
-  await videoAdapter.renderLocalClip({ outputPath: clipPath, durationSec: 2, aspectRatio: '16:9' });
+  await videoAdapter.renderLocalClip({ outputPath: clipPath, durationSec: 3, aspectRatio: '16:9' });
   storage.createTask({ id: taskId, type: 'new_story_ad', status: 'done', stage: 'video_ready', user_id: 'test', request: { shot_design_confirmed: true } });
   storage.saveOutput(taskId, 'context', { include_voiceover: false, subtitle: false, output_ratio: '16:9', shot_design_confirmed: true });
-  const composeShots = [{ index: 1, duration: 2, title: '当前任务镜头' }];
+  const composeShots = require('../src/services/newStoryAd/nativeAudioWorkflowService').prepareShots([{ index: 1, duration: 3, sound_mode: 'silent', speech_mode: 'silent', title: '当前任务镜头' }]);
   storage.saveOutput(taskId, 'storyboard_table', composeShots);
   const storyboardFilename = 'final-qa-confirmed-storyboard.png';
   const storyboardPath = mediaAdapter.assetPathFromName(storyboardFilename);
   fs.mkdirSync(path.dirname(storyboardPath), { recursive: true });
   fs.writeFileSync(storyboardPath, 'confirmed-storyboard');
   storage.saveOutput(taskId, 'storyboard_images', [{ shot_index: 1, shot_contract_fingerprint: require('../src/services/newStoryAd/storyboardImageLineageService').shotContractFingerprint(composeShots[0], 0), image_url: `/api/new-story-ad/assets/${storyboardFilename}`, subject_qa_policy_version: 2, subject_count_qa: { pass: true }, visual_qa: require('./lib/storyboardVisualQaFixture').verified(taskId) }]);
-  audioProduction.savePlan(taskId, { include_voiceover: false, subtitle: false });
-  audioProduction.confirm(taskId, { id: 'test' });
+  storage.saveOutput(taskId, 'context', require('../src/services/newStoryAd/nativeAudioWorkflowService').context(storage.getOutput(taskId, 'context')));
+  const nativeAudioQa = await require('../src/services/newStoryAd/nativeAudioQaService').review({ taskId, clip: { file_path: clipPath }, shot: composeShots[0], index: 0 });
   const composeCtx = storage.getOutput(taskId, 'context'), composeContracts = keyframeFreshness.inspect(taskId, { ctx: composeCtx, shots: composeShots }).contracts;
   const composeKeyframes = videoInputFrames.resolve(taskId, { shots: composeShots, contracts: composeContracts }).frames;
   const currentLineage = artifactWorkflow.buildExpectedLineages({ shots: composeShots, contracts: composeContracts, keyframes: composeKeyframes, ctx: composeCtx, shotPlans: [{ index: 0, input_strategy: 'approved_keyframe_first_frame_only' }], qaPolicyVersion: frameQa.VIDEO_FRAME_QA_POLICY_VERSION, speechModeFor: (shotItem, contractItem) => videoAdapter.explicitShotSpeechMode(shotItem, contractItem), motionPromptFor: (shotItem, contractItem, index) => videoAdapter.clipPrompt(shotItem, composeCtx, contractItem, null, composeKeyframes[index] || {}, '') })[0];
   storage.saveOutput(taskId, 'video_clips', [{
     shot_index: 0,
     file_path: clipPath,
+    native_audio_qa: nativeAudioQa,
     video_url: '/approved-input.mp4',
     lineage: currentLineage,
     lineage_fingerprint: currentLineage.fingerprint,
@@ -249,16 +250,16 @@ function testStep5RenderingPerformanceBoundaries() {
   const reviewModule = fs.readFileSync(path.join(root, 'public/js/new-story-ad/video-review.js'), 'utf8');
   const availabilityModule = fs.readFileSync(path.join(root, 'public/js/new-story-ad/video-unit-availability.js'), 'utf8');
   const finalView = fs.readFileSync(path.join(root, 'public/story-ad/views/finalView.js'), 'utf8');
-  const finalSoundView = fs.readFileSync(path.join(root, 'public/story-ad/views/finalSoundView.js'), 'utf8');
+  const finalSoundView = fs.readFileSync(path.join(root, 'public/story-ad/views/finalEditView.js'), 'utf8');
   assert(reviewModule.split(/\r?\n/).length <= 360, '视频选择、费用与 P0 语义应保持在独立前端模块中');
   assert(availabilityModule.split(/\r?\n/).length <= 140, '生成单元阻断范围计算必须保持为独立小模块');
   assert(finalView.includes('preload="none"'), '现行成片播放器不得预取视频流');
   assert(reviewModule.includes('data-nsa-review-media=') && reviewModule.includes("video.preload = 'none'"), '母片与成员片段必须折叠后懒创建且默认不预加载');
   assert(reviewModule.includes("image.loading = 'lazy'"), '边界证据图片必须按需懒加载');
-  const mediaRenderer = finalView.slice(finalView.indexOf('function mediaCard'), finalView.indexOf('/** 第 7 步'));
+  const mediaRenderer = finalView.slice(finalView.indexOf('function mediaCard'), finalView.indexOf('/** 第 6 步'));
   assert(!/setInterval|fetch\(|request\(/.test(mediaRenderer), '现行成片渲染不得为每个媒体节点建立独立轮询或请求');
   assert.strictEqual((finalView.match(/\brequest\(/g) || []).length, 0, '视频与合成页不得重复读取声音设计合同');
-  assert.strictEqual((finalSoundView.match(/\brequest\(/g) || []).length, 1, '独立声音页只允许一次页面级声音设计聚合请求');
+  assert.strictEqual((finalSoundView.match(/\/sound-design`/g) || []).length, 1, '剪辑页仅按需读取一次声音设计合同');
   assert(finalSoundView.includes('/sound-design`'), '声音页聚合请求必须只读取声音设计合同');
   assert(!/setInterval|fetch\(/.test(finalView), '成片页不得建立私有轮询或绕过统一请求层');
 }

@@ -116,7 +116,7 @@ const GENERATION_STAGE_OWNING_VIEW = Object.freeze({
   video: 'compose',
   video_repair: 'compose',
   media: 'compose',
-  tts: 'sound',
+  tts: 'edit',
   compose: 'compose',
   final_video: 'compose',
   full: 'compose',
@@ -265,10 +265,11 @@ export function generationProgressView(bundle = {}) {
 }
 
 export function generationProgressPanel(bundle = {}, currentView = '') {
+  if (currentView === 'compose') return ''; // The compose view owns persistent video outcomes and live updates.
   const view = generationProgressView(bundle);
   if (!view) return '';
   if (currentView === 'scene' && ['scene_asset', 'scene_qa'].includes(view.stage)) return '';
-  const owningView = generationProgressOwningView(view.stage);
+  const owningView = currentView === 'edit' && ['compose', 'final_video'].includes(view.stage) && bundle.generation?.final_video ? 'edit' : generationProgressOwningView(view.stage);
   if (currentView && view.failed && !owningView) return '';
   if (currentView && owningView && currentView !== owningView) return '';
   if (currentView === 'assets' && view.checkpointRecovery) return '';

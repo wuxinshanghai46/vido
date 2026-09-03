@@ -3,6 +3,8 @@ import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.j
 import { bgmCandidateMarkup, bindLiveAudioPreview, previewSeconds, soundPreviewMarkup } from '../controllers/liveAudioPreviewController.js?v=20260903-production-v423';
 import { recommendedVoice, speechShotCount, voiceSampleText } from './soundDesignVoiceCatalog.js?v=20260903-production-v423';
 
+const eventButton = event => event.currentTarget || event.target?.closest?.('button');
+
 const TRACK_TYPES = [['room_tone', '空间底噪'], ['ambient', '环境声'], ['foley', '拟音'], ['sfx', '动作音效'], ['transition', '转场音'], ['bgm', '背景音乐']];
 function trackOptions(selected = 'room_tone') {
   return TRACK_TYPES.map(([value, label]) => `<option value="${value}" ${value === selected ? 'selected' : ''}>${label}</option>`).join('');
@@ -50,7 +52,7 @@ export function soundDesignMarkup(soundDesign = {}) {
   const overallPreviewReady = !!activeBgmAsset?.file_url && spokenShots > 0 && readyVoiceTracks === spokenShots;
   const keySoundCount = shots.filter(item => item.auto_recommend_sound).length;
   return `<section class="card generation-section sound-journey-section">
-    <div class="card-head"><div><h2>配音与对白</h2><p>先确认声音效果再进入视频生成。旁白/画外音不做口型；只有人物出镜对白才进行口型同步。</p></div><span class="status-badge ${production.approved ? 'success' : 'warning'}">${production.approved ? '声音已确认' : '待试听确认'}</span></div>
+    <div class="card-head"><div><h2>配音与对白</h2><p>可选：替换当前成片声音。原视频的人声与音乐合在一起，应用时将用这里的配音和音乐整体替换；出镜对白须重新通过口型检查。</p></div><span class="status-badge ${production.approved ? 'success' : 'warning'}">${production.approved ? '声音已确认' : '待试听确认'}</span></div>
     <div class="card-body">
       <div class="guide"><b>当前主流程：</b>选择音色 → 生成并试听配音 → 从页面顶部确认并进入“视频与合成”。背景音乐和场景音效均为可选，不会改变前 5 步内容。</div>
       <div class="voice-setup-panel" data-audio-plan data-has-speech="${spokenShots > 0 ? 'true' : 'false'}">
@@ -206,23 +208,22 @@ export function bindSoundDesign(host, { bundle, store, soundDesign = {}, refresh
     finally { setButtonBusy(button, false); if (button.classList.contains('is-playing')) button.textContent = '■ 停止'; }
   });
   host.querySelector('[data-save-audio-plan]')?.addEventListener('click', async event => {
-    try { setButtonBusy(event.currentTarget, true, '保存中…'); await request(`/api/story-ad/projects/${encodeURIComponent(bundle.project.id)}/audio-plan`, { method: 'PUT', body: audioPlanPayload() }); toast('声音设置已保存。', 'success'); await refreshShell(); } catch (error) { toast(error.message, 'danger'); } finally { setButtonBusy(event.currentTarget, false); }
+    try { setButtonBusy(eventButton(event), true, '保存中…'); await request(`/api/story-ad/projects/${encodeURIComponent(bundle.project.id)}/audio-plan`, { method: 'PUT', body: audioPlanPayload() }); toast('声音设置已保存。', 'success'); await refreshShell(); } catch (error) { toast(error.message, 'danger'); } finally { setButtonBusy(eventButton(event), false); }
   });
   host.querySelector('[data-generate-audio]')?.addEventListener('click', async event => {
     const inlineProgress = host.querySelector('[data-tts-inline-progress]');
-    try { if (inlineProgress) inlineProgress.hidden = false; setButtonBusy(event.currentTarget, true, '正在生成配音试听…', { elapsed: true }); const payload = audioPlanPayload(); if (host.querySelector('[data-audio-plan]')?.dataset.hasSpeech === 'true' && !payload.voice_id) throw new Error('当前没有可用音色，不能生成配音试听。'); await request(`/api/story-ad/projects/${encodeURIComponent(bundle.project.id)}/audio-plan`, { method: 'PUT', body: payload }); await store.runStage('tts', payload); toast('配音任务已提交，进度会在当前页面持续更新。', 'success'); } catch (error) { toast(error.message, 'danger'); if (inlineProgress) inlineProgress.hidden = true; } finally { setButtonBusy(event.currentTarget, false); }
+    try { if (inlineProgress) inlineProgress.hidden = false; setButtonBusy(eventButton(event), true, '正在生成配音试听…', { elapsed: true }); const payload = audioPlanPayload(); if (host.querySelector('[data-audio-plan]')?.dataset.hasSpeech === 'true' && !payload.voice_id) throw new Error('当前没有可用音色，不能生成配音试听。'); await request(`/api/story-ad/projects/${encodeURIComponent(bundle.project.id)}/audio-plan`, { method: 'PUT', body: payload }); await store.runStage('tts', payload); toast('配音任务已提交，进度会在当前页面持续更新。', 'success'); } catch (error) { toast(error.message, 'danger'); if (inlineProgress) inlineProgress.hidden = true; } finally { setButtonBusy(eventButton(event), false); }
   });
   host.querySelector('[data-confirm-audio]')?.addEventListener('click', async event => {
     try {
-      setButtonBusy(event.currentTarget, true, '正在确认…');
+      setButtonBusy(eventButton(event), true, '正在确认…');
+      await request(`/api/story-ad/projects/${encodeURIComponent(bundle.project.id)}/audio-plan`, { method: 'PUT', body: audioPlanPayload() });
       const confirmation = await request(`/api/story-ad/projects/${encodeURIComponent(bundle.project.id)}/audio-confirm`, { method: 'POST', body: {} });
       if (confirmation?.approved !== true) throw new Error('声音确认未完成，请稍后重试。');
-      const refreshedBundle = await store.refreshSections('summary');
-      const composeStep = refreshedBundle?.navigation?.steps?.compose;
-      if (composeStep?.enabled !== true) throw new Error(composeStep?.blocker || '声音已确认，但工作流状态尚未同步，请刷新页面后重试。');
-      toast('声音已确认，正在进入视频与合成。', 'success');
-      navigate(`/story-ad/projects/${encodeURIComponent(bundle.project.id)}?view=compose`);
-    } catch (error) { toast(error.message, 'danger'); } finally { setButtonBusy(event.currentTarget, false); }
+      await store.runStage('compose', { apply_audio_edits: true });
+      toast('声音修改已提交，验收成功后更新成片。', 'success');
+      await refreshShell();
+    } catch (error) { const feedback = host.querySelector('[data-audio-edit-feedback]'); if (feedback) { feedback.hidden = false; feedback.textContent = '声音修改失败，原成片已保留。' + (bundle.permissions?.can_view_errors ? ` ${error.message}` : ''); } toast('声音修改失败，原成片已保留。', 'danger'); } finally { setButtonBusy(eventButton(event), false); }
   });
 
   const importSound = async (row, button, id = row.dataset.recommendedSoundId || '') => {
@@ -236,12 +237,12 @@ export function bindSoundDesign(host, { bundle, store, soundDesign = {}, refresh
       const previousSelected = container.querySelector('.bgm-candidate.is-selected');
       container.querySelectorAll('.bgm-candidate').forEach(item => item.classList.remove('is-selected'));
       candidate?.classList.add('is-selected');
-      try { await importSound(row, event.currentTarget, event.currentTarget.dataset.importBgm); toast('背景音乐已切换，原音乐不会重复叠加。', 'success'); await refreshShell(); }
+      try { await importSound(row, event.currentTarget, event.currentTarget.dataset.importBgm); toast('替换音乐已选好，应用声音修改后生效。', 'success'); await refreshShell(); }
       catch (error) {
         candidate?.classList.remove('is-selected');
         previousSelected?.classList.add('is-selected');
         toast(error.message, 'danger');
-      } finally { setButtonBusy(event.currentTarget, false); }
+      } finally { setButtonBusy(eventButton(event), false); }
     }));
   };
   const recommendationRequests = new Map();
@@ -265,7 +266,7 @@ export function bindSoundDesign(host, { bundle, store, soundDesign = {}, refresh
       const previewLabel = row.dataset.soundTrack === 'bgm' ? '试听音乐' : '试听本镜';
       resultHost.innerHTML = `<small>系统推荐：${escapeHtml(item.name)} · ${escapeHtml(String(item.license || '').toUpperCase())}${result.fallback_used ? `（已按 ${escapeHtml(result.selected_query)} 扩展匹配）` : ''}</small>${soundPreviewMarkup(item.audio_url || '', Number(row.dataset.previewDuration || 4), previewLabel)}<button class="btn small" type="button" data-use-recommended-sound>采用这个声音</button>`;
       resultHost.querySelector('[data-use-recommended-sound]')?.addEventListener('click', async event => {
-        try { await importSound(row, event.currentTarget); toast('声音已绑定并写入许可账本。', 'success'); await refreshShell(); } catch (error) { toast(error.message, 'danger'); } finally { setButtonBusy(event.currentTarget, false); }
+        try { await importSound(row, event.currentTarget); toast('声音已绑定并写入许可账本。', 'success'); await refreshShell(); } catch (error) { toast(error.message, 'danger'); } finally { setButtonBusy(eventButton(event), false); }
       });
     }).catch(error => { resultHost.innerHTML = `<small>${escapeHtml(error.message || '声音库暂时不可用，可稍后重试或上传自己的声音。')}</small>`; });
   });
@@ -320,15 +321,15 @@ export function bindSoundDesign(host, { bundle, store, soundDesign = {}, refresh
     if (!query) return toast('请先输入要查找的环境声或音效。', 'warning');
     const resultsHost = host.querySelector('[data-sound-library-results]');
     try {
-      setButtonBusy(event.currentTarget, true, '搜索中…');
+      setButtonBusy(eventButton(event), true, '搜索中…');
       const result = await request(`/api/story-ad/projects/${encodeURIComponent(bundle.project.id)}/sound-library?q=${encodeURIComponent(query)}`);
       const selectedShot = Number(host.querySelector('[data-sound-library-shot]')?.value || 1);
       const selectedRow = host.querySelector(`[data-sound-shot="${selectedShot}"]:not([data-sound-track="bgm"])`);
       const previewDuration = Number(selectedRow?.dataset.previewDuration || 4);
       resultsHost.innerHTML = (result.results || []).length ? result.results.map((item, index) => `<article class="${index === 0 ? 'is-recommended' : ''}"><div><b>${escapeHtml(item.name)}${index === 0 ? '<span class="sound-recommended-tag">系统推荐</span>' : ''}</b><small>${escapeHtml(item.creator)} · ${escapeHtml(String(item.license || '').toUpperCase())}</small></div>${soundPreviewMarkup(item.audio_url || '', previewDuration, '试听本镜')}<button class="btn small" type="button" data-import-openverse="${escapeHtml(item.id)}">采用这个声音</button></article>`).join('') : `<p>${escapeHtml(result.license_note || '没有找到满足许可规则的结果。')}</p>`;
       resultsHost.querySelectorAll('[data-import-openverse]').forEach(button => button.addEventListener('click', async importEvent => {
-        try { setButtonBusy(importEvent.currentTarget, true, '采用中…'); await request(`/api/story-ad/projects/${encodeURIComponent(bundle.project.id)}/sound-assets/openverse`, { method: 'POST', body: { openverse_id: importEvent.currentTarget.dataset.importOpenverse, shot_index: Number(host.querySelector('[data-sound-library-shot]')?.value || 1), track_type: host.querySelector('[data-sound-library-type]')?.value || 'sfx' } }); toast('声音已核验许可并绑定。', 'success'); await refreshShell(); } catch (error) { toast(error.message, 'danger'); } finally { setButtonBusy(importEvent.currentTarget, false); }
+        try { setButtonBusy(eventButton(importEvent), true, '采用中…'); await request(`/api/story-ad/projects/${encodeURIComponent(bundle.project.id)}/sound-assets/openverse`, { method: 'POST', body: { openverse_id: importEvent.currentTarget.dataset.importOpenverse, shot_index: Number(host.querySelector('[data-sound-library-shot]')?.value || 1), track_type: host.querySelector('[data-sound-library-type]')?.value || 'sfx' } }); toast('声音已核验许可并绑定。', 'success'); await refreshShell(); } catch (error) { toast(error.message, 'danger'); } finally { setButtonBusy(eventButton(importEvent), false); }
       }));
-    } catch (error) { toast(error.message, 'danger'); } finally { setButtonBusy(event.currentTarget, false); }
+    } catch (error) { toast(error.message, 'danger'); } finally { setButtonBusy(eventButton(event), false); }
   });
 }

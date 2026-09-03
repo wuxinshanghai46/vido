@@ -1,3 +1,4 @@
+const nativeAudio = require('./nativeAudioWorkflowService');
 const fs = require('fs'), path = require('path');
 const pipeline = require('../pipelineModelService');
 const { loadSettings } = require('../settingsService');
@@ -49,7 +50,7 @@ function explicitShotSpeechMode(shot = {}, contract = {}) {
   const raw = String(
     shot.speech_mode || shot.speechMode || shot.on_screen_speech_mode || contract.speech_mode || contract.speechMode || '',
   ).trim().toLowerCase().replace(/[\s-]+/g, '_');
-  if (['dialogue', 'on_camera', 'on_camera_dialogue', 'visible_dialogue', 'speaking', 'lip_sync'].includes(raw)) return 'on_camera_dialogue';
+  if (['dialogue', 'on_camera', 'on_camera_dialogue', 'visible_dialogue', 'speaking', 'lip_sync', 'on_camera_introduction', 'presenter', 'talking_head', 'self_introduction'].includes(raw)) return 'on_camera_dialogue';
   if (['silent', 'mute', 'no_speech'].includes(raw)) return 'silent';
   return 'offscreen_voiceover';
 }
@@ -172,19 +173,9 @@ function isSmscrwSeedanceModel(model = {}) {
     && /^doubao-seedance-2(?:[-.]0)/i.test(String(model.model_id || ''));
 }
 
-function shotNeedsNativeAudio(shot = {}) {
-  return shot.sound_mode !== 'silent' && !!(
-    shot.sound_design
-    || shot.ambient_sound
-    || (Array.isArray(shot.sfx) && shot.sfx.length)
-    || shot.music_cue
-  );
-}
+function shotNeedsNativeAudio(shot = {}) { return nativeAudio.wantsSound(shot); }
 
-function expectedModelForShot(shot = {}, contract = {}, fallbackModel = {}) {
-  if (explicitShotSpeechMode(shot, contract) !== 'on_camera_dialogue') return fallbackModel;
-  return lipSync.preferredCandidate({ soundRequired: shotNeedsNativeAudio(shot) }) || {};
-}
+function expectedModelForShot(_shot = {}, _contract = {}, fallbackModel = {}) { return fallbackModel; }
 
 function clipRoute(clip = {}) {
   return String(clip.provider_used || clip.providerUsed || '').trim().toLowerCase();
@@ -412,40 +403,6 @@ function updateGenerationUnitStatus(taskId = '', index = 0, patch = {}, total = 
 
 /** 提交一个已经通过费用授权的供应商生成单元，不执行隐式模型回退。 */
 async function generateProviderClip({ taskId, shot, previousShot, keyframe, audio, contract, ctx, index, duration, options }) {
-  const authoredSpeechMode = explicitShotSpeechMode(shot, contract);
-  const lipSyncRequired = requiresLipSyncForAudio(shot, contract, audio);
-  const speechMode = authoredSpeechMode === 'on_camera_dialogue' && !lipSyncRequired ? 'offscreen_voiceover' : authoredSpeechMode;
-  if (lipSyncRequired) {
-    const imageUrl = absoluteAssetUrl(keyframe.image_url || keyframe.imageUrl || keyframe.url || '', options);
-    const driverAudio = lipSyncAudioSource(audio);
-    const audioPath = localAudioPath(driverAudio);
-    const audioUrl = absoluteAssetUrl(driverAudio, options);
-    if (!audioPath || !fs.existsSync(audioPath)) {
-      const mixed = Array.isArray(audio?.speech_units) && audio.speech_units.some(unit => unit?.kind === 'dialogue') && audio.speech_units.some(unit => unit?.kind === 'narration');
-      const error = new Error(mixed
-        ? `第 ${index + 1} 镜同时含对白和旁白，但缺少只驱动对白的口型音轨，请重新生成配音试听`
-        : `第 ${index + 1} 镜是出镜对白，但没有可用的真实配音音轨，已停止视频生成`);
-      error.code = mixed ? 'LIP_SYNC_DIALOGUE_TRACK_REQUIRED' : 'LIP_SYNC_AUDIO_REQUIRED'; error.retryable = false; throw error;
-    }
-    const audioDuration = await probeDuration(audioPath);
-    if (audioDuration > duration + 0.35) {
-      const error = new Error(`第 ${index + 1} 镜配音 ${audioDuration.toFixed(2)} 秒超过镜头 ${duration.toFixed(2)} 秒，请缩短台词或增加镜头时长`);
-      error.code = 'AUDIO_DURATION_EXCEEDS_SHOT'; error.retryable = false; throw error;
-    }
-    const filename = safeBase(`nsa_lipsync_${taskId || 'task'}_${String(index + 1).padStart(2, '0')}_${Date.now()}`);
-    const rawPath = path.join(VIDEO_DIR, `${filename}_raw.mp4`);
-    updateGenerationUnitStatus(taskId, index, { lifecycle: 'submitting', total_shots: Number(options._totalShots || 0), title: shot.title || `镜头 ${index + 1}`, speech_mode: speechMode, provider_status: 'lip_sync_submitting', error: '', error_code: '' }, Number(options._totalShots || 0), options);
-    const prompt = String(options._promptOverride || '').trim() || clipPrompt(shot, ctx, contract, previousShot, keyframe, options._repairInstructions?.[index] || '');
-    const startedAt = Date.now();
-    const generated = await lipSync.generate({ taskId, imageUrl, audioUrl, outputPath: rawPath, prompt, duration, aspectRatio: ctx.output_ratio || options.aspectRatio || '9:16', userId: ctx.user_id || '', soundRequired: shotNeedsNativeAudio(shot), onProgress: event => updateGenerationUnitStatus(taskId, index, { lifecycle: 'provider_running', provider_status: event.status || event.stage || 'lip_sync_running', provider_task_id: event.taskId || '', provider_elapsed_ms: Date.now() - startedAt }, Number(options._totalShots || 0), options) });
-    const normalizedPath = path.join(VIDEO_DIR, `${filename}_normalized.mp4`);
-    await normalizeProviderClip({ inputPath: generated.filePath, outputPath: normalizedPath, audioPath, preserveDrivenAudio: true, durationSec: duration, aspectRatio: ctx.output_ratio || options.aspectRatio || '9:16', resolution: options.video_resolution || options.videoResolution || ctx.video_resolution || '1080p', qualityTier: options.video_quality || options.videoQuality || ctx.video_quality || 'final' });
-    const providerTaskId = generated.taskId || generated.task_id || '';
-    const accounting = successfulProviderAccounting(providerTaskId, duration);
-    storage.saveModelCall({ task_id: taskId, stage: lipSync.STAGE, provider_id: generated.provider_id, model_id: generated.model_id, status: 'success', latency_ms: Date.now() - startedAt, ...accounting, generation_id: options._generationId || options.generation_id || '', shot_index: index });
-    updateGenerationUnitStatus(taskId, index, { lifecycle: 'generated', ...accounting, provider_id: generated.provider_id, model_id: generated.model_id, provider_task_id: providerTaskId, provider_status: 'lip_sync_succeeded', file_path: normalizedPath, file_exists: fs.existsSync(normalizedPath), video_url: publicVideoUrl(path.basename(normalizedPath)), lip_sync_applied: true }, Number(options._totalShots || 0), options);
-    return outputPayload(normalizedPath, { shot_index: index, index: index + 1, title: shot.title || `Shot ${index + 1}`, duration_sec: duration, provider_used: `${generated.provider_id}/${generated.model_id}`, ...accounting, image_source: imageUrl, motion_prompt: prompt, mode: 'audio_driven_lip_sync', speech_mode: speechMode, audio_source: audioUrl, audio_muxed: true, lip_sync_applied: true, lip_sync_audio_driven: true, lip_sync_provider_task_id: providerTaskId, normalized: true, attempts: generated.attempts || [] });
-  }
   const pinnedModel = options._pinnedVideoModel;
   if (!pinnedModel) {
     const error = new Error('当前没有可用且状态正常的真实视频模型，已立即停止本阶段。');
@@ -455,15 +412,6 @@ async function generateProviderClip({ taskId, shot, previousShot, keyframe, audi
   }
   const candidates = [pinnedModel];
   const nativeAudioRequested = shotNeedsNativeAudio(shot);
-  if (nativeAudioRequested) {
-    const audioModels = pipeline.pickAllEnabledWithDefault('new_story_ad.sound_generation');
-    const supported = audioModels.some(model => String(model.provider_id).toLowerCase() === String(pinnedModel.provider_id).toLowerCase()
-      && String(model.model_id).toLowerCase() === String(pinnedModel.model_id).toLowerCase());
-    if (!supported) {
-      const error = new Error(`模型调用管理中的视频模型 ${modelRoute(pinnedModel)} 未同时配置到 new_story_ad.sound_generation，不能把声音说明伪装成已实现音效`);
-      error.code = 'SOUND_GENERATION_MODEL_NOT_ALIGNED'; error.retryable = false; throw error;
-    }
-  }
   const imageUrl = options._boundaryFirstFrameUrl || absoluteAssetUrl(keyframe.image_url || keyframe.imageUrl || keyframe.url || '', options);
   if (!imageUrl) throw new Error(`第 ${index + 1} 镜缺少关键帧，不能提交图生视频`);
   const prompt = String(options._promptOverride || '').trim()
@@ -481,7 +429,7 @@ async function generateProviderClip({ taskId, shot, previousShot, keyframe, audi
   const sceneReferenceAssets = personReferenceAsset
     ? [...new Set((Array.isArray(options._sceneReferenceAssetUrls) ? options._sceneReferenceAssetUrls : []).filter(Boolean))].slice(0, Math.max(0, 3 - personReferenceAssets.length))
     : [];
-  const audioPath = localAudioPath(audio?.audio_url || audio?.audioUrl || audio?.url || '');
+  const audioPath = ''; // Native generation never overlays a prior TTS track.
   boundaryGeneration.assertProviderInput({ contract: options._boundaryRepairContract, providerRoute: modelRoute(pinnedModel), inputMode: options._boundaryRepairInputMode, firstFrameUrl: options._boundaryFirstFrameUrl, currentKeyframeAssetUrl: personReferenceAsset, previousTailAssetUrl: options._boundaryReferenceAssetUrl, referenceAssetUrls: sceneReferenceAssets });
   const audioDuration = await probeDuration(audioPath);
   if (audioDuration > duration + 0.35) {
@@ -581,6 +529,7 @@ async function generateProviderClip({ taskId, shot, previousShot, keyframe, audi
       await normalizeProviderClip({
         inputPath: generated.filePath,
         outputPath: normalizedPath,
+        requireSourceAudio: nativeAudioRequested,
         audioPath,
         durationSec: duration,
         aspectRatio: ctx.output_ratio || options.aspectRatio || '9:16',
@@ -624,6 +573,7 @@ async function generateProviderClip({ taskId, shot, previousShot, keyframe, audi
         audio_source: audioPath ? (audio.audio_url || audio.audioUrl || audio.url || '') : '',
         audio_muxed: !!audioPath,
         native_audio_generated: nativeAudioRequested,
+        audio_mode: nativeAudio.MODE,
         normalized: true,
         resumed_after_interruption: generated.resumed === true,
         attempts,
@@ -1058,7 +1008,7 @@ async function generateSceneBlockVideos({ taskId = '', shots = [], keyframes = [
             _sceneReferenceAssetUrls: managedBoundary
               ? [boundaryAsset.asset_url]
               : (keyframeReferenceOnly ? [] : [keyframeAsset?.asset_url, ...sceneAssets.map(asset => asset.asset_url)].filter(Boolean)),
-            _promptOverride: block.continuous ? sceneBlockService.generationPrompt(block, list, contracts, options._repairInstructions || {}) : '',
+            _promptOverride: block.continuous ? sceneBlockService.generationPrompt(block, list, contracts, options._repairInstructions || {}) + '\n' + (block.member_indexes || []).map(i => `镜头${i + 1}：${nativeAudio.prompt(list[i])}`).join('\n') : '',
             _inputModeOverride: boundaryContract
               ? (managedBoundary ? 'approved_keyframe_and_previous_tail_private_references' : 'previous_unit_tail_first_frame')
               : (keyframeFirstFrameOnly ? 'approved_keyframe_first_frame_only' : (keyframeReferenceOnly ? 'approved_keyframe_private_reference_only' : '')),

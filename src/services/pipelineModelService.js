@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Pipeline 模型路由服务
  *
  * 职责：维护「数字人/网剧/爆款复刻」每个环节使用哪些模型 + 优先级。
@@ -131,6 +131,7 @@ const PIPELINE_SCHEMA = {
     { id: 'new_story_ad.scene_vision', name: '场景视觉理解', type: 'vlm', desc: '读取场景视觉证据并形成结构化描述' },
     { id: 'new_story_ad.scene_consistency_qa', name: '场景一致性质检', type: 'vlm', desc: '检查场景资产与当前场景合同一致性' },
     { id: 'new_story_ad.scene_camera_qa', name: '场景机位质检', type: 'vlm', desc: '检查机位图是否属于同一物理空间' },
+    { id: 'new_story_ad.video_audio_qa', name: '视频声音与口型质检', type: 'vlm', desc: '核验实际音轨台词、句尾时长及出镜人物口型；证据不足不放行' },
     { id: 'new_story_ad.video_frame_qa', name: '视频帧质检', type: 'vlm', desc: '检查视频关键帧与镜头合同一致性' },
     { id: 'new_story_ad.cross_shot_visual_qa', name: '跨镜头连续性质检', type: 'vlm', desc: '检查相邻镜头人物、场景、动作和道具连续性' },
     { id: 'new_story_ad.scene_depth', name: '场景深度估计（可选6DoF）', type: 'image', desc: '仅在用户明确需要镜头平移或真实走位时估计深度，不用于3DoF原地环视' },
@@ -500,6 +501,7 @@ const STAGE_DEFAULTS = {
   'new_story_ad.product_keyframe_qa': NEW_STORY_AD_CONSISTENCY_VISION_DEFAULTS,
   'new_story_ad.scene_camera_qa': NEW_STORY_AD_CONSISTENCY_VISION_DEFAULTS,
   'new_story_ad.video_frame_qa': NEW_STORY_AD_CONSISTENCY_VISION_DEFAULTS,
+  'new_story_ad.video_audio_qa': [{ provider_id: 'webang-maas', model_id: 'gemini-2.5-pro', priority: 1, enabled: true }],
   'new_story_ad.cross_shot_visual_qa': NEW_STORY_AD_CONSISTENCY_VISION_DEFAULTS,
   'new_story_ad.person_sheet': NEW_STORY_AD_IMAGE_DEFAULTS,
   'new_story_ad.person_dossier_atlas': NEW_STORY_AD_IMAGE_DEFAULTS,

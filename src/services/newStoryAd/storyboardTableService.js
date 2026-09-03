@@ -30,7 +30,7 @@ function cleanSpeech(value = '', max = 90) {
 
 function normalizeSpeechMode(value = '') {
   const mode = String(value || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
-  if (['on_camera', 'on_camera_dialogue', 'visible_dialogue', 'speaking', 'lip_sync'].includes(mode)) return 'on_camera_dialogue';
+  if (['dialogue', 'on_camera', 'on_camera_dialogue', 'visible_dialogue', 'speaking', 'lip_sync', 'on_camera_introduction', 'presenter', 'talking_head', 'self_introduction'].includes(mode)) return 'on_camera_dialogue';
   if (['silent', 'mute', 'no_speech'].includes(mode)) return 'silent';
   return 'offscreen_voiceover';
 }
@@ -510,6 +510,7 @@ async function generateMissingStoryboardBeats(ctx, blueprint, beats, { taskId = 
     'Return exactly one shot for every supplied missing narrative coverage unit, in the same order, with index equal to beat_index.',
     'All user-visible text must be natural Simplified Chinese. Technical enum values and IDs stay unchanged.',
     'Do not invent a new person, product, industry, scene or plot. Use only the supplied context, blueprint and scene assets.',
+    'Native audiovisual timing: plan each spoken sentence at a natural pace, at most 4 Chinese characters or 2.3 English words per second, plus pauses and 0.5s tail. Split long passages into complete sentences across story beats before image generation; never cut a word or rush speech to fit. Single-shot video duration must fit within 15 seconds.',
     'Each shot must include a concrete visual, action, appropriate speech or explicit silence, purpose, visual_layers, lighting_mood, sound and continuity fields.',
     'For every shot, dynamically choose shot_size, camera_angle, lens_mm, depth_of_field, composition, subject_position and camera_movement from that beat. Never copy one camera template across unrelated beats.',
     'For every shot, write entry_frame_state, exit_frame_state, action_start, action_end and object_states as visible states, even for the first shot.',
@@ -517,7 +518,7 @@ async function generateMissingStoryboardBeats(ctx, blueprint, beats, { taskId = 
     'For every shot, write temporal_state with open-vocabulary entity_refs, relation_refs, state_before, state_after, intended_changes, invariants, evidence_requirements and continuity_links. Never choose values from an industry template.',
     'keyframe_notes must contain three explicit task-specific clauses: “本镜目的：…；必须出现：…；禁止出现：…”. Derive them from this user task; never use a fixed scene, person, product or industry.',
     'Never emit replacement characters, mojibake, placeholder text, or runs of question marks.',
-    'Default speech_mode to offscreen_voiceover so visible people do not speak. Use on_camera_dialogue only when the user explicitly requests a visible person to speak; never infer it from an industry, profession or the mere presence of a person.',
+    'Default speech_mode to offscreen_voiceover so visible people do not speak. Use on_camera_dialogue only when the story explicitly requests a visible person to speak, including an on-camera introduction or a presenter speaking to the camera; never infer it from an industry, profession or the mere presence of a person.',
     'If scene assets exist, use only their scene_id, scene_revision, camera_id, zone_ids and anchor_ids.',
     'When a cast profile has multiple look_profiles, every shot containing that person must set look_id to one declared look ID whose scene_ids include the selected scene_id, unless the story explicitly changes look inside that scene.',
   ].join('\n');
@@ -604,7 +605,7 @@ async function generateStoryboardTable(ctx, blueprint, { taskId = '', resumeShot
       'voiceover must be a natural short line that can be heard in the final video.',
       'The blueprint spoken_line and dialogue_function are approved story contracts. Copy spoken_line verbatim into voiceover and preserve dialogue_function; do not shorten it into a generic reaction or replace it with a new slogan.',
       'The heard lines across adjacent shots must retain the blueprint causal arc: goal/obstacle, discovery/proof, then decision/result. Do not move this meaning back into visuals only.',
-      'speech_mode defaults to offscreen_voiceover. Visible people must remain naturally non-speaking in this mode. Use on_camera_dialogue only when the user explicitly asks for a visible person to speak; never choose it from industry, occupation, scene type or person presence alone. Use silent only when no speech is intended.',
+      'speech_mode defaults to offscreen_voiceover. Visible people must remain naturally non-speaking in this mode. Use on_camera_dialogue only when the story explicitly asks for a visible person to speak, including an on-camera introduction or a presenter speaking to the camera; never choose it from industry, occupation, scene type or person presence alone. Use silent only when no speech is intended.',
       'voiceover and dialogue_lines.line are not subtitle fields. They must contain dialogue or narrator voice only, without labels such as "字幕:", "旁白:", "台词:", "解说:" or speaker-type tags.',
       'If Advanced production controls are enabled, obey them shot by shot: scene direction constrains location, product presentation controls product visibility and method, style direction controls visual tone, and negative requirements are forbidden.',
       'When product presentation is enabled, mark product/proof/material/brand layers in visual_layers whenever the shot is commercially suitable.',

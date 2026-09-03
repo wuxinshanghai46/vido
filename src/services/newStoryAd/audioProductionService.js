@@ -72,11 +72,12 @@ function current(taskId) {
     has_speech: hasSpeech,
     signature,
     approval,
-    approved: approval.signature === signature && approval.confirmed === true,
+    approved: plan.postproduction === true && approval.signature === signature && approval.confirmed === true,
   };
 }
 
 function savePlan(taskId, input = {}) {
+  require('./nativeAudioWorkflowService').assertPostproduction(taskId, storage);
   const state = current(taskId);
   const speakerAssignments = {};
   Object.entries(input.voice_assignments?.speakers || input.voiceAssignments?.speakers || {}).slice(0, 30).forEach(([speaker, id]) => {
@@ -86,7 +87,7 @@ function savePlan(taskId, input = {}) {
   const narrator = clean(input.voice_assignments?.narrator || input.voiceAssignments?.narrator || input.voice_id || input.voiceId || state.voice_id, 120);
   const includeVoiceover = state.has_speech;
   const nextPlan = {
-    schema_version: 1,
+    schema_version: 2, postproduction: true,
     include_voiceover: includeVoiceover,
     voice_id: narrator,
     voice_assignments: { narrator, speakers: speakerAssignments },
@@ -99,7 +100,7 @@ function savePlan(taskId, input = {}) {
   };
   storage.saveOutput(taskId, PLAN_KIND, nextPlan);
   storage.deleteOutput(taskId, OUTPUT_KIND);
-  storage.deleteOutput(taskId, 'final_video');
+  // Preserve the current movie until the requested edit passes rendering and QA.
   return current(taskId);
 }
 
@@ -109,6 +110,7 @@ function applyPlan(taskId, context = {}) {
 }
 
 function confirm(taskId, actor = {}) {
+  require('./nativeAudioWorkflowService').assertPostproduction(taskId, storage);
   const state = current(taskId);
   const speechUnits = state.speech.flatMap(row => row.units);
   if (state.include_voiceover && speechUnits.length) {
@@ -134,7 +136,7 @@ function confirm(taskId, actor = {}) {
 
 function assertApproved(taskId) {
   const state = current(taskId);
-  if (state.approved) return state;
+  if (state.approved && state.plan.postproduction === true) return state;
   throw Object.assign(new Error('请先试听并确认旁白/对白；背景音乐和场景音效可按剧情需要选用，声音发生变化后需要重新确认。'), {
     code: 'AUDIO_PRODUCTION_APPROVAL_REQUIRED', status: 409, retryable: false,
   });

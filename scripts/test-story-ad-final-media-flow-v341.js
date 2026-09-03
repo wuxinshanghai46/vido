@@ -64,6 +64,7 @@ assert(resolved.frames.every(frame => frame.source_type === 'confirmed_storyboar
 assert(resolved.frames.every(frame => frame.qa.status === 'human_confirmed_storyboard'));
 assert(storage.getOutput(taskId, 'keyframes') == null, '分镜适配不得写入或重复生成 keyframes');
 
+storage.saveOutput(taskId, 'final_video', { video_url: '/fixture-initial-final.mp4' });
 audioProduction.savePlan(taskId, { include_voiceover: false, subtitle: true, bgm_volume: 0.12 });
 assert.equal(audioProduction.current(taskId).include_voiceover, true, '有旁白或对白时不得通过旧参数切成无语音方案');
 assert.throws(() => audioProduction.confirm(taskId, { id: 'tester' }), error => error?.code === 'AUDIO_VOICE_REQUIRED', '剧情包含语音时必须先选择音色');
@@ -92,10 +93,10 @@ assert.match(routeSource, /LEGACY_KEYFRAME_GENERATION_DISABLED/);
 assert.doesNotMatch(finalView, /data-generate-keyframes/);
 assert.match(finalView, /已确认分镜 \/ 视频首帧/);
 assert.doesNotMatch(finalView, /data-save-timeline|data-trim-start/);
-assert.match(soundPage, /<h1>声音<\/h1>/);
+assert.match(soundPage, /view=edit/);
 assert.match(editView, /镜头时间线/);
-assert.match(soundPage, /确认声音并进入视频与合成/);
-assert.match(soundView, /navigate\(`\/story-ad\/projects/);
+assert.match(editView, /确认并应用声音修改/);
+assert.match(soundView, /apply_audio_edits: true/);
 assert.match(soundView, /data-speaker/);
 assert.match(soundView, /背景音乐/);
 assert.match(soundView, /场景音效均为可选/);

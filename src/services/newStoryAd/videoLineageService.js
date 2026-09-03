@@ -55,6 +55,7 @@ function buildShotLineage({
     product_contract_fingerprint: String(contract.product_lock?.product_fingerprint || ctx.product_contract?.product_fingerprint || ''),
     scene_contract_signature: contractCompilerSignature({ scene_lock: contract.scene_lock || {} }),
     speech_mode: String(speechMode || ''),
+    audio_mode: String(ctx.audio_mode || ''),
     motion_prompt_signature: revisionService.signature(String(motionPrompt || '')),
     audio_signature: revisionService.signature({
       url: cleanAssetIdentity(audio.audio_url || audio.audioUrl || audio.url || ''),

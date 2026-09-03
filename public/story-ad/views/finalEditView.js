@@ -25,7 +25,7 @@ function timelineItems(host) {
   }));
 }
 
-/** 第 8 步只在初版成片存在后挂载，编辑结果通过重新合成生成新成片。 */
+/** 第 7 步只在初版成片存在后挂载，编辑结果通过重新合成生成新成片。 */
 export async function mount(host, context) {
   const { bundle, store } = context;
   const generation = bundle?.generation || {};
@@ -39,10 +39,28 @@ export async function mount(host, context) {
   const poster = finalVideo.poster_url || finalVideo.thumbnail_url || '';
   const downloadUrl = `${videoUrl(finalVideo)}${videoUrl(finalVideo).includes('?') ? '&' : '?'}download=1`;
   host.innerHTML = `
-    <section class="view-head post-production-head"><div><span class="stage-kicker">第 8 步</span><h1>成片剪辑</h1><p>先观看已合成视频，再按镜头调整节奏、原声和转场。保存后重新合成，不会修改分镜或前序内容。</p></div><div class="view-actions"><a class="btn" href="${escapeHtml(downloadUrl)}" download="${escapeHtml(finalVideo.filename || 'vido-final.mp4')}">下载当前成片</a>${clips.length ? '<button class="btn primary" type="button" data-apply-edit>应用剪辑并重新合成</button>' : ''}</div></section>
-    <div class="post-stage-summary"><span class="is-complete"><b>✓</b><em>声音</em><small>已确认</small></span><span class="is-complete"><b>✓</b><em>视频与合成</em><small>初版成片已完成</small></span><span class="is-current"><b>3</b><em>成片剪辑</em><small>当前阶段</small></span></div>
+    <section class="view-head post-production-head"><div><span class="stage-kicker">第 7 步</span><h1>成片剪辑</h1><p>先观看已合成视频，再按镜头调整节奏、原声和转场。保存后重新合成，不会修改分镜或前序内容。</p></div><div class="view-actions"><a class="btn" href="${escapeHtml(downloadUrl)}" download="${escapeHtml(finalVideo.filename || 'vido-final.mp4')}">下载当前成片</a>${clips.length ? '<button class="btn primary" type="button" data-apply-edit>应用剪辑并重新合成</button>' : ''}</div></section>
+    <div class="post-stage-summary"><span class="is-complete"><b>✓</b><em>分镜</em><small>已确认</small></span><span class="is-complete"><b>✓</b><em>视频与合成</em><small>初版成片已完成</small></span><span class="is-current"><b>3</b><em>成片剪辑</em><small>当前阶段</small></span></div>
     <section class="card final-player"><div class="card-head"><div><h2>当前成片</h2><p>以当前版本为基准调整；重新合成成功后播放器会更新。</p></div></div><div class="final-media"><video class="final-video" src="${escapeHtml(videoUrl(finalVideo))}" poster="${escapeHtml(poster)}" controls preload="none" playsinline aria-label="当前成片">您的浏览器暂不支持视频播放。</video></div></section>
-    <section class="card generation-section edit-timeline-card"><div class="card-head"><div><h2>镜头时间线</h2><p>逐镜调整裁剪、速度、原声和连接下一镜的转场。</p></div>${clips.length ? '<button class="btn" type="button" data-save-timeline>仅保存剪辑方案</button>' : ''}</div><div class="card-body"><div class="edit-timeline-list">${clips.length ? clips.map((clip, index) => timelineRow(clip, index, timeline.items?.find(item => Number(item.shot_index) === Number(clip.shot_index || index + 1)) || timeline.items?.[index] || {})).join('') : '<div class="empty-inline">当前成片缺少可编辑的逐镜来源，仍可观看或下载，但不能重新剪辑。</div>'}</div></div></section>`;
+    <details class="card" data-audio-editor><summary>更改旁白、人物对白和背景音乐（可选）</summary><div data-audio-editor-host></div></details><section class="card generation-section edit-timeline-card"><div class="card-head"><div><h2>镜头时间线</h2><p>逐镜调整裁剪、速度、原声和连接下一镜的转场。</p></div>${clips.length ? '<button class="btn" type="button" data-save-timeline>仅保存剪辑方案</button>' : ''}</div><div class="card-body"><div class="edit-timeline-list">${clips.length ? clips.map((clip, index) => timelineRow(clip, index, timeline.items?.find(item => Number(item.shot_index) === Number(clip.shot_index || index + 1)) || timeline.items?.[index] || {})).join('') : '<div class="empty-inline">当前成片缺少可编辑的逐镜来源，仍可观看或下载，但不能重新剪辑。</div>'}</div></div></section>`;
+
+  const audioEditor = host.querySelector('[data-audio-editor]');
+  const audioEditorKey = `vido-audio-editor:${bundle.project.id}`;
+  audioEditor?.addEventListener('toggle', async () => {
+    try { sessionStorage.setItem(audioEditorKey, audioEditor.open ? '1' : '0'); } catch {}
+    if (!audioEditor.open || audioEditor.dataset.loaded) return;
+    audioEditor.dataset.loaded = 'loading';
+    const area = host.querySelector('[data-audio-editor-host]');
+    try {
+      const feature = await import('./finalSoundDesignView.js');
+      const soundDesign = await request(`/api/story-ad/projects/${encodeURIComponent(bundle.project.id)}/sound-design`);
+      area.innerHTML = feature.soundDesignMarkup(soundDesign) + '<p role="alert" data-audio-edit-feedback hidden></p><button class="btn primary" data-confirm-audio>确认并应用声音修改</button>';
+      feature.bindSoundDesign(area, { bundle, store, soundDesign, refreshShell: context.refreshShell, navigate: context.navigate });
+      audioEditor.dataset.loaded = 'true';
+    } catch (error) { delete audioEditor.dataset.loaded; area.textContent = error.message; }
+  });
+
+  try { if (sessionStorage.getItem(audioEditorKey) === '1') audioEditor.open = true; } catch {}
 
   const saveTimeline = async button => {
     setButtonBusy(button, true, '保存中…');

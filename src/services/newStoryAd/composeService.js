@@ -214,6 +214,7 @@ function buildVisualComposeUnits(clips = []) {
 async function muxTimelineVoiceTracks(videoPath = '', placements = [], outputPath = '', durationSec = 0, voiceVolume = 1, ensureAudio = false, preserveSourceAudio = true) {
   const duration = Math.max(0.2, Number(durationSec) || await videoAdapter.probeDuration(videoPath));
   const valid = placements.filter(item => item.audio_path && fs.existsSync(item.audio_path));
+  for (const item of valid) require('./audioTimelineIntegrityService').assertReplacementFits(await videoAdapter.probeDuration(item.audio_path), Math.min(Number(item.duration_sec || duration), duration - Number(item.offset_sec || 0)));
   if (!valid.length && !ensureAudio) return videoPath;
   const args = ['-y', '-i', videoPath];
   valid.forEach(item => args.push('-i', item.audio_path));
@@ -527,6 +528,7 @@ async function prepareTimelineClips(taskId = '', clips = [], edits = []) {
   for (let index = 0; index < clips.length; index += 1) {
     const clip = clips[index] || {};
     const edit = byIndex.get(index + 1) || {};
+    require('./audioTimelineIntegrityService').editedSpeech(clip, edit);
     if (!timelineEditActive(edit)) { prepared.push(clip); continue; }
     const input = localVideoPath(clip);
     if (!input) throw Object.assign(new Error(`第 ${index + 1} 镜剪辑源文件不可用`), { code: 'TIMELINE_CLIP_FILE_REQUIRED', status: 422 });
@@ -594,10 +596,12 @@ async function concatVideos({
   targetDurationSec = 0,
   soundTracks = [],
   timelineEdits = [],
+  replaceSourceAudio = false,
+  reviewFinalAudio = null,
 } = {}) {
   ensureDir(COMPOSE_DIR);
   const editedClips = await prepareTimelineClips(taskId, clips, timelineEdits);
-  const visualUnits = buildVisualComposeUnits(editedClips);
+  const visualUnits = buildVisualComposeUnits(editedClips.map(clip => clip.native_audio_qa ? { ...clip, scene_block_source_file: '' } : clip));
   const rawInputs = visualUnits.map(unit => unit.file_path);
   if (!rawInputs.length) throw new Error('最终合成至少需要一个已通过审核的本地视频镜头。');
   const tracks = Array.isArray(ttsAudio?.tracks) ? ttsAudio.tracks : (Array.isArray(ttsAudio) ? ttsAudio : []);
@@ -624,14 +628,15 @@ async function concatVideos({
     }).filter(item => item.audio_path);
     const voiceFilename = `${safeBase(`voice_${taskId || 'task'}_unit_${index + 1}_${Date.now()}`)}.mp4`;
     const voicedPath = path.join(COMPOSE_DIR, voiceFilename);
-    const preserveSourceAudio = !unit.clips.some(clip => clip?.lip_sync_applied === true && clip?.audio_muxed === true);
-    inputs.push(await muxTimelineVoiceTracks(unit.file_path, placements, voicedPath, duration, voiceVolume, anyVoiceTrack || authoredAudioTransitions, preserveSourceAudio));
+    const preserveSourceAudio = !replaceSourceAudio && !unit.clips.some(clip => clip?.lip_sync_applied === true && clip?.audio_muxed === true);
+    inputs.push(await muxTimelineVoiceTracks(unit.file_path, placements, voicedPath, duration, voiceVolume, replaceSourceAudio || anyVoiceTrack || authoredAudioTransitions, preserveSourceAudio));
     durations.push(duration);
   }
   const filename = `${safeBase(`nsa_final_${taskId || 'task'}_${Date.now()}`)}.mp4`;
   const out = path.join(COMPOSE_DIR, filename);
   const transitionClips = visualUnits.map(unit => ({ ...unit.clips[0], _first_shot_index: unit.first_index + 1 }));
   const transitionPlan = buildTransitionPlan(transitionClips, transitionRows, durations);
+  require('./audioTimelineIntegrityService').assertTransitionSpeech(clips, timelineEdits, transitionPlan, durations);
   const needsTransitionFilters = transitionPlan.some(row => (
     Number(row.overlap_sec || 0) > 0 || Number(row.audio_overlap_sec || 0) > 0
   ));
@@ -706,7 +711,7 @@ async function concatVideos({
   const technicalQa = await finalVideoQa.inspectFinalVideo({
     filePath: finalPath,
     expectedDurationSec,
-    requireAudio: voiceTrackCount > 0 || soundTrackCount > 0 || !!bgmPath || authoredAudioTransitions,
+    requireAudio: clips.some(clip => clip.native_audio_qa?.utterances?.length) || voiceTrackCount > 0 || soundTrackCount > 0 || !!bgmPath || authoredAudioTransitions,
     transitionPlan,
     inputDurations: durations,
   });
@@ -718,6 +723,7 @@ async function concatVideos({
     error.technical_qa = technicalQa;
     throw error;
   }
+  if (reviewFinalAudio) await reviewFinalAudio({ file_path: finalPath, durations, transitionPlan });
   return {
     filename,
     file_path: finalPath,

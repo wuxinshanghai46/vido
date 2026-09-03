@@ -1,8 +1,7 @@
-import { videoGenerationFeedbackMarkup, syncVideoGenerationControls } from './components/videoGenerationFeedback.js?v=20260903-production-v423';
-import { createProjectStore } from './store/projectStore.js?v=20260903-production-v423';
-import { bindHoverVideoPreviews, escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, syncInlineGenerationProgress, toast } from './components/ui.js?v=20260903-production-v423';
-import { assertCurrentRelease, startReleaseHeartbeat } from './api.js?v=20260903-production-v423';
-import { confirmDialog } from './components/dialog.js?v=20260903-production-v423';
+import { createProjectStore } from './store/projectStore.js?v=20260903-production-v422';
+import { bindHoverVideoPreviews, escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, syncInlineGenerationProgress, toast } from './components/ui.js?v=20260903-production-v422';
+import { assertCurrentRelease, startReleaseHeartbeat } from './api.js?v=20260903-production-v422';
+import { confirmDialog } from './components/dialog.js?v=20260903-production-v422';
 
 await assertCurrentRelease().then(() => startReleaseHeartbeat()).catch(error => {
   if (error?.code === 'CLIENT_BUILD_EXPIRED') throw error;
@@ -16,7 +15,7 @@ await assertCurrentRelease().then(() => startReleaseHeartbeat()).catch(error => 
 
 const app = document.querySelector('#storyAdApp');
 const store = createProjectStore();
-const VIEW_ORDER = ['brief', 'plot', 'assets', 'scene', 'storyboard', 'sound', 'compose', 'edit', 'workflow'];
+const VIEW_ORDER = ['brief', 'plot', 'assets', 'scene', 'storyboard', 'compose', 'edit', 'workflow'];
 const VIEW_META = {
   brief: ['1', '对话立项'],
   plot: ['2', '剧情与对白'],
@@ -24,20 +23,20 @@ const VIEW_META = {
   scene: ['4', '场景世界'],
   storyboard: ['5', '人物场景分镜'],
   sound: ['6', '声音'],
-  compose: ['7', '视频与合成'],
-  edit: ['8', '成片剪辑'],
+  compose: ['6', '视频与合成'],
+  edit: ['7', '成片剪辑'],
   workflow: ['⌘', '工作流画布'],
 };
 const VIEW_MODULES = {
-  brief: () => import('./views/briefView.js?v=20260903-production-v423'),
-  assets: () => import('./views/assetCenterView.js?v=20260903-production-v423'),
-  scene: () => import('./views/sceneWorldPage.js?v=20260903-production-v423'),
-  plot: () => import('./views/plotRoomView.js?v=20260903-production-v423'),
-  storyboard: () => import('./views/storyboardView.js?v=20260903-production-v423'),
-  sound: () => import('./views/finalSoundView.js?v=20260903-production-v423'),
-  compose: () => import('./views/finalView.js?v=20260903-production-v423'),
-  edit: () => import('./views/finalEditView.js?v=20260903-production-v423'),
-  workflow: () => import('./views/workflowView.js?v=20260903-production-v423'),
+  brief: () => import('./views/briefView.js?v=20260903-production-v422'),
+  assets: () => import('./views/assetCenterView.js?v=20260903-production-v422'),
+  scene: () => import('./views/sceneWorldPage.js?v=20260903-production-v422'),
+  plot: () => import('./views/plotRoomView.js?v=20260903-production-v422'),
+  storyboard: () => import('./views/storyboardView.js?v=20260903-production-v422'),
+  sound: () => import('./views/finalSoundView.js?v=20260903-production-v422'),
+  compose: () => import('./views/finalView.js?v=20260903-production-v422'),
+  edit: () => import('./views/finalEditView.js?v=20260903-production-v422'),
+  workflow: () => import('./views/workflowView.js?v=20260903-production-v422'),
 };
 const VIEW_SECTIONS = Object.freeze({
   brief: 'summary,reference',
@@ -76,7 +75,7 @@ function currentRoute() {
   const match = location.pathname.match(/^\/story-ad\/projects\/([^/]+)$/);
   const params = new URLSearchParams(location.search);
   const rawView = params.get('view');
-  const requestedView = rawView === 'flow' ? 'storyboard' : (rawView === 'final' ? 'sound' : rawView);
+  const requestedView = rawView === 'flow' ? 'storyboard' : (rawView === 'final' ? 'compose' : rawView === 'sound' ? 'edit' : rawView);
   const view = VIEW_ORDER.includes(requestedView) ? requestedView : 'brief';
   return {
     page: match ? 'project' : 'center',
@@ -241,7 +240,7 @@ function renderProjectShell(route) {
           <div class="side-metric"><b>${Number(counts.shots) || 0}</b><span>镜头</span></div>` : ''}
       </aside>
       <main class="workspace-main">
-        <div id="projectProgressHost" class="project-progress-host">${route.view === 'compose' ? videoGenerationFeedbackMarkup(bundle || {}, escapeHtml) : generationProgressPanel(bundle || {}, route.view)}</div>
+        <div id="projectProgressHost" class="project-progress-host">${generationProgressPanel(bundle || {}, route.view)}</div>
         <div id="viewHost" class="view-host"><div class="view-loading">正在加载工作区…</div></div>
       </main>
     </div>`;
@@ -279,7 +278,6 @@ async function mountView(route) {
     });
     if (typeof result === 'function') activeViewCleanup = result;
     syncControlSemantics(host);
-    syncVideoGenerationControls(store.state.bundle || {}, host);
     const disposeHoverPreviews = bindHoverVideoPreviews(host);
     const previousCleanup = activeViewCleanup;
     activeViewCleanup = () => { disposeHoverPreviews(); previousCleanup?.(); };
@@ -423,7 +421,7 @@ document.addEventListener('input', async ({ target }) => {
   else if (target.matches('[data-project-type-filter]')) centerQuery.taskType = target.value || 'all';
   else if (target.matches('[data-project-stage-filter]')) centerQuery.stage = target.value || 'all';
   else return;
-  const filters = await import('./projectCenterFilters.js?v=20260903-production-v423');
+  const filters = await import('./projectCenterFilters.js?v=20260903-production-v422');
   centerVisibleIds = filters.matchingProjectIds(store.state.projects.map(project => ({
     id: project.id, title: project.title, type: project.content_mode, stage: statusView(project).label,
   })), centerQuery);
@@ -437,9 +435,8 @@ window.addEventListener('beforeunload', () => {
 });
 store.subscribe(state => {
   const host = document.querySelector('#projectProgressHost');
-  if (host) host.innerHTML = currentRoute().view === 'compose' ? videoGenerationFeedbackMarkup(state.bundle || {}, escapeHtml) : generationProgressPanel(state.bundle || {}, currentRoute().view);
+  if (host) host.innerHTML = generationProgressPanel(state.bundle || {}, currentRoute().view);
   syncInlineGenerationProgress(state.bundle || {});
-  syncVideoGenerationControls(state.bundle || {});
   if (state.generationCompletionSeq > observedGenerationCompletionSeq && currentRoute().page === 'project') {
     window.setTimeout(() => mountView(currentRoute()).catch(showFatal), 0);
   }

@@ -20,7 +20,7 @@ function finalVideoPlayer(item = {}, poster = '') {
   return `<video class="final-video" src="${escapeHtml(url)}" poster="${escapeHtml(poster)}" controls preload="none" playsinline aria-label="初版成片">您的浏览器暂不支持视频播放。</video>`;
 }
 
-/** 第 7 步只负责逐镜视频生成与初版合成，不渲染任何剪辑控件。 */
+/** 第 6 步只负责逐镜视频生成与初版合成，不渲染任何剪辑控件。 */
 export async function mount(host, context) {
   const { bundle, store } = context;
   const generation = bundle?.generation || {};
@@ -37,11 +37,12 @@ export async function mount(host, context) {
   const clipTotal = Number(mediaCatalog.clips?.total || clips.length);
   const videoModelPicker = await loadGenerationModelPicker(bundle.project.id, 'new_story_ad.video', { label: '视频模型' });
   host.innerHTML = `
-    <section class="view-head post-production-head"><div><span class="stage-kicker">第 7 步</span><h1>视频与合成</h1><p>使用已确认分镜生成逐镜视频；全部镜头完成后合成为初版成片。本页不提供剪辑。</p></div><div class="view-actions">${!framesReady && !finalVideo ? `<button class="btn primary" type="button" data-back-storyboard>${storyboardAction}</button>` : ''}${framesReady && !finalVideo ? `${videoModelPicker.html}<button class="btn" type="button" data-generate-video>生成分镜视频</button>` : ''}${clips.length && !finalVideo ? '<button class="btn primary" type="button" data-compose>合成初版成片</button>' : ''}${finalVideo ? '<button class="btn primary" type="button" data-open-editor>进入成片剪辑</button>' : ''}</div></section>
-    <div class="post-stage-summary"><span class="is-complete"><b>✓</b><em>声音</em><small>已确认</small></span><span class="is-current"><b>2</b><em>视频与合成</em><small>${finalVideo ? '初版成片已完成' : `${clips.length}/${shots.length} 个镜头`}</small></span><span><b>3</b><em>成片剪辑</em><small>${finalVideo ? '现在可以进入' : '初版成片生成后出现'}</small></span></div>
+    <section class="view-head post-production-head"><div><span class="stage-kicker">第 6 步</span><h1>视频与合成</h1><p>使用已确认分镜生成逐镜视频；全部镜头完成后合成为初版成片。本页不提供剪辑。</p></div><div class="view-actions">${!framesReady && !finalVideo ? `<button class="btn primary" type="button" data-back-storyboard>${storyboardAction}</button>` : ''}${framesReady && !finalVideo ? `${videoModelPicker.html}<button class="btn" type="button" data-generate-video>生成分镜视频</button>` : ''}${clips.length && !finalVideo ? '<button class="btn primary" type="button" data-compose>合成初版成片</button>' : ''}${finalVideo ? '<button class="btn primary" type="button" data-open-editor>进入成片剪辑</button>' : ''}</div></section>
+    <div data-video-feedback-host></div>
+    <div class="post-stage-summary"><span class="is-complete"><b>✓</b><em>分镜</em><small>已确认</small></span><span class="is-current"><b>2</b><em>视频与合成</em><small>${finalVideo ? '初版成片已完成' : `${clips.length}/${shots.length} 个镜头`}</small></span><span><b>3</b><em>成片剪辑</em><small>${finalVideo ? '现在可以进入' : '初版成片生成后出现'}</small></span></div>
     ${finalVideo ? `<section class="card final-player"><div class="card-head"><div><h2>初版成片</h2><p>先完整观看，再进入独立剪辑页调整节奏和转场。</p></div></div><div class="final-media">${finalVideoPlayer(finalVideo, posterUrl)}</div></section>` : ''}
     <details class="card generation-section generation-details"><summary class="card-head"><div><h2>已确认分镜 / 视频首帧</h2><p>${approvedFrames.length}/${shots.length} · 直接进入图生视频，不重复生成图片</p></div><span class="details-chevron" aria-hidden="true">⌄</span></summary><div class="card-body">${approvedFrames.length ? `<div class="generation-grid">${approvedFrames.map((item, index) => mediaCard(item, index, '首帧')).join('')}</div>` : emptyState({ title: storyboardComplete ? '分镜待确认' : '分镜尚未完整', body: storyboardHint, action: storyboardAction, actionId: 'back-storyboard' })}</div></details>
-    <section class="card generation-section"><div class="card-head"><div><h2>分镜视频</h2><p>已完成 ${clips.length}/${clipTotal || shots.length}</p></div></div><div class="card-body">${clips.length ? `<div class="generation-grid">${clips.map((item, index) => mediaCard(item, index, '视频')).join('')}</div>${moreMediaButton(mediaCatalog.clips, 'clips', '继续加载视频片段')}` : `<div data-video-empty>${emptyState({ title: '还没有分镜视频', body: framesReady ? '声音已确认。选择视频模型后，点击生成分镜视频。' : (storyboardComplete ? storyboardHint : `还缺少 ${Math.max(0, shots.length - approvedFrames.length)} 张已确认首帧，请先返回人物场景分镜生成并确认。`), action: framesReady ? '' : storyboardAction, actionId: framesReady ? '' : 'back-storyboard' })}</div>`}</div></section>
+    <section class="card generation-section"><div class="card-head"><div><h2>分镜视频</h2><p>已完成 ${clips.length}/${clipTotal || shots.length}</p></div></div><div class="card-body">${clips.length ? `<div class="generation-grid">${clips.map((item, index) => mediaCard(item, index, '视频')).join('')}</div>${moreMediaButton(mediaCatalog.clips, 'clips', '继续加载视频片段')}` : `<div data-video-empty>${emptyState({ title: '还没有分镜视频', body: framesReady ? '选择视频模型后，生成包含剧情声音的分镜视频。' : (storyboardComplete ? storyboardHint : `还缺少 ${Math.max(0, shots.length - approvedFrames.length)} 张已确认首帧，请先返回人物场景分镜生成并确认。`), action: framesReady ? '' : storyboardAction, actionId: framesReady ? '' : 'back-storyboard' })}</div>`}</div></section>
     <div data-video-submit-feedback role="alert"></div>`;
 
   const selectedVideoModel = bindGenerationModelPicker(host, videoModelPicker);
@@ -72,4 +73,72 @@ export async function mount(host, context) {
       try { await store.refreshSections?.('summary'); } catch { /* Keep the submission result visible when status refresh is unavailable. */ }
     } finally { delete button.dataset.submitting; setButtonBusy(button, false); }
   });
+  return bindVideoGenerationFeedback(host, context, escapeHtml);
+}
+
+const videoStage = value => /^(video|video_repair|media|compose|final_video)(_|$)/.test(String(value || '').replace(/^new_story_ad\./, ''));
+const time = value => Date.parse(value || '') || 0;
+
+/** A processed/failed unit is never counted as a playable video. */
+export function videoGenerationFeedback(bundle = {}) {
+  const project = bundle.project || {}, generation = bundle.generation || {};
+  const progress = project.generation_progress || generation.progress || {};
+  const relevant = videoStage(progress.stage || project.active_stage || project.stage);
+  const total = bundle.storyboard?.shots?.length || 0;
+  const saved = Number(generation.media_catalog?.clips?.total ?? generation.clips?.length ?? 0);
+  const completed = Math.max(saved, relevant ? Number(progress.qa_passed || 0) : 0);
+  const active = relevant && (Boolean(project.active_generation_id) || ['queued', 'running', 'processing'].includes(project.status));
+  const submission = project.video_submission_failure;
+  const latestStart = Math.max(time(progress.started_at), time(project.generation_started_at), time(project.generation_queued_at));
+  const rejected = !active && submission && time(submission.finished_at) > latestStart;
+  const failed = !active && (rejected || (relevant && ['failed', 'blocked', 'error'].includes(project.status || progress.status)));
+  const stopped = !active && relevant && ['cancelled', 'stopped'].includes(project.status || progress.status);
+  const composing = /compose|final_video/.test(progress.stage || project.stage || '');
+  const final = generation.final_video?.video_url || generation.final_video?.videoUrl || project.final_video_url;
+  let status = 'idle', title = '尚未开始生成视频', message = '选择视频模型后，点击“生成分镜视频”。';
+  if (active) {
+    status = 'running'; title = composing ? '初版成片合成中' : (['queued'].includes(project.status) ? '视频任务已提交，等待生成' : '视频生成中');
+    message = '任务仍在处理中，完成后会自动更新结果，请勿重复提交。';
+  } else if (failed) {
+    status = 'failed'; title = composing ? '初版成片合成失败' : (completed ? '视频部分完成，本次生成失败' : '视频生成失败');
+    message = completed ? '已生成的视频已保留，本次任务已停止。' : '本次未生成成功的视频，任务已停止。';
+  } else if (stopped) {
+    status = 'stopped'; title = '视频生成已停止'; message = '已完成的视频已保留。';
+  } else if (final || (total > 0 && completed >= total)) {
+    status = 'succeeded'; title = final ? '初版成片合成成功' : '分镜视频生成成功'; message = final ? '成片已保存。' : '全部分镜视频已生成并保存。';
+  } else if (completed) {
+    status = 'partial'; title = '视频部分完成'; message = '已生成的视频已保存，其余镜头尚未完成。';
+  } else if (relevant && ['done', 'succeeded', 'completed'].includes(project.status || progress.status)) {
+    status = 'incomplete'; title = '视频生成未完成'; message = '任务已结束，但尚无成功的视频结果。';
+  }
+  const diagnostics = bundle.permissions?.can_view_errors === true && failed
+    ? (rejected ? submission.technical_diagnostics : project.technical_diagnostics) : null;
+  return { status, title, message, completed, total, active, diagnostics };
+}
+
+export function videoGenerationFeedbackMarkup(bundle, escapeHtml) {
+  const view = videoGenerationFeedback(bundle);
+  if (view.status === 'idle') return '';
+  const details = view.diagnostics?.error ? `<details data-authorized-error-details><summary>具体失败原因（授权账号可见）</summary><p>${escapeHtml(view.diagnostics.error)}</p><small>${escapeHtml(view.diagnostics.error_code || '')}</small></details>` : '';
+  return `<section class="project-generation-progress ${view.status === 'failed' ? 'is-failed' : ''}" data-video-feedback="${view.status}" role="${view.status === 'failed' ? 'alert' : 'status'}" aria-live="polite"><div class="project-progress-head"><div><b>${escapeHtml(view.title)}</b><span>视频成功 ${view.completed}/${view.total}</span></div></div><p>${escapeHtml(view.message)}</p>${details}</section>`;
+}
+
+export function syncVideoGenerationControls(bundle, scope = document) {
+  const view = videoGenerationFeedback(bundle);
+  if (view.status !== 'idle') scope.querySelectorAll?.('[data-video-submit-feedback]').forEach(node => { node.innerHTML = ''; });
+  scope.querySelectorAll?.('[data-video-empty]').forEach(node => { node.hidden = view.status !== 'idle'; });
+  scope.querySelectorAll?.('[data-generate-video], [data-compose]').forEach(button => { if (button.dataset.submitting !== 'true') button.disabled = view.active; });
+}
+
+export function bindVideoGenerationFeedback(host, { bundle, store }, escapeHtml) {
+  const taskId = bundle.project.id;
+  const render = state => {
+    const current = state?.bundle || bundle;
+    if (current.project?.id !== taskId) return;
+    const panel = host.querySelector('[data-video-feedback-host]');
+    if (panel) panel.innerHTML = videoGenerationFeedbackMarkup(current, escapeHtml);
+    syncVideoGenerationControls(current, host);
+  };
+  render(store.state);
+  return store.subscribe?.(render) || (() => {});
 }

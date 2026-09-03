@@ -187,10 +187,10 @@ async function testMissingCrossShotEvidenceIsBlocking() {
   assert.notStrictEqual(result.status, 'not_applicable');
 }
 
-function testP0CannotBeManuallyAccepted() {
+async function testP0CannotBeManuallyAccepted() {
   const taskId = 'competitor-p0-manual-accept';
   const clipPath = path.join(tempDir, 'existing-paid-output.mp4');
-  fs.writeFileSync(clipPath, 'mock existing paid media');
+  await require('../src/services/newStoryAd/videoAdapter').renderLocalClip({ outputPath: clipPath, durationSec: 3, aspectRatio: '16:9' });
   storage.createTask({ id: taskId, type: 'new_story_ad', user_id: 'test-user', request: {} });
   storage.saveOutput(taskId, 'storyboard_table', [{ index: 1, title: '当前任务镜头' }]);
   storage.saveOutput(taskId, 'video_clips', [{
@@ -209,11 +209,13 @@ function testP0CannotBeManuallyAccepted() {
   );
   assert.strictEqual(storage.getOutput(taskId, 'video_clips')[0].qa.pass, false, '被拒绝的 P0 人工接受不能改写已保存 QA');
 
+  const nativeQa = await require('../src/services/newStoryAd/nativeAudioQaService').review({ taskId, clip: { file_path: clipPath }, shot: { index: 1, title: '当前任务镜头' }, index: 0 });
   storage.saveOutput(taskId, 'video_clips', [{
     shot_index: 0,
     file_path: clipPath,
     video_url: '/existing-paid-output.mp4',
     lineage_fingerprint: 'current-lineage',
+    native_audio_qa: nativeQa,
     qa: { pass: false, failure_dimensions: ['composition'], problems: ['minor framing preference'] },
     error: '视频抽帧 QA 未通过',
     error_code: 'VIDEO_FRAME_QA_FAILED',
@@ -229,7 +231,7 @@ function testP0CannotBeManuallyAccepted() {
     await testMotionAwareBoundariesAndFallback();
     await testContinuousSourceVisualDeduplication();
     await testMissingCrossShotEvidenceIsBlocking();
-    testP0CannotBeManuallyAccepted();
+    await testP0CannotBeManuallyAccepted();
     console.log('new story ad competitor continuity gates: ok');
   } finally {
     fs.rmSync(tempDir, { recursive: true, force: true });

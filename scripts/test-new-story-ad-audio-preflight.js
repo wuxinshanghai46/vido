@@ -69,13 +69,12 @@ async function testDecoupledMediaPipeline() {
     taskId: 'media-task', generationId: 'generation-a', service, storage, ttsAdapter,
     options: { voice_id: 'voice-a', voice_name: '通用音色', include_voiceover: true, bgm_asset: { id: 'bgm-a' } },
   });
-  assert.deepStrictEqual(calls.map(item => item.stage), ['tts', 'video', 'compose']);
-  assert.strictEqual(calls[1].options.visual_only, true);
-  assert.strictEqual(calls[1].options.include_voiceover, false);
-  assert.strictEqual(calls[1].options.auto_tts, false);
-  assert.strictEqual(calls[2].options.voice_id, 'voice-a');
-  assert.strictEqual(calls[2].options.bgm_asset.id, 'bgm-a');
-  assert.strictEqual(storage.getOutput('media-task', 'context').voice_id, 'voice-a', '声音配置必须在付费视频前持久化');
+  assert.deepStrictEqual(calls.map(item => item.stage), ['video', 'compose']);
+  assert.strictEqual(calls[0].options.audio_mode, 'seedance_native_audio_v1');
+  assert.strictEqual(calls[0].options.include_voiceover, false);
+  assert.strictEqual(calls[0].options.auto_tts, false);
+  assert.strictEqual(calls[1].options.voice_id, '');
+  assert.strictEqual(calls[1].options.bgm_asset, null);
 
   calls.length = 0;
   await mediaPipeline.runMediaPipeline({
@@ -83,24 +82,17 @@ async function testDecoupledMediaPipeline() {
     options: { voice_id: 'voice-a', include_voiceover: true, bgm_asset: null },
   });
   assert.deepStrictEqual(calls.map(item => item.stage), ['video', 'compose'], '相同配音计划不得重复调用 TTS');
-  assert.strictEqual(storage.getOutput('media-task', 'context').bgm_asset, null);
+  assert.strictEqual(calls[1].options.bgm_asset, null);
 }
 
 /** 验证 TTS 失败发生在付费视频之前，且不会静默继续生成。 */
 async function testTtsFailureStopsVideo() {
-  const storage = fakeStorage({ task: { id: 'fail-task', request: {} }, outputs: { storyboard_table: [{ voiceover: '台词' }] } });
   let videoCalls = 0;
-  await assert.rejects(() => mediaPipeline.runMediaPipeline({
-    taskId: 'fail-task', storage,
-    ttsAdapter: { voiceoverPlanMatches: () => false },
-    service: {
-      generateTtsStage: async () => { throw new Error('TTS 不可用'); },
-      generateVideoStage: async () => { videoCalls += 1; },
-      composeStage: async () => {},
-    },
-    options: { voice_id: 'voice-a', include_voiceover: true },
-  }), /TTS 不可用/);
-  assert.strictEqual(videoCalls, 0, '配音失败后不得产生付费视频调用');
+  await mediaPipeline.runMediaPipeline({ taskId: 'fail-task', service: {
+    generateTtsStage: async () => { throw new Error('旧TTS不得执行'); },
+    generateVideoStage: async () => { videoCalls++; }, composeStage: async () => {},
+  }, options: { voice_id: 'old', include_voiceover: true } });
+  assert.strictEqual(videoCalls, 1, '独立TTS不可用不再阻塞原生声音视频');
 }
 
 /** 视频补审返回部分完成时必须停止流水线，不能继续封装并覆盖真实审核错误。 */

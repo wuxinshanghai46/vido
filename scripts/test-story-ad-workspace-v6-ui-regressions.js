@@ -920,7 +920,7 @@ assert.match(shot, /data-finish-shot-design/, '镜头设计必须提供明确完
 assert.match(shot, /shot_design_confirmed:\s*true/, '全部镜头通过校验后必须持久化完成状态');
 assert.match(shot, /const persistedShots = Array\.isArray\(saved\?\.shots\)/, '保存并继续必须校验服务端规范化后的分镜，不能继续使用保存前的旧对象');
 assert.match(shot, /hasEditableChange[\s\S]*return shots;/, '镜头没有可编辑字段变化时不得重建整份分镜与关键帧合同');
-assert.match(shot, /view=sound/, '镜头设计完成后必须先进入声音环节');
+assert.match(shot, /view=compose/, '镜头设计完成后直接进入带声音的视频生成');
 
 const finalView = read('public/story-ad/views/finalView.js');
 const finalEditView = read('public/story-ad/views/finalEditView.js');

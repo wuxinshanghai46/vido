@@ -102,7 +102,7 @@ function createVideoAdapterMediaRuntime({ videoDir }) {
     return { tier: 'final', preset: 'fast', crf: '18', audio_bitrate: '160k' };
   }
 
-  async function normalizeProviderClip({ inputPath, outputPath, audioPath = '', preserveDrivenAudio = false, durationSec = 4, startSec = 0, aspectRatio = '9:16', resolution = '1080p', qualityTier = 'final' } = {}) {
+  async function normalizeProviderClip({ inputPath, outputPath, audioPath = '', preserveDrivenAudio = false, requireSourceAudio = false, durationSec = 4, startSec = 0, aspectRatio = '9:16', resolution = '1080p', qualityTier = 'final' } = {}) {
     ensureDir(path.dirname(outputPath));
     const { width, height } = outputSize(aspectRatio, resolution);
     const profile = encodingProfile(qualityTier, resolution);
@@ -111,6 +111,8 @@ function createVideoAdapterMediaRuntime({ videoDir }) {
     if (Number(startSec) > 0) args.push('-ss', String(Math.max(0, Number(startSec) || 0)));
     args.push('-i', inputPath);
     const sourceHasAudio = await hasAudioStream(inputPath);
+    if (requireSourceAudio && await probeDuration(inputPath) > duration + 0.1) throw Object.assign(new Error('原生视频超过镜头时长，不能截断音轨后当作成功。'), { code: 'VIDEO_NATIVE_DURATION_MISMATCH', retryable: false });
+    if (requireSourceAudio && !sourceHasAudio) throw Object.assign(new Error('视频缺少模型生成的真实声音，不能补静音后当作成功。'), { code: 'VIDEO_NATIVE_AUDIO_MISSING', retryable: false });
     const overlayAudio = audioPath && !(preserveDrivenAudio && sourceHasAudio);
     if (overlayAudio) args.push('-i', audioPath);
     else if (!sourceHasAudio) args.push('-f', 'lavfi', '-i', 'anullsrc=channel_layout=stereo:sample_rate=44100');

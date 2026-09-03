@@ -31,7 +31,7 @@ function addInputBlocker(plan, validate) {
   try {
     validate();
   } catch (error) {
-    if (error?.code !== 'VIDEO_INPUT_QA_REQUIRED') throw error;
+    if (!['VIDEO_INPUT_QA_REQUIRED', 'VIDEO_AUDIO_QA_UNAVAILABLE', 'VIDEO_AUDIO_QA_TEST_FIXTURE_REQUIRED'].includes(error?.code)) throw error;
     plan.blockers.push({
       code: error.code,
       message: error.message,
