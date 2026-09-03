@@ -1,6 +1,7 @@
 'use strict';
 const assert = require('assert');
 const { createService } = require('../src/services/newStoryAd/subjectRecoveryPreflightService');
+const castLineage = require('../src/services/newStoryAd/assetPlanCastLineageService');
 function fixture(compatible = true, { failAfterWrite = false } = {}) {
   let task = { id: 'task-v81', content_revision: 4, request: { revisions: { person_semantic: 2 } } };
   let context = { cast_profiles: [{ id: 'person-1' }], revisions: { person_semantic: 2 } };
@@ -17,7 +18,7 @@ function fixture(compatible = true, { failAfterWrite = false } = {}) {
     requestedSubjectTargets: () => ({ selected: [{ kind: 'human', id: 'person-1', index: 0, key: 'human:person-1' }] }), personProfileResumeCompatible: (before, after) => before.id === after.id,
     personProfileResumeCompatibility: () => compatible ? { compatible: true, differences: [] } : { compatible: false, differences: [{ subject_id: 'person-1', display_name: '人物1', field: 'look_profiles.0.accessories', field_path: 'look_profiles.0.accessories', reason_code: 'positive_structure_changed', before: { length: 4, fingerprint: 'before' }, after: { length: 4, fingerprint: 'after' }, action: 'review_required' }] },
     resumablePartialCheckpoint: () => compatible ? checkpoint : null };
-  const assetPlan = { fingerprint: (_task, ctx) => ctx.asset_plan_generated_cast_fingerprint === canonicalFingerprint(ctx.cast_profiles) && ctx.revisions?.person_semantic === 1 ? 'ACTIVE' : 'CURRENT' };
+  const assetPlan = { fingerprint: (_task, ctx) => ctx.asset_plan_generated_cast_fingerprint === castLineage.fingerprint(ctx.cast_profiles) && ctx.revisions?.person_semantic === 1 ? 'ACTIVE' : 'CURRENT' };
   const publication = { activeRecord: () => ({ fingerprint: 'ACTIVE', plan: { fingerprint: 'ACTIVE', cast_profiles: [{ id: 'person-1' }] } }),
     eligibility: (_id, { fingerprint }) => {
       const eligible = fingerprint === 'ACTIVE' && !(failAfterWrite && contextWritten);

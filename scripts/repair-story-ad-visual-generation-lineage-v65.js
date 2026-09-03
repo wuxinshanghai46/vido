@@ -3,6 +3,7 @@
 
 const storage = require('../src/services/newStoryAd/storageService');
 const assetPlan = require('../src/services/newStoryAd/assetPlanService');
+const castLineage = require('../src/services/newStoryAd/assetPlanCastLineageService');
 const billingAuthorization = require('../src/services/newStoryAd/visualAssetBillingAuthorizationService');
 const taskStateAudit = require('../src/services/newStoryAd/taskStateAuditService');
 
@@ -54,7 +55,7 @@ function preview(taskId = '') {
   const base = {
     ...context,
     cast_profiles: repairedCast,
-    asset_plan_generated_cast_fingerprint: storage.canonicalFingerprint(repairedCast),
+    asset_plan_generated_cast_fingerprint: castLineage.fingerprint(repairedCast),
   };
   const currentRevision = Math.max(0, Number(context.revisions?.person || context.person_contract?.person_revision || 0) || 0);
   let repairedContext = null;

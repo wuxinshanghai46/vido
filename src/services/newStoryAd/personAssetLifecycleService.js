@@ -2,6 +2,7 @@ const storage = require('./storageService');
 const revisionService = require('./revisionService');
 const personIdentity = require('./personIdentityContractService');
 const subjectProfileText = require('./subjectProfileTextService');
+const castLineage = require('./assetPlanCastLineageService');
 
 function contractMatchesInput(contract = null, asset = null, spec = {}) {
   if (!contract || contract.status !== 'verified' || contract.cross_view_qa?.pass !== true || !asset) return false;
@@ -165,7 +166,7 @@ function commitGeneratedSubjectAssets(taskId, bundle = {}, spec = {}, options = 
       identityLock: { face: true, outfit: true, body: true },
     });
   });
-  const previousCastFingerprint = storage.canonicalFingerprint(previousProfiles);
+  const previousCastFingerprint = castLineage.fingerprint(previousProfiles);
   const generatedCastLineageIsCurrent = Boolean(previousCtx.asset_plan_generated_cast_fingerprint)
     && previousCtx.asset_plan_generated_cast_fingerprint === previousCastFingerprint;
   const next = {
@@ -186,7 +187,7 @@ function commitGeneratedSubjectAssets(taskId, bundle = {}, spec = {}, options = 
       person_semantic: changeScope === 'person_visual' ? semanticRevision : personRevision,
     },
     ...(changeScope === 'person_visual' && generatedCastLineageIsCurrent
-      ? { asset_plan_generated_cast_fingerprint: storage.canonicalFingerprint(castProfiles) }
+      ? { asset_plan_generated_cast_fingerprint: castLineage.fingerprint(castProfiles) }
       : {}),
   };
   const invalidated = revisionService.invalidateOutputs(storage, taskId, changeScope);

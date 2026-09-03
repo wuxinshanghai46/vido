@@ -80,7 +80,7 @@ function preview(taskId = '') {
       ethnicity: primary.ethnicity || context.person_spec?.ethnicity || '',
     },
   };
-  nextContext.asset_plan_generated_cast_fingerprint = storage.canonicalFingerprint(after);
+  nextContext.asset_plan_generated_cast_fingerprint = require('../src/services/newStoryAd/assetPlanCastLineageService').fingerprint(after);
   const nextFingerprint = assetPlan.fingerprint(task, nextContext);
   nextContext.asset_plan_fingerprint = nextFingerprint;
   const outputs = Object.fromEntries(PLAN_KINDS.map(kind => [kind, storage.getOutput(taskId, kind) || null]));

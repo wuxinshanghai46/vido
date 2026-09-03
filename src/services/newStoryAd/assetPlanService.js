@@ -22,6 +22,7 @@ const assetPlanPublication = require('./assetPlanPublicationService');
 const checkpointLineage = require('./assetPlanCheckpointLineageService');
 const sectionRecovery = require('./assetPlanSectionRecoveryContractService');
 const subjectProfileText = require('./subjectProfileTextService');
+const castLineage = require('./assetPlanCastLineageService');
 
 const ASSET_PLAN_PROJECTION_VERSION = 15;
 const ASSET_PLAN_DRAFT_CHECKPOINT_KIND = 'asset_plan_draft_checkpoint';
@@ -77,9 +78,7 @@ function planningPetProfiles(profiles = []) {
 }
 
 function fingerprint(task = {}, ctx = {}) {
-  const currentCastFingerprint = crypto.createHash('sha256')
-    .update(JSON.stringify(canonical(ctx.cast_profiles || [])))
-    .digest('hex');
+  const currentCastFingerprint = castLineage.fingerprint(ctx.cast_profiles || []);
   const castProfiles = currentCastFingerprint === ctx.asset_plan_generated_cast_fingerprint
     ? []
     : ctx.cast_profiles;
@@ -674,7 +673,7 @@ function normalizePlan(source = {}, ctx = {}, options = {}) {
     ? (source.cast_profiles || source.castProfiles).slice(0, 12)
     : (ctx.cast_profiles || []);
   const existingProfiles = Array.isArray(ctx.cast_profiles) ? ctx.cast_profiles : [];
-  const currentCastFingerprint = crypto.createHash('sha256').update(JSON.stringify(canonical(existingProfiles))).digest('hex');
+  const currentCastFingerprint = castLineage.fingerprint(existingProfiles);
   const existingProfilesArePlannerOutput = Boolean(ctx.asset_plan_generated_cast_fingerprint)
     && currentCastFingerprint === ctx.asset_plan_generated_cast_fingerprint;
   const normalizedCastProfiles = castProfiles.map((profile, index) => {
@@ -1649,9 +1648,7 @@ function attachFixedPropsToScenes(plan = {}) {
 function persist(taskId, ctx, rawPlan, meta, scope = 'all') {
   const plan = attachFixedPropsToScenes(normalizePlan(rawPlan, ctx, { allowPartialScene: scope === 'person' }));
   const props = propDrafts(plan, ctx.prop_assets);
-  const castFingerprint = crypto.createHash('sha256')
-    .update(JSON.stringify(canonical(plan.cast_profiles || [])))
-    .digest('hex');
+  const castFingerprint = castLineage.fingerprint(plan.cast_profiles || []);
   const primaryCast = plan.cast_profiles[0] || {};
   const personCounts = personCountContract.contract({
     ...ctx,

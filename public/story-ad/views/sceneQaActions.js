@@ -5,7 +5,7 @@ export function sceneActionErrorMessage(error = {}) {
     return '项目内容已经更新，请重新确认人物和场景方案后再继续；已有素材不会被删除，本次没有提交新的模型调用。';
   }
   if (/bundle_mismatch|person_plan_stale|scene_plan_stale/i.test(raw)) {
-    return '当前项目仍使用旧版人物或场景方案，请先同步当前版本方案；已有素材不会被删除，本次没有提交新的模型调用。';
+    return '人物与场景方案的校验状态尚未同步，请刷新任务状态；已有素材不会被删除，本次没有提交新的模型调用。';
   }
   if (code === 'GENERATION_ACTIVE_PLAN_REQUIRED' || /Active Plan|active_plan/i.test(raw)) {
     return '请先完成当前项目的人物和场景方案确认；本次没有提交新的模型调用。';

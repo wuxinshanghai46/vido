@@ -7,6 +7,7 @@ const publicationDefault = require('./assetPlanPublicationService');
 const subjectAssetsDefault = require('./subjectAssetBundleService');
 const taskStateAuditDefault = require('./taskStateAuditService');
 const authorityProofDefault = require('./subjectProfileAuthorityProofService');
+const castLineage = require('./assetPlanCastLineageService');
 
 function text(value = '') { return String(value ?? '').trim(); }
 function rows(value) { return Array.isArray(value) ? value : []; }
@@ -62,7 +63,7 @@ function sealedAuthoritySnapshot(storage, taskId, revision, activeCast, subjectA
 
 function candidateContext(task, context, activeFingerprint, assetPlan, storage) {
   const cast = rows(context.cast_profiles);
-  const base = { ...context, asset_plan_generated_cast_fingerprint: storage.canonicalFingerprint(cast) };
+  const base = { ...context, asset_plan_generated_cast_fingerprint: castLineage.fingerprint(cast) };
   const current = Math.max(0, Number(context.revisions?.person_semantic ?? context.revisions?.person ?? 0) || 0);
   for (let revision = current; revision >= 0; revision -= 1) {
     const candidate = { ...base, revisions: { ...(base.revisions || {}), person_semantic: revision } };

@@ -193,7 +193,7 @@ function errorMessage(data, status) {
     return '项目内容已经更新，当前人物和场景方案需要重新确认后才能继续生成；已有素材不会被删除，本次没有提交新的模型调用。';
   }
   if (/bundle_mismatch|person_plan_stale|scene_plan_stale/i.test(raw)) {
-    return '当前项目使用的是旧版人物或场景方案，系统已停止生成以保护已有素材。请先同步当前版本方案后再继续；本次没有提交新的模型调用。';
+    return '人物与场景方案的校验状态尚未同步，已暂停生成并保留已有素材。请刷新任务状态后继续；本次没有提交新的模型调用。';
   }
   if (code === 'GENERATION_ACTIVE_PLAN_REQUIRED' || /Active Plan|active_plan/i.test(raw)) {
     return '当前项目还没有可用于生成的最新人物和场景方案，请先完成方案确认；本次没有提交新的模型调用。';

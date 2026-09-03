@@ -48,7 +48,8 @@ async function main() {
 
   const publicError = loadApiErrorMessage();
   const activePlan = publicError({ error: '当前任务没有可用于生成的本版本 Active Plan: active_plan_bundle_mismatch, scene_plan_stale', code: 'GENERATION_ACTIVE_PLAN_REQUIRED' }, 409);
-  assert.match(activePlan, /旧版人物或场景方案/);
+  assert.match(activePlan, /校验状态尚未同步/);
+  assert.doesNotMatch(activePlan, /旧版人物|旧版场景/);
   assert.match(activePlan, /已有素材/);
   assert.match(activePlan, /没有提交新的模型调用/);
   assert.doesNotMatch(activePlan, /Active Plan|active_plan|scene_plan_stale/);
