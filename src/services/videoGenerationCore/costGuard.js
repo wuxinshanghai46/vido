@@ -1,9 +1,8 @@
 const tokenTracker = require('../tokenTracker');
 const domain = require('./domainContract');
-const { VideoGenerationError } = require('./chineseError');
 const pricingCatalog = require('./pricingCatalog');
 
-const COST_POLICY_VERSION = 'video-cost-authorization-v1';
+const COST_POLICY_VERSION = 'video-cost-estimate-v2';
 
 /** 只按供应商和模型的精确路由查价，禁止同名模型跨渠道串价。 */
 function findVideoPrice(providerId = '', modelId = '') {
@@ -53,7 +52,7 @@ function buildCostPlan({ executionPlan = {}, modelId = '', providerId = '', opti
       edit_shot_indexes: unit.edit_shot_indexes,
       mode: unit.mode,
       billable_seconds: seconds,
-      estimated_cost_rmb: Number(estimatedRmb.toFixed(2)),
+      estimated_cost_rmb: price.known ? Number(estimatedRmb.toFixed(2)) : null,
       automatic_retry_limit: 0,
       complexity_level: unit.complexity_level,
       requires_manual_review: unit.requires_manual_review === true,
@@ -82,45 +81,11 @@ function buildCostPlan({ executionPlan = {}, modelId = '', providerId = '', opti
     safety_factor: safetyFactor,
     paid_unit_count: units.length,
     automatic_paid_retry_count: 0,
-    estimated_cost_rmb: Number(estimatedRmb.toFixed(2)),
-    maximum_cost_rmb: Number((estimatedRmb * safetyFactor).toFixed(2)),
+    estimated_cost_rmb: allPricesKnown ? Number(estimatedRmb.toFixed(2)) : null,
+    maximum_cost_rmb: allPricesKnown ? Number((estimatedRmb * safetyFactor).toFixed(2)) : null,
     units,
   };
   return { ...plan, fingerprint: domain.fingerprint(plan) };
-}
-
-/** 校验高复杂度镜头是否已经完成人工预演确认。 */
-function assertComplexityReview(executionPlan = {}, options = {}) {
-  const risky = (executionPlan.generation_units || []).filter(unit => unit.requires_manual_review);
-  if (!risky.length || options.complexity_review_confirmed === true || options.complexityReviewConfirmed === true) return;
-  throw new VideoGenerationError('VIDEO_COMPLEXITY_REVIEW_REQUIRED', '', {
-    status: 409,
-    retryable: false,
-    details: { generation_unit_ids: risky.map(unit => unit.id) },
-  });
-}
-
-/** 校验用户确认的成本指纹和人民币上限，任何变化都要求重新确认。 */
-function assertCostAuthorization(costPlan = {}, options = {}) {
-  if (!Number(costPlan.paid_unit_count || 0)) return { authorized: true, zero_cost: true };
-  if (!costPlan.price_known) {
-    throw new VideoGenerationError('VIDEO_COST_PRICE_UNKNOWN', '', { status: 409, retryable: false, details: costPlan });
-  }
-  const suppliedFingerprint = domain.text(options.cost_plan_fingerprint || options.costPlanFingerprint);
-  const confirmedLimit = Number(options.confirmed_cost_limit_rmb ?? options.confirmedCostLimitRmb);
-  if (!suppliedFingerprint || suppliedFingerprint !== costPlan.fingerprint || !Number.isFinite(confirmedLimit)) {
-    throw new VideoGenerationError('VIDEO_COST_CONFIRMATION_REQUIRED', '', { status: 409, retryable: false, details: costPlan });
-  }
-  if (confirmedLimit + 0.001 < Number(costPlan.maximum_cost_rmb || 0)) {
-    throw new VideoGenerationError('VIDEO_COST_LIMIT_EXCEEDED', '', { status: 409, retryable: false, details: costPlan });
-  }
-  return {
-    authorized: true,
-    zero_cost: false,
-    fingerprint: costPlan.fingerprint,
-    confirmed_cost_limit_rmb: Number(confirmedLimit.toFixed(2)),
-    maximum_cost_rmb: Number(costPlan.maximum_cost_rmb || 0),
-  };
 }
 
 /** 返回前端可展示的成本方案，隐藏不需要的内部对象。 */
@@ -140,8 +105,8 @@ function publicCostPlan(plan = {}) {
     usd_cny_rate: plan.usd_cny_rate == null ? null : Number(plan.usd_cny_rate || 0),
     paid_unit_count: Number(plan.paid_unit_count || 0),
     automatic_paid_retry_count: 0,
-    estimated_cost_rmb: Number(plan.estimated_cost_rmb || 0),
-    maximum_cost_rmb: Number(plan.maximum_cost_rmb || 0),
+    estimated_cost_rmb: plan.price_known ? Number(plan.estimated_cost_rmb || 0) : null,
+    maximum_cost_rmb: plan.price_known ? Number(plan.maximum_cost_rmb || 0) : null,
     units: Array.isArray(plan.units) ? plan.units : [],
   };
 }
@@ -152,8 +117,6 @@ module.exports = {
   cnyRate,
   billableSeconds,
   buildCostPlan,
-  assertComplexityReview,
-  assertCostAuthorization,
   publicCostPlan,
   pricingCatalog,
 };

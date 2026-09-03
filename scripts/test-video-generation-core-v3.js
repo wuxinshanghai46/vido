@@ -100,11 +100,8 @@ function run() {
   assert.strictEqual(costPlan.maximum_cost_rmb, 11.5);
   assert.strictEqual(costPlan.automatic_paid_retry_count, 0);
   assert(costPlan.maximum_cost_rmb >= costPlan.estimated_cost_rmb);
-  const authorization = core.costGuard.assertCostAuthorization(costPlan, {
-    cost_plan_fingerprint: costPlan.fingerprint,
-    confirmed_cost_limit_rmb: costPlan.maximum_cost_rmb,
-  });
-  assert.strictEqual(authorization.authorized, true);
+  assert.strictEqual(core.costGuard.assertCostAuthorization, undefined, 'retired cost confirmation gate must not be callable');
+  assert.strictEqual(core.costGuard.assertComplexityReview, undefined, 'retired manual complexity confirmation must not be callable');
 
   const twentySecondCost = core.costGuard.buildCostPlan({
     executionPlan: {
@@ -125,10 +122,9 @@ function run() {
   assert.strictEqual(wrongProviderCost.price_known, false, 'another provider must not inherit Deyun pricing');
 
   const unknownCost = core.costGuard.buildCostPlan({ executionPlan: singleSingle, providerId: 'deyunai', modelId: 'unknown-paid-video-model' });
-  assert.throws(
-    () => core.costGuard.assertCostAuthorization(unknownCost, {}),
-    error => error.code === 'VIDEO_COST_PRICE_UNKNOWN' && /[\u3400-\u9fff]/.test(error.message),
-  );
+  assert.strictEqual(unknownCost.price_known, false);
+  assert.strictEqual(unknownCost.estimated_cost_rmb, null, 'unknown estimate cannot be reported as free');
+  assert.strictEqual(core.costGuard.publicCostPlan(unknownCost).maximum_cost_rmb, null);
 
   assert.strictEqual(core.planner.resolveBusinessProfile('ecommerce_ad').label, '电商广告');
   assert.strictEqual(core.planner.resolveBusinessProfile('unknown-industry').id, 'free_canvas');
