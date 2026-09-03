@@ -48,8 +48,13 @@ function apply(taskId, expectedFingerprint) {
       active: prepared.active, asset_plan: storage.getOutput(taskId, 'asset_plan'), candidate: storage.getOutput(taskId, publication.CANDIDATE_KIND) },
       source_fingerprint: prepared.sourceFingerprint, repaired_fingerprint: prepared.repairedFingerprint });
     storage.saveOutput(taskId, 'context', prepared.repairedContext);
-    const next = publication.publish(taskId, prepared.source, { fingerprint: prepared.repairedFingerprint,
-      source: 'proven_initial_scene_cast_lineage_repair', scope: 'all' });
+    // Use the established scoped promotion rules. These retain quarantined
+    // historical attempts but still reject active or unquarantined runs.
+    // Both domains become current atomically, without changing either plan.
+    const person = publication.publish(taskId, prepared.source, { fingerprint: prepared.repairedFingerprint,
+      source: 'proven_initial_scene_cast_lineage_repair', scope: 'person', person_plan_authority: true });
+    const next = publication.publish(taskId, person, { fingerprint: prepared.repairedFingerprint,
+      source: 'proven_initial_scene_cast_lineage_repair', scope: 'scene' });
     storage.saveOutput(taskId, 'asset_plan', next);
     storage.updateTask(taskId, { request: prepared.repairedRequest, required_bundle_id: next.release_envelope.producer_bundle_id }, { systemFinalization: true });
     const currentMedia = Object.fromEntries(MEDIA_KINDS.map(kind => [kind, storage.getOutput(taskId, kind)]));

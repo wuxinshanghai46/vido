@@ -56,13 +56,26 @@ function scenario(index) {
   const repair = require('../src/services/newStoryAd/assetPlanCastLineageRepairService');
   const planned = repair.plan(id);
   assert.throws(() => repair.apply(id, 'outdated'), /任务状态已改变/);
+  const priorRunId = `historical-attempt-${index}`;
+  storage.createGenerationRun({ id: priorRunId, work_id: id, domain: 'blueprint', state: 'billing_unknown',
+    billing_state: 'unknown', retry_blocked: false, automatic_retry_allowed: false });
+  assert.throws(() => repair.apply(id, planned.sourceFingerprint), error => error.code === 'AUTHORITY_PROMOTION_BLOCKED');
+  assert.equal(storage.getOutput(id, 'context').asset_plan_generated_cast_fingerprint, broken.asset_plan_generated_cast_fingerprint,
+    'blocked promotion must roll back the attempted lineage write');
+  storage.updateGenerationRun(priorRunId, { retry_blocked: true, execution_disabled: true });
   assert.equal(repair.apply(id, planned.sourceFingerprint).media_unchanged, true);
+  const historical = storage.getGenerationRun(priorRunId);
+  assert.equal(historical.execution_disabled, true);
+  assert.equal(historical.retry_blocked, true);
+  assert.equal(historical.automatic_retry_allowed, false);
+  assert.equal(historical.billing_state, 'unknown');
   assert.equal(lineage.fingerprint(storage.getOutput(id, 'tts_audio')), audio);
   assert.equal(publication.eligibility(id, { fingerprint: before }).eligible, true);
   assert.equal(storage.listModelCalls(id).length, 0);
 }
 Promise.all([0, 1].map(index => Promise.resolve().then(() => scenario(index))))
   .then(() => console.log(JSON.stringify({ passed: true, independent_tasks: 2, nested_qa_timestamps: true,
-    first_scene_permit: true, proven_record_repair: true, real_edit_rejected: true, model_calls: 0 })))
+    first_scene_permit: true, proven_record_repair: true, quarantined_history_preserved: true,
+    failed_promotion_rolled_back: true, real_edit_rejected: true, model_calls: 0 })))
   .catch(error => { console.error(error); process.exitCode = 1; })
   .finally(() => fs.rmSync(output, { recursive: true, force: true }));
