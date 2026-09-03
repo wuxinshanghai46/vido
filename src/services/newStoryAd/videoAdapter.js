@@ -411,7 +411,7 @@ async function generateProviderClip({ taskId, shot, previousShot, keyframe, audi
     throw error;
   }
   const candidates = [pinnedModel];
-  const nativeAudioRequested = shotNeedsNativeAudio(shot);
+  const nativeAudioRequested = options._nativeAudioRequired === true || shotNeedsNativeAudio(shot);
   const imageUrl = options._boundaryFirstFrameUrl || absoluteAssetUrl(keyframe.image_url || keyframe.imageUrl || keyframe.url || '', options);
   if (!imageUrl) throw new Error(`第 ${index + 1} 镜缺少关键帧，不能提交图生视频`);
   const prompt = String(options._promptOverride || '').trim()
@@ -1005,6 +1005,7 @@ async function generateSceneBlockVideos({ taskId = '', shots = [], keyframes = [
             _deyunaiPersonAsset: keyframeFirstFrameOnly ? null : (keyframeReferenceOnly ? keyframeAsset : deyunaiPersonAsset),
             _totalShots: list.length,
             _sceneBlock: block, _sceneBlockShotTitles: shotTitles,
+            _nativeAudioRequired: block.member_indexes.some(member => shotNeedsNativeAudio(list[member] || {})),
             _sceneReferenceAssetUrls: managedBoundary
               ? [boundaryAsset.asset_url]
               : (keyframeReferenceOnly ? [] : [keyframeAsset?.asset_url, ...sceneAssets.map(asset => asset.asset_url)].filter(Boolean)),

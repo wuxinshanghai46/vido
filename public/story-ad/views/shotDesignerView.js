@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260903-production-v423';
-import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260903-production-v423';
-import { bindMediaLightbox } from './mediaLightbox.js?v=20260903-production-v423';
+import { request } from '../api.js?v=20260903-production-v424';
+import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260903-production-v424';
+import { bindMediaLightbox } from './mediaLightbox.js?v=20260903-production-v424';
 
 const FIELD_GROUPS = [
   ['场景与机位', [
@@ -324,7 +324,7 @@ export async function mount(host, context) {
     try {
       await store.updateRequest({ shot_design_confirmed: true });
       toast('全部镜头设计已确认，可以进入声音制作。', 'success');
-      context.navigate(`/story-ad/projects/${encodeURIComponent(bundle.project.id)}?view=sound`);
+      context.navigate(`/story-ad/projects/${encodeURIComponent(bundle.project.id)}?view=compose`);
     } catch (error) {
       toast(error.message, 'danger');
       setButtonBusy(button, false);
