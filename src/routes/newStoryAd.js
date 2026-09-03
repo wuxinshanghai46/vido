@@ -74,7 +74,7 @@ function asyncRoute(fn) {
       if (videoRequest && req.method === 'POST') {
         try {
           taskForReq(req);
-          storage.saveStage(req.params.id, 'video_submission', { status: 'failed', error: failure.error, error_code: failure.code, request_id: requestId, provider_submitted: false });
+          storage.saveStage(req.params.id, 'video_submission', { status: 'failed', error: failure.error, diagnostics: { error_code: failure.code, request_id: requestId, provider_submitted: false } });
         } catch { /* Ownership rejection must not write another user's diagnostics. */ }
       }
       res.status(publicError.status || 500).json(videoRequest

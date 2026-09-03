@@ -41,8 +41,8 @@ export async function mount(host, context) {
     <div class="post-stage-summary"><span class="is-complete"><b>✓</b><em>声音</em><small>已确认</small></span><span class="is-current"><b>2</b><em>视频与合成</em><small>${finalVideo ? '初版成片已完成' : `${clips.length}/${shots.length} 个镜头`}</small></span><span><b>3</b><em>成片剪辑</em><small>${finalVideo ? '现在可以进入' : '初版成片生成后出现'}</small></span></div>
     ${finalVideo ? `<section class="card final-player"><div class="card-head"><div><h2>初版成片</h2><p>先完整观看，再进入独立剪辑页调整节奏和转场。</p></div></div><div class="final-media">${finalVideoPlayer(finalVideo, posterUrl)}</div></section>` : ''}
     <details class="card generation-section generation-details"><summary class="card-head"><div><h2>已确认分镜 / 视频首帧</h2><p>${approvedFrames.length}/${shots.length} · 直接进入图生视频，不重复生成图片</p></div><span class="details-chevron" aria-hidden="true">⌄</span></summary><div class="card-body">${approvedFrames.length ? `<div class="generation-grid">${approvedFrames.map((item, index) => mediaCard(item, index, '首帧')).join('')}</div>` : emptyState({ title: storyboardComplete ? '分镜待确认' : '分镜尚未完整', body: storyboardHint, action: storyboardAction, actionId: 'back-storyboard' })}</div></details>
-    <section class="card generation-section"><div class="card-head"><div><h2>分镜视频</h2><p>已完成 ${clips.length}/${clipTotal || shots.length}</p></div></div><div class="card-body">${clips.length ? `<div class="generation-grid">${clips.map((item, index) => mediaCard(item, index, '视频')).join('')}</div>${moreMediaButton(mediaCatalog.clips, 'clips', '继续加载视频片段')}` : emptyState({ title: '还没有分镜视频', body: framesReady ? '声音已确认。选择视频模型后，点击生成分镜视频。' : (storyboardComplete ? storyboardHint : `还缺少 ${Math.max(0, shots.length - approvedFrames.length)} 张已确认首帧，请先返回人物场景分镜生成并确认。`), action: framesReady ? '' : storyboardAction, actionId: framesReady ? '' : 'back-storyboard' })}</div></section>
-    ${bundle.permissions?.can_view_errors === true && bundle.project?.technical_diagnostics?.error ? `<details class="card"><summary>具体失败原因（授权账号可见）</summary><div class="card-body"><p>${escapeHtml(bundle.project.technical_diagnostics.error)}</p><small>${escapeHtml(bundle.project.technical_diagnostics.error_code || '')}</small></div></details>` : ''}`;
+    <section class="card generation-section"><div class="card-head"><div><h2>分镜视频</h2><p>已完成 ${clips.length}/${clipTotal || shots.length}</p></div></div><div class="card-body">${clips.length ? `<div class="generation-grid">${clips.map((item, index) => mediaCard(item, index, '视频')).join('')}</div>${moreMediaButton(mediaCatalog.clips, 'clips', '继续加载视频片段')}` : `<div data-video-empty>${emptyState({ title: '还没有分镜视频', body: framesReady ? '声音已确认。选择视频模型后，点击生成分镜视频。' : (storyboardComplete ? storyboardHint : `还缺少 ${Math.max(0, shots.length - approvedFrames.length)} 张已确认首帧，请先返回人物场景分镜生成并确认。`), action: framesReady ? '' : storyboardAction, actionId: framesReady ? '' : 'back-storyboard' })}</div>`}</div></section>
+    <div data-video-submit-feedback role="alert"></div>`;
 
   const selectedVideoModel = bindGenerationModelPicker(host, videoModelPicker);
   host.querySelectorAll('[data-back-storyboard], [data-empty-action="back-storyboard"]').forEach(button => button.addEventListener('click', () => {
@@ -59,10 +59,17 @@ export async function mount(host, context) {
       const videoModelRoute = selectedVideoModel();
       if (!videoModelRoute) return toast('请先选择视频模型。', 'warning');
       button.dataset.submitting = 'true';
+      const feedback = host.querySelector('[data-video-submit-feedback]');
+      if (feedback) feedback.innerHTML = '';
       setButtonBusy(button, true, '正在提交…', { elapsed: true });
       await store.startVideo({ video_model_route: videoModelRoute });
       toast('视频生成任务已提交。', 'success');
       await context.refreshShell();
-    } catch (error) { toast(bundle.permissions?.can_view_errors === true ? error.message : '视频生成失败。', 'danger'); } finally { delete button.dataset.submitting; setButtonBusy(button, false); }
+    } catch (error) {
+      toast('视频提交未完成。', 'danger');
+      const target = host.querySelector('[data-video-submit-feedback]');
+      if (target) target.innerHTML = `<section class="project-generation-progress is-failed"><b>视频提交未完成</b><p>请核对上方任务状态；若仍在生成中，请勿重复提交。</p>${bundle.permissions?.can_view_errors === true ? `<details><summary>具体失败原因（授权账号可见）</summary><p>${escapeHtml(error.message)}</p></details>` : ''}</section>`;
+      try { await store.refreshSections?.('summary'); } catch { /* Keep the submission result visible when status refresh is unavailable. */ }
+    } finally { delete button.dataset.submitting; setButtonBusy(button, false); }
   });
 }

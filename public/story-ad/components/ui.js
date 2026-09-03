@@ -1,5 +1,3 @@
-
-
 export function escapeHtml(value = '') {
   return String(value ?? '').replace(/[&<>"']/g, character => ({
     '&': '&amp;',
@@ -115,13 +113,13 @@ const GENERATION_STAGE_OWNING_VIEW = Object.freeze({
   keyframe: 'final',
   keyframes: 'final',
   keyframe_contract: 'final',
-  video: 'final',
-  video_repair: 'final',
-  media: 'final',
+  video: 'compose',
+  video_repair: 'compose',
+  media: 'compose',
   tts: 'sound',
-  compose: 'final',
-  final_video: 'final',
-  full: 'final',
+  compose: 'compose',
+  final_video: 'compose',
+  full: 'compose',
 });
 
 export function normalizeGenerationStage(stage = '') {

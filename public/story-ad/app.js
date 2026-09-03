@@ -1,3 +1,4 @@
+import { videoGenerationFeedbackMarkup, syncVideoGenerationControls } from './components/videoGenerationFeedback.js?v=20260903-production-v422';
 import { createProjectStore } from './store/projectStore.js?v=20260903-production-v422';
 import { bindHoverVideoPreviews, escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, syncInlineGenerationProgress, toast } from './components/ui.js?v=20260903-production-v422';
 import { assertCurrentRelease, startReleaseHeartbeat } from './api.js?v=20260903-production-v422';
@@ -240,7 +241,7 @@ function renderProjectShell(route) {
           <div class="side-metric"><b>${Number(counts.shots) || 0}</b><span>镜头</span></div>` : ''}
       </aside>
       <main class="workspace-main">
-        <div id="projectProgressHost" class="project-progress-host">${generationProgressPanel(bundle || {}, route.view)}</div>
+        <div id="projectProgressHost" class="project-progress-host">${route.view === 'compose' ? videoGenerationFeedbackMarkup(bundle || {}, escapeHtml) : generationProgressPanel(bundle || {}, route.view)}</div>
         <div id="viewHost" class="view-host"><div class="view-loading">正在加载工作区…</div></div>
       </main>
     </div>`;
@@ -278,6 +279,7 @@ async function mountView(route) {
     });
     if (typeof result === 'function') activeViewCleanup = result;
     syncControlSemantics(host);
+    syncVideoGenerationControls(store.state.bundle || {}, host);
     const disposeHoverPreviews = bindHoverVideoPreviews(host);
     const previousCleanup = activeViewCleanup;
     activeViewCleanup = () => { disposeHoverPreviews(); previousCleanup?.(); };
@@ -435,8 +437,9 @@ window.addEventListener('beforeunload', () => {
 });
 store.subscribe(state => {
   const host = document.querySelector('#projectProgressHost');
-  if (host) host.innerHTML = generationProgressPanel(state.bundle || {}, currentRoute().view);
+  if (host) host.innerHTML = currentRoute().view === 'compose' ? videoGenerationFeedbackMarkup(state.bundle || {}, escapeHtml) : generationProgressPanel(state.bundle || {}, currentRoute().view);
   syncInlineGenerationProgress(state.bundle || {});
+  syncVideoGenerationControls(state.bundle || {});
   if (state.generationCompletionSeq > observedGenerationCompletionSeq && currentRoute().page === 'project') {
     window.setTimeout(() => mountView(currentRoute()).catch(showFatal), 0);
   }

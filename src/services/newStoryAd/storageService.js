@@ -488,6 +488,8 @@ function saveStage(taskId, stage, data = {}, options = {}) {
   }));
 }
 
+function getStage(taskId, stage) { return getRow('stages', `${taskId}:${stage}`) || null; }
+
 function staleGenerationError(taskId, expectedRevision, actualRevision) {
   const error = new Error(`当前任务已更新为版本 ${actualRevision}，版本 ${expectedRevision} 的旧生成结果已作废，不会覆盖最新内容`);
   error.code = 'STALE_GENERATION_REVISION';
@@ -1094,6 +1096,7 @@ module.exports = {
   deleteTask,
   taskDeletionPayload,
   saveStage,
+  getStage,
   saveOutput,
   getOutput,
   deleteOutput,

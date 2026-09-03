@@ -67,7 +67,7 @@ async function uiTest() {
   resolve({}); await first;
   pending = new Promise((_resolve, r) => { reject = r; });
   const second = handler({ currentTarget: button }); reject(new Error('private pricing error')); await second;
-  assert.equal(messages.at(-1)[0], '视频生成失败。');
+  assert.equal(messages.at(-1)[0], '视频提交未完成。');
   route = ''; await handler({ currentTarget: button }); assert.equal(submitted, 2, 'no model selection cannot submit');
   console.log(JSON.stringify({ passed: true, checks: ['unpriced_route', 'no_manual_complexity_confirmation', 'readonly_prequeue', 'immutable_input_scope', 'price_update', 'capability_block', 'input_qa_block', 'billing_block', 'forgery_rejected', 'error_permissions', 'one_click_and_concurrent_clicks', 'long_task_id', 'generic_failure'], model_calls: 0 }));
 }

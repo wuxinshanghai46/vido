@@ -42,6 +42,7 @@ function publicProgress(progress = null, clean = normalize) {
     status: clean(progress.status, 40), stage: publicStage(progress.stage),
     mode: clean(progress.mode, 40),
     completed: Math.max(0, Number(progress.completed || 0) || 0), total: Math.max(0, Number(progress.total || 0) || 0),
+    generated: Math.max(0, Number(progress.generated || 0) || 0), qa_passed: Math.max(0, Number(progress.qa_passed || 0) || 0),
     processed: Math.max(0, Number(progress.processed || 0) || 0), failed: Math.max(0, Number(progress.failed || 0) || 0),
     percent: Math.max(0, Math.min(100, Number(progress.percent ?? progress.progress ?? 0) || 0)), phase: clean(progress.phase, 80),
     target_total: Math.max(0, Number(progress.target_total || 0) || 0),
@@ -64,7 +65,7 @@ function publicProgress(progress = null, clean = normalize) {
 
 function taskFailureMessage(task = {}, clean = normalize) {
   const stage = String(task.active_stage || task.stage || '').toLowerCase();
-  if (task.error && (['video', 'media'].includes(stage) || /^VIDEO_/.test(task.error_code || ''))) return '视频生成失败。';
+  if (task.error && (/^(?:video|media|compose)(?:_|$)/.test(stage) || /^VIDEO_/.test(task.error_code || ''))) return '视频生成失败。';
   return publicFailureMessage(task.error, clean);
 }
 
@@ -89,4 +90,9 @@ function publicTask(task = {}, { isAdmin = false } = {}) {
   return safe;
 }
 
-module.exports = { taskFailureMessage, project, publicErrorCode, publicFailureMessage, publicProgress, publicStage, publicTask, withoutSupportId };
+function submissionFailure(record, canViewErrors = false) {
+  if (!record?.finished_at) return null;
+  return { finished_at: record.finished_at, error: '视频生成失败。', ...(canViewErrors ? { technical_diagnostics: { error: normalize(record.error, 1200), error_code: normalize(record.diagnostics?.error_code || record.error_code, 100) } } : {}) };
+}
+
+module.exports = { submissionFailure, taskFailureMessage, project, publicErrorCode, publicFailureMessage, publicProgress, publicStage, publicTask, withoutSupportId };
