@@ -52,4 +52,30 @@ function saveBatchProgress(taskId, patch = {}) {
   return next;
 }
 
-module.exports = { SKETCH_BATCH_OUTPUT, batchProgress, saveBatchProgress };
+function getSketchBatch(taskId, activeSketchBatches) {
+  const task = storage.getTask(taskId);
+  if (!task) {
+    const error = new Error('项目不存在');
+    error.status = 404;
+    error.code = 'TASK_NOT_FOUND';
+    throw error;
+  }
+  let progress = batchProgress(taskId);
+  const active = Boolean(progress && ['queued', 'running'].includes(String(progress.status || '')) && activeSketchBatches.has(taskId));
+  if (progress && ['queued', 'running'].includes(String(progress.status || '')) && !active) {
+    progress = saveBatchProgress(taskId, {
+      status: 'failed',
+      finished_at: new Date().toISOString(),
+      error: '分镜图批次进程已中断。已完成图片已经保留，重新提交只会补生成缺失镜头。',
+      error_code: 'SKETCH_BATCH_INTERRUPTED',
+      message: `分镜图批次已中断；已处理 ${Number(progress.processed ?? progress.completed ?? 0)}/${Number(progress.requested || 0)}、成功 ${Number(progress.succeeded ?? progress.completed ?? 0)}，可以重新提交补齐。`,
+    });
+  }
+  return {
+    progress,
+    active,
+    sketches: storage.getOutput(taskId, 'storyboard_images') || [],
+  };
+}
+
+module.exports = { SKETCH_BATCH_OUTPUT, batchProgress, saveBatchProgress, getSketchBatch };

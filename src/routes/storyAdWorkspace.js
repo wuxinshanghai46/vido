@@ -508,6 +508,12 @@ router.post('/projects/:taskId/storyboard-images/:shotIndex/generate', asyncRout
   res.json({ success: true, task_id: req.params.taskId, ...result });
 }));
 
+router.post('/projects/:taskId/storyboard-images/:shotIndex/review', asyncRoute(async (req, res) => {
+  projectForRequest(req);
+  const result = await storyboardSketches.generateSketch(req.params.taskId, req.params.shotIndex, { confirmed: true, review_only: true });
+  res.json({ success: true, task_id: req.params.taskId, ...result });
+}));
+
 router.put('/projects/:taskId/storyboard-images/:shotIndex/prompt', asyncRoute(async (req, res) => {
   projectForRequest(req);
   const result = storyboardSketches.savePromptOverride(req.params.taskId, req.params.shotIndex, req.body?.prompt_text || '', currentUser(req));

@@ -8,7 +8,8 @@ const generationConcurrency = require('../newStoryAd/generationConcurrencyServic
 const shotReferencePacks = require('../newStoryAd/shotReferencePackService');
 const scenePlanningAuthority = require('../newStoryAd/scenePlanningAuthorityService');
 const sceneDomainContract = require('../newStoryAd/sceneDomainContractService');
-const storyboardSubjectQa = require('../newStoryAd/storyboardSubjectQaService');
+const candidates = require('../newStoryAd/storyboardCandidateService');
+const visualQa = require('../newStoryAd/storyboardVisualQaService');
 const storyboardImageLineage = require('../newStoryAd/storyboardImageLineageService');
 const storyboardImageConfirmation = require('./storyboardImageConfirmationGateService');
 const sketchProgress = require('./storyboardSketchProgressService');
@@ -50,6 +51,7 @@ function prepareSketchGeneration(taskId, shotIndex) {
     storage.getOutput(taskId, 'scene_world_overrides') || {},
   );
   const context = { ...baseContext, scene_assets: sceneAssets };
+  visualQa.assertAssets(context);
   const contracts = storage.getOutput(taskId, 'keyframe_contracts') || [];
   const contract = contracts.find((item, index) => Number(item.shot_index || item.index || index + 1) === numericIndex);
   if (!contract) throw Object.assign(new Error(`第 ${numericIndex} 镜缺少当前关键帧合同，已在图片调用前停止`), {
@@ -137,6 +139,7 @@ function normalizeSketches(taskId, sketches = []) {
         decisive_moment: clean(item.decisive_moment || item.decisiveMoment, 900),
         subject_qa_policy_version: Math.max(0, Number(item.subject_qa_policy_version || item.subjectQaPolicyVersion || 0) || 0),
         subject_count_qa: item.subject_count_qa && typeof item.subject_count_qa === 'object' ? item.subject_count_qa : null,
+        visual_qa: item.visual_qa || null,
         prompt_override_fingerprint: clean(item.prompt_override_fingerprint || item.promptOverrideFingerprint, 160),
         applied_editable_prompt: cleanPrompt(item.applied_editable_prompt || item.appliedEditablePrompt, 3200),
         reference_roles: Array.isArray(item.reference_roles) ? item.reference_roles.slice(0, 12).map(reference => ({
@@ -179,6 +182,7 @@ function sketchFingerprint(sketches = []) {
     decisive_moment: item.decisive_moment,
     subject_qa_policy_version: item.subject_qa_policy_version,
     subject_count_qa: item.subject_count_qa,
+    visual_qa: item.visual_qa,
     prompt_override_fingerprint: item.prompt_override_fingerprint,
     applied_editable_prompt: item.applied_editable_prompt,
     reference_roles: item.reference_roles,
@@ -355,12 +359,18 @@ async function generateSketch(taskId, shotIndex, options = {}, dependencies = {}
     ].filter(Boolean).join('；'), 700)}`,
     knowledgePolicyRuntime.promptBlock(sketchKnowledge),
   ].filter(line => !line.endsWith('：')).join('\n');
-  const generated = await mediaAdapter.generateImage({
+  const existingImage = options.review_only === true
+    ? candidates.reviewSource(taskId, shot, numericIndex) : null;
+  if (options.review_only === true && (!existingImage?.image_url
+    || existingImage.shot_contract_fingerprint !== shotContractFingerprint(shot, numericIndex - 1))) {
+    throw Object.assign(new Error('原图对应的镜头合同已改变，不能只换质检标签继续使用'), { code: 'STORYBOARD_REVIEW_SOURCE_CHANGED', status: 409 });
+  }
+  const generated = existingImage || await mediaAdapter.generateImage({
     taskId,
     stage: 'new_story_ad.storyboard_image',
     prompt,
     auditSafePrompt: prompt,
-    filename: `storyboard_image_${taskId}_${numericIndex}_${Date.now()}`,
+    filename: `storyboard_image_${storage.canonicalFingerprint(taskId).slice(0, 24)}_${numericIndex}_${uuidv4()}`,
     aspectRatio: clean(context.output_ratio || '9:16', 20),
     resolution: '1K',
     imageModel: options.image_model || options.imageModel || 'auto',
@@ -371,13 +381,9 @@ async function generateSketch(taskId, shotIndex, options = {}, dependencies = {}
     requireReferences: referenceImages.length > 0,
     inputFidelity: referenceImages.length ? 'high' : undefined,
   });
-  await (dependencies.compositionService || compositionService).assertSingleFrame(generated);
-  const subjectCountQa = await (dependencies.subjectQaService || storyboardSubjectQa).assert({
-    taskId,
-    shot,
-    generatedUrl: clean(generated.image_url || generated.url, 1200),
-    domainContract,
-  });
+  const { subjectCountQa, visualReview } = await candidates.reviewCandidate({
+    taskId, shot, numericIndex, generated, context, contract, sceneAsset, domainContract,
+  }, dependencies);
   const previous = storage.getOutput(taskId, 'storyboard_images') || [];
   const nextSketch = {
     id: `storyboard-image-${numericIndex}`,
@@ -393,6 +399,7 @@ async function generateSketch(taskId, shotIndex, options = {}, dependencies = {}
     decisive_moment: domainContract.decisive_moment,
     subject_qa_policy_version: Number(subjectCountQa.policy_version || 0) || 0,
     subject_count_qa: subjectCountQa,
+    visual_qa: visualReview,
     prompt_override_fingerprint: clean(promptOverride?.fingerprint, 160),
     applied_editable_prompt: editablePrompt,
     scene_id: clean(shot.scene_id || shot.scene_asset_id || sceneAsset.scene_id || sceneAsset.id, 160),
@@ -513,6 +520,8 @@ async function generateSketchBatch(taskId, options = {}, dependencies = {}) {
             client_request_id: `${batchId}:${shotIndex}`,
             image_model: options.image_model || options.imageModel,
             prepared_generation: preparedByIndex.get(shotIndex),
+            review_only: options.regenerate_all !== true && (confirmationState.stale_reasons?.[shotIndex] || []).length > 0
+              && confirmationState.stale_reasons[shotIndex].every(reason => ['VISUAL_QA_REQUIRED', 'PERSON_PRODUCT_IDENTITY_CHANGED'].includes(reason)),
           }, dependencies);
           succeeded += 1;
           completedIndexes.push(shotIndex);
@@ -540,6 +549,11 @@ async function generateSketchBatch(taskId, options = {}, dependencies = {}) {
         status: 'failed', processed, completed: processed, succeeded, completed_indexes: [...completedIndexes].sort((a, b) => a - b), failed_indexes: failedIndexes,
         active_indexes: [], current_index: 0, finished_at: new Date().toISOString(), error: clean(firstFailure.message, 600),
         error_code: clean(firstFailure.code || 'STORYBOARD_IMAGE_BATCH_FAILED', 100),
+        failures: results.flatMap((result, index) => result.status === 'rejected' ? [{
+          shot_index: targets[index], code: clean(result.reason?.code, 100),
+          message: clean(result.reason?.message, 400),
+          subject_qa: result.reason?.subject_qa || null, visual_qa: result.reason?.visual_qa || null,
+        }] : []),
         message: `人物场景分镜图已处理 ${processed}/${targets.length}，成功 ${succeeded}、失败 ${failedIndexes.length}；重试只补失败镜头。`,
       });
       throw firstFailure;
@@ -569,30 +583,6 @@ async function generateSketchBatch(taskId, options = {}, dependencies = {}) {
   }
 }
 
-function getSketchBatch(taskId) {
-  const task = storage.getTask(taskId);
-  if (!task) {
-    const error = new Error('项目不存在');
-    error.status = 404;
-    error.code = 'TASK_NOT_FOUND';
-    throw error;
-  }
-  let progress = batchProgress(taskId);
-  const active = Boolean(progress && ['queued', 'running'].includes(String(progress.status || '')) && activeSketchBatches.has(taskId));
-  if (progress && ['queued', 'running'].includes(String(progress.status || '')) && !active) {
-    progress = saveBatchProgress(taskId, {
-      status: 'failed',
-      finished_at: new Date().toISOString(),
-      error: '分镜图批次进程已中断。已完成图片已经保留，重新提交只会补生成缺失镜头。',
-      error_code: 'SKETCH_BATCH_INTERRUPTED',
-      message: `分镜图批次已中断；已处理 ${Number(progress.processed ?? progress.completed ?? 0)}/${Number(progress.requested || 0)}、成功 ${Number(progress.succeeded ?? progress.completed ?? 0)}，可以重新提交补齐。`,
-    });
-  }
-  return {
-    progress,
-    active,
-    sketches: storage.getOutput(taskId, 'storyboard_images') || [],
-  };
-}
+function getSketchBatch(taskId) { return sketchProgress.getSketchBatch(taskId, activeSketchBatches); }
 
 module.exports = { generateSketch, generateSketchBatch, getSketchBatch, normalizeSketches, prepareSketchGeneration, saveSketches, savePromptOverride: promptOverrideService.save, promptOverrides: promptOverrideService.list, promptOverrideFingerprint: promptOverrideService.fingerprint, shotContractFingerprint };

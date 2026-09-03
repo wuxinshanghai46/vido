@@ -3,7 +3,7 @@
 const storage = require('../newStoryAd/storageService');
 
 const OUTPUT_KIND = 'story_flow_contract';
-const CONTRACT_VERSION = 3;
+const CONTRACT_VERSION = 4;
 const DOWNSTREAM_KINDS = Object.freeze([
   'storyboard_checkpoint', 'storyboard_coverage_plan', 'storyboard_table', 'storyboard_meta',
   'storyboard_images', 'storyboard_image_batch', 'storyboard_sketches', 'storyboard_sketch_batch',
@@ -175,14 +175,18 @@ function plannedSceneForBeat(state, beat, index, scenes) {
     }
   }
   if (scenes.length === 1) return scenes[0].scene_id;
-  const beatText = [beat.title, beat.plot, beat.visual, beat.action, beat.location, beat.scene].filter(Boolean).join(' ');
-  const ranked = scenes.map(scene => ({ scene, score: overlapScore(beatText, `${scene.name} ${scene.story_purpose || ''} ${scene.layout || ''} ${scene.interaction || ''}`) }))
-    .sort((a, b) => b.score - a.score);
-  return ranked[0]?.score > 0 && ranked[0].score > (ranked[1]?.score || 0) ? ranked[0].scene.scene_id : '';
+  // Shared words such as wall/material/display are not evidence of a move.
+  // Leave ambiguous locations for the planning step instead of manufacturing
+  // a confirmed scene boundary from character overlap scores.
+  const location = sceneMentionText([beat.location, beat.scene].filter(Boolean).join(' '));
+  const matches = scenes.filter(scene => scene.name && location.includes(sceneMentionText(scene.name)));
+  return matches.length === 1 ? matches[0].scene_id : '';
 }
 
 function plannedScenesForBeats(state, beats, scenes, declared = []) {
   const rows = list(beats);
+  const explicit = rows.map((beat, index) => plannedSceneForBeat(state, beat, index, scenes));
+  if (explicit.every(Boolean)) return explicit;
   const sequence = list(declared).map(stableId).filter(id => scenes.some(scene => scene.scene_id === id));
   if (sequence.length < 2 || rows.length < sequence.length) {
     return rows.map((beat, index) => plannedSceneForBeat(state, beat, index, scenes));
@@ -219,7 +223,8 @@ function plannedScenesForBeats(state, beats, scenes, declared = []) {
     }
     memo.set(key, best); return best;
   };
-  return solve(0, 0)?.scenes || rows.map((beat, index) => plannedSceneForBeat(state, beat, index, scenes));
+  const planned = solve(0, 0)?.scenes || explicit;
+  return planned.map((sceneId, index) => explicit[index] || sceneId);
 }
 
 function peopleForBeat(beat, people) {
@@ -231,9 +236,13 @@ function peopleForBeat(beat, people) {
     const match = people.find(person => person.character_id === value || person.name === value);
     if (match) resolved.add(match.character_id);
   });
-  const text = clean([beat.title, beat.plot, beat.visual, beat.action, beat.spoken_line].filter(Boolean).join(' '), 3000);
+  // Narration may mention a person who is not visible. Only authored visual
+  // evidence or an explicit cast binding can introduce someone into a shot.
+  const text = clean([beat.title, beat.plot, beat.visual, beat.action, beat.story_visual].filter(Boolean).join(' '), 6000);
   people.forEach(person => { if (person.name && text.includes(person.name)) resolved.add(person.character_id); });
-  if (!resolved.size && people.length === 1 && !/无人|空镜|纯场景|无人物/.test(text)) resolved.add(people[0].character_id);
+  if (!resolved.size && people.length === 1 && !/无人|无人物|没有人物|no (?:human|person)/i.test(text)
+    && (/人物|演员|男子|女子|男人|女人|男孩|女孩|\b(?:person|actor|woman|man|boy|girl)\b/i.test(text)
+      || /^(?:human_scene|human|person)$/i.test(beat.subject_type || ''))) resolved.add(people[0].character_id);
   return [...resolved];
 }
 
@@ -249,6 +258,7 @@ function unitFromBeat(state, beat, index, authority) {
     state_after: clean(beat.state_after || beat.exit_frame_state || '', 600),
     spoken_line: clean(beat.spoken_line || beat.voiceover || beat.copy || '', 600),
     character_ids: characterIds,
+    character_binding_authority: 'authored_visual',
     look_bindings: Object.fromEntries(characterIds.map(id => {
       const person = authority.people.find(item => item.character_id === id);
       return [id, person?.look_ids?.[0] || ''];
@@ -288,7 +298,7 @@ function draft(taskId) {
     if (!prior) return unit;
     return {
       ...unit,
-      character_ids: list(prior.character_ids),
+      character_ids: unit.character_ids,
       look_bindings: prior.look_bindings && typeof prior.look_bindings === 'object' ? prior.look_bindings : unit.look_bindings,
       voice_bindings: prior.voice_bindings && typeof prior.voice_bindings === 'object' ? prior.voice_bindings : unit.voice_bindings,
       scene_id: stableId(prior.scene_id) || unit.scene_id,
@@ -329,6 +339,10 @@ function validateUnits(base, supplied = [], options = {}) {
     const source = incoming.get(unit.beat_id) || unit;
     const characterIds = [...new Set(list(source.character_ids).map(value => stableId(value)).filter(Boolean))];
     characterIds.forEach(id => { if (!personIds.has(id)) errors.push(`${unit.title} 引用了不存在的人物 ${id}`); });
+    if (unit.character_binding_authority === 'authored_visual'
+      && [...characterIds].sort().join('|') !== [...list(unit.character_ids)].sort().join('|')) {
+      errors.push(`${unit.title} 的出镜人物必须继承已确认剧情，不能把全局人物自动加入空镜或删除剧情中的人物`);
+    }
     const sceneId = stableId(source.scene_id);
     const transitionFrom = stableId(source.transition_from);
     const transitionReason = clean(source.transition_reason, 500);
@@ -491,7 +505,9 @@ function inspect(taskId) {
     && stored.authority_fingerprint === base.authority_fingerprint;
   const complete = list(stored.units).length === base.units.length
     && list(stored.units).every(unit => !base.scenes.length || stableId(unit.scene_id));
-  const ready = fresh && complete && ['confirmed', 'system_confirmed'].includes(stored.status);
+  let valid = false;
+  try { validateUnits(base, stored.units, { requireExact: true }); valid = true; } catch {}
+  const ready = fresh && complete && valid && ['confirmed', 'system_confirmed'].includes(stored.status);
   return {
     ready,
     total: base.units.length,
@@ -514,5 +530,5 @@ function assertReady(taskId) {
 }
 
 module.exports = {
-  CONTRACT_VERSION, DOWNSTREAM_KINDS, OUTPUT_KIND, assertReady, authoritySnapshot, confirm, confirmSystem, declaredSceneSequence, draft, inspect, plannedScenesForBeats, rebindSystemAuthority, repairSystem, validateUnits,
+  CONTRACT_VERSION, DOWNSTREAM_KINDS, OUTPUT_KIND, assertReady, authoritySnapshot, confirm, confirmSystem, declaredSceneSequence, draft, inspect, peopleForBeat, plannedSceneForBeat, plannedScenesForBeats, rebindSystemAuthority, repairSystem, validateUnits,
 };

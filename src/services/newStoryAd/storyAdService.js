@@ -766,10 +766,13 @@ function updateStoryboardTable(taskId, shots = [], user = {}, options = {}) {
   const continuityShots = withContinuityContracts(bindShotsToScenes(normalizedRaw, Array.isArray(sceneAssets) ? sceneAssets : [])); storyboardFlowConsistency.assertWhenPresent(continuityShots, storage.getOutput(taskId, 'story_flow_contract') || {}, { boundary: 'manual_storyboard_save' });
   const compiled = temporalEvidenceLifecycle.compileForTask({ storage, taskId, ctx, blueprint, shots: continuityShots }), normalized = compiled.shots;
   const storyboardChanged = workflowTransition.storyboardFingerprint(current) !== workflowTransition.storyboardFingerprint(normalized);
+  const speechUnchanged = current.length === normalized.length && current.every((shot, index) =>
+    (shot.shot_id || shot.id) === (normalized[index].shot_id || normalized[index].id)
+    && JSON.stringify(ttsAdapter.shotSpeechUnits(shot)) === JSON.stringify(ttsAdapter.shotSpeechUnits(normalized[index])));
   if (storyboardChanged) {
     const nextRevision = Math.max(1, Number(task.content_revision || 1) || 1) + 1;
     storage.updateTask(taskId, { content_revision: nextRevision, current_snapshot_id: '' });
-    ['quality_review', 'tts_audio', 'video_scene_blocks', 'final_video']
+    ['quality_review', ...(speechUnchanged ? [] : ['tts_audio']), 'video_scene_blocks', 'final_video']
       .forEach(kind => storage.deleteOutput(taskId, kind));
     storage.carryManifestRevision(taskId, nextRevision);
     storage.saveSnapshot(taskId, {
@@ -2224,6 +2227,8 @@ async function generateTtsStage(taskId, options = {}) {
   }
   let tts_audio;
   try {
+    storyboardImageConfirmationGate.assertReady(taskId);
+    require('./storyboardVisualQaService').assertAssets(ctx);
     tts_audio = await ttsAdapter.generateVoiceover({
       taskId, shots, voiceId, voiceAssignments,
       userId: task.user_id || task.request?.user_id || task.request?.userId || '',
@@ -3792,7 +3797,7 @@ module.exports = {
   structuredQaFeedback,
   buildKeyframeDependencyPlan,
   buildKeyframePrompt,
-  keyframeReferenceImages, selectedSceneReference, runKeyframeQaReviews,
+  keyframeReferenceImages, selectedSceneReference, runKeyframeQaReviews, combineKeyframeQa,
   acceptedKeyframeContextAt,
   compactKeyframePrompt,
   previewShotPrompts, isCompleteKeyframe,

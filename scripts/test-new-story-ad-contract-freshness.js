@@ -63,7 +63,7 @@ function saveConfirmedStoryboard(taskId, count = 1, prefix = taskId) {
       shot_index: index + 1,
       image_url: `/api/new-story-ad/assets/${filename}`,
       subject_qa_policy_version: 2,
-      subject_count_qa: { pass: true },
+      subject_count_qa: { pass: true }, visual_qa: require('./lib/storyboardVisualQaFixture').verified(taskId),
     };
   });
   storage.saveOutput(taskId, 'storyboard_images', images);

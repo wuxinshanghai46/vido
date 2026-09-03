@@ -17,6 +17,7 @@ const BASE_FILES = [
   'src/routes/newStoryAd.js',
   'src/routes/storyAdWorkspace.js',
   'scripts/build-story-ad-release.js',
+  'scripts/repair-story-ad-authority-v413.js',
   'scripts/lib/releaseSourceIdentity.js',
   'scripts/audit-new-story-ad-systemic-state.js',
   'scripts/audit-new-story-ad-systemic-state-remote.js',

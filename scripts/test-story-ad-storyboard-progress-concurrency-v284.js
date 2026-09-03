@@ -144,7 +144,7 @@ async function testImageBatchParallelPersistenceAndRetry() {
   let failThird = true;
   const mediaAdapter = {
     generateImage: async ({ filename }) => {
-      const shotIndex = Number(String(filename).match(/_(\d+)_\d+$/)?.[1] || 0);
+      const shotIndex = Number(String(filename).match(/_(\d+)_[a-f0-9-]+$/)?.[1] || 0);
       called.push(shotIndex);
       active += 1;
       peak = Math.max(peak, active);
@@ -156,7 +156,7 @@ async function testImageBatchParallelPersistenceAndRetry() {
   };
   const subjectQaService = { assert: async () => ({ pass: true, policy_version: 2, used_model: 'fixture-subject-qa' }) };
   await assert.rejects(
-    () => storyboardImages.generateSketchBatch(taskId, { confirmed: true }, { mediaAdapter, subjectQaService }),
+    () => storyboardImages.generateSketchBatch(taskId, { confirmed: true }, { mediaAdapter, subjectQaService, visualQaService: require('./lib/storyboardVisualQaFixture').service }),
     error => error?.code === 'IMAGE_FIXTURE_FAILED',
   );
   const failedBatch = storyboardImages.getSketchBatch(taskId);
@@ -168,16 +168,16 @@ async function testImageBatchParallelPersistenceAndRetry() {
 
   failThird = false;
   called.length = 0;
-  const retried = await storyboardImages.generateSketchBatch(taskId, { confirmed: true, target_indexes: [3] }, { mediaAdapter, subjectQaService });
+  const retried = await storyboardImages.generateSketchBatch(taskId, { confirmed: true, target_indexes: [3] }, { mediaAdapter, subjectQaService, visualQaService: require('./lib/storyboardVisualQaFixture').service });
   assert.deepEqual(called, [3], '明确指定失败镜头时只能补该镜，不能重复提交已完成镜头');
   assert.equal(retried.sketches.length, 4);
   assert.equal(retried.completed, 1);
 }
 
 function testUiContract() {
-  const view = fs.readFileSync(path.join(__dirname, '../public/story-ad/views/storyboardView.js'), 'utf8');
+  const view = ['storyboardView.js', 'storyboardImageReview.js'].map(file => fs.readFileSync(path.join(__dirname, '../public/story-ad/views', file), 'utf8')).join('\n');
   const ui = fs.readFileSync(path.join(__dirname, '../public/story-ad/components/ui.js'), 'utf8');
-  const css = fs.readFileSync(path.join(__dirname, '../public/story-ad/workspace.css'), 'utf8');
+  const css = ['workspace.css', 'storyboard-images.css'].map(file => fs.readFileSync(path.join(__dirname, '../public/story-ad', file), 'utf8')).join('\n');
   assert(view.indexOf("store.beginStageSubmission('storyboard'") < view.indexOf("store.runStage('storyboard', options)"), '点击后必须立即建立乐观进度');
   assert.match(view, /partial_shots/);
   assert.match(view, /renderSketchResults/);
@@ -185,7 +185,7 @@ function testUiContract() {
   assert.match(view, /完成的画面会逐镜显示/);
   assert.doesNotMatch(view, /data-board-tab/);
   assert.match(css, /storyboard-checkpoint-preview/);
-  assert.match(css, /storyboard-empty-card \.empty-state \{ min-height: 112px/);
+  assert.match(css, /storyboard-empty-card \.empty-state\s*\{\s*min-height:\s*112px/);
   assert.doesNotMatch(ui, /文字分镜生成失败/);
   assert.match(ui, /镜头结构整理中断/);
 

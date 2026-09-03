@@ -30,7 +30,7 @@ function confirmStoryboardImages(taskId) {
   }))).map(image => ({
     ...image,
     subject_qa_policy_version: storyboardSubjectQa.QA_POLICY_VERSION,
-    subject_count_qa: { pass: true, status: 'verified', policy_version: storyboardSubjectQa.QA_POLICY_VERSION },
+    subject_count_qa: { pass: true, status: 'verified', policy_version: storyboardSubjectQa.QA_POLICY_VERSION }, visual_qa: require('./lib/storyboardVisualQaFixture').verified(taskId),
   })));
 }
 

@@ -5,6 +5,7 @@ const sceneReadability = require('../newStoryAd/sceneReadabilityContractService'
 const scenePlanningAuthority = require('../newStoryAd/scenePlanningAuthorityService');
 const storyboardImageLineage = require('../newStoryAd/storyboardImageLineageService');
 const storyboardSubjectQa = require('../newStoryAd/storyboardSubjectQaService');
+const visualQa = require('../newStoryAd/storyboardVisualQaService');
 
 function list(value) { return Array.isArray(value) ? value.filter(Boolean) : []; }
 function clean(value = '', max = 1600) { return String(value || '').replace(/\s+/g, ' ').trim().slice(0, max); }
@@ -69,6 +70,8 @@ function inspect(taskId) {
         && clean(image.scene_planning_fingerprint, 160) !== clean(currentScene.scene_planning_fingerprint, 160)) reasons.push('SCENE_PLANNING_CHANGED');
       if (Number(image.subject_qa_policy_version || 0) < storyboardSubjectQa.QA_POLICY_VERSION) reasons.push('SUBJECT_COUNT_QA_POLICY_OUTDATED');
       else if (image.subject_count_qa?.pass !== true) reasons.push('SUBJECT_COUNT_QA_FAILED');
+      if (image.visual_qa?.pass !== true || image.visual_qa?.policy_version !== visualQa.POLICY_VERSION) reasons.push('VISUAL_QA_REQUIRED');
+      else if (image.visual_qa.identity_fingerprint !== visualQa.identityFingerprint(baseContext)) reasons.push('PERSON_PRODUCT_IDENTITY_CHANGED');
       if (reasons.length) {
         stale.push(shotIndex);
         staleReasons[shotIndex] = [...new Set(reasons)];
@@ -85,7 +88,7 @@ function inspect(taskId) {
     reason: ready
       ? '全部人物场景分镜图已准备好，可以继续生成后续画面。'
       : (stale.length
-        ? `镜头 ${stale.join('、')} 的人物、主体或场景质检血缘已过期，请逐镜重新生成并通过当前质检后继续。`
+        ? `镜头 ${stale.join('、')} 需要在分镜阶段核对人物、主体或场景一致性；已有图片与音频保留，请先查看逐镜原因。`
         : `请先生成全部人物场景分镜图（当前已生成 ${Math.max(0, shots.length - missing.length)}/${shots.length}）。`),
     total: shots.length,
     confirmed: Math.max(0, shots.length - missing.length),

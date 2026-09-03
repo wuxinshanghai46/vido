@@ -1,3 +1,4 @@
+import { sketchBatchMarkup } from './storyboardImageReview.js';
 import { request } from '../api.js?v=20260903-production-v412';
 import { elapsedTimeTag, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260903-production-v412';
 import { bindMediaLightbox } from './mediaLightbox.js?v=20260903-production-v412';
@@ -65,7 +66,7 @@ function sceneSequenceMarkup(bundle = {}, shots = []) {
     const tooltip = reason ? `剧情依据：${reason}` : `${group.name} · ${shotRange}`;
     return `<li title="${escapeHtml(tooltip)}" aria-label="${escapeHtml(`${group.name}，${shotRange}${reason ? `，剧情依据：${reason}` : ''}`)}"><span>${index + 1}</span><div><b>${escapeHtml(group.name)}</b><small>${shotRange}</small>${reason ? `<p>${escapeHtml(reason)}</p>` : ''}</div></li>`;
   }).join('');
-  return `<section class="storyboard-scene-sequence" aria-label="分镜场景顺序"><div><b>场景顺序</b><span title="系统已按剧情固定地点；切换发生在相邻场景节点之间">按剧情固定地点</span></div><ol>${nodes}</ol></section>`;
+  return `<section class="storyboard-scene-sequence" aria-label="分镜场景顺序"><div><b>场景顺序</b><span>按剧情固定地点</span></div><ol>${nodes}</ol></section>`;
 }
 function promptOverrideFor(bundle = {}, shot = {}, index = 0, shotIndex = 0) {
   const overrides = bundle?.storyboard?.prompt_overrides;
@@ -115,57 +116,39 @@ function sketchCard(shot, sketch = {}, index = 0, gate = {}, bundle = {}, genera
   const promptText = storyboardPromptFor(bundle, shot, index, shotIndex);
   const references = referenceItemsFor(bundle, index, shotIndex);
   return `<article class="card sketch-card sketch-tile ${gate.ready === false ? 'is-gated' : ''} ${waiting ? 'is-waiting' : ''}" data-sketch-shot="${shotIndex}"${waiting ? ' aria-busy="true"' : ''}>
-    <div class="sketch-tile-media" data-sketch-image-host="${shotIndex}">${mediaPreview(sketch, { label: `SH${String(shotIndex).padStart(2, '0')} · ${shot.title || `镜头 ${shotIndex}`}`, width: 960, symbol: '分镜图', zoomable: true, zoomGroup: 'storyboard-images' })}<span class="sketch-shot-number">SH${String(shotIndex).padStart(2, '0')}</span></div>
-    <div class="sketch-tile-copy"><div><h2>${escapeHtml(shot.title || `镜头 ${shotIndex}`)}</h2><p>${escapeHtml(compactBindingSummary(bundle, shot))}</p></div></div>
-    <div class="sketch-shot-progress-host" data-sketch-shot-progress hidden></div>
-    <details class="sketch-tile-editor"><summary>调整</summary><div class="sketch-editor-body">
-      <section class="sketch-reference-panel" aria-labelledby="sketch-reference-title-${shotIndex}"><header><b id="sketch-reference-title-${shotIndex}">本镜引用资产</b><span>生成时按此顺序参考</span></header>${sketchReferenceMarkup(references, shotIndex)}</section>
-      <div class="sketch-prompt-field"><div class="sketch-prompt-heading"><label for="${promptId}">分镜提示词</label><button class="sketch-prompt-expand" type="button" data-expand-sketch-prompt aria-label="放大编辑镜头 ${shotIndex} 的分镜提示词" title="放大编辑">⛶</button></div><textarea id="${promptId}" name="storyboard_prompt_${shotIndex}" rows="6" data-sketch-prompt aria-describedby="${promptId}-help">${escapeHtml(promptText)}</textarea><small id="${promptId}-help">保存后仅本镜标记为需要重新生成；不会自动开始生成。</small></div>
-    </div><div class="sketch-action-bar">
-      <input class="hidden-input" type="file" accept="image/png,image/jpeg,image/webp" data-sketch-file aria-label="为镜头 ${shotIndex} 选择替换图片">
-      <div class="sketch-actions" role="group" aria-label="镜头 ${shotIndex} 分镜调整">
-        <button class="btn" type="button" data-ai-assist-sketch-prompt>AI 修改</button>
-        <button class="btn" type="button" data-save-sketch-prompt>保存提示词</button>
-        <button class="btn ${sketch.image_url ? '' : 'primary'}" type="button" data-generate-sketch ${disabled}>${sketch.image_url ? '重新生成本镜' : '生成本镜'}</button>
-        <button class="btn" type="button" data-upload-sketch ${disabled}>上传替换</button>
-      </div>
-    </div></details>
-  </article>`;
+<div class="sketch-tile-media" data-sketch-image-host="${shotIndex}">${mediaPreview(sketch, { label: `SH${String(shotIndex).padStart(2, '0')} · ${shot.title || `镜头 ${shotIndex}`}`, width: 960, symbol: '分镜图', zoomable: true, zoomGroup: 'storyboard-images' })}<span class="sketch-shot-number">SH${String(shotIndex).padStart(2, '0')}</span></div>
+<div class="sketch-tile-copy"><div><h2>${escapeHtml(shot.title || `镜头 ${shotIndex}`)}</h2><p>${escapeHtml(compactBindingSummary(bundle, shot))}</p></div></div>
+<div class="sketch-shot-progress-host" data-sketch-shot-progress hidden></div>
+<details class="sketch-tile-editor"><summary>调整</summary><div class="sketch-editor-body">
+<section class="sketch-reference-panel" aria-labelledby="sketch-reference-title-${shotIndex}"><header><b id="sketch-reference-title-${shotIndex}">本镜引用资产</b><span>生成时按此顺序参考</span></header>${sketchReferenceMarkup(references, shotIndex)}</section>
+<div class="sketch-prompt-field"><div class="sketch-prompt-heading"><label for="${promptId}">分镜提示词</label><button class="sketch-prompt-expand" type="button" data-expand-sketch-prompt aria-label="放大编辑镜头 ${shotIndex} 的分镜提示词">⛶</button></div><textarea id="${promptId}" name="storyboard_prompt_${shotIndex}" rows="6" data-sketch-prompt aria-describedby="${promptId}-help">${escapeHtml(promptText)}</textarea><small id="${promptId}-help">保存后本镜需重生成，不会自动调用模型。</small></div>
+</div><div class="sketch-action-bar">
+<input class="hidden-input" type="file" accept="image/png,image/jpeg,image/webp" data-sketch-file aria-label="为镜头 ${shotIndex} 选择替换图片">
+<div class="sketch-actions" role="group" aria-label="镜头 ${shotIndex} 分镜调整">
+<button class="btn" type="button" data-ai-assist-sketch-prompt>AI 修改</button>
+<button class="btn" type="button" data-save-sketch-prompt>保存提示词</button>
+<button class="btn ${sketch.image_url ? '' : 'primary'}" type="button" data-generate-sketch ${disabled}>${sketch.image_url ? '重新生成本镜' : '生成本镜'}</button>
+<button class="btn" type="button" data-upload-sketch ${disabled}>上传替换</button>
+</div>
+</div></details>
+</article>`;
 }
 
 function checkpointShotCard(shot, index = 0, bundle = {}) {
   const shotIndex = Number(shot.shot_index || shot.index || index + 1) || index + 1;
   return `<article class="card sketch-card sketch-tile is-checkpoint" data-checkpoint-shot="${shotIndex}">
-    <div class="sketch-tile-media"><div class="media-placeholder"><span>镜头结构已保存</span></div><span class="sketch-shot-number">SH${String(shotIndex).padStart(2, '0')}</span></div>
-    <div class="sketch-tile-copy"><div><h2>${escapeHtml(shot.title || `镜头 ${shotIndex}`)}</h2><p>${escapeHtml(compactBindingSummary(bundle, shot))}</p></div><span class="status-tag is-neutral">待出图</span></div>
-  </article>`;
+<div class="sketch-tile-media"><div class="media-placeholder"><span>镜头结构已保存</span></div><span class="sketch-shot-number">SH${String(shotIndex).padStart(2, '0')}</span></div>
+<div class="sketch-tile-copy"><div><h2>${escapeHtml(shot.title || `镜头 ${shotIndex}`)}</h2><p>${escapeHtml(compactBindingSummary(bundle, shot))}</p></div><span class="status-tag is-neutral">待出图</span></div>
+</article>`;
 }
 
 function liveGenerationShotCard(shot, sketch = {}, index = 0, bundle = {}) {
   const shotIndex = Number(shot.shot_index || shot.index || index + 1) || index + 1;
   const ready = Boolean(sketch.image_url || sketch.imageUrl || sketch.url);
   return `<article class="card sketch-card sketch-tile is-live-generation ${ready ? '' : 'is-waiting'}"${ready ? '' : ' aria-busy="true"'}>
-    <div class="sketch-tile-media">${mediaPreview(sketch, { label: `SH${String(shotIndex).padStart(2, '0')} · ${shot.title || `镜头 ${shotIndex}`}`, width: 960, symbol: ready ? '分镜图' : '等待出图', zoomable: ready, zoomGroup: 'storyboard-images' })}<span class="sketch-shot-number">SH${String(shotIndex).padStart(2, '0')}</span></div>
-    <div class="sketch-tile-copy"><div><h2>${escapeHtml(shot.title || `镜头 ${shotIndex}`)}</h2><p>${escapeHtml(compactBindingSummary(bundle, shot))}</p></div><span class="status-tag ${ready ? 'is-ready' : 'is-neutral'}">${ready ? '已完成' : '生成中'}</span></div>
-  </article>`;
-}
-
-function sketchBatchMarkup(batch = null, total = 0) {
-  if (!batch || typeof batch !== 'object') return '';
-  const status = String(batch.status || '');
-  const active = ['queued', 'running'].includes(status);
-  const requested = Math.max(0, Number(batch.requested || total) || 0);
-  const processed = Math.max(0, Math.min(requested, Number(batch.processed ?? batch.completed ?? 0) || 0));
-  const succeeded = Math.max(0, Math.min(processed, Number(batch.succeeded ?? batch.completed ?? 0) || 0));
-  const failed = Math.max(0, processed - succeeded);
-  const percent = requested ? Math.round((processed / requested) * 100) : 100;
-  const indeterminate = active && (status === 'queued' || percent === 0);
-  const title = status === 'failed' ? '分镜生成已停止' : (status === 'succeeded' ? '分镜生成已完成' : '正在生成分镜');
-  return `<div class="sketch-batch-progress is-${escapeHtml(status)} ${indeterminate ? 'is-indeterminate' : ''}" role="${status === 'failed' ? 'alert' : 'status'}" aria-live="polite">
-    <div class="sketch-batch-progress-head"><b>${title}</b><span>已完成 ${processed}/${requested}${failed ? ` · ${failed} 镜需重试` : ''} · ${percent}%</span></div>
-    ${active ? `<div class="project-progress-track ${indeterminate ? 'is-indeterminate' : ''}" aria-hidden="true"><i style="width:${percent}%"></i></div>` : ''}
-    <small>${status === 'failed' ? '已完成的画面会保留；再次继续只处理未完成镜头。' : (active ? '人物与场景正在自动匹配，完成的画面会逐镜显示。' : '所有画面已保存。')} ${elapsedTimeTag({ startedAt: batch.started_at, finishedAt: batch.finished_at, active })}</small>
-  </div>`;
+<div class="sketch-tile-media">${mediaPreview(sketch, { label: `SH${String(shotIndex).padStart(2, '0')} · ${shot.title || `镜头 ${shotIndex}`}`, width: 960, symbol: ready ? '分镜图' : '等待出图', zoomable: ready, zoomGroup: 'storyboard-images' })}<span class="sketch-shot-number">SH${String(shotIndex).padStart(2, '0')}</span></div>
+<div class="sketch-tile-copy"><div><h2>${escapeHtml(shot.title || `镜头 ${shotIndex}`)}</h2><p>${escapeHtml(compactBindingSummary(bundle, shot))}</p></div><span class="status-tag ${ready ? 'is-ready' : 'is-neutral'}">${ready ? '已完成' : '生成中'}</span></div>
+</article>`;
 }
 
 function sketchShotProgressMarkup(batch = {}, ready = false) {
@@ -196,10 +179,10 @@ function storyboardProgressMarkup({ batch = null, progress = {}, active = false,
   const indeterminate = active && percent === 0;
   const phaseTitle = progressPhaseLabel(progress, failed);
   return `<div class="sketch-batch-progress is-${failed ? 'failed' : 'running'} ${indeterminate ? 'is-indeterminate' : ''}" role="${failed ? 'alert' : 'status'}" aria-live="polite">
-    <div class="sketch-batch-progress-head"><b>${phaseTitle}</b><span>已完成 ${processed}/${requested} · ${percent}%</span></div>
+<div class="sketch-batch-progress-head"><b>${phaseTitle}</b><span>已完成 ${processed}/${requested} · ${percent}%</span></div>
     ${active ? `<div class="project-progress-track ${indeterminate ? 'is-indeterminate' : ''}" aria-hidden="true"><i style="width:${percent}%"></i></div>` : ''}
-    <small>${failed ? '已完成的镜头结构会保留；分镜图片尚未开始，继续后只处理未完成镜头。' : '系统正在按剧情核对人物、场景、机位和站位；已完成的镜头结构会立即显示。'} ${elapsedTimeTag({ startedAt, finishedAt, active })}</small>
-  </div>`;
+<small>${failed ? '镜头结构已保留；继续时补齐未完成镜头。' : '正在核对剧情、人物、场景和机位；已完成镜头会立即显示。'} ${elapsedTimeTag({ startedAt, finishedAt, active })}</small>
+</div>`;
 }
 
 export async function mount(host, context) {
@@ -262,16 +245,16 @@ export async function mount(host, context) {
   const primaryAction = !isReferenceDraft && !(completedHistorical && !sketchGate.ready)
     ? `${gateBlocked ? '' : sketchModelPicker.html}${mainSketchAction}${shots.length && generatedSketchCount === shots.length && sketchGate.ready ? '<button class="btn primary" type="button" data-confirm-storyboard>确认分镜，进入视频生成</button>' : ''}`
     : '';
-  host.innerHTML = `
-    <div class="storyboard-simple-view">
-      <section class="view-head storyboard-view-head">
-        <div><h1>人物场景分镜</h1><p>${isReferenceDraft ? '保存参考视频提取的分镜草稿后，系统会继续自动匹配人物与场景。' : '系统会根据已确认的剧情自动匹配人物与场景，直接生成分镜画面。'}</p></div>
+  host.innerHTML = `<link rel="stylesheet" href="/story-ad/storyboard-images.css?v=20260903-production-v413">
+<div class="storyboard-simple-view">
+<section class="view-head storyboard-view-head">
+<div><h1>人物场景分镜</h1><p>${isReferenceDraft ? '保存参考视频提取的分镜草稿后，系统会继续自动匹配人物与场景。' : '系统会根据已确认的剧情自动匹配人物与场景，直接生成分镜画面。'}</p></div>
         ${headerAction ? `<div class="view-actions">${headerAction}</div>` : ''}
-      </section>
+</section>
       ${primaryAction ? `<div class="storyboard-primary-actions">${primaryAction}</div>` : ''}
-      ${gateBlocked ? `<section class="card storyboard-structure-repair-notice" role="alert"><div class="card-body"><b>当前镜头结构与已确认剧情不一致</b><p>${escapeHtml(sketchGate.reason || '请先重新生成镜头结构；完成前不会生成或复用旧分镜图。')}</p></div></section>` : ''}
+      ${gateBlocked ? `<section class="card storyboard-structure-repair-notice" role="alert"><div class="card-body"><b>当前镜头结构与已确认剧情不一致</b><p>${escapeHtml(sketchGate.reason || '请先修正镜头结构，再生成分镜图。')}</p></div></section>` : ''}
       ${sceneSequenceMarkup(bundle, displayShots)}
-      <div data-sketch-batch-host>${storyboardProgressMarkup({
+<div data-sketch-batch-host>${storyboardProgressMarkup({
         batch: storyboardActive || (String(sketchBatch?.status || '') === 'succeeded' && missingSketchCount > 0) ? null : sketchBatch,
         progress: bundle?.project?.generation_progress || bundle?.generation?.progress || {},
         active: storyboardActive || sketchBatchActive,
@@ -281,10 +264,10 @@ export async function mount(host, context) {
         startedAt: bundle?.project?.generation_progress?.started_at || bundle?.project?.generation_started_at || '',
         finishedAt: bundle?.project?.generation_progress?.finished_at || '',
       })}</div>
-      <div data-storyboard-live-results>${displayShots.length ? `<div class="storyboard-sketch-grid">${visibleShots.map((shot, index) => shots.length
+<div data-storyboard-live-results>${displayShots.length ? `<div class="storyboard-sketch-grid">${visibleShots.map((shot, index) => shots.length
         ? sketchCard(shot, sketchByShot.get(Number(shot.shot_index || shot.index || pageStart + index + 1)) || {}, pageStart + index, sketchGate, bundle, sketchBatchActive, pendingSketchIndexes.has(Number(shot.shot_index || shot.index || pageStart + index + 1)))
         : checkpointShotCard(shot, pageStart + index, bundle)).join('')}</div>${pageNav}` : `<div class="card storyboard-empty-card">${emptyState({ title: storyboardActive ? '正在生成分镜' : '还没有分镜画面', body: storyboardActive ? '镜头结构保存后会立即显示在这里。' : '选择模型并点击“生成分镜”即可开始。' })}</div>`}</div>
-    </div>`;
+</div>`;
 
   bindMediaLightbox(host);
   let selectedSketchModel = bindGenerationModelPicker(host, sketchModelPicker);

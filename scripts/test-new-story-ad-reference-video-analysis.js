@@ -1560,7 +1560,8 @@ async function main() {
   process.env.NEW_STORY_AD_MOCK_LLM = '0';
   try {
     let synthesisBudgetError = null;
-    try { await originalGenerateText({
+    let synthesisBudgetResult = null;
+    try { synthesisBudgetResult = await originalGenerateText({
       taskId: 'reference-synthesis-budget-fallback',
       stage: 'new_story_ad.reference_video_synthesis',
       systemPrompt: 'test',
@@ -1597,9 +1598,10 @@ async function main() {
         throw error;
       },
     }); } catch (error) { synthesisBudgetError = error; }
-    assert.deepStrictEqual(synthesisBudgetAttempts, ['timeout-provider/slow-primary'], '供应商已接单后超时必须停止候选切换，避免重复计费');
-    assert.strictEqual(synthesisBudgetError?.billing_state, 'unknown');
-    assert.strictEqual(synthesisBudgetError?.provider_submission_state, 'submitted_unknown');
+    assert.deepStrictEqual(synthesisBudgetAttempts, ['timeout-provider/slow-primary', 'invalid-provider/malformed-secondary', 'backup-provider/fast-tertiary'], '单次已授权文本请求按当前独立供应商链回退');
+    assert.strictEqual(synthesisBudgetError, null);
+    assert.strictEqual(synthesisBudgetResult.failed_models[0].billing_state, 'unknown');
+    assert.strictEqual(synthesisBudgetResult.failed_models[0].provider_submission_state, 'submitted_unknown');
 
     synthesisBudgetClock = 0;
     const deepseekRecoveryAttempts = [];

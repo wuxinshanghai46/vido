@@ -300,7 +300,7 @@ async function testLinkCreationBindsNewReferenceBeforeResponse() {
     reference_pack_fingerprint: 'old-reference-confirmed-pack',
     scene_planning_fingerprint: 'old-reference-confirmed-scene-plan',
     subject_qa_policy_version: storyboardSubjectQa.QA_POLICY_VERSION,
-    subject_count_qa: { pass: true },
+    subject_count_qa: { pass: true }, visual_qa: require('./lib/storyboardVisualQaFixture').verified(taskId),
   }]);
   storyAd.updateTaskRequest(taskId, { shot_design_confirmed: true }, user);
   const originalCreateFromUrl = referenceVideoAnalyses.createFromUrl;
@@ -802,7 +802,7 @@ async function testFamilyRecognitionAndSequentialWorkflowGates() {
       reference_pack_fingerprint: 'reference-intake-confirmed-pack',
       scene_planning_fingerprint: 'reference-intake-confirmed-scene-plan',
       subject_qa_policy_version: storyboardSubjectQa.QA_POLICY_VERSION,
-      subject_count_qa: { pass: true },
+      subject_count_qa: { pass: true }, visual_qa: require('./lib/storyboardVisualQaFixture').verified(taskId),
     }]);
     storyAd.updateTaskRequest(taskId, { shot_design_confirmed: true }, user);
     bundle = bundles.buildProjectBundle(taskId, { sections: 'all', user });

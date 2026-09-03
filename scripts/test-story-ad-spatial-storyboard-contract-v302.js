@@ -179,7 +179,7 @@ storage.saveOutput(taskId, 'storyboard_images', bound.map((shot, index) => {
     scene_planning_fingerprint: asset.scene_planning_fingerprint,
     shot_contract_fingerprint: lineage.shotContractFingerprint(shot, index),
     subject_qa_policy_version: 2,
-    subject_count_qa: { pass: true },
+    subject_count_qa: { pass: true }, visual_qa: require('./lib/storyboardVisualQaFixture').verified(taskId),
   };
 }));
 assert.equal(imageGate.inspect(taskId).ready, true, '空间和镜头血缘一致时允许继续');

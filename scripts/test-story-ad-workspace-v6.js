@@ -250,7 +250,7 @@ async function main() {
     reference_pack_fingerprint: 'workflow-confirmation-pack',
     scene_planning_fingerprint: 'workflow-confirmation-scene-plan',
     subject_qa_policy_version: storyboardSubjectQa.QA_POLICY_VERSION,
-    subject_count_qa: { pass: true },
+    subject_count_qa: { pass: true }, visual_qa: require('./lib/storyboardVisualQaFixture').verified(workflowStateTask),
   }]);
   const shotConfirmation = storyAd.updateTaskRequest(workflowStateTask, {
     shot_design_confirmed: true,
@@ -413,7 +413,12 @@ async function main() {
     ...row,
     source_beat_id: flowRepair.contract.units[0].beat_id,
     story_flow_contract_fingerprint: flowRepair.contract.contract_fingerprint,
+    characters: [{ name: '主要人物', action: row.action }], expected_people: 1,
   })));
+  storage.saveOutput(taskId, 'context', { ...storage.getOutput(taskId, 'context'),
+    person_contract: { status: 'verified', reference_views: {}, cross_view_qa: { pass: true, identity_score: 1, age_score: 1, wardrobe_score: 1, body_score: 1, photographic_realism_score: 1, checked_at: '2026-09-01T00:00:00Z' } },
+    product_contract: { status: 'verified', reference_qa: { pass: true, identity_score: 1, shape_score: 1, color_score: 1, material_score: 1 } },
+  });
 
   const draft = sketches.saveSketches(taskId, [{
     shot_index: 1,
@@ -441,6 +446,7 @@ async function main() {
     confirmed: true,
     client_request_id: 'sketch-test-request',
   }, {
+    visualQaService: require('./lib/storyboardVisualQaFixture').service,
     subjectQaService: { assert: async () => ({ pass: true, policy_version: storyboardSubjectQa.QA_POLICY_VERSION, status: 'verified' }) },
     mediaAdapter: {
       generateImage: async options => {

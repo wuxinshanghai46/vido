@@ -56,7 +56,7 @@ async function testSameJobCanContinueIntoImages() {
   let peak = 0;
   const called = [];
   const mediaAdapter = { generateImage: async ({ filename }) => {
-    const index = Number(String(filename).match(/_(\d+)_\d+$/)?.[1] || 0);
+    const index = Number(String(filename).match(/_(\d+)_[a-f0-9-]+$/)?.[1] || 0);
     called.push(index); active += 1; peak = Math.max(peak, active); await delay(8); active -= 1;
     return { image_url: `/generated/v285-${index}.png`, provider_used: 'fixture' };
   } };
@@ -67,7 +67,7 @@ async function testSameJobCanContinueIntoImages() {
   );
   const result = await storyboardImages.generateSketchBatch(taskId, {
     confirmed: true, generation_id: 'generation-v285', image_model: 'fixture-image', client_request_id: 'v285-batch',
-  }, { mediaAdapter, subjectQaService });
+  }, { mediaAdapter, subjectQaService, visualQaService: require('./lib/storyboardVisualQaFixture').service });
   assert.deepEqual(called.sort((a, b) => a - b), [1, 2, 3]);
   assert.equal(peak, 2);
   assert.equal(result.sketches.length, 3);
@@ -79,7 +79,7 @@ function testRouteAndUiContract() {
   const route = fs.readFileSync(path.join(root, 'src/routes/newStoryAd.js'), 'utf8');
   const view = fs.readFileSync(path.join(root, 'public/story-ad/views/storyboardView.js'), 'utf8');
   const ui = fs.readFileSync(path.join(root, 'public/story-ad/components/ui.js'), 'utf8');
-  const css = `${fs.readFileSync(path.join(root, 'public/story-ad/workspace.css'), 'utf8')}\n${fs.readFileSync(path.join(root, 'public/story-ad/storyboard-simple.css'), 'utf8')}`;
+  const css = fs.readFileSync(path.join(root, 'public/story-ad/storyboard-images.css'), 'utf8') + `${fs.readFileSync(path.join(root, 'public/story-ad/workspace.css'), 'utf8')}\n${fs.readFileSync(path.join(root, 'public/story-ad/storyboard-simple.css'), 'utf8')}`;
   const service = fs.readFileSync(path.join(root, 'src/services/newStoryAd/storyAdService.js'), 'utf8');
   const sketchService = fs.readFileSync(path.join(root, 'src/services/storyAdWorkspace/storyboardSketchService.js'), 'utf8');
   assert.match(route, /body\.generate_images !== true/);
@@ -95,8 +95,8 @@ function testRouteAndUiContract() {
   assert.doesNotMatch(view, />镜头详情 /);
   assert.doesNotMatch(view, /data-confirm-sketch/);
   assert.match(ui, /bundle\.storyboard\?\.image_batch/);
-  assert.match(css, /storyboard-view-head h1 \{ font-size: 22px/);
-  assert.match(css, /storyboard-primary-actions \.btn,.storyboard-primary-actions \.select \{ min-height: 34px; font-size: 12px/);
+  assert.match(css, /storyboard-view-head h1\s*\{\s*font-size:\s*22px/);
+  assert.match(css, /storyboard-primary-actions \.btn,.storyboard-primary-actions \.select\s*\{\s*min-height:\s*34px;\s*font-size:\s*12px/);
   assert.match(service, /storyboardReviewPolicy\.blockingRewriteIssues\(review\)/);
   assert.doesNotMatch(service, /\.\.\.\(review\.rewrite_issues \|\| \[\]\),\s*\];/);
   assert.match(sketchService, /使用与已确认人物和场景资产一致的综合色彩与光线/);

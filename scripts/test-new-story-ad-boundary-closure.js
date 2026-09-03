@@ -60,7 +60,7 @@ async function main() {
     const filePath = mediaAdapter.assetPathFromName(filename);
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
     fs.writeFileSync(filePath, `confirmed-storyboard-${index + 1}`);
-    return { shot_index: index + 1, image_url: `/api/new-story-ad/assets/${filename}`, subject_qa_policy_version: 2, subject_count_qa: { pass: true } };
+    return { shot_index: index + 1, image_url: `/api/new-story-ad/assets/${filename}`, subject_qa_policy_version: 2, subject_count_qa: { pass: true }, visual_qa: require('./lib/storyboardVisualQaFixture').verified('boundary-compose-block') };
   }));
   storage.saveOutput('boundary-compose-block', 'video_clips', clips);
   audioProduction.savePlan('boundary-compose-block', { include_voiceover: false, subtitle: true });

@@ -50,7 +50,7 @@ const imageRows = shots.map((shot, index) => {
     file_sha256: `image_hash_${index + 1}`,
     shot_contract_fingerprint: storyboardLineage.legacyShotContractFingerprint(shot, index),
     subject_qa_policy_version: 2,
-    subject_count_qa: { pass: true },
+    subject_count_qa: { pass: true }, visual_qa: require('./lib/storyboardVisualQaFixture').verified(taskId),
   };
 });
 storage.saveOutput(taskId, 'storyboard_images', imageRows);

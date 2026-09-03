@@ -71,7 +71,7 @@ function testGeneratedImageNeedsNoSecondConfirmation() {
     reference_pack_fingerprint: 'no-reference-required',
     scene_planning_fingerprint: 'no-scene-required',
     subject_qa_policy_version: subjectQa.QA_POLICY_VERSION,
-    subject_count_qa: { pass: true },
+    subject_count_qa: { pass: true }, visual_qa: require('./lib/storyboardVisualQaFixture').verified(taskId),
   }]);
   const gate = imageGate.inspect(taskId);
   assert.equal(gate.ready, true);

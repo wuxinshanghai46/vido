@@ -259,7 +259,7 @@ async function testGeneratedImageLineageAndPackInvalidation() {
   const result = await sketches.generateSketch(taskId, 5, {
     confirmed: true,
     client_request_id: 'fixture-generation:shot-5',
-  }, { mediaAdapter, compositionService, subjectQaService });
+  }, { mediaAdapter, compositionService, subjectQaService, visualQaService: require('./lib/storyboardVisualQaFixture').service });
   const pack = storage.getOutput(taskId, 'shot_reference_packs')[4];
   const image = result.sketch;
   assert.equal(image.lineage_schema_version, 2);
@@ -289,7 +289,7 @@ async function testGeneratedImageLineageAndPackInvalidation() {
   const regenerated = await sketches.generateSketch(taskId, 5, {
     confirmed: true,
     client_request_id: 'fixture-generation:shot-5:custom-prompt',
-  }, { mediaAdapter, compositionService, subjectQaService });
+  }, { mediaAdapter, compositionService, subjectQaService, visualQaService: require('./lib/storyboardVisualQaFixture').service });
   assert.match(capturedRequest.prompt, new RegExp(customPrompt));
   assert.equal(regenerated.sketch.prompt_override_fingerprint, promptSave.override.fingerprint);
   assert.equal(regenerated.sketch.applied_editable_prompt, customPrompt);
@@ -326,7 +326,7 @@ async function testModernImageInvalidatesWhenSceneAuthorityChanges() {
     shot_contract_fingerprint: sketches.shotContractFingerprint(prepared.shot, 4),
     source_content_revision: 1,
     subject_qa_policy_version: 2,
-    subject_count_qa: { pass: true },
+    subject_count_qa: { pass: true }, visual_qa: require('./lib/storyboardVisualQaFixture').verified(taskId),
   }]);
   assert.ok(!imageGate.inspect(taskId).stale_indexes.includes(5));
   const changedAssets = storage.getOutput(taskId, 'scene_assets').map(asset => (
@@ -366,7 +366,7 @@ async function testLegacyImageCompatibilityAndChangeInvalidation() {
   }]);
   const compatible = imageGate.inspect(taskId);
   assert.equal(compatible.ready, false, '旧图片缺少当前 QA/血缘时不得继续作为可生成视频的权威首帧');
-  assert.deepEqual(compatible.stale_reasons[1], ['SUBJECT_COUNT_QA_POLICY_OUTDATED']);
+  assert.deepEqual(compatible.stale_reasons[1], ['SUBJECT_COUNT_QA_POLICY_OUTDATED', 'VISUAL_QA_REQUIRED']);
 
   storage.saveOutput(taskId, 'scene_assets', [sceneAsset('legacy-scene', '旧任务场景', 2)]);
   storage.updateTask(taskId, { content_revision: 2 });

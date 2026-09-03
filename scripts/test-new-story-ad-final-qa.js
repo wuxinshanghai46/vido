@@ -183,7 +183,7 @@ async function testFinalQaFailureIsNotPersisted() {
   const storyboardPath = mediaAdapter.assetPathFromName(storyboardFilename);
   fs.mkdirSync(path.dirname(storyboardPath), { recursive: true });
   fs.writeFileSync(storyboardPath, 'confirmed-storyboard');
-  storage.saveOutput(taskId, 'storyboard_images', [{ shot_index: 1, image_url: `/api/new-story-ad/assets/${storyboardFilename}`, subject_qa_policy_version: 2, subject_count_qa: { pass: true } }]);
+  storage.saveOutput(taskId, 'storyboard_images', [{ shot_index: 1, image_url: `/api/new-story-ad/assets/${storyboardFilename}`, subject_qa_policy_version: 2, subject_count_qa: { pass: true }, visual_qa: require('./lib/storyboardVisualQaFixture').verified(taskId) }]);
   audioProduction.savePlan(taskId, { include_voiceover: false, subtitle: false });
   audioProduction.confirm(taskId, { id: 'test' });
   const composeCtx = storage.getOutput(taskId, 'context'), composeContracts = keyframeFreshness.inspect(taskId, { ctx: composeCtx, shots: composeShots }).contracts;

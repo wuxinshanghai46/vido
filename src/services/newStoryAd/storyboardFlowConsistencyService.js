@@ -29,6 +29,12 @@ function inspect(shots = [], contract = {}) {
     if (!fingerprint || fingerprint !== text(contract.contract_fingerprint)) {
       errors.push(`第 ${shotNo} 镜没有继承当前剧情流合同指纹`);
     }
+    if (Object.hasOwn(unit, 'character_ids')) {
+      const expectedPeople = list(unit.character_ids).length;
+      if (Number(shot.expected_people) !== expectedPeople || list(shot.characters).length !== expectedPeople) {
+        errors.push(`第 ${shotNo} 镜出镜人数应为 ${expectedPeople}，不能复用其他剧情节点的人物绑定`);
+      }
+    }
   });
   const expectedScenes = collapse(units.map(unit => text(unit.scene_id)));
   const actualSequence = collapse(actualScenes);
@@ -83,8 +89,17 @@ function rebaseWhenPresent(shots = [], contract = {}, options = {}) {
     // revision while rebasing only the id creates an impossible r2/r5 pair,
     // which is later rejected by sceneBindingService before prompt generation.
     const { scene_revision: _staleSceneRevision, sceneRevision: _staleSceneRevisionAlias, ...current } = shot;
+    const cast = Object.hasOwn(unit, 'character_ids') ? list(unit.character_ids).map(id => {
+      const person = list(contract.people).find(item => text(item.character_id) === text(id));
+      return { id, name: person?.name || id, action: text(unit.action) };
+    }) : null;
+    const existingCast = list(shot.characters);
+    const stableCast = cast && existingCast.length === cast.length && cast.every(person =>
+      existingCast.some(existing => text(existing.name || existing) === text(person.name))) ? existingCast : cast;
     return {
       ...current,
+      ...(cast ? { character_ids: [...unit.character_ids], characters: stableCast, expected_people: cast.length,
+        no_person: cast.length === 0, look_bindings: unit.look_bindings || {}, voice_bindings: unit.voice_bindings || {} } : {}),
       scene_id: text(unit.scene_id),
       scene_asset_id: text(unit.scene_id),
       // Scene transitions are confirmed story-flow authority, not optional
