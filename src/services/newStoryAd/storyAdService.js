@@ -37,6 +37,7 @@ const videoFrameQa = require('./videoFrameQaService');
 const videoQualityPolicy = require('./videoQualityPolicyService');
 const videoLineage = require('./videoLineageService'), videoBoundaryPolicy = require('./videoBoundaryPolicyService'), videoArtifactWorkflow = require('./videoArtifactWorkflowService'), videoArtifactCompatibility = require('./videoArtifactCompatibilityService'), videoComposeCompatibility = require('./videoComposeCompatibilityService');
 const videoRepairPolicy = require('./videoRepairPolicy');
+const videoSubmissionAuthorization = require('./videoSubmissionAuthorizationService');
 const videoPreflight = require('./videoPreflightService'), videoStatusProjection = require('./videoStatusProjectionService');
 const videoAttemptLedger = require('./videoAttemptStore').createVideoAttemptStore(storage);
 const sceneBlockService = require('./sceneBlockService'), videoClipStatusRecovery = require('./videoClipStatusRecoveryService');
@@ -2332,16 +2333,9 @@ function buildVideoPreflightPlan(taskId, options = {}) {
   plan.warnings = [];
   if (executionPlan.summary.high_risk_unit_count > 0) {
     plan.warnings.push({
-      code: 'VIDEO_COMPLEXITY_REVIEW_REQUIRED',
-      message: `检测到 ${executionPlan.summary.high_risk_unit_count} 个高复杂度生成单元，付费提交前必须确认动画预演和镜头拆分。`,
+      code: 'VIDEO_COMPLEXITY_HIGH',
+      message: `检测到 ${executionPlan.summary.high_risk_unit_count} 个高复杂度生成单元，将按当前镜头方案生成。`,
     });
-  }
-  if (plan.paid_unit_count > 0 && pinnedModel && !costPlan.price_known) {
-    plan.blockers.push({
-      code: 'VIDEO_COST_PRICE_UNKNOWN',
-      message: '当前视频模型没有可信的人民币计费单价，已停止付费生成。请先由管理员补充价格配置。',
-    });
-    plan.status = plan.zero_cost_action_count > 0 ? 'partial_ready' : 'blocked';
   }
   const runtimePolicy = storyAdV3RuntimePolicy();
   plan.runtime_policy = runtimePolicy;
@@ -2363,18 +2357,10 @@ function buildVideoPreflightPlan(taskId, options = {}) {
   return plan;
 }
 
-/** 校验不可变视频方案、复杂度确认和人民币费用授权。 */
-function assertVideoPreflightConfirmation(taskId, options = {}) {
+/** 服务端校验当前生成方案；用户点击即授权选定模型和镜头范围。 */
+function assertVideoPreflightConfirmation(taskId, options = {}, { persist = true } = {}) {
   const plan = buildVideoPreflightPlan(taskId, options);
-  const supplied = String(options.video_preflight_fingerprint || options.videoPreflightFingerprint || '').trim();
-  if (!supplied || supplied !== plan.fingerprint) {
-    const error = new Error('视频生成方案尚未确认或任务内容已变化。请先查看新的生成前优化方案；本次没有提交视频模型。');
-    error.code = 'VIDEO_PREFLIGHT_CONFIRMATION_REQUIRED';
-    error.status = 409;
-    error.retryable = false;
-    error.preflight = videoPreflight.publicVideoPreflight(plan);
-    throw error;
-  }
+  const authorization = videoSubmissionAuthorization.authorize(plan, options);
   const zeroCostOnly = options.zero_cost_only === true || options.zeroCostOnly === true;
   if (plan.blockers.length && !zeroCostOnly) {
     const error = new Error(plan.blockers.map(item => item.message).join('；'));
@@ -2393,9 +2379,8 @@ function assertVideoPreflightConfirmation(taskId, options = {}) {
     throw error;
   }
   videoSubmissionGate.assertForceScope(options, plan);
+  if (!persist) return plan;
   if (!zeroCostOnly && Number(plan.paid_unit_count || 0) > 0) {
-    videoCore.costGuard.assertComplexityReview(plan.authorized_execution_plan || plan.execution_plan, options);
-    const authorization = videoCore.costGuard.assertCostAuthorization(plan.cost_plan, options);
     videoCostAuthorization.authorize(taskId, authorization, {
       execution_plan_fingerprint: plan.execution_plan.fingerprint, video_preflight_fingerprint: plan.fingerprint, paid_execution_policy: paidExecutionPolicy.publicPolicy(),
     });
@@ -2414,7 +2399,7 @@ async function generateVideoStage(taskId, options = {}) { options = paidExecutio
   const contracts = await ensureContractsForMedia(taskId, ctx, shots);
   const keyframes = approvedVideoFrames(taskId, shots, contracts);
   videoSubmissionGate.validateBeforeProvider({ storage, taskId, validate: () => { assertVideoInputsReady({ ctx, shots, keyframes, contracts, sceneAcceptance: sceneVerificationOptions(taskId).acceptance }); audioProduction.assertApproved(taskId); } });
-  // 视频供应商调用必须经过不可绕过的方案与人民币费用确认。
+  // 再次验证排队时锁定的输入、模型和镜头范围，之后才允许调用供应商。
   const preflightPlan = assertVideoPreflightConfirmation(taskId, options);
   const generationMode = preflightPlan.mode;
   const zeroCostOnly = options.zero_cost_only === true || options.zeroCostOnly === true;

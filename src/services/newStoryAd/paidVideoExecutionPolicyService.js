@@ -61,7 +61,7 @@ function assertExternalRequest(options = {}) {
       throw policyError(key);
     }
   }
-  for (const key of SERVER_OWNED_CONTROLS) {
+  for (const key of [...SERVER_OWNED_CONTROLS, '_videoSubmissionFingerprint']) {
     if (Object.prototype.hasOwnProperty.call(options, key)) throw policyError(key);
   }
   return true;

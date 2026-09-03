@@ -31,6 +31,7 @@ const registerVisualAssetBillingRoutes = require('./newStoryAd/visualAssetBillin
 const subjectRecoveryPreflight = require('../services/newStoryAd/subjectRecoveryPreflightService').createService();
 const { registerVideoMonitorRoute } = require('./newStoryAd/videoMonitorRoute');
 const directorWorkspace = require('../services/newStoryAd/directorWorkspaceService');
+const videoSubmissionAuthorization = require('../services/newStoryAd/videoSubmissionAuthorizationService');
 const paidExecutionPolicy = require('../services/newStoryAd/paidVideoExecutionPolicyService');
 const visualRealismPolicy = require('../services/newStoryAd/visualRealismPolicyService');
 const videoCore = require('../services/videoGenerationCore');
@@ -52,7 +53,7 @@ function asyncRoute(fn) {
       const requestId = uuidv4();
       console.error(`[new-story-ad] request failed request_id=${requestId} code=${err.code || 'INTERNAL_ERROR'}:`, String(err.message || err));
       const publicError = videoCore.chineseError.ensureChineseError(err);
-      res.status(publicError.status || 500).json({
+      const failure = {
         success: false,
         code: publicError.code || 'INTERNAL_ERROR',
         error: String(publicError.message),
@@ -68,7 +69,17 @@ function asyncRoute(fn) {
         content_revision: err.content_revision || err.actual_content_revision || undefined,
         acknowledged_client_edit_seq: err.acknowledged_client_edit_seq || undefined,
         active_generation_id: err.active_generation_id || undefined,
-      });
+      };
+      const videoRequest = /\/tasks\/[^/]+\/(?:video(?:\/|$)|media$)/.test(req.path || '');
+      if (videoRequest && req.method === 'POST') {
+        try {
+          taskForReq(req);
+          storage.saveStage(req.params.id, 'video_submission', { status: 'failed', error: failure.error, error_code: failure.code, request_id: requestId, provider_submitted: false });
+        } catch { /* Ownership rejection must not write another user's diagnostics. */ }
+      }
+      res.status(publicError.status || 500).json(videoRequest
+        ? videoSubmissionAuthorization.failureResponse(failure, storyAdErrorPermission.canViewErrors(userFromReq(req)))
+        : failure);
     }
   };
 }
@@ -2009,7 +2020,8 @@ router.get('/tasks/:id/video/preflight', asyncRoute(async (req, res) => {
     video_model: selected.video_model,
     ...(requestedIndexes ? { only_indexes: requestedIndexes } : {}),
   });
-  res.json({ success: true, task_id: req.params.id, preflight: service.publicVideoPreflight(plan) });
+  res.json({ success: true, task_id: req.params.id, preflight: storyAdErrorPermission.canViewErrors(userFromReq(req))
+    ? service.publicVideoPreflight(plan) : { status: plan.status, task_id: req.params.id } });
 }));
 
 router.post('/tasks/:id/video', asyncRoute(async (req, res) => {
@@ -2017,7 +2029,8 @@ router.post('/tasks/:id/video', asyncRoute(async (req, res) => {
   paidExecutionPolicy.assertExternalRequest(req.body || {});
   const selected = mediaModelSelection.applySelection('new_story_ad.video', req.body || {});
   const body = paidExecutionPolicy.canonicalize({ ...selected, require_video_preflight: true });
-  service.assertVideoPreflightConfirmation(req.params.id, body);
+  const plan = service.assertVideoPreflightConfirmation(req.params.id, body, { persist: false });
+  body._videoSubmissionFingerprint = videoSubmissionAuthorization.submissionFingerprint(plan);
   return queueTaskStage(
     req,
     res,
@@ -2062,7 +2075,8 @@ router.post('/tasks/:id/media', asyncRoute(async (req, res) => {
   paidExecutionPolicy.assertExternalRequest(req.body || {});
   const selected = mediaModelSelection.applySelection('new_story_ad.video', req.body || {});
   const body = paidExecutionPolicy.canonicalize({ ...selected, require_video_preflight: true });
-  service.assertVideoPreflightConfirmation(req.params.id, body);
+  const plan = service.assertVideoPreflightConfirmation(req.params.id, body, { persist: false });
+  body._videoSubmissionFingerprint = videoSubmissionAuthorization.submissionFingerprint(plan);
   return queueTaskStage(req, res, 'media', async job => {
     // 同一后台任务先验证可选配音，再生成纯视觉连续段，最后只在本地混音合成。
     await mediaPipeline.runMediaPipeline({

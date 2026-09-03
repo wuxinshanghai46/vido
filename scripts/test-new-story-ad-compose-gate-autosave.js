@@ -226,11 +226,9 @@ assert(html.includes('id="dhNsaAdBgmClear"'), 'BGM must provide an explicit no-m
 
 const currentFinalView = read('public/story-ad/views/finalView.js');
 const currentStore = read('public/story-ad/store/projectStore.js');
-assert(currentFinalView.includes("store.videoPreflight('economy', videoModelRoute)"), '现行视频入口必须先执行绑定所选模型的零生成预检');
-assert(currentFinalView.includes('data-cost-confirm'), '现行视频入口必须明确确认费用上限');
-assert(currentFinalView.includes('data-complexity-confirm'), '复杂镜头必须有独立人工复核确认');
-assert(currentStore.includes('confirmed_cost_limit_rmb: Number(cost.maximum_cost_rmb || 0)'), '确认的费用上限必须提交给服务端');
-assert(currentFinalView.indexOf("store.videoPreflight('economy', videoModelRoute)") < currentFinalView.indexOf('store.startVideo(preflight'), '预检必须发生在付费视频提交之前');
+assert(currentFinalView.includes('store.startVideo({ video_model_route: videoModelRoute })'), '选好模型后一键提交');
+assert(!currentFinalView.includes('data-cost-confirm') && !currentFinalView.includes('data-complexity-confirm'), '内部预检不得要求用户再次确认');
+assert(!currentStore.includes('confirmed_cost_limit_rmb'), '不能伪造用户费用确认');
 
 const generationFlow = read('public/js/new-story-ad/generation-flow.js');
 assert(generationFlow.includes("return runStage('compose', ctx)"), 'step 5 chain must end in composition only');
@@ -377,7 +375,7 @@ assert(mediaPipeline.includes('missing_only: true'), 'media retries must preserv
 assert(mediaPipeline.includes('visual_only: true'), 'whole-ad media generation must keep paid video clips visual-only');
 assert(mediaPipeline.indexOf('generateTtsStage') < mediaPipeline.indexOf('generateVideoStage'), 'selected TTS must be validated before paid video generation');
 assert(route.includes("router.get('/tasks/:id/video/preflight'"), 'server must expose a zero-generation video preflight endpoint');
-assert(route.includes('service.assertVideoPreflightConfirmation(req.params.id, body)'), 'server must reject unconfirmed or stale video plans before queueing');
+assert(route.includes('service.assertVideoPreflightConfirmation(req.params.id, body, { persist: false })'), 'server must validate current inputs before queueing without writing authorization');
 
 const service = read('src/services/newStoryAd/storyAdService.js');
 assert(!service.includes('persistProgressSnapshot(taskId, progressSnapshot)'),

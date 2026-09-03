@@ -103,15 +103,9 @@ function testSelectiveRedoAndCostAuthorization() {
   assert.strictEqual(costPlan.paid_unit_count, 1);
   assert.deepStrictEqual(costPlan.units[0].edit_shot_indexes, [1], '费用确认单元必须与实际选择性重做目标一致');
   assert.strictEqual(costPlan.automatic_paid_retry_count, 0);
-  assert.throws(
-    () => videoCore.costGuard.assertCostAuthorization(costPlan, {}),
-    error => error.code === 'VIDEO_COST_CONFIRMATION_REQUIRED',
-    '没有费用指纹与人民币上限时不得提交付费重做',
-  );
-  const authorization = videoCore.costGuard.assertCostAuthorization(costPlan, {
-    cost_plan_fingerprint: costPlan.fingerprint,
-    confirmed_cost_limit_rmb: costPlan.maximum_cost_rmb,
-  });
+  const authorization = require('../src/services/newStoryAd/videoSubmissionAuthorizationService').authorize({ ...firstGroup, cost_plan: costPlan });
+  assert.strictEqual(authorization.authorization_type, 'selected_model_generate_click');
+  assert.strictEqual(authorization.confirmed_cost_limit_rmb, null);
   assert.strictEqual(authorization.authorized, true);
 }
 
@@ -261,7 +255,7 @@ function testStep5RenderingPerformanceBoundaries() {
   assert(finalView.includes('preload="none"'), '现行成片播放器不得预取视频流');
   assert(reviewModule.includes('data-nsa-review-media=') && reviewModule.includes("video.preload = 'none'"), '母片与成员片段必须折叠后懒创建且默认不预加载');
   assert(reviewModule.includes("image.loading = 'lazy'"), '边界证据图片必须按需懒加载');
-  const mediaRenderer = finalView.slice(finalView.indexOf('function mediaCard'), finalView.indexOf('function preflightDialog'));
+  const mediaRenderer = finalView.slice(finalView.indexOf('function mediaCard'), finalView.indexOf('/** 第 7 步'));
   assert(!/setInterval|fetch\(|request\(/.test(mediaRenderer), '现行成片渲染不得为每个媒体节点建立独立轮询或请求');
   assert.strictEqual((finalView.match(/\brequest\(/g) || []).length, 0, '视频与合成页不得重复读取声音设计合同');
   assert.strictEqual((finalSoundView.match(/\brequest\(/g) || []).length, 1, '独立声音页只允许一次页面级声音设计聚合请求');

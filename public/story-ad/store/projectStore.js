@@ -480,14 +480,9 @@ export function createProjectStore() {
     return data.preflight;
   }
 
-  async function startVideo(preflight, options = {}) {
-    const cost = preflight?.cost_plan || {};
+  async function startVideo(options = {}) {
     return runStage('video', {
-      video_generation_mode: preflight?.mode || 'economy',
-      video_preflight_fingerprint: preflight?.fingerprint || '',
-      cost_plan_fingerprint: cost.fingerprint || '',
-      confirmed_cost_limit_rmb: Number(cost.maximum_cost_rmb || 0),
-      complexity_review_confirmed: options.complexity_review_confirmed === true,
+      video_generation_mode: 'economy',
       visual_only: options.visual_only === true, video_model_route: options.video_model_route || '',
     });
   }

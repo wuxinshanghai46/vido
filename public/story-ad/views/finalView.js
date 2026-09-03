@@ -20,14 +20,6 @@ function finalVideoPlayer(item = {}, poster = '') {
   return `<video class="final-video" src="${escapeHtml(url)}" poster="${escapeHtml(poster)}" controls preload="none" playsinline aria-label="初版成片">您的浏览器暂不支持视频播放。</video>`;
 }
 
-function preflightDialog(preflight = {}) {
-  const cost = preflight.cost_plan || {};
-  const blockers = Array.isArray(preflight.blockers) ? preflight.blockers : [];
-  const shotCount = Array.isArray(preflight.shots) ? preflight.shots.length : 0;
-  const complexityRequired = Number(preflight.execution_summary?.high_risk_unit_count || 0) > 0;
-  return `<div class="modal-backdrop" data-preflight-modal><section class="modal card" role="dialog" aria-modal="true" aria-labelledby="preflightTitle"><div class="card-head"><div><h2 id="preflightTitle">确认视频生成</h2><p>只有点击最终确认后才会提交视频模型。</p></div><button class="icon-btn" type="button" data-close-preflight>×</button></div><div class="card-body"><div class="preflight-grid"><div><span>计划镜头</span><b>${shotCount}</b></div><div><span>生成模式</span><b>${escapeHtml(preflight.mode || 'economy')}</b></div><div><span>预计上限</span><b>${Number(cost.maximum_cost_rmb || 0).toFixed(2)} 元</b></div></div>${blockers.length ? `<div class="inline-error"><b>当前不能提交：</b>${blockers.map(item => escapeHtml(item.message || item)).join('；')}</div>` : ''}<label class="confirm-check"><input type="checkbox" data-cost-confirm> 我已核对镜头数量和费用上限，本次生成将产生实际调用。</label>${complexityRequired ? '<label class="confirm-check"><input type="checkbox" data-complexity-confirm> 我已复核复杂镜头的动作、主体与运镜。</label>' : ''}<div class="form-actions"><button class="btn" type="button" data-close-preflight>取消</button><button class="btn primary" type="button" data-submit-video ${blockers.length ? 'disabled' : ''}>确认并开始生成</button></div></div></section></div>`;
-}
-
 /** 第 7 步只负责逐镜视频生成与初版合成，不渲染任何剪辑控件。 */
 export async function mount(host, context) {
   const { bundle, store } = context;
@@ -49,8 +41,8 @@ export async function mount(host, context) {
     <div class="post-stage-summary"><span class="is-complete"><b>✓</b><em>声音</em><small>已确认</small></span><span class="is-current"><b>2</b><em>视频与合成</em><small>${finalVideo ? '初版成片已完成' : `${clips.length}/${shots.length} 个镜头`}</small></span><span><b>3</b><em>成片剪辑</em><small>${finalVideo ? '现在可以进入' : '初版成片生成后出现'}</small></span></div>
     ${finalVideo ? `<section class="card final-player"><div class="card-head"><div><h2>初版成片</h2><p>先完整观看，再进入独立剪辑页调整节奏和转场。</p></div></div><div class="final-media">${finalVideoPlayer(finalVideo, posterUrl)}</div></section>` : ''}
     <details class="card generation-section generation-details"><summary class="card-head"><div><h2>已确认分镜 / 视频首帧</h2><p>${approvedFrames.length}/${shots.length} · 直接进入图生视频，不重复生成图片</p></div><span class="details-chevron" aria-hidden="true">⌄</span></summary><div class="card-body">${approvedFrames.length ? `<div class="generation-grid">${approvedFrames.map((item, index) => mediaCard(item, index, '首帧')).join('')}</div>` : emptyState({ title: storyboardComplete ? '分镜待确认' : '分镜尚未完整', body: storyboardHint, action: storyboardAction, actionId: 'back-storyboard' })}</div></details>
-    <section class="card generation-section"><div class="card-head"><div><h2>分镜视频</h2><p>已完成 ${clips.length}/${clipTotal || shots.length}</p></div></div><div class="card-body">${clips.length ? `<div class="generation-grid">${clips.map((item, index) => mediaCard(item, index, '视频')).join('')}</div>${moreMediaButton(mediaCatalog.clips, 'clips', '继续加载视频片段')}` : emptyState({ title: '还没有分镜视频', body: framesReady ? '声音已确认。选择视频模型并完成费用预检后，才能提交真实视频生成。' : (storyboardComplete ? storyboardHint : `还缺少 ${Math.max(0, shots.length - approvedFrames.length)} 张已确认首帧，请先返回人物场景分镜生成并确认。`), action: framesReady ? '' : storyboardAction, actionId: framesReady ? '' : 'back-storyboard' })}</div></section>
-    <div data-modal-host></div>`;
+    <section class="card generation-section"><div class="card-head"><div><h2>分镜视频</h2><p>已完成 ${clips.length}/${clipTotal || shots.length}</p></div></div><div class="card-body">${clips.length ? `<div class="generation-grid">${clips.map((item, index) => mediaCard(item, index, '视频')).join('')}</div>${moreMediaButton(mediaCatalog.clips, 'clips', '继续加载视频片段')}` : emptyState({ title: '还没有分镜视频', body: framesReady ? '声音已确认。选择视频模型后，点击生成分镜视频。' : (storyboardComplete ? storyboardHint : `还缺少 ${Math.max(0, shots.length - approvedFrames.length)} 张已确认首帧，请先返回人物场景分镜生成并确认。`), action: framesReady ? '' : storyboardAction, actionId: framesReady ? '' : 'back-storyboard' })}</div></section>
+    ${bundle.permissions?.can_view_errors === true && bundle.project?.technical_diagnostics?.error ? `<details class="card"><summary>具体失败原因（授权账号可见）</summary><div class="card-body"><p>${escapeHtml(bundle.project.technical_diagnostics.error)}</p><small>${escapeHtml(bundle.project.technical_diagnostics.error_code || '')}</small></div></details>` : ''}`;
 
   const selectedVideoModel = bindGenerationModelPicker(host, videoModelPicker);
   host.querySelectorAll('[data-back-storyboard], [data-empty-action="back-storyboard"]').forEach(button => button.addEventListener('click', () => {
@@ -62,22 +54,15 @@ export async function mount(host, context) {
   bindMoreMedia(host, context);
   host.querySelector('[data-generate-video]')?.addEventListener('click', async event => {
     const button = event.currentTarget;
+    if (button.dataset.submitting === 'true') return;
     try {
-      setButtonBusy(button, true, '正在预检…');
       const videoModelRoute = selectedVideoModel();
-      if (!videoModelRoute) throw new Error('请先选择本次视频生成模型');
-      const preflight = await store.videoPreflight('economy', videoModelRoute);
-      const complexityRequired = Number(preflight.execution_summary?.high_risk_unit_count || 0) > 0;
-      const modalHost = host.querySelector('[data-modal-host]');
-      modalHost.innerHTML = preflightDialog(preflight);
-      const close = () => { modalHost.innerHTML = ''; };
-      modalHost.querySelectorAll('[data-close-preflight]').forEach(item => item.addEventListener('click', close));
-      modalHost.querySelector('[data-submit-video]')?.addEventListener('click', async submitEvent => {
-        const submit = submitEvent.currentTarget;
-        if (!modalHost.querySelector('[data-cost-confirm]')?.checked) return toast('请先确认镜头数量与费用上限。', 'warning');
-        if (complexityRequired && !modalHost.querySelector('[data-complexity-confirm]')?.checked) return toast('请先完成复杂镜头复核。', 'warning');
-        try { setButtonBusy(submit, true, '正在提交…', { elapsed: true }); await store.startVideo(preflight, { complexity_review_confirmed: !complexityRequired || modalHost.querySelector('[data-complexity-confirm]')?.checked, video_model_route: videoModelRoute }); close(); toast('视频生成任务已提交。', 'success'); await context.refreshShell(); } catch (error) { toast(error.message, 'danger'); setButtonBusy(submit, false); }
-      });
-    } catch (error) { toast(error.message, 'danger'); } finally { setButtonBusy(button, false); }
+      if (!videoModelRoute) return toast('请先选择视频模型。', 'warning');
+      button.dataset.submitting = 'true';
+      setButtonBusy(button, true, '正在提交…', { elapsed: true });
+      await store.startVideo({ video_model_route: videoModelRoute });
+      toast('视频生成任务已提交。', 'success');
+      await context.refreshShell();
+    } catch (error) { toast(bundle.permissions?.can_view_errors === true ? error.message : '视频生成失败。', 'danger'); } finally { delete button.dataset.submitting; setButtonBusy(button, false); }
   });
 }

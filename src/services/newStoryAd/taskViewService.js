@@ -178,7 +178,10 @@ function createTaskViewService(deps = {}) {
         { kind: 'scene_assets', payload: sceneAssetLifecycle.normalizeSceneAssets(projectedSceneAssets) },
       ];
     }
-    const bundle = { ...rawBundle, outputs: visibleOutputs };
+    const bundle = { ...rawBundle, outputs: visibleOutputs,
+      stages: diagnostics ? rawBundle.stages : (rawBundle.stages || []).map(row => row.stage === 'video_submission'
+        ? { task_id: row.task_id, stage: row.stage, status: row.status, error: '视频生成失败。' } : row),
+    };
     const outputs = Object.fromEntries(visibleOutputs.map(x => [x.kind, x.payload]));
     const activePlanRecord = outputs.asset_plan_active && typeof outputs.asset_plan_active === 'object'
       ? outputs.asset_plan_active

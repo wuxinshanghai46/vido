@@ -22,10 +22,11 @@ const DANGEROUS_KEYS = paidExecutionPolicy.EXTERNAL_BOOLEAN_CONTROLS;
 const FORBIDDEN_HTTP_CASES = [
   ...paidExecutionPolicy.EXTERNAL_BOOLEAN_CONTROLS.map(key => ({ key, value: true })),
   ...paidExecutionPolicy.EXTERNAL_CONCURRENCY_CONTROLS.map(key => ({ key, value: 2 })),
+  { key: '_videoSubmissionFingerprint', value: 'forged' },
   ...paidExecutionPolicy.SERVER_OWNED_CONTROLS.map(key => ({ key, value: 'client-forged-value' })),
 ];
 
-function requestJson(port, pathname, body) {
+function requestJson(port, pathname, body, role = 'user') {
   return new Promise((resolve, reject) => {
     const payload = Buffer.from(JSON.stringify(body || {}));
     const req = http.request({
@@ -35,6 +36,7 @@ function requestJson(port, pathname, body) {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
+        'x-test-role': role,
         'content-length': payload.length,
       },
     }, (res) => {
@@ -167,6 +169,7 @@ async function testHttpIngress() {
     const router = require('../src/routes/newStoryAd');
     const app = express();
     app.use(express.json());
+    app.use((req, _res, next) => { req.user = { role: req.headers['x-test-role'] }; next(); });
     app.use('/api/new-story-ad', router);
     server = http.createServer(app);
     await new Promise((resolve, reject) => {
@@ -183,10 +186,16 @@ async function testHttpIngress() {
           [key]: value,
         });
         assert.strictEqual(response.status, 422, `${route} 必须拒绝外部参数 ${key}`);
-        assert.strictEqual(response.body.code, 'VIDEO_PAID_EXECUTION_OPTION_FORBIDDEN');
+        assert.strictEqual(response.body.code, 'VIDEO_GENERATION_FAILED');
+        assert.strictEqual(response.body.error, '视频生成失败。');
         assert.strictEqual(queued, null, `${route} 拒绝危险参数后不得入队`);
       }
     }
+
+    const adminFailure = await requestJson(port, '/api/new-story-ad/tasks/paid-route-task/video', { parallel_videos: true }, 'admin');
+    assert.strictEqual(adminFailure.body.code, 'VIDEO_PAID_EXECUTION_OPTION_FORBIDDEN');
+    assert(adminFailure.body.error.includes('parallel_videos'), 'authorized admin sees specific server failure');
+    assert.strictEqual(storage.getTaskBundle('paid-route-task', { diagnostics: true }).stages.find(row => row.stage === 'video_submission')?.status, 'failed');
 
     const safeBody = Object.fromEntries(DANGEROUS_KEYS.map(key => [key, false]));
     safeBody.video_model_route = 'mock/selected-video';

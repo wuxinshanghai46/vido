@@ -40,7 +40,9 @@ function compactProgress(value = {}) {
   if (Array.isArray(source.batch_scene_ids)) {
     compact.batch_scene_ids = [...new Set(source.batch_scene_ids.map(item => text(item, 120)).filter(Boolean))].slice(0, 30);
   }
-  if (compact.message) compact.message = publicFailure.publicFailureMessage(compact.message, text);
+  if (compact.message) compact.message = ['failed', 'error'].includes(compact.status)
+    ? publicFailure.taskFailureMessage({ stage: publicFailure.publicStage(compact.stage), error: compact.message }, text)
+    : publicFailure.publicFailureMessage(compact.message, text);
   if (compact.stage) compact.stage = publicFailure.publicStage(compact.stage);
   return compact;
 }
@@ -70,7 +72,7 @@ function projectTaskProgress(task = {}, sinceRevision = '') {
     generation_started_at: text(task.generation_started_at, 48),
     generation_finished_at: text(task.generation_finished_at, 48),
     generation_progress: progress,
-    error: publicFailure.publicFailureMessage(task.error, text),
+    error: publicFailure.taskFailureMessage(task, text),
     error_code: publicFailure.publicErrorCode(task.error_code, task.error),
     retryable: task.retryable === true,
     updated_at: text(task.updated_at, 48),

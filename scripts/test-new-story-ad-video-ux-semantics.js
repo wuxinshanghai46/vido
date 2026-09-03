@@ -130,8 +130,8 @@ function testRecoveryEntryUsesScopedEconomyMode() {
   assert.strictEqual(videoReview.generationModeForEntry([{ file_path: '/existing.mp4', error_code: 'VIDEO_QA_FAILED' }]), 'economy', 'a failed persisted clip must not be expanded back into an old quality block');
   const source = fs.readFileSync(path.join(__dirname, '../public/story-ad/views/finalView.js'), 'utf8');
   const store = fs.readFileSync(path.join(__dirname, '../public/story-ad/store/projectStore.js'), 'utf8');
-  assert(source.includes("store.videoPreflight('economy', videoModelRoute)"), 'the current user entry must route recovery tasks through exact economy preflight pinned to the selected model route');
-  assert(store.includes('video_preflight_fingerprint: preflight?.fingerprint'), 'the confirmed preflight fingerprint must be bound to the submitted authorization');
+  assert(source.includes("store.startVideo({ video_model_route: videoModelRoute })"), 'the current user entry submits the selected route directly, with server-owned validation');
+  assert(!store.includes('video_preflight_fingerprint: preflight?.fingerprint'), 'input fingerprint is server-owned and not a client confirmation');
 }
 
 function testCostAcknowledgementsDefaultCheckedWithoutSelectingPaidUnits() {

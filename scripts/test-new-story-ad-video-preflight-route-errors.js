@@ -13,5 +13,5 @@ assert.match(block, /let pinnedModelError = null/);
 assert.match(block, /pinnedModelError = error/);
 assert.match(block, /if \(!pinnedModel && pinnedModelError\)/);
 assert.match(block, /pinnedModelError\.code \|\| 'VIDEO_MODEL_CONFIG_REQUIRED'/);
-assert.match(block, /plan\.paid_unit_count > 0 && pinnedModel && !costPlan\.price_known/);
+assert(!block.includes('VIDEO_COST_PRICE_UNKNOWN'), 'missing accounting metadata cannot block a supported video route');
 console.log(JSON.stringify({ passed: true, explicit_route_error_preserved: true, unknown_price_not_used_for_missing_route: true }));

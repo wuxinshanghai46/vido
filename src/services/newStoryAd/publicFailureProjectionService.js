@@ -57,13 +57,19 @@ function publicProgress(progress = null, clean = normalize) {
     current_view_key: clean(progress.current_view_key, 80),
     current_view_label: clean(progress.current_view_label, 120),
     batch_scene_ids: batchSceneIds,
-    message: publicFailureMessage(progress.message, clean), started_at: clean(progress.started_at, 80),
+    message: ['failed', 'error'].includes(progress.status) ? taskFailureMessage({ stage: publicStage(progress.stage), error: progress.message }, clean) : publicFailureMessage(progress.message, clean), started_at: clean(progress.started_at, 80),
     updated_at: clean(progress.updated_at, 80), finished_at: clean(progress.finished_at, 80),
   };
 }
 
+function taskFailureMessage(task = {}, clean = normalize) {
+  const stage = String(task.active_stage || task.stage || '').toLowerCase();
+  if (task.error && (['video', 'media'].includes(stage) || /^VIDEO_/.test(task.error_code || ''))) return '视频生成失败。';
+  return publicFailureMessage(task.error, clean);
+}
+
 function project(task = {}, { isAdmin = false, clean = normalize } = {}) {
-  const public_error = publicFailureMessage(task.error, clean);
+  const public_error = taskFailureMessage(task, clean);
   const generation_progress = publicProgress(task.generation_progress, clean);
   const technical_diagnostics = isAdmin ? {
     error: clean(task.error, 1200), error_code: clean(task.error_code, 100),
@@ -83,4 +89,4 @@ function publicTask(task = {}, { isAdmin = false } = {}) {
   return safe;
 }
 
-module.exports = { project, publicErrorCode, publicFailureMessage, publicProgress, publicStage, publicTask, withoutSupportId };
+module.exports = { taskFailureMessage, project, publicErrorCode, publicFailureMessage, publicProgress, publicStage, publicTask, withoutSupportId };

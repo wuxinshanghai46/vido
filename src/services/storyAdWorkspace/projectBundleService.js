@@ -84,7 +84,7 @@ function projectSummary(task = {}) {
       ? task.target_generation_progress : {},
     generation_progress: task.generation_progress && typeof task.generation_progress === 'object'
       ? task.generation_progress : null,
-    error: failureProjection.publicFailureMessage(task.error, clean), error_code: failureProjection.publicErrorCode(task.error_code, task.error),
+    error: failureProjection.taskFailureMessage(task, clean), error_code: failureProjection.publicErrorCode(task.error_code, task.error),
     created_at: task.created_at || '', updated_at: task.updated_at || '',
   };
 }
