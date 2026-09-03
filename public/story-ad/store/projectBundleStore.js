@@ -60,11 +60,12 @@ export async function prefetchProjectBundle({ request, set, state, taskId, secti
   const loaded = new Set(state.bundleSections || []);
   const wanted = sectionList(sections);
   if (loaded.has('all') || wanted.every(item => loaded.has(item))) return state.bundle;
-  const key = `${taskId}:${sections}`;
+  const requestSeq = state.bundleRequestSeq || 0;
+  const key = `${taskId}:${requestSeq}:${sections}`;
   if (backgroundPrefetches.has(key)) return backgroundPrefetches.get(key);
   const promise = request(`/api/story-ad/projects/${encodeURIComponent(taskId)}/bundle?sections=${encodeURIComponent(sections)}`)
     .then(data => {
-      if (state.bundle?.project?.id !== taskId) return state.bundle;
+      if (state.bundle?.project?.id !== taskId || requestSeq !== (state.bundleRequestSeq || 0)) return state.bundle;
       const merged = mergedBundle(state, data.bundle, taskId, sections);
       set({ bundle: merged.bundle, bundleSections: merged.sections });
       return merged.bundle;

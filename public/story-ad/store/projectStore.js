@@ -110,7 +110,11 @@ export function createProjectStore() {
       source: 'saved_storyboard',
     };
     if (task.active_generation_id) next.generation = { ...(current.generation || {}), progress: task.generation_progress || null };
-    set({ bundle: next, ...(contentRevisionChanged ? { bundleSections: ['summary'] } : {}) });
+    const workflowStateChanged = context && ['asset_setup_confirmed', 'scene_setup_confirmed', 'shot_design_confirmed']
+      .some(key => (context[key] === true) !== (current.brief?.[key] === true));
+    const invalidateSections = contentRevisionChanged || workflowStateChanged;
+    set({ bundle: next, bundleRequestSeq: (state.bundleRequestSeq || 0) + 1,
+      ...(invalidateSections ? { bundleSections: ['summary'] } : {}) });
     return next;
   }
   async function updateRequest(patch, options = {}) {
