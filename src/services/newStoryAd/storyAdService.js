@@ -2076,31 +2076,7 @@ async function runKeyframeQaReviews({ taskId, ctx = {}, shot = {}, contract = {}
   return { sceneReference, sceneQa, personQa, productQa };
 }
 
-function combineKeyframeQa({ ctx = {}, shot = {}, contract = {}, sceneReference = '', sceneQa = {}, personQa = {}, productQa = {} } = {}) {
-  const shotNeedsPerson = personIdentity.shotPersonRequired(ctx, shot, contract);
-  const personForbidden = personIdentity.shotForbidsPerson(ctx, shot);
-  const productRequired = productIdentity.shotProductProofRequired(ctx, shot, contract);
-  const conflicts = [
-    ...(sceneQa.mismatch_reasons || []),
-    ...(sceneQa.forbidden_new_elements || []),
-    ...(personQa.conflicts || []),
-    ...(productQa.conflicts || []),
-    personQa.retry_instruction || '',
-    productQa.retry_instruction || '',
-  ].filter(Boolean);
-  const scenePass = !sceneReference || (sceneQa.pass === true && sceneQa.status === 'passed');
-  const personPass = !(shotNeedsPerson || personForbidden) || (personQa.pass === true && personQa.status === 'verified');
-  const productPass = !productRequired || (productQa.pass === true && productQa.status === 'verified');
-  return {
-    pass: scenePass && personPass && productPass,
-    status: scenePass && personPass && productPass ? 'verified' : 'rejected',
-    scene: sceneQa,
-    person: personQa,
-    product: productQa,
-    mismatch_reasons: conflicts,
-    checked_at: new Date().toISOString(),
-  };
-}
+const combineKeyframeQa = input => require('./storyboardVisualQaService').combineKeyframeQa(input);
 
 function keyframeReferenceImages(taskId = '', shotIndex = 0, ctx = {}, sceneReference = '', previousFrame = null, shot = {}, contract = {}, sceneAsset = {}) {
   return shotReferencePacks.referenceUrls(taskId, shotIndex, ctx, sceneReference, previousFrame, shot, contract, sceneAsset);

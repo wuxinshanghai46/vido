@@ -26,4 +26,30 @@ async function review(input, dependencies = {}) {
   return { ...qa, policy_version: POLICY_VERSION, identity_fingerprint: identityFingerprint(input.ctx) };
 }
 
-module.exports = { POLICY_VERSION, assertAssets, identityFingerprint, review };
+function combineKeyframeQa({ ctx = {}, shot = {}, contract = {}, sceneReference = '', sceneQa = {}, personQa = {}, productQa = {} } = {}) {
+  const shotNeedsPerson = personIdentity.shotPersonRequired(ctx, shot, contract);
+  const personForbidden = personIdentity.shotForbidsPerson(ctx, shot);
+  const productRequired = productIdentity.shotProductProofRequired(ctx, shot, contract);
+  const conflicts = [
+    ...(sceneQa.mismatch_reasons || []),
+    ...(sceneQa.forbidden_new_elements || []),
+    ...(personQa.conflicts || []),
+    ...(productQa.conflicts || []),
+    personQa.retry_instruction || '',
+    productQa.retry_instruction || '',
+  ].filter(Boolean);
+  const scenePass = !sceneReference || (sceneQa.pass === true && sceneQa.status === 'passed');
+  const personPass = !(shotNeedsPerson || personForbidden) || (personQa.pass === true && personQa.status === 'verified');
+  const productPass = !productRequired || (productQa.pass === true && productQa.status === 'verified');
+  return {
+    pass: scenePass && personPass && productPass,
+    status: scenePass && personPass && productPass ? 'verified' : 'rejected',
+    scene: sceneQa,
+    person: personQa,
+    product: productQa,
+    mismatch_reasons: conflicts,
+    checked_at: new Date().toISOString(),
+  };
+}
+
+module.exports = { POLICY_VERSION, assertAssets, identityFingerprint, review, combineKeyframeQa };
