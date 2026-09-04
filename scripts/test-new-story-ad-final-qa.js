@@ -250,10 +250,11 @@ function testStep5RenderingPerformanceBoundaries() {
   const reviewModule = fs.readFileSync(path.join(root, 'public/js/new-story-ad/video-review.js'), 'utf8');
   const availabilityModule = fs.readFileSync(path.join(root, 'public/js/new-story-ad/video-unit-availability.js'), 'utf8');
   const finalView = fs.readFileSync(path.join(root, 'public/story-ad/views/finalView.js'), 'utf8');
+  const clipReviewPresentation = fs.readFileSync(path.join(root, 'public/story-ad/views/clipReviewPresentation.js'), 'utf8');
   const finalSoundView = fs.readFileSync(path.join(root, 'public/story-ad/views/finalEditView.js'), 'utf8');
   assert(reviewModule.split(/\r?\n/).length <= 360, '视频选择、费用与 P0 语义应保持在独立前端模块中');
   assert(availabilityModule.split(/\r?\n/).length <= 140, '生成单元阻断范围计算必须保持为独立小模块');
-  assert(finalView.includes('preload="none"'), '现行成片播放器不得预取视频流');
+  assert(finalView.includes('finalVideoPlayer') && clipReviewPresentation.includes('preload="none"'), '现行成片播放器不得预取视频流');
   assert(reviewModule.includes('data-nsa-review-media=') && reviewModule.includes("video.preload = 'none'"), '母片与成员片段必须折叠后懒创建且默认不预加载');
   assert(reviewModule.includes("image.loading = 'lazy'"), '边界证据图片必须按需懒加载');
   const mediaRenderer = finalView.slice(finalView.indexOf('function mediaCard'), finalView.indexOf('/** 第 6 步'));
