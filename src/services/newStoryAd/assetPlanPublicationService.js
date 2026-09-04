@@ -362,6 +362,35 @@ function carryForward(taskId, { contentRevision = 0, reason = '' } = {}) {
   return carriedPlan;
 }
 
+/**
+ * Content edits must not advance the task revision while a compatible Active
+ * Plan is still stamped by an older release. Migrate that release envelope
+ * first; otherwise carryForward() correctly refuses the stale plan after the
+ * task revision has already advanced and the next paid stage becomes blocked.
+ */
+function prepareContentRevisionCarry(taskId, { reason = 'content_edit_preflight' } = {}) {
+  let active = activeRecord(taskId);
+  if (!active?.plan) return { ready: true, had_active_plan: false, migrated: false, eligibility: null };
+  const task = storage.getTask(taskId) || {};
+  const context = storage.getOutput(taskId, 'context') || task.request || {};
+  const currentFingerprint = require('./assetPlanService').fingerprint(task, context);
+  let state = eligibility(taskId, { fingerprint: currentFingerprint });
+  let migrated = false;
+  if (!state.eligible
+    && state.release_migration?.compatible === true
+    && state.release_migration?.migration_required === true) {
+    const result = migrateCompatibleRelease(taskId, {
+      fingerprint: currentFingerprint,
+      reason,
+    });
+    if (result?.blocked === true) return { ready: false, had_active_plan: true, migrated: false, eligibility: state, migration: result };
+    migrated = result?.migrated === true;
+    active = activeRecord(taskId);
+    state = eligibility(taskId, { fingerprint: currentFingerprint });
+  }
+  return { ready: state.eligible === true, had_active_plan: true, migrated, eligibility: state };
+}
+
 function migrateCompatibleRelease(taskId, {
   fingerprint = '', reason = 'user_requested_plan_refresh', generationId = '', generation_id: legacyGenerationId = '',
 } = {}) {
@@ -604,6 +633,7 @@ module.exports = {
   domainIssues,
   nextDomainState,
   publish,
+  prepareContentRevisionCarry,
   carryForward,
   eligibility,
   publicEligibility,

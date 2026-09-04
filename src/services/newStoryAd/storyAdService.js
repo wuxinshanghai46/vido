@@ -659,6 +659,17 @@ function updateBlueprint(taskId, blueprint = {}, user = {}, options = {}) {
     && previousStoryboard.length === normalized.beats.length
     && previousImages.length === previousStoryboard.length;
   if (changed) {
+    const activePlanPreflight = assetPlanPublication.prepareContentRevisionCarry(taskId, {
+      reason: preserveStoryboardForMotion ? 'motion_only_blueprint_edit_preflight' : 'manual_blueprint_edit_preflight',
+    });
+    if (!activePlanPreflight.ready) {
+      const error = new Error('当前生成方案与任务内容不一致，系统已停止保存，原分镜和首帧均未改动。请先刷新任务状态后重试。');
+      error.code = 'BLUEPRINT_ACTIVE_PLAN_REBASE_REQUIRED';
+      error.status = 409;
+      error.retryable = false;
+      error.details = { model_call_started: false, issues: activePlanPreflight.eligibility?.issues || [] };
+      throw error;
+    }
     const nextRevision = Math.max(1, Number(task.content_revision || 1) || 1) + 1;
     storage.updateTask(taskId, { content_revision: nextRevision, current_snapshot_id: '' });
     if (preserveStoryboardForMotion) storage.carryManifestRevision(taskId, nextRevision);
@@ -666,10 +677,15 @@ function updateBlueprint(taskId, blueprint = {}, user = {}, options = {}) {
       revisionService.invalidateOutputs(storage, taskId, ['blueprint']);
       storage.carryManifestRevision(taskId, nextRevision);
     }
-    assetPlanPublication.carryForward(taskId, {
+    const carriedActivePlan = assetPlanPublication.carryForward(taskId, {
       contentRevision: nextRevision,
       reason: preserveStoryboardForMotion ? 'motion_only_blueprint_edit_preserves_storyboard_frames' : 'manual_blueprint_edit_preserves_upstream_plan',
     });
+    if (activePlanPreflight.had_active_plan && !carriedActivePlan) {
+      throw Object.assign(new Error('当前生成方案无法安全更新到新的内容版本，系统已停止后续生成。'), {
+        code: 'BLUEPRINT_ACTIVE_PLAN_CARRY_FAILED', status: 409, retryable: false,
+      });
+    }
     const nextCtx = blueprintCharacterProjection.projectCharacters(ctx, normalized);
     if (preserveStoryboardForMotion) {
       nextCtx.asset_confirmed = ctx.asset_confirmed === true;

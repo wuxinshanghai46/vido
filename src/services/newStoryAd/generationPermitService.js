@@ -5,6 +5,7 @@ const storage = require('./storageService');
 const publication = require('./assetPlanPublicationService');
 const releaseBundle = require('../storyAdReleaseBundleService');
 const authorityLifecycle = require('./authorityLifecycleService');
+const assetPlan = require('./assetPlanService');
 
 const PROTECTED_STAGES = new Set([
   'subject_assets', 'person_provider_sync', 'scene_asset', 'visual_assets', 'scene_panorama', 'product_asset',
@@ -64,14 +65,17 @@ function releaseSyncBlockedError(migration = {}, eligibility = {}) {
 function issue(taskId, stage, { idempotencyKey = '' } = {}) {
   if (!protectedStage(stage)) return null;
   let active = publication.activeRecord(taskId);
-  let eligibility = publication.eligibility(taskId, { fingerprint: active?.fingerprint || '' });
+  const task = storage.getTask(taskId) || {};
+  const context = storage.getOutput(taskId, 'context') || task.request || {};
+  const currentFingerprint = assetPlan.fingerprint(task, context);
+  let eligibility = publication.eligibility(taskId, { fingerprint: currentFingerprint });
   if (!eligibility.eligible
     && eligibility.release_migration?.compatible === true
     && eligibility.release_migration?.migration_required === true) {
     let migrated;
     try {
       migrated = publication.migrateCompatibleRelease(taskId, {
-        fingerprint: active?.fingerprint || '',
+        fingerprint: currentFingerprint,
         reason: `${String(stage || 'generation')}_permit_release_sync`,
       });
     } catch (error) {
@@ -81,7 +85,7 @@ function issue(taskId, stage, { idempotencyKey = '' } = {}) {
     if (migrated?.blocked === true) throw releaseSyncBlockedError(migrated, eligibility);
     if (migrated.migrated) {
       active = publication.activeRecord(taskId);
-      eligibility = publication.eligibility(taskId, { fingerprint: active?.fingerprint || '' });
+      eligibility = publication.eligibility(taskId, { fingerprint: currentFingerprint });
     }
   }
   const required = stageEligibility(eligibility, stage);

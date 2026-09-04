@@ -40,13 +40,32 @@ assert.strictEqual(rebased[1].motion_only_rebased, undefined);
 const storage = require('../src/services/newStoryAd/storageService');
 const storyAd = require('../src/services/newStoryAd/storyAdService');
 const owner = { id: 'motion-edit-owner' };
-const task = storyAd.createTask({ brief: '验证只改动作与运镜', cast_mode: 'no_human', content_mode: 'narrative_story', content_mode_source: 'user' }, owner).task;
+const task = storyAd.createTask({ brief: '验证展厅入口广告只改动作与运镜', product_subject: '展厅入口', cast_mode: 'no_human', content_mode: 'commercial_subject', content_mode_source: 'user' }, owner).task;
 const saved = storyAd.updateBlueprint(task.id, blueprint, owner);
 const storedShots = saved.beats.map((item, index) => ({ ...item, index: index + 1, shot_index: index + 1, visual: item.visual || item.plot, action: item.action, camera_movement: item.camera_movement }));
 storage.saveOutput(task.id, 'storyboard_table', storedShots);
 storage.saveOutput(task.id, 'storyboard_images', storedShots.map((item, index) => ({ shot_index: index + 1, image_url: `/shot-${index + 1}.png`, source_content_revision: storage.getTask(task.id).content_revision })));
 storage.saveOutput(task.id, 'tts_audio', { tracks: [{ shot_id: 'shot-1', text: '旁白', audio_url: '/one.mp3' }] });
 storage.saveOutput(task.id, 'video_clips', [{ video_url: '/old.mp4' }, null]);
+const assetPlan = require('../src/services/newStoryAd/assetPlanService');
+const publication = require('../src/services/newStoryAd/assetPlanPublicationService');
+const generationPermit = require('../src/services/newStoryAd/generationPermitService');
+const planFingerprint = assetPlan.fingerprint(storage.getTask(task.id), storage.getOutput(task.id, 'context'));
+publication.publish(task.id, {
+  cast_profiles: [], pet_profiles: [], prop_plan: [],
+  scene_plan: { spaces: [{ id: 'scene-1', scene_id: 'scene-1', name: '展厅' }] },
+}, { fingerprint: planFingerprint, source: 'motion-edit-regression', production_graph_authority: true });
+const currentActive = publication.activeRecord(task.id);
+const currentCandidate = storage.getOutput(task.id, publication.CANDIDATE_KIND);
+const oldBundle = 'compatible-release-before-motion-edit';
+const oldEnvelope = { ...currentActive.plan.release_envelope, producer_bundle_id: oldBundle, build_id: 'previous-build' };
+const oldDomains = Object.fromEntries(['person', 'scene'].map(domain => [domain, {
+  ...(currentActive.plan.domain_state?.[domain] || {}), bundle_id: oldBundle,
+}]));
+const oldPlan = { ...currentActive.plan, release_envelope: oldEnvelope, domain_state: oldDomains };
+storage.saveOutput(task.id, publication.CANDIDATE_KIND, { ...currentCandidate, release_envelope: oldEnvelope, domain_state: oldDomains });
+storage.saveOutput(task.id, publication.ACTIVE_KIND, { ...currentActive, release_envelope: oldEnvelope, domain_state: oldDomains, plan: oldPlan });
+storage.saveOutput(task.id, 'asset_plan', oldPlan);
 const next = { ...saved, beats: saved.beats.map((item, index) => index ? item : { ...item, action: '人物缓慢前行', camera_movement: '同速跟随' }) };
 storyAd.updateBlueprint(task.id, next, owner);
 const currentRevision = storage.getTask(task.id).content_revision;
@@ -56,6 +75,27 @@ assert.strictEqual(storage.getOutput(task.id, 'storyboard_images')[0].source_con
 assert.ok(storage.getOutput(task.id, 'tts_audio'));
 assert.strictEqual(storage.getOutput(task.id, 'video_clips'), null);
 assert.strictEqual(storage.getTask(task.id).stage, 'keyframes_ready');
+const activeAfterMotion = publication.activeRecord(task.id);
+assert.strictEqual(activeAfterMotion.plan.content_revision, currentRevision);
+assert.strictEqual(activeAfterMotion.plan.release_envelope.producer_bundle_id, require('../src/services/storyAdReleaseBundleService').identity().bundle_id);
+assert.strictEqual(publication.eligibility(task.id, { fingerprint: activeAfterMotion.fingerprint }).eligible, true);
+assert.ok(generationPermit.issue(task.id, 'video', { idempotencyKey: 'motion-edit-video-submit' }).permit_id);
+const revisionBeforeBlockedEdit = storage.getTask(task.id).content_revision;
+const contextBeforeBlockedEdit = storage.getOutput(task.id, 'context');
+storage.saveOutput(task.id, 'context', { ...contextBeforeBlockedEdit, performance: { pacing: 'changed-without-plan-rebuild' } });
+const blockedMotion = { ...next, beats: next.beats.map((item, index) => index ? item : { ...item, action: '人物再次前行' }) };
+assert.throws(
+  () => generationPermit.issue(task.id, 'video', { idempotencyKey: 'stale-plan-must-not-submit' }),
+  error => error.code === 'GENERATION_ACTIVE_PLAN_REQUIRED',
+  '付费生成许可必须按当前上下文重新计算指纹，不能信任 Active Plan 自报指纹',
+);
+assert.throws(
+  () => storyAd.updateBlueprint(task.id, blockedMotion, owner),
+  error => error.code === 'BLUEPRINT_ACTIVE_PLAN_REBASE_REQUIRED',
+  'Active Plan 语义指纹不一致时必须在内容版本推进前停止保存',
+);
+assert.strictEqual(storage.getTask(task.id).content_revision, revisionBeforeBlockedEdit, '被拒绝的编辑不得推进内容版本');
+assert.strictEqual(storage.getOutput(task.id, 'storyboard_images').length, 2, '被拒绝的编辑不得清空已确认首帧');
 fs.rmSync(tempDir, { recursive: true, force: true });
 
-console.log('story-ad motion-only blueprint edit v431: 18 checks passed');
+console.log('story-ad motion-only blueprint edit v431: 26 checks passed');
