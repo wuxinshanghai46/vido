@@ -429,9 +429,7 @@ function buildProjectBundle(taskId, { sections = '', user = {} } = {}) {
     active_stage: clean(raw.task.active_stage, 80),
     ...timingProjection.generationTiming(raw.task, clean),
     error: failure.public_error, generation_progress: failure.generation_progress,
-    video_submission_failure: failureProjection.submissionFailure(storage.getStage(taskId, 'video_submission'), canViewErrors, {
-      activePlanEligible: outputs.asset_plan_eligibility?.eligible === true,
-    }),
+    video_submission_failure: failureProjection.submissionFailure(storage.getStage(taskId, 'video_submission'), canViewErrors, { activePlanEligible: outputs.asset_plan_eligibility?.eligible === true }),
     ...(failure.technical_diagnostics ? { technical_diagnostics: failure.technical_diagnostics } : {}),
   };
   const countAssetsForPartialWorkspace = !requested.size
