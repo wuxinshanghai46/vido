@@ -35,7 +35,7 @@ const load=source=>import('data:text/javascript;base64,'+Buffer.from(source).toS
  const retryDone={...complete,project:{...complete.project,video_submission_failure:ordinary,generation_started_at:new Date(Date.now()+1000).toISOString()}};assert.equal(view(retryDone).status,'succeeded');
  assert.equal(failure.project({stage:'video_failed',error:'private error',error_code:'SOUND_GENERATION_MODEL_NOT_ALIGNED'}).public_error,'视频生成失败。');
  assert.equal(failure.publicProgress({stage:'video',generated:2}).generated,2);
- const source=read('public/story-ad/views/finalView.js');assert.match(source,/return bindVideoGenerationFeedback\(host, context, escapeHtml\)/);assert.match(source,/data-video-feedback-host/);
+ const source=read('public/story-ad/views/finalView.js');assert.match(source,/bindVideoGenerationFeedback\(host, context, escapeHtml\)/);assert.match(source,/data-video-feedback-host/);assert.match(source,/project-progress-track/);
 
  const chrome=['C:/Program Files/Google/Chrome/Application/chrome.exe','C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe','/usr/bin/chromium'].find(fs.existsSync);assert(chrome,'browser required');
  const browser=await require('puppeteer-core').launch({executablePath:chrome,headless:true,args:['--no-sandbox']});

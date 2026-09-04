@@ -65,15 +65,15 @@ function build({ task = {}, context = {}, outputs = {}, counts = {}, clean, list
       assets: step(blueprintReady || assetPlanReady, assetSetupComplete, '请先生成并确认详细剧情与对白。', 'scene'),
       scene: step(assetSetupComplete, sceneSetupComplete, '请先确认人物资产。', 'storyboard'),
       storyboard: step(sceneSetupComplete && blueprintReady, storyboardReady && shotDesignComplete, '请先生成并确认全部场景。', 'compose'),
-      sound: step(finalReady, soundReady, '请先合成初版成片，再在剪辑中修改声音。', 'edit'),
-      compose: step(shotDesignComplete, finalReady, '请先完成并确认全部镜头设计。', 'edit'),
+      sound: step(finalReady, soundReady, '请先合成初版成片，再在剪辑工具中修改声音。', ''),
+      compose: step(shotDesignComplete, finalReady, '请先完成并确认全部镜头设计。', ''),
       edit: step(finalReady, Boolean(outputs.edit_timeline), '请先生成视频片段并合成初版成片。', ''),
       final: step(shotDesignComplete, finalReady, '请先完成并确认全部镜头设计。', ''),
       workflow: step(true, finalReady, '', ''),
     },
   };
-  result.current = ['brief', 'plot', 'assets', 'scene', 'storyboard', 'compose', 'edit']
-    .find(view => result.steps[view].enabled && !result.steps[view].completed) || 'edit';
+  result.current = ['brief', 'plot', 'assets', 'scene', 'storyboard', 'compose']
+    .find(view => result.steps[view].enabled && !result.steps[view].completed) || 'compose';
   return result;
 }
 

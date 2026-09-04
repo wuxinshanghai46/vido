@@ -146,6 +146,44 @@ export function createProjectStore() {
   async function runStage(path, body = {}) {
     const taskId = state.bundle?.project?.id;
     if (!taskId) throw new Error('请先创建项目。');
+    const stageByPath = {
+      blueprint: 'blueprint',
+      'person-plan': 'person_plan',
+      'person-provider-sync': 'person_plan',
+      'visual-assets': 'visual_assets',
+      'production-assets': 'visual_assets',
+      'product-assets': 'visual_assets',
+      'scene-plan': 'scene_config',
+      'scene-config': 'scene_config',
+      'scene-assets': 'scene_asset',
+      'scene-actions': 'scene_asset',
+      storyboard: 'storyboard',
+      keyframes: 'keyframes',
+      tts: 'tts',
+      video: 'video',
+      compose: 'compose',
+      full: 'full',
+    };
+    const stage = stageByPath[path] || String(path || 'full').replaceAll('-', '_');
+    const shots = state.bundle?.storyboard?.shots || [];
+    const people = state.bundle?.assets?.people || [];
+    const scenes = state.bundle?.assets?.scenes || [];
+    const totalByStage = {
+      person_plan: Math.max(1, people.length),
+      visual_assets: Math.max(1, people.length),
+      scene_config: Math.max(1, scenes.length),
+      scene_asset: Math.max(1, Number(body?.count || body?.target_total || 0) || scenes.length),
+      storyboard: Math.max(1, shots.length),
+      keyframes: Math.max(1, shots.length),
+      tts: Math.max(1, shots.length),
+      video: Math.max(1, shots.length),
+      compose: Math.max(1, shots.length),
+    };
+    const currentGenerationId = String(state.bundle?.project?.active_generation_id || '');
+    const currentStage = String(state.bundle?.project?.active_stage || '');
+    if (!(currentGenerationId.startsWith('client-submitting:') && currentStage === stage)) {
+      beginStageSubmissionState({ state, set }, stage, totalByStage[stage] || 1, '任务已开始，进度会自动更新。');
+    }
     set({ saving: true, error: '' });
     syncProgressPolling(true);
     try {
@@ -507,24 +545,28 @@ export function createProjectStore() {
         const data = await request(`/api/new-story-ad/tasks/${encodeURIComponent(taskId)}/progress?since=${encodeURIComponent(since)}`);
         state.progressRevision = String(data.revision || state.progressRevision || '');
         const progressTask = data.task || {};
+        const optimisticGenerationId = String(state.bundle?.project?.active_generation_id || '');
+        const awaitingSubmission = state.saving === true
+          && optimisticGenerationId.startsWith('client-submitting:')
+          && !progressTask.active_generation_id;
         const retainedProgress = retainActiveGenerationProgress(progressTask, state.bundle);
         const project = {
           ...(state.bundle?.project || {}),
-          status: progressTask.status || state.bundle?.project?.status || '',
+          status: awaitingSubmission ? state.bundle?.project?.status : (progressTask.status || state.bundle?.project?.status || ''),
           stage: progressTask.stage || state.bundle?.project?.stage || '',
-          active_stage: progressTask.active_stage || '',
-          active_generation_id: progressTask.active_generation_id || '', active_target_generations: progressTask.active_target_generations || {}, target_generation_progress: progressTask.target_generation_progress || {},
+          active_stage: awaitingSubmission ? state.bundle?.project?.active_stage : (progressTask.active_stage || ''),
+          active_generation_id: awaitingSubmission ? optimisticGenerationId : (progressTask.active_generation_id || ''), active_target_generations: progressTask.active_target_generations || {}, target_generation_progress: awaitingSubmission ? (state.bundle?.project?.target_generation_progress || {}) : (progressTask.target_generation_progress || {}),
           generation_queued_at: progressTask.generation_queued_at || state.bundle?.project?.generation_queued_at || '',
           generation_started_at: progressTask.generation_started_at || state.bundle?.project?.generation_started_at || '',
           generation_finished_at: progressTask.generation_finished_at || state.bundle?.project?.generation_finished_at || '',
-          generation_progress: retainedProgress.project,
-          error: progressTask.error || '',
-          error_code: progressTask.error_code || '',
+          generation_progress: awaitingSubmission ? state.bundle?.project?.generation_progress : retainedProgress.project,
+          error: awaitingSubmission ? '' : (progressTask.error || ''),
+          error_code: awaitingSubmission ? '' : (progressTask.error_code || ''),
           retryable: progressTask.retryable === true,
         };
         const generation = {
           ...(state.bundle?.generation || {}),
-          progress: retainedProgress.generation,
+          progress: awaitingSubmission ? state.bundle?.generation?.progress : retainedProgress.generation,
         };
         const bundle = { ...(state.bundle || {}), project, generation };
         set({ bundle, progressRevision: state.progressRevision });

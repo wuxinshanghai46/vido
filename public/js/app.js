@@ -242,7 +242,7 @@ async function init() {
   if (!authed) return;
   loadTheme();
   document.querySelectorAll('.nav-item[data-page]').forEach(el => {
-    el.addEventListener('click', () => switchPage(el.dataset.page));
+    el.addEventListener('click', () => switchPage(el.dataset.page, { toolFilter: el.dataset.toolFilter || '' }));
   });
 
   const hashTarget = getRoutePage();
@@ -370,7 +370,9 @@ function switchPage(page, opts = {}) {
   if (!pageEl) return;
   rememberRoutePage(page, opts);
   pageEl.classList.add('active');
-  const navEl = document.querySelector('[data-page="' + page + '"]');
+  const requestedToolFilter = String(opts.toolFilter || '');
+  const navEl = document.querySelector(`[data-page="${page}"]${requestedToolFilter ? `[data-tool-filter="${requestedToolFilter}"]` : ':not([data-tool-filter])'}`)
+    || document.querySelector('[data-page="' + page + '"]');
   if (navEl) navEl.classList.add('active');
   // 更新顶栏标题
   const titleEl = document.getElementById('topbar-title');
@@ -383,7 +385,13 @@ function switchPage(page, opts = {}) {
   if (page === 'drama') loadDramaPage();
   if (page === 'portrait') loadPortraitPage();
   if (page === 'works') loadWorksPage();
-  if (page === 'assets') loadAssetsPage();
+  if (page === 'assets') {
+    if (requestedToolFilter === 'music') {
+      assetsFilter = 'music';
+      const musicTab = [...document.querySelectorAll('#assets-tabs .assets-tab')].find(item => item.textContent.trim() === '音乐');
+      filterAssets('music', musicTab);
+    } else loadAssetsPage();
+  }
   if (page === 'radar') loadRadarOverview();
   if (page === 'monitor') loadMonitorList();
   if (page === 'contentlib') loadContentLib();

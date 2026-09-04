@@ -76,7 +76,7 @@ async function main() {
     && stageSubmissionState.includes('active_generation_id: optimisticGenerationId')
     && stageSubmissionState.includes('target_generation_progress: targetProgress')
     && batchFixHandler.includes('target_progress: targetProgress'), '客户端提交阶段必须同步创建每个目标可见的0%进度状态');
-  assert.match(workspaceCss, /\.project-progress-head strong \{[^}]*font-size: 14px/);
+  assert.match(workspaceCss, /\.project-progress-head strong\s*\{[^}]*font-size:\s*14px/);
   assert(responsive.includes('@media(max-width:900px)') && responsive.includes('@media(max-width:700px)'));
   assert(responsive.includes('.scene-card-controls') && responsive.includes('grid-template-columns:repeat(2,minmax(0,1fr))'));
   assert(!/确认启动真人 AI 补全|生成完整人物档案[^\n]*confirmDialog/.test(personSources), '真人生成已由提交按钮和授权复选框明确授权，不得二次确认');

@@ -247,7 +247,7 @@ export function generationProgressView(bundle = {}) {
     : `正在生成第 ${activeIndexes.join('、')} 镜`;
   else if (imageBatchVisible && String(imageBatch.status || '') === 'running') liveText = `正在并行生成分镜画面，已完成 ${processed}/${total}`;
   else if (currentIndex && ['storyboard', 'keyframes', 'video', 'media'].includes(stage)) liveText = `正在生成第 ${currentIndex} 镜`;
-  else liveText = progress.phase ? String(progress.phase).replaceAll('_', ' ') : '正在处理';
+  else liveText = '正在处理';
   return {
     active, failed, stage, stageLabel, unitLabel, total, completed: processed, processed, succeededCount, failedCount, percent, liveText, failureTitle,
     lanes: progress.lanes && typeof progress.lanes === 'object' ? progress.lanes : null,

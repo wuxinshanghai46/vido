@@ -412,6 +412,7 @@ export async function mount(host, context) {
     const batchHost = host.querySelector('[data-sketch-batch-host]');
     if (batchHost) batchHost.innerHTML = sketchBatchMarkup(sketchBatch, sketchBatchTargetCount || generatedSketchCount);
     const active = ['queued', 'running'].includes(String(sketchBatch?.status || ''));
+    const singleTarget = activeSketchTargets.size === 1;
     host.querySelectorAll('[data-sketch-shot]').forEach(card => {
       const shotIndex = Number(card.dataset.sketchShot || 0);
       const targeted = activeSketchTargets.has(shotIndex);
@@ -422,7 +423,7 @@ export async function mount(host, context) {
       else card.removeAttribute('aria-busy');
       const progressHost = card.querySelector('[data-sketch-shot-progress]');
       if (progressHost) {
-        progressHost.hidden = !targeted || (!active && !ready && String(sketchBatch?.status || '') !== 'failed');
+        progressHost.hidden = !singleTarget || !targeted || (!active && !ready && String(sketchBatch?.status || '') !== 'failed');
         if (!progressHost.hidden) progressHost.innerHTML = sketchShotProgressMarkup(sketchBatch, ready);
       }
     });
@@ -480,7 +481,7 @@ export async function mount(host, context) {
       activeSketchTargets = new Set(targetIndexes);
       targetIndexes.forEach(index => pendingSketchIndexes.add(index));
       setButtonBusy(button, true, '正在提交…', { elapsed: true });
-      renderSketchBatch({ status: 'queued', requested: targetCount, completed: 0, target_indexes: targetIndexes, started_at: new Date().toISOString(), message: '批次已提交，生成结果会逐镜保存到下方镜头卡片。' });
+      renderSketchBatch({ status: 'queued', requested: targetCount, completed: 0, target_indexes: targetIndexes, started_at: new Date().toISOString(), message: targetCount === 1 ? '本镜已开始生成。' : '全部分镜已开始生成，请查看总进度。' });
       const data = await request(`/api/story-ad/projects/${encodeURIComponent(bundle.project.id)}/storyboard-images/generate-batch`, {
         method: 'POST',
         body: { confirmed: true, async_start: true, target_indexes: targetIndexes, regenerate_all: regenerateAll, image_model: options.imageModel || selectedSketchModel(), client_request_id: options.clientRequestId || globalThis.crypto?.randomUUID?.() || `${Date.now()}` },

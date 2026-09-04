@@ -590,7 +590,8 @@ async function generateProviderClip({ taskId, shot, previousShot, keyframe, audi
       attempts.push({ provider_id: model.provider_id, model_id: model.model_id, code: error.code || classified.code, retryable: error.retryable === true || classified.retryable, provider_task_id: providerTaskId, provider_submission_state: providerSubmissionState, billing_state: billingState, error: videoCore.chineseError.classifyChineseMessage(error) });
     }
   }
-  const error = new Error(`第 ${index + 1} 镜视频生成失败，系统已停止自动重试。请查看供应商任务状态后再决定是否重新提交。`);
+  const attemptSummary = attempts.map(item => `${item.provider_id}/${item.model_id}：${item.error || item.code || '未知错误'}（${item.provider_submission_state === 'not_submitted' ? '未提交供应商任务' : '已提交供应商任务'}，${item.billing_state === 'not_submitted' ? '未计费' : '计费状态待核对'}）`).join('；');
+  const error = new Error(`第 ${index + 1} 镜视频生成失败，系统已停止自动重试。${attemptSummary ? ` 供应商诊断：${attemptSummary}` : ''}`);
   error.code = attempts.some(item => item.retryable) ? 'VIDEO_ATTEMPTS_EXHAUSTED' : (attempts[0]?.code || 'VIDEO_MODEL_UNAVAILABLE');
   error.retryable = attempts.some(item => item.retryable);
   error.attempts = attempts;

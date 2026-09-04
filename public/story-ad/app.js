@@ -124,9 +124,11 @@ function statCards(stats = {}) {
 
 function renderCenter() {
   const { projects, stats, projectListScope, loading, error } = store.state;
+  const editorToolMode = new URLSearchParams(location.search).get('tool') === 'editor';
   const stageOptions = [...new Set(projects.map(project => statusView(project).label).filter(Boolean))]
     .sort((a, b) => a.localeCompare(b, 'zh-CN'));
   const statusProjects = projects.filter(project => {
+    if (editorToolMode && !project.final_video_url) return false;
     const tone = statusView(project).tone;
     return !centerFilter
       || (centerFilter === 'waiting' && tone === 'danger')
@@ -146,8 +148,8 @@ function renderCenter() {
         </aside>
         <section class="center-content">
           <div class="create-banner">
-            <div><h1>从一个想法开始制作剧情广告</h1><p>视频、人物、商品、场景和脚本均为可选材料，可以进入项目后按需补充。</p></div>
-            <button class="btn primary" type="button" data-new-project>开始创作</button>
+            <div><h1>${editorToolMode ? '视频剪辑' : '从一个想法开始制作剧情广告'}</h1><p>${editorToolMode ? '选择一个已生成成片的项目，在独立弹窗中剪辑；原分镜和原成片会保留。' : '视频、人物、商品、场景和脚本均为可选材料，可以进入项目后按需补充。'}</p></div>
+            ${editorToolMode ? '<button class="btn" type="button" data-workbench>返回工作台</button>' : '<button class="btn primary" type="button" data-new-project>开始创作</button>'}
           </div>
           <div class="stat-grid">${statCards(stats)}</div>
           <section class="project-table-card">
@@ -183,10 +185,10 @@ function renderCenter() {
                   <span class="status-tag is-${status.tone}">${escapeHtml(status.label)}</span>
                   <span>${Number(project.shot_count) || 0}</span>
                   <time>${escapeHtml(formatDate(project.updated_at))}</time>
-                  ${deleting ? '<span class="project-delete-state" role="status"><i></i>正在彻底删除</span>' : `<span class="project-actions"><button class="btn small" type="button" data-open-project="${escapeHtml(project.id)}">打开</button><button class="btn small danger" type="button" data-delete-project="${escapeHtml(project.id)}" data-project-title="${escapeHtml(project.title)}">删除</button></span>`}
+                  ${deleting ? '<span class="project-delete-state" role="status"><i></i>正在彻底删除</span>' : `<span class="project-actions"><button class="btn small${editorToolMode ? ' primary' : ''}" type="button" data-open-project="${escapeHtml(project.id)}">${editorToolMode ? '打开剪辑' : '打开'}</button>${editorToolMode ? '' : `<button class="btn small danger" type="button" data-delete-project="${escapeHtml(project.id)}" data-project-title="${escapeHtml(project.title)}">删除</button>`}</span>`}
                 </div>`;
               }).join('')}
-              ${!loading ? `<div class="table-empty" data-query-empty ${visibleProjects.length ? 'hidden' : ''}><b>${projects.length ? '当前查询没有项目' : '还没有剧情广告项目'}</b><span>${projects.length ? '请调整任务名称、任务类型或当前阶段。' : '点击“开始创作”建立第一个项目。'}</span></div>` : ''}
+              ${!loading ? `<div class="table-empty" data-query-empty ${visibleProjects.length ? 'hidden' : ''}><b>${editorToolMode ? '还没有可剪辑的成片' : (projects.length ? '当前查询没有项目' : '还没有剧情广告项目')}</b><span>${editorToolMode ? '分镜视频全部通过并合成成片后，会在这里出现。' : (projects.length ? '请调整任务名称、任务类型或当前阶段。' : '点击“开始创作”建立第一个项目。')}</span></div>` : ''}
             </div>
           </section>
         </section>
@@ -206,7 +208,7 @@ function projectNavigation(bundle, active) {
     compose: counts.clips,
     edit: Number(counts.final_videos || 0),
   }[view]);
-  return VIEW_ORDER.filter(view => view !== 'edit' || Number(counts.final_videos || 0) > 0).map(view => {
+  return VIEW_ORDER.filter(view => view !== 'edit').map(view => {
     const [number, label] = VIEW_META[view];
     const count = countFor(view);
     const state = steps[view] || { enabled: true, completed: false, blocker: '' };
@@ -351,7 +353,8 @@ document.addEventListener('click', event => {
     return;
   }
   if (target.dataset.openProject) {
-    navigate(`/story-ad/projects/${encodeURIComponent(target.dataset.openProject)}?view=brief`);
+    const editorToolMode = new URLSearchParams(location.search).get('tool') === 'editor';
+    navigate(`/story-ad/projects/${encodeURIComponent(target.dataset.openProject)}?view=${editorToolMode ? 'compose&editor=1' : 'brief'}`);
     return;
   }
   if (target.dataset.deleteProject) {

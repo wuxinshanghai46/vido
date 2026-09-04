@@ -38,7 +38,7 @@ assert.equal(afterClips.counts.final_videos, 0);
 const afterFinal = build({ audio_production_approval: soundApproval, video_clips: [{ shot_index: 1, video_url: '/clip.mp4' }], final_video: { video_url: '/final.mp4' } });
 assert.equal(afterFinal.steps.edit.enabled, true);
 assert.equal(afterFinal.counts.final_videos, 1);
-assert.equal(afterFinal.current, 'edit');
+assert.equal(afterFinal.current, 'compose', '剪辑是独立工具，不得变成主流程第7步');
 
 const app = read('public/story-ad/app.js');
 const soundView = read('public/story-ad/views/finalSoundView.js');
@@ -48,7 +48,7 @@ const soundWorkbench = read('public/story-ad/views/finalSoundDesignView.js') + r
 const css = read('public/story-ad/workspace-ux.css');
 
 assert.match(app, /rawView === 'final' \? 'compose'/, '历史 final 链接必须迁移到合成页');
-assert.match(app, /view !== 'edit' \|\| Number\(counts\.final_videos \|\| 0\) > 0/, '剪辑导航必须在初版成片存在后出现');
+assert.match(app, /filter\(view => view !== 'edit'\)/, '剪辑不得作为主流程第7步导航');
 assert.match(soundView, /view=edit/);
 assert.match(editView, /soundDesignMarkup/);
 assert.doesNotMatch(soundView, /data-generate-video|data-compose|data-save-timeline/);
@@ -60,7 +60,8 @@ assert.match(composeView, /data-empty-action="back-storyboard"/, '视频空状�
 assert.match(composeView, /\?view=storyboard/, '返回按钮必须导航到真实人物场景分镜页');
 assert.match(composeView, /合成初版成片/);
 assert.doesNotMatch(composeView, /data-save-timeline|data-trim-start|data-transition-type/, '合成页不得提前渲染剪辑控件');
-assert.match(editView, /<h1>成片剪辑<\/h1>/);
+assert.match(editView, /<h1>视频剪辑<\/h1>/);
+assert.match(editView, /openEditorModal/);
 assert.match(editView, /if \(!finalVideo \|\| !videoUrl\(finalVideo\)\)/, '剪辑页必须自行拒绝无成片状态');
 assert.match(editView, /data-save-timeline/);
 assert.match(editView, /data-apply-edit/);
@@ -72,6 +73,6 @@ assert.match(soundWorkbench, /bgm-picker/);
 assert.match(css, /\.voice-setup-panel\{[^}]*grid-template-columns:minmax\(0,1fr\)/, '剧情权威声音合同必须使用单列设置区，不得恢复旧人声模式双栏');
 assert.match(soundWorkbench, /voice-story-contract/, '声音页必须解释旁白与对白由剧情自动决定');
 assert.match(soundWorkbench, /apply_audio_edits: true/, '声音修改必须显式提交后期替换');
-assert.match(css, /\.post-stage-summary\{[^}]*repeat\(3,minmax\(0,1fr\)\)/);
+assert.doesNotMatch(composeView + editView, /post-stage-summary/, '用户界面不得展示内部三段流程');
 
 console.log(JSON.stringify({ passed: true, checks: 30, native_audio_workflow: true, no_video_editor_hidden: true, legacy_final_redirected: true, post_production_views: ['compose', 'edit'], upstream_steps_changed: 0 }));

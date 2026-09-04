@@ -343,6 +343,7 @@ ${renderAdvancedReferenceControls(bundle, route.isNew)}
       if (migration.confirmed) payload.content_mode_change_confirmed = true;
       const commercial = payload.content_mode === 'commercial_subject';
       host.querySelectorAll('[data-brief-submit], [data-dialogue-confirm]').forEach(target => setButtonBusy(target, true, commercial ? '正在生成广告脚本…' : '正在生成剧情…', { elapsed: true }));
+      store.beginStageSubmission?.('blueprint', 1, commercial ? '广告脚本已开始生成。' : '剧情与对白已开始生成。');
       if (dirtyFields.size) {
         const savedBundle = await store.updateRequest(payload, { refreshSections: 'summary' });
         assertBriefReadback(payload.brief, savedBundle?.brief?.text || '');

@@ -62,6 +62,7 @@ export async function submitProductGeneration({ item = {}, bundle = {}, store = 
     });
     if (!accepted) return { submitted: false, cancelled: true, standalone };
   }
+  store.beginStageSubmission?.('visual_assets', 1, '商品素材生成已开始。');
   await store.runStage('product-assets', { product_name: name, description: item?.description || '', reference_only: !standalone, image_model: imageModel });
   return { submitted: true, standalone };
 }
@@ -325,10 +326,12 @@ export async function mount(host, context) {
       const validation = generationValidation(payload);
       if (validation) { toast(validation, 'warning'); return false; }
       setButtonBusy(button, true, '正在准备…');
+      const selectedCount = payload.subject_targets?.length || payload.expected_people + payload.expected_animals || 1;
+      store.beginStageSubmission?.('person_plan', selectedCount, '人物生成已开始，进度会自动更新。');
       try {
         if (!target && checkpointRecovery?.missing?.length
           && !await ensureSubjectRecoveryReady({ bundle, generationPayload: payload, button, host })) return false;
-        const selected = payload.subject_targets?.length || payload.expected_people + payload.expected_animals;
+        const selected = selectedCount;
         const regeneratingCompletePerson = selected === 1 && group === 'people' && personAssetState(target || {}) === 'complete_dossier';
         setButtonBusy(button, true, regeneratingCompletePerson ? '正在重生成完整档案…' : '正在生成完整档案…', { elapsed: true });
         await store.runStage('person-plan', payload);

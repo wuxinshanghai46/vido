@@ -33,8 +33,8 @@ export function bindSceneCards(host, context) {
     try {
       const confirmation = await confirmBillingAwareAction({ bundle: context.bundle, lane: 'scenes', sceneId });
       if (!confirmation.accepted) return;
+      context.store.beginStageSubmission?.('scene_asset', 1, '场景生成已开始。');
       await authorizeBillingReviews({ bundle: context.bundle, lane: 'scenes', sceneId, reviewBatch: confirmation.reviewBatch });
-      context.store.beginStageSubmission?.('scene_asset', 1, '正在提交场景生成任务。');
       await (await controllerFor(sceneId))?.flush();
       await submitScene(scene, button);
       toast('任务已提交'); await context.refreshCurrentView();
@@ -47,17 +47,16 @@ export function bindSceneCards(host, context) {
     const plan = buildSceneBatchActionPlan(context.bundle.assets?.scenes || [], activeTargets);
     if (!plan.count) { setButtonBusy(batchButton, false); return toast('当前没有需要处理的场景'); }
     try {
-      await Promise.all(plan.ready.map(async item => {
-        await (await controllerFor(item.sceneId))?.flush();
-      }));
-    } catch { setButtonBusy(batchButton, false); return; }
-    try {
       let confirmation = { accepted: true, reviewBatch: { reviews: [] } };
       if (plan.requiresBillingConfirmation) {
         confirmation = await confirmBillingAwareAction({ bundle: context.bundle, lane: 'scenes' });
         if (!confirmation.accepted) { setButtonBusy(batchButton, false); return; }
         await authorizeBillingReviews({ bundle: context.bundle, lane: 'scenes', reviewBatch: confirmation.reviewBatch });
       }
+      context.store.beginStageSubmission?.('scene_asset', plan.count, `${plan.count} 个场景已开始处理。`);
+      await Promise.all(plan.ready.map(async item => {
+        await (await controllerFor(item.sceneId))?.flush();
+      }));
       const actions = plan.ready.map(({ scene, sceneId, action }) => {
         const card = cardFor(sceneId);
         return {
