@@ -2690,12 +2690,7 @@ async function generateVideoStage(taskId, options = {}) { options = paidExecutio
     targetIndexes = sceneBlockService.expandIndexesToBlocks(targetIndexes, sceneBlocks);
     const generationUnits = sceneBlocks.filter(block => block.member_indexes.some(index => targetIndexes.includes(index)));
     await videoSubmissionGate.runUnitsFailFast(generationUnits, async (unit, unitPosition, remainingUnits) => {
-      const unitIndexes = unit.member_indexes.filter(index => targetIndexes.includes(index));
-      const unitRecoveryClips = videoFailureRecovery.buildUnitRecoverySnapshot({
-        clips,
-        previousClips,
-        hasMediaFile: videoLineage.clipHasMediaFile,
-      });
+      const unitIndexes = unit.member_indexes.filter(index => targetIndexes.includes(index)); const unitRecoveryClips = videoFailureRecovery.buildUnitRecoverySnapshot({ clips, previousClips, hasMediaFile: videoLineage.clipHasMediaFile });
       const paidUnit = (preflightPlan.units || []).find(item => item.paid && (item.member_indexes || []).some(index => unitIndexes.includes(index)));
       const claimIndex = unitIndexes[0] ?? 0;
       const claimModel = videoAdapter.expectedModelForShot(generationShots[claimIndex] || {}, contracts[claimIndex] || {}, pinnedModel);
