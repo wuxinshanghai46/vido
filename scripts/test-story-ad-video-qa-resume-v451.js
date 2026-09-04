@@ -48,6 +48,8 @@ const frameQa = require('../src/services/newStoryAd/videoFrameQaService');
   assert.equal(repairPromptBuilds, 0, '已有媒体的兼容性指纹不得被本轮修复提示词污染');
   assert.equal(workflow.compatibilityMotionPrompt({}, () => { repairPromptBuilds += 1; return 'new generation prompt'; }), 'new generation prompt');
   assert.equal(repairPromptBuilds, 1, '未生成镜头仍应构造本轮生成提示词');
+  assert.equal(workflow.compatibilityMotionPrompt(null, () => { repairPromptBuilds += 1; return 'null-slot generation prompt'; }), 'null-slot generation prompt');
+  assert.equal(repairPromptBuilds, 2, '稀疏任务中的 null 镜头槽位也必须正常进入生成提示词路径');
 
   const originalShot = { id: 'shot-1', action: 'turns toward camera', camera: 'slow push' };
   const originalPrompt = 'original persisted provider prompt';
@@ -127,5 +129,5 @@ const frameQa = require('../src/services/newStoryAd/videoFrameQaService');
   assert.match(read('public/digital-human.html'), /class="dh-chip active" data-nsa-video-resolution="480p"/);
   assert.match(evidenceService, /prepareClipReviewFrameEvidence/);
   assert.match(evidenceService, /storage\.saveOutput\(taskId, 'video_clips', clips\)/);
-  console.log(JSON.stringify({ passed: true, cases: 32, paid_video_calls: 0, qa_fallback_calls: 0 }));
+  console.log(JSON.stringify({ passed: true, cases: 34, paid_video_calls: 0, qa_fallback_calls: 0 }));
 })().catch(error => { console.error(error); process.exitCode = 1; });

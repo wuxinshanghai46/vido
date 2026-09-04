@@ -89,8 +89,9 @@ function buildExpectedLineages({
 }
 
 function compatibilityMotionPrompt(clip = {}, buildPrompt = () => '') {
-  const storedPrompt = typeof clip.motion_prompt === 'string' ? clip.motion_prompt : '';
-  if (videoLineage.clipHasMediaFile(clip) && storedPrompt) return storedPrompt;
+  const candidate = clip || {};
+  const storedPrompt = typeof candidate.motion_prompt === 'string' ? candidate.motion_prompt : '';
+  if (videoLineage.clipHasMediaFile(candidate) && storedPrompt) return storedPrompt;
   return typeof buildPrompt === 'function' ? buildPrompt() : '';
 }
 
