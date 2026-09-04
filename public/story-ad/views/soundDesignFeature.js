@@ -1,7 +1,7 @@
-import { request } from '../api.js?v=20260904-production-v449';
-import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260904-production-v449';
-import { bgmCandidateMarkup, bindLiveAudioPreview, previewSeconds, soundPreviewMarkup } from '../controllers/liveAudioPreviewController.js?v=20260904-production-v449';
-import { recommendedVoice, speechShotCount, voiceSampleText } from './soundDesignVoiceCatalog.js?v=20260904-production-v449';
+import { request } from '../api.js?v=20260904-production-v450';
+import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260904-production-v450';
+import { bgmCandidateMarkup, bindLiveAudioPreview, previewSeconds, soundPreviewMarkup } from '../controllers/liveAudioPreviewController.js?v=20260904-production-v450';
+import { recommendedVoice, speechShotCount, voiceSampleText } from './soundDesignVoiceCatalog.js?v=20260904-production-v450';
 
 const eventButton = event => event.currentTarget || event.target?.closest?.('button');
 
