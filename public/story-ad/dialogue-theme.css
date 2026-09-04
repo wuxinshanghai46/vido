@@ -50,6 +50,36 @@ body{letter-spacing:.004em}
 .status-tag.is-danger,.guide.is-danger{border-color:rgb(239 114 124 / 34%);background:rgb(239 114 124 / 9%);color:#f4a0a7}
 .tab.active{border-color:rgb(145 134 255 / 34%);background:rgb(121 109 242 / 14%);color:#c9c3ff;box-shadow:inset 0 -2px #9186ff}
 
+/* v427: one interaction rhythm, explicit action hierarchy and full clip review. */
+#storyAdApp .view-host{padding:32px 38px 88px}
+#storyAdApp .view-head{gap:28px;margin-bottom:26px}
+#storyAdApp .view-actions{align-items:center;gap:12px;flex-wrap:wrap}
+#storyAdApp .btn{display:inline-flex;min-width:112px;min-height:42px;align-items:center;justify-content:center;padding:9px 18px;font-size:13px;font-weight:750;line-height:1.25;white-space:nowrap}
+#storyAdApp .btn.small{min-width:76px;min-height:34px;padding:6px 12px;font-size:12px}
+#storyAdApp .btn.primary{border-color:#8074ee;background:linear-gradient(145deg,#8074ee,#6759dc);color:#fff;box-shadow:0 8px 22px rgb(105 91 221 / 22%)}
+#storyAdApp .btn[aria-pressed="true"],#storyAdApp .btn.is-selected{border-color:#c2bcff;box-shadow:0 0 0 3px rgb(145 134 255 / 28%),inset 0 0 0 1px rgb(255 255 255 / 22%)}
+#storyAdApp .btn:not([aria-pressed="true"]):not(.is-selected):focus:not(:focus-visible){outline:0}
+#storyAdApp .generation-model-picker select,#storyAdApp .post-production-head .generation-model-picker{min-height:42px}
+#storyAdApp .post-production-head .view-actions{row-gap:12px}
+#storyAdApp .post-stage-summary{gap:12px;margin-bottom:24px}
+#storyAdApp .post-stage-summary>span{padding:15px 17px}
+#storyAdApp [data-video-feedback-host]:not(:empty){display:block;margin:0 0 24px}
+#storyAdApp .generation-section{margin-top:22px}
+#storyAdApp .generation-section>.card-head{padding:20px 22px}
+#storyAdApp .generation-section>.card-body{padding:22px}
+#storyAdApp .video-review-grid{grid-template-columns:repeat(auto-fit,minmax(280px,380px));gap:18px;align-items:start}
+#storyAdApp .generation-card.is-video{min-width:0}
+#storyAdApp .generation-card.is-video .generation-media{display:grid;min-height:360px;place-items:center;padding:12px;background:#050706}
+#storyAdApp .generation-card.is-video .generation-media video.media{display:block;width:100%;height:min(58vh,620px);aspect-ratio:auto;object-fit:contain;background:#050706}
+#storyAdApp .generation-card.is-review-failed{border-color:rgb(239 114 124 / 58%)}
+#storyAdApp .generation-card.is-review-failed .generation-copy>span{color:var(--danger);font-weight:800}
+#storyAdApp .generation-copy{align-items:flex-start;padding:13px 14px}
+#storyAdApp .generation-copy>div{display:grid;min-width:0;gap:4px}
+#storyAdApp .generation-copy small{color:var(--danger);font-size:10px;line-height:1.45}
+#storyAdApp .asset-visual-next-step{gap:32px;margin:24px 0;padding:22px 24px}
+#storyAdApp .asset-visual-next-actions{min-width:280px}
+@media(max-width:760px){#storyAdApp .view-host{padding:22px 16px 72px}#storyAdApp .view-head{gap:16px;margin-bottom:20px}#storyAdApp .view-actions{width:100%}#storyAdApp .view-actions>*{width:100%}#storyAdApp .btn{width:100%;min-width:0}#storyAdApp .post-stage-summary{grid-template-columns:1fr}#storyAdApp .video-review-grid{grid-template-columns:1fr}#storyAdApp .generation-card.is-video .generation-media{min-height:300px}#storyAdApp .asset-visual-next-step{align-items:stretch;flex-direction:column}#storyAdApp .asset-visual-next-actions{width:100%;min-width:0}}
+
 .view-host.brief-dialogue-view{height:var(--brief-view-height,calc(100dvh - 64px));min-height:0;padding-block:26px 0;overflow:hidden}.brief-dialogue{display:grid;grid-template-columns:minmax(560px,1fr) 370px;height:100%;min-height:0;max-height:none;margin-bottom:0;border:1px solid var(--line);border-radius:20px 20px 0 0;overflow:hidden;background:rgb(10 11 17 / 72%);box-shadow:0 24px 70px rgb(0 0 0 / 25%)}
 .brief-conversation-panel{min-width:0;min-height:0;display:grid;grid-template-rows:76px minmax(0,1fr) auto;overflow:hidden}
 .brief-conversation-head{display:flex;align-items:center;gap:12px;padding:0 24px;border-bottom:1px solid var(--line);background:rgb(20 23 32 / 68%)}

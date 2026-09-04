@@ -5,10 +5,13 @@ const ffmpeg = require('ffmpeg-static'), ffprobe = require('ffprobe-static').pat
 const pipeline = require('../pipelineModelService'), adapters = require('./providerAdapterRegistry');
 const storage = require('./storageService'), cancellation = require('./cancellationContext');
 const native = require('./nativeAudioWorkflowService');
-const POLICY = 'native-speech-and-lip-sync-v1';
+const { sify } = require('chinese-conv');
+const POLICY = 'native-speech-and-lip-sync-v2';
 const STAGE = 'new_story_ad.video_audio_qa';
 const fail = (code, message) => Object.assign(new Error(message), { code, status: 422, retryable: false });
-const normalized = value => String(value || '').normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
+// ASR providers may return the same Mandarin sentence in Traditional Chinese.
+// Fold it before exact comparison so script choice is not treated as changed speech.
+const normalized = value => sify(String(value || '').normalize('NFKC')).toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
 
 function candidate() {
   if (process.env.NEW_STORY_AD_MOCK_LLM === '1') throw fail('VIDEO_AUDIO_QA_TEST_FIXTURE_REQUIRED', '测试必须注入真实音视频质检夹具，禁止调用生产模型。');
@@ -37,7 +40,9 @@ function evaluate(result = {}, shot = {}, duration = 0) {
   if (normalized(rows.map(row => row.text).join('')) !== normalized(expected.map(unit => unit.text).join(''))) problems.push('实际台词与剧情不一致，存在漏词、重复或多说');
   let previousEnd = -1;
   for (const row of rows) {
-    if (!Number.isFinite(row.start_sec) || !Number.isFinite(row.end_sec) || row.start_sec < 0 || row.end_sec <= row.start_sec || row.end_sec > duration - 0.35 || row.start_sec < previousEnd - 0.05) problems.push('台词越过镜头边界或说话顺序异常');
+    // Provider timestamps are estimates. A complete utterance with at least
+    // 150ms of tail room is safe; genuinely clipped speech is caught below.
+    if (!Number.isFinite(row.start_sec) || !Number.isFinite(row.end_sec) || row.start_sec < 0 || row.end_sec <= row.start_sec || row.end_sec > duration - 0.15 || row.start_sec < previousEnd - 0.05) problems.push('台词越过镜头边界或说话顺序异常');
     previousEnd = row.end_sec;
     if (row.complete !== true) problems.push('句尾或发音未完整结束');
   }
@@ -76,7 +81,7 @@ async function reviewEvidence({ taskId, clip, shot, index, generate = adapters.g
   const model = modelFor();
   const audio = path.join(directory, 'audio.wav');
   await execute(ffmpeg, ['-y', '-i', file, '-vn', '-ac', '1', '-ar', '16000', audio]);
-  const parts = [{ type: 'text', text: `Listen to the ACTUAL supplied audio. Transcribe every spoken word verbatim, in order, with start_sec/end_sec and complete (false for clipped speech). Do not invent words. Video duration=${duration} seconds. ${dialogue ? 'The numbered frames cover the same audio at 12 frames/second, frame 1 at 0 seconds. Inspect actual mouth motion against phonemes, speaker turns and voice. If temporal evidence or mouth visibility is insufficient, lip_sync.verified MUST be false. Speaker roles: ' + JSON.stringify(units.map(unit => ({ kind: unit.kind, speaker: unit.speaker }))) : 'Speech is off-screen narration; mouth synchronization is not required.'} Return ONLY JSON: {"audio_observed":boolean,"transcription_confidence":0..1,"utterances":[{"text":string,"start_sec":number,"end_sec":number,"complete":boolean}],"speaker_assignment_correct":boolean,"lip_sync":{"verified":boolean,"max_offset_ms":number|null,"confidence":0..1}}. Music, ambient noise and singing are not substitutes for speech; transcribe unrequested speech too.` }, { type: 'input_audio', input_audio: { data: fs.readFileSync(audio).toString('base64'), format: 'wav' } }];
+  const parts = [{ type: 'text', text: `Listen to the ACTUAL supplied audio. Transcribe every spoken word verbatim, in order, with start_sec/end_sec and complete (false for clipped speech). Do not invent words. Write Chinese transcription in Simplified Chinese even if the voice or model normally uses Traditional Chinese. Video duration=${duration} seconds. ${dialogue ? 'The numbered frames cover the same audio at 12 frames/second, frame 1 at 0 seconds. Inspect actual mouth motion against phonemes, speaker turns and voice. If temporal evidence or mouth visibility is insufficient, lip_sync.verified MUST be false. Speaker roles: ' + JSON.stringify(units.map(unit => ({ kind: unit.kind, speaker: unit.speaker }))) : 'Speech is off-screen narration; mouth synchronization is not required. Set lip_sync.verified=false without treating that as a failure.'} Return ONLY JSON: {"audio_observed":boolean,"transcription_confidence":0..1,"utterances":[{"text":string,"start_sec":number,"end_sec":number,"complete":boolean}],"speaker_assignment_correct":boolean,"lip_sync":{"verified":boolean,"max_offset_ms":number|null,"confidence":0..1}}. Music, ambient noise and singing are not substitutes for speech; transcribe unrequested speech too.` }, { type: 'input_audio', input_audio: { data: fs.readFileSync(audio).toString('base64'), format: 'wav' } }];
   if (dialogue) {
     await execute(ffmpeg, ['-y', '-i', file, '-vf', 'fps=12,scale=640:-2', '-frames:v', String(Math.ceil(duration * 12)), '-q:v', '5', path.join(directory, 'frame-%03d.jpg')]);
     for (const frame of fs.readdirSync(directory).filter(name => /^frame-\d+\.jpg$/.test(name)).sort()) parts.push({ type: 'text', text: frame }, { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${fs.readFileSync(path.join(directory, frame)).toString('base64')}` } });

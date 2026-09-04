@@ -9,7 +9,13 @@ function itemIndex(item = {}, index = 0) {
 
 function mediaCard(item, index, kind) {
   const number = itemIndex(item, index);
-  return `<article class="generation-card card"><div class="generation-media">${mediaPreview(item, { label: `${kind} ${number}`, width: 640, symbol: kind })}</div><div class="generation-copy"><b>SH${String(number).padStart(2, '0')}</b><span>${escapeHtml(item.status || item.qa_status || '已生成')}</span></div></article>`;
+  const isVideo = kind === '视频' || item.media_type === 'video' || Boolean(item.video_url || item.videoUrl);
+  const failed = item.qa_pass === false || item.status === 'qa_failed' || item.qa_status === 'failed';
+  const passed = item.qa_pass === true || item.status === 'qa_passed' || item.qa_status === 'passed';
+  const status = failed ? '审片未通过' : (passed ? '审片通过' : (item.status || item.qa_status || '已生成'));
+  const reasons = failed && Array.isArray(item.qa_failure_labels_zh) && item.qa_failure_labels_zh.length
+    ? `<small>${item.qa_failure_labels_zh.map(escapeHtml).join(' · ')}</small>` : '';
+  return `<article class="generation-card card${isVideo ? ' is-video' : ''}${failed ? ' is-review-failed' : ''}"><div class="generation-media">${mediaPreview(item, { label: `${kind} ${number}`, width: 640, symbol: kind, controls: isVideo })}</div><div class="generation-copy"><div><b>SH${String(number).padStart(2, '0')}</b>${reasons}</div><span>${escapeHtml(status)}</span></div></article>`;
 }
 
 function finalVideoUrl(item = {}) { return item.video_url || item.videoUrl || item.url || ''; }
@@ -27,22 +33,32 @@ export async function mount(host, context) {
   const shots = bundle?.storyboard?.shots || [];
   const approvedFrames = Array.isArray(generation.approved_frames) ? generation.approved_frames : [];
   const clips = Array.isArray(generation.clips) ? generation.clips : [];
+  const passedClips = clips.filter(item => item.qa_pass === true || item.status === 'qa_passed' || item.qa_status === 'passed');
+  const failedClips = clips.filter(item => item.qa_pass === false || item.status === 'qa_failed' || item.qa_status === 'failed');
   const framesReady = shots.length > 0 && approvedFrames.length >= shots.length;
+  const clipsReady = shots.length > 0 && passedClips.length >= shots.length;
   const storyboardComplete = bundle?.storyboard?.image_gate?.ready === true;
   const storyboardAction = storyboardComplete ? '返回分镜页确认' : '返回人物场景分镜生成首帧';
   const storyboardHint = storyboardComplete ? '分镜图片已齐全，请返回分镜页确认后继续，无需重新生成图片。' : '请返回分镜页逐镜生成或重绘，然后确认镜头设计。';
   const finalVideo = generation.final_video || (bundle?.project?.final_video_url ? { video_url: bundle.project.final_video_url, status: '已生成' } : null);
   const posterUrl = finalVideo?.poster_url || finalVideo?.thumbnail_url || approvedFrames.find(item => item.thumbnail_url || item.image_url || item.imageUrl)?.thumbnail_url || approvedFrames.find(item => item.image_url || item.imageUrl)?.image_url || '';
   const mediaCatalog = generation.media_catalog || {};
-  const clipTotal = Number(mediaCatalog.clips?.total || clips.length);
   const videoModelPicker = await loadGenerationModelPicker(bundle.project.id, 'new_story_ad.video', { label: '视频模型' });
+  const generationAction = failedClips.length
+    ? `重新生成未通过镜头（${failedClips.length}）`
+    : (clips.length ? `继续生成分镜视频（${Math.max(0, shots.length - passedClips.length)}）` : '生成分镜视频');
+  const primaryAction = !framesReady && !finalVideo
+    ? `<button class="btn primary" type="button" data-back-storyboard>${storyboardAction}</button>`
+    : (framesReady && !finalVideo && clipsReady
+      ? '<button class="btn primary" type="button" data-compose>合成初版成片</button>'
+      : (framesReady && !finalVideo ? `${videoModelPicker.html}<button class="btn primary" type="button" data-generate-video>${generationAction}</button>` : ''));
   host.innerHTML = `
-    <section class="view-head post-production-head"><div><span class="stage-kicker">第 6 步</span><h1>视频与合成</h1><p>使用已确认分镜生成逐镜视频；全部镜头完成后合成为初版成片。本页不提供剪辑。</p></div><div class="view-actions">${!framesReady && !finalVideo ? `<button class="btn primary" type="button" data-back-storyboard>${storyboardAction}</button>` : ''}${framesReady && !finalVideo ? `${videoModelPicker.html}<button class="btn" type="button" data-generate-video>生成分镜视频</button>` : ''}${clips.length && !finalVideo ? '<button class="btn primary" type="button" data-compose>合成初版成片</button>' : ''}${finalVideo ? '<button class="btn primary" type="button" data-open-editor>进入成片剪辑</button>' : ''}</div></section>
+    <section class="view-head post-production-head"><div><span class="stage-kicker">第 6 步</span><h1>视频与合成</h1><p>使用已确认分镜生成逐镜视频；全部镜头审片通过后才能合成为初版成片。本页不提供剪辑。</p></div><div class="view-actions">${primaryAction}${finalVideo ? '<button class="btn primary" type="button" data-open-editor>进入成片剪辑</button>' : ''}</div></section>
     <div data-video-feedback-host></div>
-    <div class="post-stage-summary"><span class="is-complete"><b>✓</b><em>分镜</em><small>已确认</small></span><span class="is-current"><b>2</b><em>视频与合成</em><small>${finalVideo ? '初版成片已完成' : `${clips.length}/${shots.length} 个镜头`}</small></span><span><b>3</b><em>成片剪辑</em><small>${finalVideo ? '现在可以进入' : '初版成片生成后出现'}</small></span></div>
+    <div class="post-stage-summary"><span class="is-complete"><b>✓</b><em>分镜</em><small>已确认</small></span><span class="is-current"><b>2</b><em>视频与合成</em><small>${finalVideo ? '初版成片已完成' : `${passedClips.length}/${shots.length} 镜审片通过`}</small></span><span><b>3</b><em>成片剪辑</em><small>${finalVideo ? '现在可以进入' : '初版成片生成后出现'}</small></span></div>
     ${finalVideo ? `<section class="card final-player"><div class="card-head"><div><h2>初版成片</h2><p>先完整观看，再进入独立剪辑页调整节奏和转场。</p></div></div><div class="final-media">${finalVideoPlayer(finalVideo, posterUrl)}</div></section>` : ''}
     <details class="card generation-section generation-details"><summary class="card-head"><div><h2>已确认分镜 / 视频首帧</h2><p>${approvedFrames.length}/${shots.length} · 直接进入图生视频，不重复生成图片</p></div><span class="details-chevron" aria-hidden="true">⌄</span></summary><div class="card-body">${approvedFrames.length ? `<div class="generation-grid">${approvedFrames.map((item, index) => mediaCard(item, index, '首帧')).join('')}</div>` : emptyState({ title: storyboardComplete ? '分镜待确认' : '分镜尚未完整', body: storyboardHint, action: storyboardAction, actionId: 'back-storyboard' })}</div></details>
-    <section class="card generation-section"><div class="card-head"><div><h2>分镜视频</h2><p>已完成 ${clips.length}/${clipTotal || shots.length}</p></div></div><div class="card-body">${clips.length ? `<div class="generation-grid">${clips.map((item, index) => mediaCard(item, index, '视频')).join('')}</div>${moreMediaButton(mediaCatalog.clips, 'clips', '继续加载视频片段')}` : `<div data-video-empty>${emptyState({ title: '还没有分镜视频', body: framesReady ? '选择视频模型后，生成包含剧情声音的分镜视频。' : (storyboardComplete ? storyboardHint : `还缺少 ${Math.max(0, shots.length - approvedFrames.length)} 张已确认首帧，请先返回人物场景分镜生成并确认。`), action: framesReady ? '' : storyboardAction, actionId: framesReady ? '' : 'back-storyboard' })}</div>`}</div></section>
+    <section class="card generation-section"><div class="card-head"><div><h2>分镜视频</h2><p>已生成 ${clips.length}/${shots.length} · 审片通过 ${passedClips.length}/${shots.length}${failedClips.length ? ` · 未通过 ${failedClips.length}` : ''}</p></div></div><div class="card-body">${clips.length ? `<div class="generation-grid video-review-grid">${clips.map((item, index) => mediaCard(item, index, '视频')).join('')}</div>${moreMediaButton(mediaCatalog.clips, 'clips', '继续加载视频片段')}` : `<div data-video-empty>${emptyState({ title: '还没有分镜视频', body: framesReady ? '选择视频模型后，生成包含剧情声音的分镜视频。' : (storyboardComplete ? storyboardHint : `还缺少 ${Math.max(0, shots.length - approvedFrames.length)} 张已确认首帧，请先返回人物场景分镜生成并确认。`), action: framesReady ? '' : storyboardAction, actionId: framesReady ? '' : 'back-storyboard' })}</div>`}</div></section>
     <div data-video-submit-feedback role="alert"></div>`;
 
   const selectedVideoModel = bindGenerationModelPicker(host, videoModelPicker);

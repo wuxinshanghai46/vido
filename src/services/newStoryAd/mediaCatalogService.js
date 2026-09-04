@@ -19,12 +19,14 @@ function item(kind, source = {}, index = 0) {
   const videoUrl = clean(source.video_url || source.videoUrl || source.file_url || (/\.mp4(?:\?|$)/i.test(clean(source.url)) ? source.url : ''));
   const audioUrl = clean(source.audio_url || source.audioUrl || (/\.(?:mp3|wav|m4a)(?:\?|$)/i.test(clean(source.url)) ? source.url : ''));
   const originalUrl = videoUrl || audioUrl || imageUrl || clean(source.url || source.file_path);
+  const qaFailed = source.qa?.pass === false || source.qa_status === 'failed' || source.lifecycle === 'qa_failed';
+  const qaPassed = source.qa?.pass === true || source.qa_status === 'passed' || source.lifecycle === 'qa_passed';
   return {
     id: clean(source.permanent_id || source.id || source.candidate_id || source.provider_task_id || `${kind}_${index + 1}`, 200),
     kind,
     index: Number(source.index ?? source.shot_index ?? index) + (source.index === undefined && source.shot_index === undefined ? 1 : 0),
     title: clean(source.title || source.name || source.label || `${kind} ${index + 1}`, 160),
-    status: clean(source.lifecycle || source.status || (originalUrl ? 'ready' : 'pending'), 60),
+    status: clean(qaFailed ? 'qa_failed' : (qaPassed ? 'qa_passed' : (source.lifecycle || source.status || (originalUrl ? 'ready' : 'pending'))), 60),
     preview_url: imagePreview(imageUrl || clean(source.first_frame_url || source.firstFrameUrl), 480),
     poster_url: imagePreview(clean(source.poster_url || source.posterUrl || imageUrl), 640),
     original_url: originalUrl,
@@ -36,6 +38,8 @@ function item(kind, source = {}, index = 0) {
     duration_sec: Math.max(0, Number(source.duration_sec || source.duration || 0) || 0),
     billing_state: clean(source.billing_state || source.last_attempt_billing_state, 40),
     provider_submission_state: clean(source.provider_submission_state, 60),
+    qa_pass: qaFailed ? false : (qaPassed ? true : null),
+    qa_failure_labels_zh: list(source.qa?.failure_labels_zh || source.qa_failure_labels_zh).map(value => clean(value, 80)).slice(0, 6),
     updated_at: clean(source.updated_at || source.created_at, 50),
   };
 }

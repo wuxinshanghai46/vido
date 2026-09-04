@@ -1,4 +1,5 @@
 const nativeAudioQa = require('./nativeAudioQaService');
+const videoQaDecision = require('./videoQaDecisionService');
 const nativeAudio = require('./nativeAudioWorkflowService');
 const fs = require('fs'), crypto = require('crypto');
 const { v4: uuidv4 } = require('uuid');
@@ -2461,7 +2462,16 @@ async function generateVideoStage(taskId, options = {}) { options = paidExecutio
         : null;
       const audioShot = generationShots[index] || shots[index] || {};
       const audioQa = await nativeAudioQa.review({ taskId, clip, shot: audioShot, index }).catch(error => ({ pass: false, problems: [error.message], error_code: error.code }));
-      const qa = !audioQa.pass ? { pass: false, status: 'failed', problems: audioQa.problems, failure_dimensions: ['native_audio'], failure_labels_zh: ['声音与口型不合格'] } : ((continuityReviewOnly || transitionBridge) ? clip.qa : (savedContractQa || localMotionQa || await videoFrameQa.reviewVideoClip({ taskId, clip, shot: audioShot, keyframe: keyframes[index] || {}, contract: contracts[index] || {}, ctx, index })));
+      // Audio failure must not hide a paid clip's visual/action defects. Always
+      // finish the applicable frame review, then merge both independent gates.
+      const visualQa = (continuityReviewOnly || transitionBridge)
+        ? (clip.qa || { pass: true, status: 'not_applicable', problems: [], failure_dimensions: [], failure_labels_zh: [] })
+        : (savedContractQa || localMotionQa || await videoFrameQa.reviewVideoClip({ taskId, clip, shot: audioShot, keyframe: keyframes[index] || {}, contract: contracts[index] || {}, ctx, index }));
+      const qa = videoQaDecision.merge({
+        audioQa,
+        visualQa,
+        speechMode: videoAdapter.explicitShotSpeechMode(audioShot, contracts[index] || {}),
+      });
       clips[index] = { ...clip, native_audio_qa: audioQa, lip_sync_applied: audioQa.lip_sync?.verified === true, qa, error: qa.pass ? '' : '视频质检未通过', error_code: qa.pass ? '' : (!audioQa.pass ? 'VIDEO_AUDIO_QA_FAILED' : 'VIDEO_FRAME_QA_FAILED') };
       videoAdapter.updateVideoShotStatus(taskId, index, {
         lifecycle: qa.pass ? 'qa_passed' : 'qa_failed', qa_status: qa.pass ? 'passed' : 'failed',

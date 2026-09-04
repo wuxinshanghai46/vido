@@ -29,6 +29,15 @@ const tts = require('../src/services/newStoryAd/ttsAdapter');
     { speaker_assignment_correct: false },
   ]) assert.equal(qa.evaluate({ ...result, ...bad }, shot, 4).pass, false);
   assert(qa.evaluate({ ...result, lip_sync: null }, { voiceover: '你好，欢迎光临。' }, 4).pass);
+  const voiceoverResult = {
+    audio_observed: true,
+    transcription_confidence: 0.99,
+    speaker_assignment_correct: false,
+    utterances: [{ text: '提到不銹鋼，很多人想到的是廠房和管道。', start_sec: 0.3, end_sec: 3.74, complete: true }],
+    lip_sync: { verified: false, max_offset_ms: null, confidence: 0 },
+  };
+  assert(qa.evaluate(voiceoverResult, { speech_mode: 'offscreen_voiceover', voiceover: '提到不锈钢，很多人想到的是厂房和管道。' }, 4).pass,
+    '繁简体差异、旁白口型 false 和 260ms 安全尾量都不能误报为口型失败');
   assert(!qa.evaluate({ ...result, utterances: [...result.utterances, ...result.utterances] }, shot, 4).pass);
   assert.throws(() => native.prepareShots([{ voiceover: '长'.repeat(100) }]), { code: 'VIDEO_SPEECH_SHOT_TOO_LONG' });
   assert.throws(() => native.prepareShots([{ duration: 16 }]), { code: 'VIDEO_SHOT_DURATION_UNSUPPORTED' });
@@ -89,5 +98,5 @@ const tts = require('../src/services/newStoryAd/ttsAdapter');
   const failureOptions = { ...options, taskId: taskId + '-other', generate: async () => { requested++; throw Error('fixture timeout'); } };
   await assert.rejects(qa.review(failureOptions), { code: 'VIDEO_AUDIO_QA_FAILED' });
   assert.equal((await qa.review(failureOptions)).pass, false); assert.equal(requested, 2);
-  console.log(JSON.stringify({ passed: true, contract_groups: 10, real_media_fixture: true, concurrent_requests: 3, injected_model_calls: 2, real_model_calls: 0 }));
+  console.log(JSON.stringify({ passed: true, contract_groups: 11, real_media_fixture: true, concurrent_requests: 3, injected_model_calls: 2, real_model_calls: 0 }));
 })().catch(error => { console.error(error); process.exitCode = 1; });
