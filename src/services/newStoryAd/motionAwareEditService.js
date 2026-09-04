@@ -202,10 +202,15 @@ function chooseRepresentativeTimes(samples = [], durationSec = 0, limit = 5) {
   const tail = Number(Math.max(0, duration - 0.05).toFixed(3));
   if (count === 2) return [0, tail];
   const selected = [0];
+  const interval = duration / (count - 1);
+  // Keep a deliberate gap between adjacent sampling zones. Touching half-step
+  // bands let two motion peaks on either side of a boundary remain only a few
+  // frames apart, which is not independent start/middle/result evidence.
+  const halfWindow = interval * 0.35;
   for (let index = 1; index < count - 1; index += 1) {
-    const target = duration * index / (count - 1);
-    const lower = duration * (index - 0.5) / (count - 1);
-    const upper = duration * (index + 0.5) / (count - 1);
+    const target = interval * index;
+    const lower = target - halfWindow;
+    const upper = target + halfWindow;
     const candidate = samples
       .filter(item => Number(item.second) >= lower && Number(item.second) < upper)
       .sort((a, b) => Number(b.motion_score || 0) - Number(a.motion_score || 0)
