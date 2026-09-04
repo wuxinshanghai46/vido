@@ -924,10 +924,11 @@ assert.match(shot, /view=compose/, '镜头设计完成后直接进入带声音�
 
 const finalView = read('public/story-ad/views/finalView.js');
 const finalEditView = read('public/story-ad/views/finalEditView.js');
-assert.match(finalView, /class="final-video"[^>]*controls/);
+const clipPresentation = read('public/story-ad/views/clipReviewPresentation.js');
+assert.match(clipPresentation, /class="final-video"[^>]*controls/);
 assert.match(finalEditView, /下载当前成片/);
-assert.match(finalView, /preload="none"/, '最终成片首屏不得默认拉取视频流');
-assert.match(finalView, /poster=/, '最终成片应优先展示轻量封面');
+assert.match(clipPresentation, /preload="none"/, '最终成片首屏不得默认拉取视频流');
+assert.match(clipPresentation, /poster=/, '最终成片应优先展示轻量封面');
 assert.match(finalView, /<details class="card generation-section generation-details">/);
 assert.doesNotMatch(finalView, /mediaPreview\(finalVideo/);
 assert.doesNotMatch(finalView, /data-save-timeline|data-trim-start/, '视频与合成页不得提前出现剪辑控件');
