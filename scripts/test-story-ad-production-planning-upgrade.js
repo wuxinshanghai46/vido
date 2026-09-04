@@ -200,6 +200,7 @@ async function main() {
   assert.match(briefUi, /type="hidden" name="benchmark_opening_hook"/);
 
   const storeUi = read('public/story-ad/store/projectStore.js');
+  const submissionStateUi = read('public/story-ad/store/stageSubmissionState.js');
   const storyboardUi = read('public/story-ad/views/storyboardView.js');
   assert.match(storeUi, /applyMutationResult\(data\)/, '后台提交响应必须先合并到当前 bundle，进度条才能立即出现');
   assert.doesNotMatch(storyboardUi, /await store\.runStage\('storyboard'\);[\s\S]{0,220}await context\.refreshShell\(\)/, '文字分镜提交后不得立即刷新并重置进度轮询');
@@ -220,8 +221,9 @@ async function main() {
     createStoryboardLiveRefresh: () => async () => false,
     removeProjectReference() {}, restoreReferenceReplacement() {}, setTimeout, clearTimeout, Date, URLSearchParams,
   };
+  const runnableSubmissionStateSource = submissionStateUi.replace(/\bexport\s+/g, '');
   const runnableStoreSource = storeUi.replace(/^import .*$/gm, '').replace(/\bexport\s+/g, '');
-  vm.runInNewContext(`${runnableStoreSource}\nglobalThis.__createProjectStore = createProjectStore;`, storeSandbox, { filename: 'projectStore.js' });
+  vm.runInNewContext(`${runnableSubmissionStateSource}\n${runnableStoreSource}\nglobalThis.__createProjectStore = createProjectStore;`, storeSandbox, { filename: 'projectStore.js' });
   const progressStore = storeSandbox.__createProjectStore();
   progressStore.state.bundle = { project: { id: 'task-progress', status: 'done' }, generation: { progress: { stage: 'old', percent: 100 } }, revisions: { content: 1 } };
   await progressStore.runStage('storyboard');
@@ -230,7 +232,7 @@ async function main() {
   const submittedProgress = sandbox.__progressView(progressStore.state.bundle);
   assert.equal(submittedProgress.active, true);
   assert.equal(submittedProgress.stage, 'storyboard');
-  assert.equal(submittedProgress.percent, 0);
+  assert.equal(submittedProgress.percent, 2, '提交响应尚未带服务端进度时必须保留立即可见的 2% 乐观进度');
   progressStore.stopProgressPolling();
 
   console.log(JSON.stringify({ passed: true, checks: 79, image_model_calls: imageCalls, split_calls: splitCalls, submitted_progress_visible: true }));

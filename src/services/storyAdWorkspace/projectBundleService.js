@@ -448,9 +448,7 @@ function buildProjectBundle(taskId, { sections = '', user = {} } = {}) {
     products: productAssets(context),
     logos: logoAssets(context),
     props: projectedProps,
-    scenes: include('assets')
-      ? projectedScenesForCounts
-      : (persistedScenesForCounts.length ? persistedScenesForCounts : projectedScenesForCounts),
+    scenes: include('assets') ? projectedScenesForCounts : (persistedScenesForCounts.length ? persistedScenesForCounts : projectedScenesForCounts),
   } : null;
   const projectedAssets = include('assets') ? {
     ...countableAssets,
