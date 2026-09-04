@@ -52,7 +52,9 @@ function functionDeclaration(source, signature) {
 }
 
 function cssRule(source, selector) {
-  const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const escaped = selector.split(',')
+    .map(part => part.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+    .join('\\s*,\\s*');
   const match = source.match(new RegExp(`${escaped}\\s*\\{([^}]+)\\}`));
   assert.ok(match, `missing CSS rule ${selector}`);
   return match[1];
