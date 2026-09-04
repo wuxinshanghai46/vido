@@ -124,6 +124,16 @@ async function testMotionAwareBoundariesAndFallback() {
   assert.strictEqual(fallback.evidence.method, 'planned_boundary_fallback');
   assert.strictEqual(fallback.evidence.fallback_reason, 'source_or_boundaries_missing');
   assert.deepStrictEqual(fallback.beats, beats, '缺少运动证据时必须回退计划切点，不得虚构分析结果');
+
+  const reviewTimes = motionAwareEdit.chooseRepresentativeTimes([
+    { second: 2.1, motion_score: 0.2 }, { second: 4.8, motion_score: 0.3 },
+    { second: 7.167, motion_score: 0.99 }, { second: 7.333, motion_score: 0.98 },
+  ], 9.833, 5);
+  assert.strictEqual(reviewTimes.length, 5);
+  assert(reviewTimes[1] >= 9.833 * 0.125 && reviewTimes[1] < 9.833 * 0.375, '第一阶段样本必须留在前段时间分区');
+  assert(reviewTimes[2] >= 9.833 * 0.375 && reviewTimes[2] < 9.833 * 0.625, '第二阶段样本必须留在中段时间分区');
+  assert(reviewTimes[3] >= 9.833 * 0.625 && reviewTimes[3] < 9.833 * 0.875, '第三阶段样本必须留在后段时间分区，不能被相邻运动峰挤占');
+  assert(reviewTimes.every((time, index) => index === 0 || time > reviewTimes[index - 1]), '审片样本必须严格递增且覆盖完整时间线');
 }
 
 async function testContinuousSourceVisualDeduplication() {

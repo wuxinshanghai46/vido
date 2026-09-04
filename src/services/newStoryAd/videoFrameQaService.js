@@ -16,7 +16,8 @@ const knowledgePolicyRuntime = require('./knowledgePolicyRuntimeService');
 const transitionPerformance = require('./transitionPerformanceContractService');
 
 const FRAME_POINTS = [0, 0.25, 0.5, 0.75, 1];
-const VIDEO_FRAME_QA_POLICY_VERSION = 'story-ad-video-frame-qa-v8';
+const VIDEO_FRAME_QA_POLICY_VERSION = 'story-ad-video-frame-qa-v9';
+const VIDEO_FRAME_EVIDENCE_POLICY_VERSION = 'story-ad-video-frame-evidence-v2';
 const FRAME_DIMENSIONS = {
   person_pass: ['person_identity', '人物身份与造型'],
   product_pass: ['product_identity', '产品与主体一致性'],
@@ -200,6 +201,7 @@ async function extractReviewFrames({ taskId = '', clip = {}, index = 0 } = {}) {
     }
     frames.push({
       point, second, filename, file_path: output, image_url: mediaAdapter.publicAssetUrl(filename),
+      sample_policy_version: VIDEO_FRAME_EVIDENCE_POLICY_VERSION,
       selection: 'dense_full_timeline_motion_representative',
       sampled_timeline_ratio: duration > 0 ? Number((second / duration).toFixed(4)) : 0,
       local_motion_evidence: {
@@ -233,6 +235,12 @@ function hasReviewFrameEvidence(qa = {}) {
     && frameEvidenceUsable(frames[frames.length - 1]);
 }
 
+function hasCurrentReviewFrameEvidence(qa = {}) {
+  return hasReviewFrameEvidence(qa)
+    && qa.frames.length === FRAME_POINTS.length
+    && qa.frames.every(frame => frame.sample_policy_version === VIDEO_FRAME_EVIDENCE_POLICY_VERSION);
+}
+
 function evidenceError(index = 0, cause = null) {
   const error = new Error(`第 ${index + 1} 镜缺少可用的首尾帧证据，已在付费视频提交前停止`);
   error.code = 'VIDEO_QA_EVIDENCE_MISSING';
@@ -254,12 +262,12 @@ async function prepareClipReviewFrameEvidence({
   if (!(clip.file_path || clip.filePath || clip.scene_block_source_file)) {
     throw evidenceError(index);
   }
-  if (hasReviewFrameEvidence(clip.qa || {})) {
+  if (hasCurrentReviewFrameEvidence(clip.qa || {})) {
     return { clip, frames: clip.qa.frames, backfilled: false };
   }
   let frames = [];
   try {
-    frames = await extractFrames({ taskId, clip, index });
+    frames = (await extractFrames({ taskId, clip, index })).map(frame => ({ ...frame, sample_policy_version: VIDEO_FRAME_EVIDENCE_POLICY_VERSION }));
   } catch (error) {
     throw evidenceError(index, error);
   }
@@ -447,7 +455,7 @@ async function verifyDeterministicLocalMotionClip({ taskId = '', clip = {}, keyf
 async function reviewVideoClip({ taskId = '', clip = {}, shot = {}, keyframe = {}, contract = {}, ctx = {}, index = 0, frames: preparedFrames = null, gateway = modelGateway, repair = jsonRepair } = {}) {
   const frames = Array.isArray(preparedFrames) && preparedFrames.length
     ? preparedFrames
-    : (hasReviewFrameEvidence(clip.qa || {}) ? clip.qa.frames : await extractReviewFrames({ taskId, clip, index }));
+    : (hasCurrentReviewFrameEvidence(clip.qa || {}) ? clip.qa.frames : await extractReviewFrames({ taskId, clip, index }));
   if (process.env.NEW_STORY_AD_MOCK_LLM === '1') {
     return { pass: true, status: 'verified', qa_policy_version: VIDEO_FRAME_QA_POLICY_VERSION, frames, person_pass: true, product_pass: true, scene_pass: true, action_pass: true, people_count_pass: true, animal_count_pass: true, pet_identity_pass: true, text_watermark_pass: true, anatomy_physics_pass: true, temporal_stability_pass: true, rendering_intent_pass: true, problems: [], checked_at: new Date().toISOString(), used_model: 'mock/new-story-ad-video-frame-qa' };
   }
@@ -723,6 +731,7 @@ function crossShotFailure(qa = {}, index = 1) {
 module.exports = {
   FRAME_POINTS,
   VIDEO_FRAME_QA_POLICY_VERSION,
+  VIDEO_FRAME_EVIDENCE_POLICY_VERSION,
   FRAME_DIMENSIONS,
   CROSS_DIMENSIONS,
   TEMPORAL_EVIDENCE_DIMENSIONS,
@@ -734,6 +743,7 @@ module.exports = {
   extractReviewFrames,
   frameEvidenceUsable,
   hasReviewFrameEvidence,
+  hasCurrentReviewFrameEvidence,
   prepareClipReviewFrameEvidence,
   boundaryEvidenceIndexes,
   ensureBoundaryFrameEvidence,

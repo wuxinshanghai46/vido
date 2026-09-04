@@ -98,10 +98,9 @@ const frameQa = require('../src/services/newStoryAd/videoFrameQaService');
     extractFrames: async ({ index }) => {
       extractionCalls += 1;
       assert.equal(index, 0);
-      return [
-        { image_url: '/api/new-story-ad/assets/head.jpg', point: 0, second: 0 },
-        { image_url: '/api/new-story-ad/assets/tail.jpg', point: 1, second: 4 },
-      ];
+      return [0, 1, 2, 3, 4].map((second, sampleIndex) => ({
+        image_url: `/api/new-story-ad/assets/sample-${sampleIndex}.jpg`, point: sampleIndex / 4, second,
+      }));
     },
   });
   assert.equal(extractionCalls, 1, '待复审旧片段必须在新付费提交前本地补齐一次证据');
@@ -109,6 +108,7 @@ const frameQa = require('../src/services/newStoryAd/videoFrameQaService');
   assert.equal(evidence.clips[0].qa.status, 'evidence_ready');
   assert.equal(evidence.clips[0].qa.pass, undefined, '技术帧证据不能冒充内容质检通过');
   assert.equal(frameQa.hasReviewFrameEvidence(evidence.clips[0].qa), true);
+  assert.equal(frameQa.hasCurrentReviewFrameEvidence(evidence.clips[0].qa), true);
   const reusedEvidence = await frameQa.ensureBoundaryFrameEvidence({
     taskId: 'all-industry-task',
     clips: evidence.clips,
@@ -129,5 +129,5 @@ const frameQa = require('../src/services/newStoryAd/videoFrameQaService');
   assert.match(read('public/digital-human.html'), /class="dh-chip active" data-nsa-video-resolution="480p"/);
   assert.match(evidenceService, /prepareClipReviewFrameEvidence/);
   assert.match(evidenceService, /storage\.saveOutput\(taskId, 'video_clips', clips\)/);
-  console.log(JSON.stringify({ passed: true, cases: 34, paid_video_calls: 0, qa_fallback_calls: 0 }));
+  console.log(JSON.stringify({ passed: true, cases: 36, paid_video_calls: 0, qa_fallback_calls: 0 }));
 })().catch(error => { console.error(error); process.exitCode = 1; });

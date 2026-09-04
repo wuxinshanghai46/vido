@@ -232,6 +232,16 @@ const videoQa = require('../src/services/newStoryAd/videoFrameQaService');
   assert.deepStrictEqual(backfilled.backfilled_indexes, [0]);
   assert.strictEqual(backfilled.clips[0].qa.frames.length, 5);
   assert.strictEqual(videoQa.hasReviewFrameEvidence(backfilled.clips[0].qa), true);
+  assert.strictEqual(videoQa.hasCurrentReviewFrameEvidence(backfilled.clips[0].qa), true);
+  let staleEvidenceExtractions = 0;
+  const refreshedEvidence = await videoQa.prepareClipReviewFrameEvidence({
+    taskId: 'video-qa-stale-sampling-policy',
+    clip: { file_path: clipPath, qa: { pass: false, frames: Array.from({ length: 5 }, (_, index) => ({ image_url: `/old-${index}.jpg` })) } },
+    extractFrames: async () => { staleEvidenceExtractions += 1; return Array.from({ length: 5 }, (_, index) => ({ image_url: `/new-${index}.jpg` })); },
+  });
+  assert.strictEqual(staleEvidenceExtractions, 1, '旧抽样策略的密集帧必须重新抽取，不能继续复用');
+  assert.strictEqual(refreshedEvidence.backfilled, true);
+  assert(refreshedEvidence.frames.every(frame => frame.sample_policy_version === videoQa.VIDEO_FRAME_EVIDENCE_POLICY_VERSION));
   assert.deepStrictEqual(videoQa.boundaryEvidenceIndexes({ clips: [{}, {}, {}, {}, {}, {}], targetIndexes: [4] }), [3, 5]);
   assert.deepStrictEqual(videoQa.boundaryEvidenceIndexes({ clips: [{}, {}, {}, {}, {}, {}], targetIndexes: [5], includeTargetIndexes: [5] }), [4, 5]);
 

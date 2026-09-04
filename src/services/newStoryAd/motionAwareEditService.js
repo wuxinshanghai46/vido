@@ -199,18 +199,21 @@ async function selectSafeCutPoints({
 function chooseRepresentativeTimes(samples = [], durationSec = 0, limit = 5) {
   const duration = Math.max(0.2, Number(durationSec) || 0.2);
   const count = Math.max(2, Math.min(8, Number(limit) || 5));
-  const selected = new Set([0, Number(Math.max(0, duration - 0.05).toFixed(3))]);
-  const uniformSlots = Math.max(0, Math.floor((count - 2) / 2));
-  for (let i = 1; i <= uniformSlots; i += 1) selected.add(Number((duration * i / (uniformSlots + 1)).toFixed(3)));
-  const peaks = [...samples].sort((a, b) => Number(b.motion_score || 0) - Number(a.motion_score || 0));
-  for (const peak of peaks) {
-    if (selected.size >= count) break;
-    selected.add(Number(clamp(peak.second, 0, duration - 0.05).toFixed(3)));
+  const tail = Number(Math.max(0, duration - 0.05).toFixed(3));
+  if (count === 2) return [0, tail];
+  const selected = [0];
+  for (let index = 1; index < count - 1; index += 1) {
+    const target = duration * index / (count - 1);
+    const lower = duration * (index - 0.5) / (count - 1);
+    const upper = duration * (index + 0.5) / (count - 1);
+    const candidate = samples
+      .filter(item => Number(item.second) >= lower && Number(item.second) < upper)
+      .sort((a, b) => Number(b.motion_score || 0) - Number(a.motion_score || 0)
+        || Math.abs(Number(a.second) - target) - Math.abs(Number(b.second) - target))[0];
+    selected.push(Number(clamp(candidate?.second ?? target, lower, Math.min(upper, tail)).toFixed(3)));
   }
-  for (let i = 1; selected.size < count && i < count * 2; i += 1) {
-    selected.add(Number((duration * i / (count * 2)).toFixed(3)));
-  }
-  return [...selected].sort((a, b) => a - b).slice(0, count);
+  selected.push(tail);
+  return selected;
 }
 
 module.exports = {
