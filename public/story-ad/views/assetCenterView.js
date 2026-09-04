@@ -1,27 +1,27 @@
-import { request } from '../api.js?v=20260903-production-v426';
-import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260903-production-v426';
-import { bindMediaLightbox } from './mediaLightbox.js?v=20260903-production-v426';
-import { confirmDialog } from '../components/dialog.js?v=20260903-production-v426';
-import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260903-production-v426';
-import { ensureSubjectRecoveryReady, recoveryRequestKey } from './assetCenterBillingRetry.js?v=20260903-production-v426';
-import { renderPersonLookTiles } from './assetCenterPersonLooks.js?v=20260903-production-v426';
-import { mediaSection } from './assetCenterDossierSections.js?v=20260903-production-v426';
-import { assetCardMedia } from './sceneDossierCard.js?v=20260903-production-v426';
-import { assertSavedPerson, personAgeDisplay, personAssetState, personLookSummary } from './assetCenterPersonState.js?v=20260903-production-v426';
-import { renderPersonEvolutionSummary } from './assetCenterPersonEvolution.js?v=20260903-production-v426';
-import { createKeyedRequestGuard } from './assetCenterRequestGuard.js?v=20260903-production-v426';
-import { checkpointRecoverySummary } from './assetCheckpointRecovery.js?v=20260903-production-v426';
-import { bindGenerationModelPicker, loadGenerationModelPicker } from './generationModelPicker.js?v=20260903-production-v426';
+import { request } from '../api.js?v=20260904-production-v427';
+import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260904-production-v427';
+import { bindMediaLightbox } from './mediaLightbox.js?v=20260904-production-v427';
+import { confirmDialog } from '../components/dialog.js?v=20260904-production-v427';
+import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260904-production-v427';
+import { ensureSubjectRecoveryReady, recoveryRequestKey } from './assetCenterBillingRetry.js?v=20260904-production-v427';
+import { renderPersonLookTiles } from './assetCenterPersonLooks.js?v=20260904-production-v427';
+import { mediaSection } from './assetCenterDossierSections.js?v=20260904-production-v427';
+import { assetCardMedia } from './sceneDossierCard.js?v=20260904-production-v427';
+import { assertSavedPerson, personAgeDisplay, personAssetState, personLookSummary } from './assetCenterPersonState.js?v=20260904-production-v427';
+import { renderPersonEvolutionSummary } from './assetCenterPersonEvolution.js?v=20260904-production-v427';
+import { createKeyedRequestGuard } from './assetCenterRequestGuard.js?v=20260904-production-v427';
+import { checkpointRecoverySummary } from './assetCheckpointRecovery.js?v=20260904-production-v427';
+import { bindGenerationModelPicker, loadGenerationModelPicker } from './generationModelPicker.js?v=20260904-production-v427';
 if (typeof document !== 'undefined' && !document.getElementById('person-dossier-style')) {
   const style = document.createElement('link');
   style.id = 'person-dossier-style';
   style.rel = 'stylesheet';
-  style.href = '/story-ad/person-dossier.css?v=20260903-production-v426';
+  style.href = '/story-ad/person-dossier.css?v=20260904-production-v427';
   document.head.append(style);
 }
 const GROUPS = [['people', '人物'], ['animals', '动物'], ['products', '商品 / 展示主体'], ['logos', 'LOGO']];
 const GENERATABLE = new Set(['people', 'animals']);
-const loadAssetCenterStage = globalThis.__loadAssetCenterStage || (() => import('./assetCenterStageView.js?v=20260903-production-v426'));
+const loadAssetCenterStage = globalThis.__loadAssetCenterStage || (() => import('./assetCenterStageView.js?v=20260904-production-v427'));
 function groupLabel(group = '') {
   return GROUPS.find(([id]) => id === group)?.[1] || '资产';
 }
@@ -245,8 +245,8 @@ function knowledgePolicyTrace(item = {}) {
   const short = value => value ? `${value.slice(0, 12)}…` : '—'; return `<details class="raw-view-details knowledge-policy-trace"><summary>本资产使用的知识规则</summary><div class="meta-list"><div class="meta-row"><span>匹配规则</span><b>${ruleIds.length}</b></div><div class="meta-row"><span>生成规则指纹</span><b title="${escapeHtml(generation)}">${escapeHtml(short(generation))}</b></div><div class="meta-row"><span>质检规则指纹</span><b title="${escapeHtml(qa)}">${escapeHtml(short(qa))}</b></div></div><p class="drawer-section-note">这里只显示规则追踪信息，不加载知识库正文，也不会增加模型调用。</p></details>`;
 }
 let planningDetailsPromise; let personFormPromise; async function openDrawer(item, group, handlers = {}) {
-  planningDetailsPromise ||= import('./assetCenterPlanningDetails.js?v=20260903-production-v426');
-  personFormPromise ||= import('./assetCenterPersonForm.js?v=20260903-production-v426');
+  planningDetailsPromise ||= import('./assetCenterPlanningDetails.js?v=20260904-production-v427');
+  personFormPromise ||= import('./assetCenterPersonForm.js?v=20260904-production-v427');
   const [planningDetails, personForm] = await Promise.all([planningDetailsPromise, personFormPromise]);
   return planningDetails.openAssetDrawer(item, group, handlers, {
     groupLabel: groupLabel(group), generatable: GENERATABLE.has(group),
@@ -277,7 +277,7 @@ export async function mount(host, context) {
   const narrative = contentMode === 'narrative_story';
   const assetGroups = narrative ? GROUPS.filter(([key]) => !['products', 'logos'].includes(key)) : GROUPS;
   let assistModulePromise;
-  const runAssist = async (kind, ...args) => (await (assistModulePromise ||= import('./assetCenterAssist.js?v=20260903-production-v426'))).createAssetAssistHandlers(bundle)[kind](...args);
+  const runAssist = async (kind, ...args) => (await (assistModulePromise ||= import('./assetCenterAssist.js?v=20260904-production-v427'))).createAssetAssistHandlers(bundle)[kind](...args);
   const assistScene = (...args) => runAssist('assistScene', ...args);
   const total = assetGroups.reduce((sum, [key]) => sum + (assets[key]?.length || 0), 0);
   const planEligibility = bundle?.navigation?.asset_plan_eligibility || {};

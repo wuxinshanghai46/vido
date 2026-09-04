@@ -1,5 +1,5 @@
-import { request } from '../api.js?v=20260903-production-v426';
-import { escapeHtml } from '../components/ui.js?v=20260903-production-v426';
+import { request } from '../api.js?v=20260904-production-v427';
+import { escapeHtml } from '../components/ui.js?v=20260904-production-v427';
 
 export function generationModelDisplayName(model = {}) {
   return String(model.public_name || model.model_name || model.model_id || 'Image-2')

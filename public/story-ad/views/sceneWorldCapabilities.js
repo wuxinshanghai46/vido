@@ -1,4 +1,4 @@
-import { escapeHtml } from '../components/ui.js?v=20260903-production-v426';
+import { escapeHtml } from '../components/ui.js?v=20260904-production-v427';
 
 const CAPABILITY_LABELS = {
   supports_photo_views: '真实图片视角',
