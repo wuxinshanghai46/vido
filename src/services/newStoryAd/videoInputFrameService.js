@@ -14,7 +14,7 @@ function clean(value = '', max = 1200) { return String(value || '').trim().slice
  * image-to-video.  This adapter is deliberately deterministic: it never calls
  * an image provider and it never writes a duplicate image artifact.
  */
-function resolve(taskId, { shots = [], contracts = [], requireConfirmation = true } = {}) {
+function resolve(taskId, { shots = [], contracts = [], requireConfirmation = true, allowIncomplete = false } = {}) {
   const task = storage.getTask(taskId);
   if (!task) throw Object.assign(new Error('项目不存在'), { code: 'TASK_NOT_FOUND', status: 404 });
   const context = storage.getOutput(taskId, 'context') || task.request || {};
@@ -23,7 +23,7 @@ function resolve(taskId, { shots = [], contracts = [], requireConfirmation = tru
       code: 'STORYBOARD_CONFIRMATION_REQUIRED', status: 409, retryable: false,
     });
   }
-  const gate = storyboardImageGate.assertReady(taskId);
+  const gate = allowIncomplete ? storyboardImageGate.inspect(taskId) : storyboardImageGate.assertReady(taskId);
   const shotList = list(shots).length ? list(shots) : list(storage.getOutput(taskId, 'storyboard_table'));
   const images = list(storage.getOutput(taskId, 'storyboard_images'));
   const byIndex = new Map(images.map((image, index) => [
@@ -57,7 +57,7 @@ function resolve(taskId, { shots = [], contracts = [], requireConfirmation = tru
       },
     };
   });
-  if (frames.length !== shotList.length || failures.length) {
+  if (!allowIncomplete && (frames.length !== shotList.length || failures.length)) {
     throw Object.assign(new Error(`视频首帧准备失败：${failures.join('；') || '分镜数量不完整'}`), {
       code: 'VIDEO_INPUT_FRAME_REQUIRED', status: 422, retryable: false, details: failures,
     });

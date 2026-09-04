@@ -64,6 +64,13 @@ assert(resolved.frames.every(frame => frame.source_type === 'confirmed_storyboar
 assert(resolved.frames.every(frame => frame.qa.status === 'human_confirmed_storyboard'));
 assert(storage.getOutput(taskId, 'keyframes') == null, '分镜适配不得写入或重复生成 keyframes');
 
+fs.rmSync(mediaAdapter.assetPathFromName('v341_storyboard_2.png'));
+assert.throws(() => videoInputFrames.resolve(taskId, { shots, contracts }), error => error?.code === 'VIDEO_INPUT_FRAME_REQUIRED', '正式生成仍必须阻断缺失首帧');
+const partial = videoInputFrames.resolve(taskId, { shots, contracts, allowIncomplete: true });
+assert.equal(partial.frames[0].image_url, imageRows[0].image_url, '只读预检必须保留已生成镜头的首帧谱系');
+assert(partial.gate && partial.frames.length === 2, '不完整任务预检不得把全部镜头首帧清空');
+fs.writeFileSync(mediaAdapter.assetPathFromName('v341_storyboard_2.png'), Buffer.from('colour-storyboard-2'));
+
 storage.saveOutput(taskId, 'final_video', { video_url: '/fixture-initial-final.mp4' });
 audioProduction.savePlan(taskId, { include_voiceover: false, subtitle: true, bgm_volume: 0.12 });
 assert.equal(audioProduction.current(taskId).include_voiceover, true, '有旁白或对白时不得通过旧参数切成无语音方案');
@@ -103,7 +110,7 @@ assert.match(soundView, /场景音效均为可选/);
 
 console.log(JSON.stringify({
   passed: true,
-  checks: 22,
+  checks: 26,
   provider_calls: 0,
   keyframe_generation_calls: 0,
   upstream_fingerprint_unchanged: true,

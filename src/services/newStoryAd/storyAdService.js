@@ -2150,7 +2150,7 @@ async function ensureContractsForMedia(taskId, ctx, shots) {
   const contractCtx = { ...ctx, scene_assets: Array.isArray(sceneAssets) ? sceneAssets : [] };
   return keyframeContractFreshness.inspect(taskId, { ctx: contractCtx, shots }).contracts;
 }
-function approvedVideoFrames(taskId, shots = [], contracts = []) { return videoInputFrames.resolve(taskId, { shots, contracts }).frames; }
+function approvedVideoFrames(taskId, shots = [], contracts = [], options = {}) { return videoInputFrames.resolve(taskId, { shots, contracts, ...options }).frames; }
 function mediaRuntimeContext(taskId, context = {}) { return audioProduction.applyPlan(taskId, { ...context, ...(storage.getOutput(taskId, 'media_runtime_context') || {}) }); }
 function assertVideoInputsReady({ ctx = {}, shots = [], keyframes = [], contracts = [], sceneAcceptance = null } = {}) {
   assertVerifiedSceneAssets(ctx.scene_assets || [], { acceptance: sceneAcceptance });
@@ -2303,7 +2303,7 @@ function buildVideoPreflightPlan(taskId, options = {}) {
   const sceneAssets = storage.getOutput(taskId, 'scene_assets') || ctx.scene_assets || [];
   const contractCtx = { ...ctx, scene_assets: Array.isArray(sceneAssets) ? sceneAssets : [] };
   const contracts = keyframeContractFreshness.inspect(taskId, { ctx: contractCtx, shots }).contracts;
-  let keyframes = []; try { keyframes = approvedVideoFrames(taskId, shots, contracts); } catch { keyframes = []; }
+  let keyframes = []; try { keyframes = approvedVideoFrames(taskId, shots, contracts, { allowIncomplete: true }); } catch { keyframes = []; }
   const storedClips = Array.isArray(storage.getOutput(taskId, 'video_clips')) ? storage.getOutput(taskId, 'video_clips') : [];
   const statuses = videoAdapter.listVideoShotStatuses(taskId, shots.length);
   const clips = videoClipStatusRecovery.recover(storedClips, statuses);
