@@ -272,6 +272,23 @@ function diffPatch(root, baseRevision, targetRevision, file) {
   try { return git(root, ['diff', '--unified=0', baseRevision, targetRevision, '--', file]); } catch { return ''; }
 }
 
+function diffPatches(root, baseRevision, targetRevision) {
+  let output = '';
+  try { output = git(root, ['diff', '--unified=0', baseRevision, targetRevision, '--']); } catch { return {}; }
+  const result = {};
+  let current = '';
+  for (const line of String(output || '').split(/\r?\n/)) {
+    const header = /^diff --git a\/(.+) b\/(.+)$/.exec(line);
+    if (header) {
+      current = normalizeFile(header[2]);
+      result[current] = line;
+    } else if (current) {
+      result[current] += `\n${line}`;
+    }
+  }
+  return result;
+}
+
 function generatedReleaseOnlyChange(file = '', patch = '') {
   const normalized = normalizeFile(file);
   if (['config/story-ad-runtime-manifest.json', 'public/story-ad/release-manifest.json'].includes(normalized)) return true;
@@ -474,9 +491,10 @@ function createPlan({
       runtimeFiles = delta.files.filter(file => file !== 'config/story-ad-release.json');
     }
   }
+  const repositoryPatches = !Array.isArray(files) ? diffPatches(root, effectiveBaseRevision, targetRevision) : {};
   const patchByFile = Object.fromEntries(runtimeFiles.map(file => [
     file,
-    patches[file] || (!Array.isArray(files) ? diffPatch(root, effectiveBaseRevision, targetRevision, file) : ''),
+    patches[file] || repositoryPatches[file] || '',
   ]));
   const generatedFiles = runtimeFiles.filter(file => generatedReleaseOnlyChange(file, patchByFile[file]));
   metadataFiles.push(...generatedFiles);
@@ -554,9 +572,7 @@ function gateAffectedByRevisionDelta(root, cached, plan, gate) {
   }
   const delta = changedFiles(root, cached.target_revision, plan.target_revision);
   if (!delta.reliable) return true;
-  const patches = Object.fromEntries(delta.files.map(file => [
-    file, diffPatch(root, cached.target_revision, plan.target_revision, file),
-  ]));
+  const patches = diffPatches(root, cached.target_revision, plan.target_revision);
   const runtimeFiles = delta.files.filter(file => {
     if (/^(?:docs\/|README(?:\.|$)|AGENTS\.md$|\.github\/|\.gitee\/)/i.test(file)) return false;
     if (STORY_AD_PLANNER_FILES.has(file)) return false;
@@ -590,12 +606,15 @@ function readCompatibleGateCache(root, plan, gate) {
       catch { return null; }
     }).filter(Boolean).sort((a, b) => b.mtime - a.mtime);
   } catch { return null; }
+  const evaluatedTargets = new Set();
   for (const candidate of candidates) {
     const row = candidate.row;
     if (row?.passed !== true || row?.contract_version !== CONTRACT_VERSION
       || row?.gate_id !== gate.id || row?.command !== gate.command
       || row?.node_version !== process.version
       || (row?.platform && row.platform !== `${process.platform}-${process.arch}`)) continue;
+    if (evaluatedTargets.has(row.target_revision) || evaluatedTargets.size >= 12) continue;
+    evaluatedTargets.add(row.target_revision);
     if (!gateAffectedByRevisionDelta(root, row, plan, gate)) {
       return { ...row, compatible_cache: true, cache_file: candidate.file };
     }
@@ -727,5 +746,6 @@ module.exports = {
   saveGateCache,
   scopedDomainFromPatch,
   generatedReleaseOnlyChange,
+  diffPatches,
   releaseBuildIdOnlyChange,
 };
