@@ -1,4 +1,4 @@
-import { escapeHtml, mediaPreview } from '../components/ui.js?v=20260904-production-v442';
+import { escapeHtml, mediaPreview } from '../components/ui.js?v=20260904-production-v443';
 
 function itemIndex(item = {}, index = 0) {
   const value = Number(item.shot_index ?? item.shotIndex ?? item.index);
