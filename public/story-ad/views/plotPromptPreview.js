@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260904-production-v441';
-import { escapeHtml } from '../components/ui.js?v=20260904-production-v441';
-import { collectBeat } from './plotBeatEditor.js?v=20260904-production-v441';
+import { request } from '../api.js?v=20260904-production-v442';
+import { escapeHtml } from '../components/ui.js?v=20260904-production-v442';
+import { collectBeat } from './plotBeatEditor.js?v=20260904-production-v442';
 
 export async function openPromptPreview({ pop, row, host, projectId, place, closeAll }) {
   closeAll();
