@@ -10,6 +10,25 @@ function restorePreviousClips({ clips = [], previousClips = [], indexes = [] } =
   return clips;
 }
 
+/**
+ * Build the recovery baseline immediately before a paid unit starts.
+ *
+ * `previousClips` is the preflight snapshot, but zero-cost evidence migration and
+ * QA may legitimately improve an existing media clip before provider submission.
+ * Preserve that reviewed media while retaining the preflight clip for indexes
+ * that were intentionally cleared because they are about to be regenerated.
+ */
+function buildUnitRecoverySnapshot({ clips = [], previousClips = [], hasMediaFile = null } = {}) {
+  const current = Array.isArray(clips) ? clips : [];
+  const previous = Array.isArray(previousClips) ? previousClips : [];
+  const length = Math.max(current.length, previous.length);
+  return Array.from({ length }, (_, index) => {
+    const clip = current[index];
+    if (typeof hasMediaFile === 'function' && hasMediaFile(clip)) return clip;
+    return previous[index] || clip || null;
+  });
+}
+
 /** 供应商失败或单镜 QA 失败才回滚；相邻交接失败必须保留已付费且单镜合格的新产物。 */
 function shouldRestoreUnitFailure({ generationError = null, unitIndexes = [], qaFailures = [] } = {}) {
   if (generationError) return true;
@@ -51,4 +70,4 @@ function restoreUnitFailure({ storage, videoAdapter, taskId = '', clips = [], pr
   return indexes;
 }
 
-module.exports = { rollbackIndexes, restorePreviousClips, shouldRestoreUnitFailure, recordFailedCandidates, restoreUnitFailure };
+module.exports = { rollbackIndexes, restorePreviousClips, buildUnitRecoverySnapshot, shouldRestoreUnitFailure, recordFailedCandidates, restoreUnitFailure };

@@ -114,7 +114,7 @@ const videoQa = require('../src/services/newStoryAd/videoFrameQaService');
     taskId: 'video-qa-explicit-sample-manifest',
     clip: { file_path: clipPath, duration_sec: 2 },
     shot: {
-      title: '动作三阶段', action: '人物从起点走到终点并停下',
+      title: '动作三阶段', action: '人物从起点走到终点并停下', camera_motion: 'slow dolly forward',
       temporal_evidence: { shot_state: { state_before: ['位于起点'], state_after: ['停在终点'] } },
     },
     contract: {}, ctx: { cast_mode: 'no_human', assets: [] }, index: 0,
@@ -135,6 +135,9 @@ const videoQa = require('../src/services/newStoryAd/videoFrameQaService');
   });
   assert.strictEqual(manifestQa.pass, true);
   assert.match(temporalPrompt, /Never use the overall image_position as frame_indexes/);
+  assert.match(temporalPrompt, /"camera_motion":"slow dolly forward"/, 'authored camera motion must be available to scene-topology QA');
+  assert.match(temporalPrompt, /may reveal previously occluded areas/, 'QA must not misclassify projective reveals as scene reconstruction');
+  assert.match(temporalPrompt, /corresponding overlapping landmarks materially change/, 'real topology drift must remain a hard failure');
   assert.strictEqual(temporalImageUrls.length, 5, 'all five clip samples must reach vision QA when no references exist');
   assert.deepStrictEqual(manifestQa.evidence_checks.state_transition.frame_indexes, [0, 2, 4]);
   assert.strictEqual(manifestQa.evidence_checks.state_transition.observed_evidence_points, 3);

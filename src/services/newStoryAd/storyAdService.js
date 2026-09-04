@@ -2691,6 +2691,11 @@ async function generateVideoStage(taskId, options = {}) { options = paidExecutio
     const generationUnits = sceneBlocks.filter(block => block.member_indexes.some(index => targetIndexes.includes(index)));
     await videoSubmissionGate.runUnitsFailFast(generationUnits, async (unit, unitPosition, remainingUnits) => {
       const unitIndexes = unit.member_indexes.filter(index => targetIndexes.includes(index));
+      const unitRecoveryClips = videoFailureRecovery.buildUnitRecoverySnapshot({
+        clips,
+        previousClips,
+        hasMediaFile: videoLineage.clipHasMediaFile,
+      });
       const paidUnit = (preflightPlan.units || []).find(item => item.paid && (item.member_indexes || []).some(index => unitIndexes.includes(index)));
       const claimIndex = unitIndexes[0] ?? 0;
       const claimModel = videoAdapter.expectedModelForShot(generationShots[claimIndex] || {}, contracts[claimIndex] || {}, pinnedModel);
@@ -2739,7 +2744,7 @@ async function generateVideoStage(taskId, options = {}) { options = paidExecutio
       else videoArtifactWorkflow.finishUnitAttempts({ ledger: videoAttemptLedger, taskId, claims: attemptClaims, clips, statusFor: index => videoAdapter.listVideoShotStatuses(taskId, shots.length)[index] || {} });
       if (generationError || unitQaFailures.length) {
         videoFailureRecovery.recordFailedCandidates({ storage, taskId, options, unitIndexes, clips, qaFailures: unitQaFailures });
-        if (videoFailureRecovery.shouldRestoreUnitFailure({ generationError, unitIndexes, qaFailures: unitQaFailures })) videoFailureRecovery.restoreUnitFailure({ storage, videoAdapter, taskId, clips, previousClips, unitIndexes, remainingUnits, totalShots: shots.length });
+        if (videoFailureRecovery.shouldRestoreUnitFailure({ generationError, unitIndexes, qaFailures: unitQaFailures })) videoFailureRecovery.restoreUnitFailure({ storage, videoAdapter, taskId, clips, previousClips: unitRecoveryClips, unitIndexes, remainingUnits, totalShots: shots.length });
         if (generationError) {
           videoCostAuthorization.transition(taskId, 'failed', { failure_code: generationError.code || 'VIDEO_PROVIDER_FAILED' });
           generationError.partial_video_clips = clips.slice();

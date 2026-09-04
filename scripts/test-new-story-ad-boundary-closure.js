@@ -147,6 +147,15 @@ async function main() {
   const overwritten = ['new-1', 'new-2', null, null], previous = ['old-1', 'old-2', 'old-3', 'old-4'];
   videoFailureRecovery.restorePreviousClips({ clips: overwritten, previousClips: previous, indexes: [0, 1, 2, 3] });
   assert.deepStrictEqual(overwritten, previous, 'a pre-submission failure must restore every paid clip reference from the preflight snapshot');
+  const reviewedClip = { file_path: 'reviewed.mp4', qa: { pass: true, policy_version: 'v7' } };
+  const recoverySnapshot = videoFailureRecovery.buildUnitRecoverySnapshot({
+    clips: [reviewedClip, null, null],
+    previousClips: [{ file_path: 'old.mp4', qa: { pass: true, policy_version: 'v6' } }, { file_path: 'shot-2-old.mp4' }, { file_path: 'shot-3-old.mp4' }],
+    hasMediaFile: clipItem => Boolean(clipItem?.file_path),
+  });
+  assert.strictEqual(recoverySnapshot[0], reviewedClip, 'a paid provider failure must preserve zero-cost QA progress completed before submission');
+  assert.strictEqual(recoverySnapshot[1].file_path, 'shot-2-old.mp4', 'an intentionally cleared regeneration target must still recover from the preflight snapshot');
+  assert.strictEqual(recoverySnapshot[2].file_path, 'shot-3-old.mp4', 'untouched future units must still recover from the preflight snapshot');
   const recoveredClips = ['new-paid'], recoveryWrites = [];
   videoFailureRecovery.restoreUnitFailure({
     storage: {
@@ -271,6 +280,7 @@ async function main() {
   assert(source.includes('let qaFailures = pendingReviewFailures.slice()'), 'a failed zero-cost boundary review must become a video QA failure instead of a partial success');
   assert(source.includes('if (pendingReviewFailures.length) { initialIndexes.forEach'), 'a failed review must stop later paid generation units and preserve their existing clips');
   assert(source.includes('videoFailureRecovery.restoreUnitFailure({'), 'the orchestrator must apply atomic current-unit rollback after provider or QA failure');
+  assert(source.includes('videoFailureRecovery.buildUnitRecoverySnapshot({'), 'the orchestrator must checkpoint successful zero-cost review progress immediately before provider submission');
   assert(source.includes('videoBoundaryPolicy.usesDeterministicTransition(planned)'), 'zero-cost and post-generation transitions must share the deterministic boundary verdict');
   assert(source.indexOf('adopted_before_boundary_review: true') < source.indexOf('const pendingFailures = await reviewVideoIndexes'), 'review-only lineage adoption must happen before boundary QA binding');
   const composeSource = source.slice(source.indexOf('async function composeStage('), source.indexOf('function mediaDependencyReady('));
