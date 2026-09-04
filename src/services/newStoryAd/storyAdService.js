@@ -69,6 +69,7 @@ const videoInputFrames = require('./videoInputFrameService'), audioProduction = 
 const accountVoiceAssignment = require('./accountVoiceAssignmentService');
 const contentSkill = require('./contentSkillService'), contentDomainArtifacts = require('./contentDomainArtifactService');
 const storyboardNarrativeOrder = require('./storyboardNarrativeOrderService');
+const blueprintMotionEdit = require('./blueprintMotionEditService');
 const workAggregate = require('./workAggregateService');
 const { alignPersonAgeDescription, enforceAssistedPersonSpec } = require('./assistedPersonSpecService');
 /** 读取剧情广告兼容灰度开关；关闭时仍允许查看历史项目，但禁止新的付费视频提交。 */
@@ -651,16 +652,33 @@ function updateBlueprint(taskId, blueprint = {}, user = {}, options = {}) {
     previous,
   );
   const changed = blueprintFingerprint(previous) !== blueprintFingerprint(normalized);
+  const motionEdit = changed ? blueprintMotionEdit.plan(previous, normalized) : { eligible: false, changed_indexes: [] };
+  const previousStoryboard = storage.getOutput(taskId, 'storyboard_table') || [];
+  const previousImages = storage.getOutput(taskId, 'storyboard_images') || [];
+  const preserveStoryboardForMotion = motionEdit.eligible
+    && previousStoryboard.length === normalized.beats.length
+    && previousImages.length === previousStoryboard.length;
   if (changed) {
     const nextRevision = Math.max(1, Number(task.content_revision || 1) || 1) + 1;
     storage.updateTask(taskId, { content_revision: nextRevision, current_snapshot_id: '' });
-    revisionService.invalidateOutputs(storage, taskId, ['blueprint']);
-    storage.carryManifestRevision(taskId, nextRevision);
+    if (preserveStoryboardForMotion) storage.carryManifestRevision(taskId, nextRevision);
+    else {
+      revisionService.invalidateOutputs(storage, taskId, ['blueprint']);
+      storage.carryManifestRevision(taskId, nextRevision);
+    }
     assetPlanPublication.carryForward(taskId, {
       contentRevision: nextRevision,
-      reason: 'manual_blueprint_edit_preserves_upstream_plan',
+      reason: preserveStoryboardForMotion ? 'motion_only_blueprint_edit_preserves_storyboard_frames' : 'manual_blueprint_edit_preserves_upstream_plan',
     });
     const nextCtx = blueprintCharacterProjection.projectCharacters(ctx, normalized);
+    if (preserveStoryboardForMotion) {
+      nextCtx.asset_confirmed = ctx.asset_confirmed === true;
+      nextCtx.asset_setup_confirmed = ctx.asset_setup_confirmed === true;
+      nextCtx.scene_confirmed = ctx.scene_confirmed === true;
+      nextCtx.scene_setup_confirmed = ctx.scene_setup_confirmed === true;
+      nextCtx.shot_confirmed = true;
+      nextCtx.shot_design_confirmed = true;
+    }
     storage.saveOutput(taskId, 'context', nextCtx);
     storage.updateTask(taskId, { request: nextCtx, updated_at: new Date().toISOString() });
     const snapshot = storage.saveSnapshot(taskId, {
@@ -673,6 +691,33 @@ function updateBlueprint(taskId, blueprint = {}, user = {}, options = {}) {
       snapshot_id: snapshot.id,
       input_fingerprint: normalized.fingerprint,
     });
+    if (preserveStoryboardForMotion) {
+      const patchedStoryboard = blueprintMotionEdit.patchStoryboard(previousStoryboard, normalized, motionEdit.changed_indexes);
+      const contracts = buildKeyframeContracts(nextCtx, patchedStoryboard);
+      const rebasedImages = blueprintMotionEdit.rebaseImages(previousImages, patchedStoryboard, nextRevision, motionEdit.changed_indexes);
+      storage.saveOutput(taskId, 'storyboard_table', patchedStoryboard, { content_revision: nextRevision });
+      storage.saveOutput(taskId, 'storyboard_images', rebasedImages, { content_revision: nextRevision });
+      storage.saveOutput(taskId, 'keyframe_contracts', contracts, { content_revision: nextRevision });
+      storage.saveOutput(taskId, 'storyboard_meta', {
+        ...(storage.getOutput(taskId, 'storyboard_meta') || {}),
+        status: 'ready',
+        source: 'motion_only_blueprint_edit',
+        blueprint_revision: Number(normalized.revision || 0),
+        blueprint_fingerprint: normalized.fingerprint || blueprintFingerprint(normalized),
+        motion_changed_indexes: motionEdit.changed_indexes,
+        updated_at: new Date().toISOString(),
+      }, { content_revision: nextRevision });
+      storage.deleteOutputs(taskId, [
+        'video_clips', 'video_scene_blocks', 'final_video', 'video_preflight',
+        'video_execution_plan', 'video_cost_authorization', 'video_generation_authorization',
+        'media_runtime_context', 'edit_timeline',
+        ...patchedStoryboard.map((_, index) => `video_shot_status_${index + 1}`),
+      ]);
+      storage.updateTask(taskId, {
+        status: 'working', stage: 'keyframes_ready', error: '', error_code: '', retryable: false,
+        generation_progress: null,
+      });
+    }
   } else {
     storage.saveOutput(taskId, 'blueprint', normalized);
   }
@@ -684,7 +729,7 @@ function updateBlueprint(taskId, blueprint = {}, user = {}, options = {}) {
       edited_by_user: true,
     },
   });
-  storage.updateTask(taskId, { status: 'running', stage: 'blueprint_done', error: '', error_code: '', retryable: false });
+  if (!preserveStoryboardForMotion) storage.updateTask(taskId, { status: 'running', stage: 'blueprint_done', error: '', error_code: '', retryable: false });
   return normalized;
 }
 
