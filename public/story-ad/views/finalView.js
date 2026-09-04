@@ -1,7 +1,7 @@
-import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260904-production-v438';
-import { bindMoreMedia, moreMediaButton } from './finalMediaPagination.js?v=20260904-production-v438';
-import { bindGenerationModelPicker, loadGenerationModelPicker } from './generationModelPicker.js?v=20260904-production-v438';
-import { clipReviewState, mediaCard } from './clipReviewPresentation.js?v=20260904-production-v438';
+import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260904-production-v439';
+import { bindMoreMedia, moreMediaButton } from './finalMediaPagination.js?v=20260904-production-v439';
+import { bindGenerationModelPicker, loadGenerationModelPicker } from './generationModelPicker.js?v=20260904-production-v439';
+import { clipReviewState, mediaCard } from './clipReviewPresentation.js?v=20260904-production-v439';
 
 function finalVideoUrl(item = {}) { return item.video_url || item.videoUrl || item.url || ''; }
 
@@ -48,7 +48,7 @@ export async function mount(host, context) {
   const run = async (button, path, pending, success) => { try { setButtonBusy(button, true, pending, { elapsed: true }); await store.runStage(path); toast(success, 'success'); await context.refreshShell(); } catch (error) { toast(error.message, 'danger'); } finally { setButtonBusy(button, false); } };
   host.querySelector('[data-compose]')?.addEventListener('click', event => run(event.currentTarget, 'compose', '正在合成初版成片…', '初版成片合成任务已提交。'));
   const openEditor = async () => {
-    const editor = await import('./finalEditView.js?v=20260904-production-v438');
+    const editor = await import('./finalEditView.js?v=20260904-production-v439');
     return editor.openEditorModal(context);
   };
   host.querySelector('[data-open-editor]')?.addEventListener('click', () => openEditor().catch(error => toast(error.message, 'danger')));

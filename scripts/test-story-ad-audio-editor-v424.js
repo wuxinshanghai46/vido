@@ -31,10 +31,10 @@ const server = http.createServer((req, res) => {
       const view = await import('/story-ad/views/finalEditView.js');
       window.executions = [];
       const context = { bundle: { project: { id: 'ui-fixture' }, permissions: { can_view_errors: false }, generation: { final_video: { video_url: '/fixture.mp4' }, clips: [] } }, store: { runStage: async (stage, body) => window.executions.push({ stage, body }) }, refreshShell: async () => {}, navigate: () => {} };
-      await view.mount(document.querySelector('#host'), context);
+      await view.openEditorModal(context);
     });
     assert.equal(seen.filter(row => row.path.endsWith('/sound-design')).length, 0);
-    assert(await page.$('video.final-video')); assert(await page.$('[data-audio-editor]'));
+    assert(await page.$('[data-story-editor-modal]')); assert(await page.$('video.final-video')); assert(await page.$('[data-audio-editor]'));
     await page.click('[data-audio-editor] summary');
     await page.waitForSelector('[data-confirm-audio]');
     assert.equal(seen.filter(row => row.path.endsWith('/sound-design')).length, 1);
@@ -50,6 +50,6 @@ const server = http.createServer((req, res) => {
     assert.match(text, /声音修改失败，原成片已保留/); assert(!text.includes('private'));
     assert.equal(await page.evaluate(() => window.executions.length), 1);
     assert(await page.$('video.final-video'));
-    console.log(JSON.stringify({ passed: true, lazy_sound_request: 1, explicit_apply: true, ordinary_error_redacted: true, old_movie_preserved: true, model_calls: 0 }));
+    console.log(JSON.stringify({ passed: true, editor_modal: true, lazy_sound_request: 1, explicit_apply: true, ordinary_error_redacted: true, old_movie_preserved: true, model_calls: 0 }));
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exitCode = 1; }).finally(() => server.close());
