@@ -1,4 +1,4 @@
-import { elapsedTimeTag, escapeHtml } from '../components/ui.js?v=20260904-production-v448';
+import { elapsedTimeTag, escapeHtml } from '../components/ui.js?v=20260904-production-v449';
 
 export function sketchBatchMarkup(batch = null, total = 0) {
   if (!batch || typeof batch !== 'object') return '';

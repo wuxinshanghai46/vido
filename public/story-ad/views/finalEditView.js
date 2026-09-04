@@ -1,5 +1,5 @@
-import { request } from '../api.js?v=20260904-production-v448';
-import { escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260904-production-v448';
+import { request } from '../api.js?v=20260904-production-v449';
+import { escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260904-production-v449';
 
 function videoUrl(item = {}) { return item.video_url || item.videoUrl || item.url || ''; }
 
@@ -51,7 +51,7 @@ async function renderEditor(host, context, options = {}) {
     audioEditor.dataset.loaded = 'loading';
     const area = host.querySelector('[data-audio-editor-host]');
     try {
-      const feature = await import('./finalSoundDesignView.js?v=20260904-production-v448');
+      const feature = await import('./finalSoundDesignView.js?v=20260904-production-v449');
       const soundDesign = await request(`/api/story-ad/projects/${encodeURIComponent(bundle.project.id)}/sound-design`);
       area.innerHTML = feature.soundDesignMarkup(soundDesign) + '<p role="alert" data-audio-edit-feedback hidden></p><button class="btn primary" data-confirm-audio>确认并应用声音修改</button>';
       feature.bindSoundDesign(area, { bundle, store, soundDesign, refreshShell: context.refreshShell, navigate: context.navigate });
