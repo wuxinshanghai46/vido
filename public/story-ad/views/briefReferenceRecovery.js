@@ -1,5 +1,5 @@
-import { setButtonBusy, toast } from '../components/ui.js?v=20260904-production-v462';
-import { confirmDialog } from '../components/dialog.js?v=20260904-production-v462';
+import { setButtonBusy, toast } from '../components/ui.js?v=20260904-production-v463';
+import { confirmDialog } from '../components/dialog.js?v=20260904-production-v463';
 
 export function bindBriefReferenceRecovery(host, { store, context } = {}) {
   const handleReferenceCancel = async event => {
