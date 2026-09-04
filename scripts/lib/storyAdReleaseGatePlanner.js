@@ -13,6 +13,7 @@ const STORY_AD_PLANNER_FILES = new Set([
   'scripts/deploy-story-ad-immutable-release.js',
   'scripts/lib/storyAdReleaseGatePlanner.js',
   'scripts/test-story-ad-release-gate-planner.js',
+  'scripts/test-story-ad-release-closure.js',
   'scripts/lib/storyAdReleaseFiles.js',
 ]);
 
@@ -457,6 +458,10 @@ function gateIdsForProfile(profile = 'full', { fullPlatform = false, targetedHom
   };
   if (targetedHome) {
     const scope = new Set(domains);
+    if (profile === 'release_metadata'
+      || [...scope].every(domain => ['release_metadata', 'release_infrastructure'].includes(domain))) {
+      return ['targeted_release_core'];
+    }
     if (scope.has('final_media')) return ['final_media', 'targeted_release_core'];
     const selected = [];
     if (scope.has('systemic_safety')) selected.push('systemic');

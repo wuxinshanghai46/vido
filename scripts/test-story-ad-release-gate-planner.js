@@ -251,6 +251,8 @@ assert.equal(planner.releaseConfigChangeKind(
   { build_id: 'v2', contract_version: 8 },
 ), 'runtime_contract');
 assert.deepEqual(planner.gateIdsForProfile('release_metadata'), ['release_core']);
+assert.deepEqual(planner.gateIdsForProfile('release_metadata', { targetedHome: true, domains: ['release_metadata'] }), ['targeted_release_core'],
+  '家庭电脑的纯发布闭包变化只执行定向发布核心，不得重复运行工作台或完整发布套件');
 assert.equal(planner.scopedDomainFromPatch('src/routes/newStoryAd.js', [
   '@@ -809 +809 @@ router.post(\'/reference-video-analyses/:analysisId/start\'',
   '+  extendedAnalysisConfirmed: true,',
