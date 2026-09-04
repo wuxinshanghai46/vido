@@ -90,8 +90,10 @@ function publicTask(task = {}, { isAdmin = false } = {}) {
   return safe;
 }
 
-function submissionFailure(record, canViewErrors = false) {
-  if (!record?.finished_at) return null;
+function submissionFailure(record, canViewErrors = false, { activePlanEligible = false } = {}) {
+  if (!record?.finished_at || record.status !== 'failed') return null;
+  const errorCode = normalize(record.diagnostics?.error_code || record.error_code, 100).toUpperCase();
+  if (activePlanEligible && ['GENERATION_ACTIVE_PLAN_REQUIRED', 'GENERATION_RELEASE_SYNC_BLOCKED'].includes(errorCode)) return null;
   return { finished_at: record.finished_at, error: '视频生成失败。', ...(canViewErrors ? { technical_diagnostics: { error: normalize(record.error, 1200), error_code: normalize(record.diagnostics?.error_code || record.error_code, 100) } } : {}) };
 }
 

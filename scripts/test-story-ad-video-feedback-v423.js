@@ -26,6 +26,10 @@ const load=source=>import('data:text/javascript;base64,'+Buffer.from(source).toS
  assert.equal(storage.getStage(base.project.id,'video_submission').error,record.error);
  const ordinary=failure.submissionFailure(record,false),admin=failure.submissionFailure(record,true);
  assert(!JSON.stringify(ordinary).includes('private'));assert.equal(admin.technical_diagnostics.error_code,'INTERNAL_CONFIG');
+ const stalePlanRecord=storage.saveStage(base.project.id,'video_submission',{status:'failed',error:'stale plan',diagnostics:{error_code:'GENERATION_ACTIVE_PLAN_REQUIRED'}});
+ assert.equal(failure.submissionFailure(stalePlanRecord,false,{activePlanEligible:true}),null);
+ assert(failure.submissionFailure(stalePlanRecord,false,{activePlanEligible:false}));
+ assert.equal(failure.submissionFailure({...stalePlanRecord,status:'ready'},false),null);
  const rejected={...idle,project:{...idle.project,video_submission_failure:ordinary}};assert.equal(view(rejected).status,'failed');
  const retry={...running,project:{...running.project,video_submission_failure:ordinary,generation_started_at:new Date(Date.now()+1000).toISOString()}};assert.equal(view(retry).status,'running');
  const retryDone={...complete,project:{...complete.project,video_submission_failure:ordinary,generation_started_at:new Date(Date.now()+1000).toISOString()}};assert.equal(view(retryDone).status,'succeeded');
@@ -43,5 +47,5 @@ const load=source=>import('data:text/javascript;base64,'+Buffer.from(source).toS
    assert.equal(result.status,status);assert.equal(result.disabled,disabled);assert.equal(result.empty,empty);assert(!result.text.includes('private'));
   }
  }finally{await browser.close();}
- console.log(JSON.stringify({passed:true,cases:19,browser_transitions:6,model_calls:0}));
+ console.log(JSON.stringify({passed:true,cases:22,browser_transitions:6,model_calls:0}));
 })().catch(e=>{console.error(e);process.exitCode=1});
