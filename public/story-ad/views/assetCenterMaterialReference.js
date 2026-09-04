@@ -1,4 +1,4 @@
-import { escapeHtml } from '../components/ui.js?v=20260904-production-v465';
+import { escapeHtml } from '../components/ui.js?v=20260904-production-v466';
 
 export function productDetails(item = {}) {
   const presentation = item.presentation || {};
