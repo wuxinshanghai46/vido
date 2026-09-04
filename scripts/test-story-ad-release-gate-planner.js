@@ -69,6 +69,14 @@ assert.equal(plan(['src/services/newStoryAd/assetPlanService.js']).profile, 'ass
 assert.equal(plan(['src/services/newStoryAd/videoAdapterMediaRuntime.js']).profile, 'systemic');
 assert.equal(plan(['src/services/storyAdWorkspace/projectBundleMediaProjectionService.js']).profile, 'asset_plan');
 assert.equal(plan(['public/story-ad/views/soundDesignFeature.js']).profile, 'final_media');
+const videoQaHomePlan = planner.createPlan({
+  root: process.cwd(), baseRevision: 'a'.repeat(40), targetRevision: 'b'.repeat(40), sourceTree: 'c'.repeat(40),
+  files: ['src/services/newStoryAd/motionAwareEditService.js', 'src/services/newStoryAd/videoFrameQaService.js'],
+  reliable: true, targetedHome: true,
+});
+assert.equal(videoQaHomePlan.profile, 'final_media');
+assert.deepEqual(videoQaHomePlan.gates.map(row => row.id), ['final_media', 'targeted_release_core'],
+  '家庭电脑的视频取证与审片修复必须只运行最终媒体及定向发布门禁');
 assert.equal(plan(['src/routes/assets.js', 'scripts/test-story-ad-character-library-v183.js']).profile, 'ui');
 assert.deepEqual(
   planner.createPlan({
