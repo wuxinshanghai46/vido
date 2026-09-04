@@ -1,4 +1,4 @@
-import { request } from '../api.js?v=20260904-production-v428';
+import { request } from '../api.js?v=20260904-production-v429';
 
 export function bindBriefViewport(host) {
   host.classList?.add('brief-dialogue-view');
