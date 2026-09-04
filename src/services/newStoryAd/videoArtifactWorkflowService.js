@@ -88,6 +88,12 @@ function buildExpectedLineages({
   });
 }
 
+function compatibilityMotionPrompt(clip = {}, buildPrompt = () => '') {
+  const storedPrompt = typeof clip.motion_prompt === 'string' ? clip.motion_prompt : '';
+  if (videoLineage.clipHasMediaFile(clip) && storedPrompt) return storedPrompt;
+  return typeof buildPrompt === 'function' ? buildPrompt() : '';
+}
+
 function capabilityRegistry({ route = '', model = {}, configured = {} } = {}) {
   if (configured && Object.keys(configured).length) return configured;
   const evidence = model.capabilities || model.capability_evidence || {};
@@ -186,6 +192,7 @@ module.exports = {
   ACTIVE_INPUT_STRATEGIES,
   buildCompatibilityReport,
   buildExpectedLineages,
+  compatibilityMotionPrompt,
   capabilityRegistry,
   assessUnitCapabilities,
   assertComposeCompatible,

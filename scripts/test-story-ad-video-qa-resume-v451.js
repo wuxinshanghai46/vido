@@ -39,6 +39,48 @@ const frameQa = require('../src/services/newStoryAd/videoFrameQaService');
   assert.equal(expected[1].video_resolution, '480p', '后续未生成镜头必须使用新的 480P 默认值');
   assert.deepEqual(mediaRuntime.outputSize('9:16'), { width: 480, height: 854 });
 
+  let repairPromptBuilds = 0;
+  const retainedPrompt = workflow.compatibilityMotionPrompt({
+    video_url: '/api/new-story-ad/videos/existing.mp4',
+    motion_prompt: 'the immutable prompt used by the provider',
+  }, () => { repairPromptBuilds += 1; return 'new repair prompt'; });
+  assert.equal(retainedPrompt, 'the immutable prompt used by the provider');
+  assert.equal(repairPromptBuilds, 0, '已有媒体的兼容性指纹不得被本轮修复提示词污染');
+  assert.equal(workflow.compatibilityMotionPrompt({}, () => { repairPromptBuilds += 1; return 'new generation prompt'; }), 'new generation prompt');
+  assert.equal(repairPromptBuilds, 1, '未生成镜头仍应构造本轮生成提示词');
+
+  const originalShot = { id: 'shot-1', action: 'turns toward camera', camera: 'slow push' };
+  const originalPrompt = 'original persisted provider prompt';
+  const lineageV7 = workflow.buildExpectedLineages({
+    shots: [originalShot], ctx: { output_ratio: '9:16', video_resolution: '1080p' },
+    motionPromptFor: () => originalPrompt, qaPolicyVersion: 'story-ad-video-frame-qa-v7',
+  })[0];
+  const staleRejectedClip = {
+    video_url: '/api/new-story-ad/videos/existing.mp4', motion_prompt: originalPrompt,
+    lineage: lineageV7, lineage_fingerprint: lineageV7.fingerprint,
+    qa: { pass: false, status: 'rejected', qa_policy_version: 'story-ad-video-frame-qa-v7' },
+  };
+  const lineageV8 = workflow.buildExpectedLineages({
+    shots: [originalShot], ctx: { output_ratio: '9:16', video_resolution: '1080p' },
+    motionPromptFor: () => workflow.compatibilityMotionPrompt(staleRejectedClip, () => 'repair prompt must not win'),
+    qaPolicyVersion: 'story-ad-video-frame-qa-v8',
+  });
+  const policyUpgrade = workflow.buildCompatibilityReport({ clips: [staleRejectedClip], expectedLineages: lineageV8 });
+  assert.equal(policyUpgrade.decisions[0].status, 'reverify_required');
+  assert.deepEqual(policyUpgrade.decisions[0].reason_codes, ['QA_POLICY_OLD']);
+  const changedLineage = workflow.buildExpectedLineages({
+    shots: [{ ...originalShot, action: 'walks out of frame' }], ctx: { output_ratio: '9:16', video_resolution: '1080p' },
+    motionPromptFor: () => originalPrompt, qaPolicyVersion: 'story-ad-video-frame-qa-v8',
+  });
+  assert.equal(workflow.buildCompatibilityReport({ clips: [staleRejectedClip], expectedLineages: changedLineage }).decisions[0].status, 'regenerate_required', '真实镜头语义变化仍必须重生成');
+  const noPromptClip = { ...staleRejectedClip, motion_prompt: '' };
+  assert.equal(workflow.compatibilityMotionPrompt(noPromptClip, () => 'fail-closed-current-prompt'), 'fail-closed-current-prompt', '缺失原始提示词时不得无证据沿用旧语义');
+
+  const isolatedPrompts = await Promise.all(Array.from({ length: 20 }, (_, index) => Promise.resolve(workflow.compatibilityMotionPrompt({
+    video_url: `/users/${'u'.repeat(80)}-${index}/task-${'t'.repeat(120)}-${index}.mp4`, motion_prompt: `prompt-${index}`,
+  }, () => `wrong-${index}`))));
+  assert.deepEqual(isolatedPrompts, Array.from({ length: 20 }, (_, index) => `prompt-${index}`), '并发多用户长 ID 不得串用兼容性提示词');
+
   let extractionCalls = 0;
   const savedPendingClip = {
     file_path: '/persistent/generated-shot-1.mp4',
@@ -85,5 +127,5 @@ const frameQa = require('../src/services/newStoryAd/videoFrameQaService');
   assert.match(read('public/digital-human.html'), /class="dh-chip active" data-nsa-video-resolution="480p"/);
   assert.match(evidenceService, /prepareClipReviewFrameEvidence/);
   assert.match(evidenceService, /storage\.saveOutput\(taskId, 'video_clips', clips\)/);
-  console.log(JSON.stringify({ passed: true, cases: 24, paid_video_calls: 0, qa_fallback_calls: 0 }));
+  console.log(JSON.stringify({ passed: true, cases: 32, paid_video_calls: 0, qa_fallback_calls: 0 }));
 })().catch(error => { console.error(error); process.exitCode = 1; });
