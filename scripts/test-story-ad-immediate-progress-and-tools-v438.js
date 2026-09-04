@@ -22,9 +22,10 @@ assert.equal(state.bundle.project.generation_progress.target_total, 7);
 assert.match(state.bundle.project.active_generation_id, /^client-submitting:/);
 
 const store = read('public/story-ad/store/projectStore.js');
+const stageSubmission = read('public/story-ad/store/stageSubmissionState.js');
 const runStage = store.slice(store.indexOf('async function runStage'), store.indexOf('async function saveBlueprint'));
-assert(runStage.indexOf('beginStageSubmissionState') < runStage.indexOf("request(`/api/new-story-ad/tasks/"), '统一生成入口必须在网络请求前投影进度');
-for (const mapping of ["blueprint: 'blueprint'", "'person-plan': 'person_plan'", "'scene-assets': 'scene_asset'", "storyboard: 'storyboard'", "video: 'video'", "compose: 'compose'"]) assert(store.includes(mapping), `缺少阶段映射 ${mapping}`);
+assert(runStage.indexOf('beginAutomaticStageSubmission') < runStage.indexOf("request(`/api/new-story-ad/tasks/"), '统一生成入口必须在网络请求前投影进度');
+for (const mapping of ["blueprint: 'blueprint'", "'person-plan': 'person_plan'", "'scene-assets': 'scene_asset'", "storyboard: 'storyboard'", "video: 'video'", "compose: 'compose'"]) assert(stageSubmission.includes(mapping), `缺少阶段映射 ${mapping}`);
 assert(store.includes("const awaitingSubmission = state.saving === true") && store.includes("active_generation_id: awaitingSubmission ? optimisticGenerationId"), '服务器接单前的轮询不得用旧终态覆盖点击后的进度');
 
 const ui = read('public/story-ad/components/ui.js');

@@ -1,7 +1,7 @@
-import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260904-production-v437';
-import { bindMoreMedia, moreMediaButton } from './finalMediaPagination.js?v=20260904-production-v437';
-import { bindGenerationModelPicker, loadGenerationModelPicker } from './generationModelPicker.js?v=20260904-production-v437';
-import { clipReviewState, mediaCard } from './clipReviewPresentation.js?v=20260904-production-v437';
+import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260904-production-v438';
+import { bindMoreMedia, moreMediaButton } from './finalMediaPagination.js?v=20260904-production-v438';
+import { bindGenerationModelPicker, loadGenerationModelPicker } from './generationModelPicker.js?v=20260904-production-v438';
+import { clipReviewState, mediaCard } from './clipReviewPresentation.js?v=20260904-production-v438';
 
 function finalVideoUrl(item = {}) { return item.video_url || item.videoUrl || item.url || ''; }
 
@@ -11,7 +11,6 @@ function finalVideoPlayer(item = {}, poster = '') {
   return `<video class="final-video" src="${escapeHtml(url)}" poster="${escapeHtml(poster)}" controls preload="none" playsinline aria-label="初版成片">您的浏览器暂不支持视频播放。</video>`;
 }
 
-/** 第 6 步只负责逐镜视频生成与初版合成，不渲染任何剪辑控件。 */
 export async function mount(host, context) {
   const { bundle, store } = context;
   const generation = bundle?.generation || {};
@@ -49,7 +48,7 @@ export async function mount(host, context) {
   const run = async (button, path, pending, success) => { try { setButtonBusy(button, true, pending, { elapsed: true }); await store.runStage(path); toast(success, 'success'); await context.refreshShell(); } catch (error) { toast(error.message, 'danger'); } finally { setButtonBusy(button, false); } };
   host.querySelector('[data-compose]')?.addEventListener('click', event => run(event.currentTarget, 'compose', '正在合成初版成片…', '初版成片合成任务已提交。'));
   const openEditor = async () => {
-    const editor = await import('./finalEditView.js?v=20260904-production-v437');
+    const editor = await import('./finalEditView.js?v=20260904-production-v438');
     return editor.openEditorModal(context);
   };
   host.querySelector('[data-open-editor]')?.addEventListener('click', () => openEditor().catch(error => toast(error.message, 'danger')));
@@ -82,7 +81,6 @@ export async function mount(host, context) {
 const videoStage = value => /^(video|video_repair|media|compose|final_video)(_|$)/.test(String(value || '').replace(/^new_story_ad\./, ''));
 const time = value => Date.parse(value || '') || 0;
 
-/** A processed/failed unit is never counted as a playable video. */
 export function videoGenerationFeedback(bundle = {}) {
   const project = bundle.project || {}, generation = bundle.generation || {};
   const progress = project.generation_progress || generation.progress || {};

@@ -1,10 +1,10 @@
-import { sketchBatchMarkup } from './storyboardImageReview.js?v=20260904-production-v437';
-import { request } from '../api.js?v=20260904-production-v437';
-import { elapsedTimeTag, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260904-production-v437';
-import { bindMediaLightbox } from './mediaLightbox.js?v=20260904-production-v437';
-import { bindGenerationModelPicker, loadGenerationModelPicker } from './generationModelPicker.js?v=20260904-production-v437';
-import { generationModelPickerPlaceholder } from './generationModelPlaceholder.js?v=20260904-production-v437';
-import { openStoryboardPromptEditor, referenceItemsFor, sketchReferenceMarkup } from './storyboardPromptEditorDialog.js?v=20260904-production-v437';
+import { sketchBatchMarkup } from './storyboardImageReview.js?v=20260904-production-v438';
+import { request } from '../api.js?v=20260904-production-v438';
+import { elapsedTimeTag, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260904-production-v438';
+import { bindMediaLightbox } from './mediaLightbox.js?v=20260904-production-v438';
+import { bindGenerationModelPicker, loadGenerationModelPicker } from './generationModelPicker.js?v=20260904-production-v438';
+import { generationModelPickerPlaceholder } from './generationModelPlaceholder.js?v=20260904-production-v438';
+import { openStoryboardPromptEditor, referenceItemsFor, sketchReferenceMarkup } from './storyboardPromptEditorDialog.js?v=20260904-production-v438';
 export function friendlyBindings(bundle = {}, shot = {}) {
   const assets = bundle.assets || {};
   const scenes = Array.isArray(assets.scenes) ? assets.scenes : [];
@@ -187,7 +187,7 @@ function storyboardProgressMarkup({ batch = null, progress = {}, active = false,
 
 export async function mount(host, context) {
   if (context.route?.params?.get('stage') === 'shot') {
-    const shotDesigner = await import('./shotDesignerView.js?v=20260904-production-v437');
+    const shotDesigner = await import('./shotDesignerView.js?v=20260904-production-v438');
     return shotDesigner.mount(host, context);
   }
   const { bundle, store } = context;
@@ -245,7 +245,7 @@ export async function mount(host, context) {
   const primaryAction = !isReferenceDraft && !(completedHistorical && !sketchGate.ready)
     ? `${gateBlocked ? '' : sketchModelPicker.html}${mainSketchAction}${shots.length && generatedSketchCount === shots.length && sketchGate.ready ? '<button class="btn primary" type="button" data-confirm-storyboard>确认分镜，进入视频生成</button>' : ''}`
     : '';
-  host.innerHTML = `<link rel="stylesheet" href="/story-ad/storyboard-images.css?v=20260904-production-v437">
+  host.innerHTML = `<link rel="stylesheet" href="/story-ad/storyboard-images.css?v=20260904-production-v438">
 <div class="storyboard-simple-view">
 <section class="view-head storyboard-view-head">
 <div><h1>人物场景分镜</h1><p>${isReferenceDraft ? '保存参考视频提取的分镜草稿后，系统会继续自动匹配人物与场景。' : '系统会根据已确认的剧情自动匹配人物与场景，直接生成分镜画面。'}</p></div>
@@ -481,7 +481,7 @@ export async function mount(host, context) {
       activeSketchTargets = new Set(targetIndexes);
       targetIndexes.forEach(index => pendingSketchIndexes.add(index));
       setButtonBusy(button, true, '正在提交…', { elapsed: true });
-      renderSketchBatch({ status: 'queued', requested: targetCount, completed: 0, target_indexes: targetIndexes, started_at: new Date().toISOString(), message: targetCount === 1 ? '本镜已开始生成。' : '全部分镜已开始生成，请查看总进度。' });
+      renderSketchBatch({ status: 'queued', requested: targetCount, completed: 0, target_indexes: targetIndexes, started_at: new Date().toISOString() });
       const data = await request(`/api/story-ad/projects/${encodeURIComponent(bundle.project.id)}/storyboard-images/generate-batch`, {
         method: 'POST',
         body: { confirmed: true, async_start: true, target_indexes: targetIndexes, regenerate_all: regenerateAll, image_model: options.imageModel || selectedSketchModel(), client_request_id: options.clientRequestId || globalThis.crypto?.randomUUID?.() || `${Date.now()}` },

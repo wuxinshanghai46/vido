@@ -49,3 +49,28 @@ export function beginStageSubmissionState({ state, set }, stage = 'full', total 
     },
   });
 }
+
+export function beginAutomaticStageSubmission({ state, set }, path = 'full', body = {}) {
+  const stageByPath = {
+    blueprint: 'blueprint', 'person-plan': 'person_plan', 'person-provider-sync': 'person_plan',
+    'visual-assets': 'visual_assets', 'production-assets': 'visual_assets', 'product-assets': 'visual_assets',
+    'scene-plan': 'scene_config', 'scene-config': 'scene_config', 'scene-assets': 'scene_asset', 'scene-actions': 'scene_asset',
+    storyboard: 'storyboard', keyframes: 'keyframes', tts: 'tts', video: 'video', compose: 'compose', full: 'full',
+  };
+  const stage = stageByPath[path] || String(path || 'full').replaceAll('-', '_');
+  const shots = state.bundle?.storyboard?.shots || [];
+  const people = state.bundle?.assets?.people || [];
+  const scenes = state.bundle?.assets?.scenes || [];
+  const totalByStage = {
+    person_plan: Math.max(1, people.length), visual_assets: Math.max(1, people.length),
+    scene_config: Math.max(1, scenes.length), scene_asset: Math.max(1, Number(body?.count || body?.target_total || 0) || scenes.length),
+    storyboard: Math.max(1, shots.length), keyframes: Math.max(1, shots.length), tts: Math.max(1, shots.length),
+    video: Math.max(1, shots.length), compose: Math.max(1, shots.length),
+  };
+  const currentGenerationId = String(state.bundle?.project?.active_generation_id || '');
+  const currentStage = String(state.bundle?.project?.active_stage || '');
+  if (!(currentGenerationId.startsWith('client-submitting:') && currentStage === stage)) {
+    beginStageSubmissionState({ state, set }, stage, totalByStage[stage] || 1, '任务已开始，进度会自动更新。');
+  }
+  return stage;
+}

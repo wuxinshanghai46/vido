@@ -1,11 +1,11 @@
-import { request, uploadAsset, uploadReferenceVideo } from '../api.js?v=20260904-production-v437';
-import { beginReferenceReplacement, referenceSyncInterrupted, replacementCurrent, removeProjectReference, restoreReferenceReplacement } from './referenceReplacementState.js?v=20260904-production-v437';
-import { cancelReferenceAnalysisRequest, retryReferenceAnalysisRequest, retryReferenceImportRequest } from './referenceRetryStore.js?v=20260904-production-v437';
-import { loadProjectList } from './projectListStore.js?v=20260904-production-v437';
-import { loadProjectBundle, prefetchProjectBundle, refreshProjectBundle } from './projectBundleStore.js?v=20260904-production-v437';
-import { beginStageSubmissionState } from './stageSubmissionState.js?v=20260904-production-v437';
-import { createStoryboardLiveRefresh } from './storyboardLiveRefresh.js?v=20260904-production-v437';
-import { retainActiveGenerationProgress } from './progressProjection.js?v=20260904-production-v437';
+import { request, uploadAsset, uploadReferenceVideo } from '../api.js?v=20260904-production-v438';
+import { beginReferenceReplacement, referenceSyncInterrupted, replacementCurrent, removeProjectReference, restoreReferenceReplacement } from './referenceReplacementState.js?v=20260904-production-v438';
+import { cancelReferenceAnalysisRequest, retryReferenceAnalysisRequest, retryReferenceImportRequest } from './referenceRetryStore.js?v=20260904-production-v438';
+import { loadProjectList } from './projectListStore.js?v=20260904-production-v438';
+import { loadProjectBundle, prefetchProjectBundle, refreshProjectBundle } from './projectBundleStore.js?v=20260904-production-v438';
+import { beginAutomaticStageSubmission, beginStageSubmissionState } from './stageSubmissionState.js?v=20260904-production-v438';
+import { createStoryboardLiveRefresh } from './storyboardLiveRefresh.js?v=20260904-production-v438';
+import { retainActiveGenerationProgress } from './progressProjection.js?v=20260904-production-v438';
 export function createProjectStore() {
   const state = { projects: [],
     stats: {},
@@ -52,7 +52,7 @@ export function createProjectStore() {
     hydrateReferenceFailure();
     return bundle;
   }
-  const mediaStore = () => import('./mediaCatalogStore.js?v=20260904-production-v437'), loadMediaPage = async options => (await mediaStore()).loadMediaPage({ request, state }, options);
+  const mediaStore = () => import('./mediaCatalogStore.js?v=20260904-production-v438'), loadMediaPage = async options => (await mediaStore()).loadMediaPage({ request, state }, options);
   const loadMoreMedia = async (kind = 'keyframes', limit = 24) => (await mediaStore()).loadMoreMedia({ request, state, set }, kind, limit);
   async function refreshSections(sections) {
     return refreshProjectBundle({ request, set, state, sections });
@@ -146,44 +146,7 @@ export function createProjectStore() {
   async function runStage(path, body = {}) {
     const taskId = state.bundle?.project?.id;
     if (!taskId) throw new Error('请先创建项目。');
-    const stageByPath = {
-      blueprint: 'blueprint',
-      'person-plan': 'person_plan',
-      'person-provider-sync': 'person_plan',
-      'visual-assets': 'visual_assets',
-      'production-assets': 'visual_assets',
-      'product-assets': 'visual_assets',
-      'scene-plan': 'scene_config',
-      'scene-config': 'scene_config',
-      'scene-assets': 'scene_asset',
-      'scene-actions': 'scene_asset',
-      storyboard: 'storyboard',
-      keyframes: 'keyframes',
-      tts: 'tts',
-      video: 'video',
-      compose: 'compose',
-      full: 'full',
-    };
-    const stage = stageByPath[path] || String(path || 'full').replaceAll('-', '_');
-    const shots = state.bundle?.storyboard?.shots || [];
-    const people = state.bundle?.assets?.people || [];
-    const scenes = state.bundle?.assets?.scenes || [];
-    const totalByStage = {
-      person_plan: Math.max(1, people.length),
-      visual_assets: Math.max(1, people.length),
-      scene_config: Math.max(1, scenes.length),
-      scene_asset: Math.max(1, Number(body?.count || body?.target_total || 0) || scenes.length),
-      storyboard: Math.max(1, shots.length),
-      keyframes: Math.max(1, shots.length),
-      tts: Math.max(1, shots.length),
-      video: Math.max(1, shots.length),
-      compose: Math.max(1, shots.length),
-    };
-    const currentGenerationId = String(state.bundle?.project?.active_generation_id || '');
-    const currentStage = String(state.bundle?.project?.active_stage || '');
-    if (!(currentGenerationId.startsWith('client-submitting:') && currentStage === stage)) {
-      beginStageSubmissionState({ state, set }, stage, totalByStage[stage] || 1, '任务已开始，进度会自动更新。');
-    }
+    beginAutomaticStageSubmission({ state, set }, path, body);
     set({ saving: true, error: '' });
     syncProgressPolling(true);
     try {
@@ -611,7 +574,7 @@ export function createProjectStore() {
     updateRequest,
     beginStageSubmission: (stage, total, message, details) => beginStageSubmissionState({ state, set }, stage, total, message, details),
     runStage,
-    saveScenePrompt: async (scene, prompt) => (await import('./scenePromptConfirmationStore.js?v=20260904-production-v437')).saveScenePrompt({ state, request }, scene, prompt),
+    saveScenePrompt: async (scene, prompt) => (await import('./scenePromptConfirmationStore.js?v=20260904-production-v438')).saveScenePrompt({ state, request }, scene, prompt),
     saveBlueprint,
     saveStoryboard,
     saveStoryboardImages,
@@ -626,7 +589,7 @@ export function createProjectStore() {
     videoPreflight,
     startVideo,
     cancelGeneration,
-    acceptCurrentScenes: async () => (await import('./sceneAcceptanceStore.js?v=20260904-production-v437')).acceptCurrentScenes({ state, request, refreshSections }),
+    acceptCurrentScenes: async () => (await import('./sceneAcceptanceStore.js?v=20260904-production-v438')).acceptCurrentScenes({ state, request, refreshSections }),
     clearProject,
     syncProgressPolling,
     stopProgressPolling,

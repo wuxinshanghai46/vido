@@ -116,6 +116,7 @@ function main() {
   const sceneWorldAuthorityLazyJsFiles = allJsFiles.filter(file => /sceneWorldAuthorityPlan/.test(file));
   const dossierLazyJsFiles = allJsFiles.filter(file => /sceneDossier(?:Card|Export)/.test(file));
   const mediaLazyJsFiles = allJsFiles.filter(file => /(?:finalView|mediaCatalogStore|finalMediaPagination)/.test(file));
+  const editorLazyJsFiles = allJsFiles.filter(file => /finalEditView/.test(file));
   const soundDesignLazyJsFiles = allJsFiles.filter(file => /finalSoundDesignView/.test(file));
   const soundDesignFeatureLazyJsFiles = allJsFiles.filter(file => /soundDesignFeature/.test(file));
   const lightboxLazyJsFiles = allJsFiles.filter(file => /mediaLightbox/.test(file));
@@ -136,7 +137,7 @@ function main() {
   const plotCellLazyJsFiles = allJsFiles.filter(file => /plotBeatCellPopover/.test(file));
   const storyStageLazyJsFiles = allJsFiles.filter(file => /(?:storyFlowSketchView|storyboardView|storyboardImageReview)/.test(file));
   const shotDesignerLazyJsFiles = allJsFiles.filter(file => /shotDesignerView/.test(file));
-  const coreJsFiles = allJsFiles.filter(file => !lazyJsFiles.includes(file) && !assetEditorLazyJsFiles.includes(file) && !materialReferenceLazyJsFiles.includes(file) && !sceneQaProjectionLazyJsFiles.includes(file) && !promptAutosaveLazyJsFiles.includes(file) && !planMigrationLazyJsFiles.includes(file) && !personFormLazyJsFiles.includes(file) && !personEvolutionLazyJsFiles.includes(file) && !featureLazyJsFiles.includes(file) && !workflowLazyJsFiles.includes(file) && !recognitionLazyJsFiles.includes(file) && !briefLazyJsFiles.includes(file) && !briefMaterialsLazyJsFiles.includes(file) && !briefAdvancedLazyJsFiles.includes(file) && !briefPageLazyJsFiles.includes(file) && !panoramaLazyJsFiles.includes(file) && !sceneWorldLazyJsFiles.includes(file) && !sceneWorldLayoutLazyJsFiles.includes(file) && !sceneWorldAuthorityLazyJsFiles.includes(file) && !dossierLazyJsFiles.includes(file) && !mediaLazyJsFiles.includes(file) && !soundDesignLazyJsFiles.includes(file) && !soundDesignFeatureLazyJsFiles.includes(file) && !lightboxLazyJsFiles.includes(file) && !checkpointRecoveryLazyJsFiles.includes(file) && !assetStageLazyJsFiles.includes(file) && !recoveryPreflightLazyJsFiles.includes(file) && !generationModelPickerLazyJsFiles.includes(file) && !dialogueFlowJsFiles.includes(file) && !dialogueDataJsFiles.includes(file) && !dialogueGuidanceLazyJsFiles.includes(file) && !dialogueSupportLazyJsFiles.includes(file) && !dialogueSpecificationLazyJsFiles.includes(file) && !referenceDialogueStateJsFiles.includes(file) && !dialoguePolicyJsFiles.includes(file) && !plotRoomLazyJsFiles.includes(file) && !plotCharacterLazyJsFiles.includes(file) && !plotEditorJsFiles.includes(file) && !plotCellLazyJsFiles.includes(file) && !storyStageLazyJsFiles.includes(file) && !shotDesignerLazyJsFiles.includes(file));
+  const coreJsFiles = allJsFiles.filter(file => !lazyJsFiles.includes(file) && !assetEditorLazyJsFiles.includes(file) && !materialReferenceLazyJsFiles.includes(file) && !sceneQaProjectionLazyJsFiles.includes(file) && !promptAutosaveLazyJsFiles.includes(file) && !planMigrationLazyJsFiles.includes(file) && !personFormLazyJsFiles.includes(file) && !personEvolutionLazyJsFiles.includes(file) && !featureLazyJsFiles.includes(file) && !workflowLazyJsFiles.includes(file) && !recognitionLazyJsFiles.includes(file) && !briefLazyJsFiles.includes(file) && !briefMaterialsLazyJsFiles.includes(file) && !briefAdvancedLazyJsFiles.includes(file) && !briefPageLazyJsFiles.includes(file) && !panoramaLazyJsFiles.includes(file) && !sceneWorldLazyJsFiles.includes(file) && !sceneWorldLayoutLazyJsFiles.includes(file) && !sceneWorldAuthorityLazyJsFiles.includes(file) && !dossierLazyJsFiles.includes(file) && !mediaLazyJsFiles.includes(file) && !editorLazyJsFiles.includes(file) && !soundDesignLazyJsFiles.includes(file) && !soundDesignFeatureLazyJsFiles.includes(file) && !lightboxLazyJsFiles.includes(file) && !checkpointRecoveryLazyJsFiles.includes(file) && !assetStageLazyJsFiles.includes(file) && !recoveryPreflightLazyJsFiles.includes(file) && !generationModelPickerLazyJsFiles.includes(file) && !dialogueFlowJsFiles.includes(file) && !dialogueDataJsFiles.includes(file) && !dialogueGuidanceLazyJsFiles.includes(file) && !dialogueSupportLazyJsFiles.includes(file) && !dialogueSpecificationLazyJsFiles.includes(file) && !referenceDialogueStateJsFiles.includes(file) && !dialoguePolicyJsFiles.includes(file) && !plotRoomLazyJsFiles.includes(file) && !plotCharacterLazyJsFiles.includes(file) && !plotEditorJsFiles.includes(file) && !plotCellLazyJsFiles.includes(file) && !storyStageLazyJsFiles.includes(file) && !shotDesignerLazyJsFiles.includes(file));
   const coreJsBytes = coreJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
   const lazyJsBytes = lazyJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
   const assetEditorLazyJsBytes = assetEditorLazyJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
@@ -159,6 +160,7 @@ function main() {
   const sceneWorldAuthorityLazyJsBytes = sceneWorldAuthorityLazyJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
   const dossierLazyJsBytes = dossierLazyJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
   const mediaLazyJsBytes = mediaLazyJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
+  const editorLazyJsBytes = editorLazyJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
   const soundDesignLazyJsBytes = soundDesignLazyJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
   const soundDesignFeatureLazyJsBytes = soundDesignFeatureLazyJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
   const lightboxLazyJsBytes = lightboxLazyJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
@@ -202,6 +204,7 @@ function main() {
   const sceneWorldAuthorityLazyJsGzip = gzipBytes(sceneWorldAuthorityLazyJsFiles);
   const dossierLazyJsGzip = gzipBytes(dossierLazyJsFiles);
   const mediaLazyJsGzip = gzipBytes(mediaLazyJsFiles);
+  const editorLazyJsGzip = gzipBytes(editorLazyJsFiles);
   const soundDesignLazyJsGzip = gzipBytes(soundDesignLazyJsFiles);
   const soundDesignFeatureLazyJsGzip = gzipBytes(soundDesignFeatureLazyJsFiles);
   const lightboxLazyJsGzip = gzipBytes(lightboxLazyJsFiles);
@@ -289,6 +292,8 @@ function main() {
   assert(dossierLazyJsGzip <= 9 * 1024, `场景档案按需模块 gzip ${dossierLazyJsGzip} bytes 超过 9 KiB`);
   assert(mediaLazyJsBytes <= 16 * 1024, `最终成片与媒体分页按需模块 ${mediaLazyJsBytes} bytes 超过 16 KiB`);
   assert(mediaLazyJsGzip <= 6 * 1024, `最终成片与媒体分页按需模块 gzip ${mediaLazyJsGzip} bytes 超过 6 KiB`);
+  assert(editorLazyJsBytes <= 14 * 1024, `独立剪辑按需模块 ${editorLazyJsBytes} bytes 超过 14 KiB`);
+  assert(editorLazyJsGzip <= 5 * 1024, `独立剪辑按需模块 gzip ${editorLazyJsGzip} bytes 超过 5 KiB`);
   assert(soundDesignLazyJsBytes <= 9 * 1024, `声音设计按需模块 ${soundDesignLazyJsBytes} bytes 超过 9 KiB`);
   assert(soundDesignLazyJsGzip <= 4 * 1024, `声音设计按需模块 gzip ${soundDesignLazyJsGzip} bytes 超过 4 KiB`);
   assert(soundDesignFeatureLazyJsBytes <= 40 * 1024, `声音设计功能模块 ${soundDesignFeatureLazyJsBytes} bytes 超过 40 KiB`);
