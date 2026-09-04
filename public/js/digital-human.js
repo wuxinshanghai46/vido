@@ -142,7 +142,7 @@
       durationSec: 30,
       outputRatio: '9:16',
       outputSize: 'standard',
-      videoResolution: '720p',
+      videoResolution: '480p',
       subtitle: true,
       autoEnhance: true,
       expandBrief: true,
@@ -4487,7 +4487,7 @@
     state.luxuryAd.durationSec = 30;
     state.luxuryAd.outputRatio = '9:16';
     state.luxuryAd.outputSize = 'standard';
-    state.luxuryAd.videoResolution = '720p';
+    state.luxuryAd.videoResolution = '480p';
     state.luxuryAd.subtitle = true;
     state.luxuryAd.autoEnhance = true;
     state.luxuryAd.expandBrief = true;
@@ -6973,12 +6973,12 @@
   function updateLuxuryAdOutputHint() {
     const ratio = $('#dhLuxAdRatio')?.value || state.luxuryAd.outputRatio || '9:16';
     const size = $('#dhLuxAdSize')?.value || state.luxuryAd.outputSize || 'standard';
-    const videoResolution = $('#dhLuxAdVideoResolution')?.value || state.luxuryAd.videoResolution || '720p';
+    const videoResolution = $('#dhLuxAdVideoResolution')?.value || state.luxuryAd.videoResolution || '480p';
     state.luxuryAd.outputRatio = ratio;
     state.luxuryAd.outputSize = size;
-    state.luxuryAd.videoResolution = VIDEO_RESOLUTION_LABELS[videoResolution] ? videoResolution : '720p';
+    state.luxuryAd.videoResolution = VIDEO_RESOLUTION_LABELS[videoResolution] ? videoResolution : '480p';
     const hint = $('#dhLuxAdOutputHint');
-    if (hint) hint.textContent = `${ratio} · 关键帧 ${outputPixels(ratio, size)} · 视频 ${VIDEO_RESOLUTION_LABELS[state.luxuryAd.videoResolution] || '720p'}`;
+    if (hint) hint.textContent = `${ratio} · 关键帧 ${outputPixels(ratio, size)} · 视频 ${VIDEO_RESOLUTION_LABELS[state.luxuryAd.videoResolution] || '480p'}`;
   }
 
   function renderLuxuryAdVoice() {
@@ -10637,7 +10637,7 @@
     const size = $('#dhLuxAdSize');
     if (size) size.value = state.luxuryAd.outputSize || 'standard';
     const videoResolution = $('#dhLuxAdVideoResolution');
-    if (videoResolution) videoResolution.value = state.luxuryAd.videoResolution || '720p';
+    if (videoResolution) videoResolution.value = state.luxuryAd.videoResolution || '480p';
     const subtitle = $('#dhLuxAdSubtitle');
     if (subtitle) subtitle.value = luxuryAdSubtitleEnabled() ? 'on' : 'off';
     const subtitleToggle = $('#dhLuxAdSubtitleToggle');
@@ -10649,7 +10649,7 @@
     renderLuxuryIndustryControls();
     $$('[data-lux-ad-type]').forEach(b => b.classList.toggle('active', b.dataset.luxAdType === (state.luxuryAd.adType || 'auto')));
     $$('[data-lux-ratio]').forEach(b => b.classList.toggle('active', b.dataset.luxRatio === (state.luxuryAd.outputRatio || '9:16')));
-    $$('[data-lux-video-resolution]').forEach(b => b.classList.toggle('active', b.dataset.luxVideoResolution === (state.luxuryAd.videoResolution || '720p')));
+    $$('[data-lux-video-resolution]').forEach(b => b.classList.toggle('active', b.dataset.luxVideoResolution === (state.luxuryAd.videoResolution || '480p')));
     updateLuxuryAdOutputHint();
     renderLuxuryAdControlledProduction();
     renderLuxuryAdAssets();
@@ -13671,7 +13671,7 @@
       duration_sec: state.luxuryAd.durationSec || Number($('#dhLuxAdDuration')?.value || 30),
       aspect_ratio: state.luxuryAd.outputRatio || $('#dhLuxAdRatio')?.value || '9:16',
       output_size: state.luxuryAd.outputSize || $('#dhLuxAdSize')?.value || 'standard',
-      video_resolution: state.luxuryAd.videoResolution || $('#dhLuxAdVideoResolution')?.value || '720p',
+      video_resolution: state.luxuryAd.videoResolution || $('#dhLuxAdVideoResolution')?.value || '480p',
       current_step: state.luxuryAd.currentStep || 1,
       storyboard_detailed: !!state.luxuryAd.storyboardDetailed,
       keyframe_planning_only: !!state.luxuryAd.keyframePlanningOnly,
@@ -13882,7 +13882,7 @@
     state.luxuryAd.durationSec = Number(project.duration_sec || state.luxuryAd.durationSec || 30);
     state.luxuryAd.outputRatio = project.ratio || state.luxuryAd.outputRatio || '9:16';
     state.luxuryAd.outputSize = project.output_size || state.luxuryAd.outputSize || 'standard';
-    state.luxuryAd.videoResolution = project.video_resolution || draft.video_resolution || state.luxuryAd.videoResolution || '720p';
+    state.luxuryAd.videoResolution = project.video_resolution || draft.video_resolution || state.luxuryAd.videoResolution || '480p';
     state.luxuryAd.adType = draft.ad_type || state.luxuryAd.adType || 'auto';
     state.luxuryAd.autoEnhance = draft.auto_enhance !== false;
     state.luxuryAd.expandBrief = draft.expand_brief !== false;
@@ -14966,7 +14966,7 @@
     state.luxuryAd.durationSec = Number($('#dhLuxAdDuration')?.value || state.luxuryAd.durationSec || 30);
     state.luxuryAd.outputRatio = $('#dhLuxAdRatio')?.value || state.luxuryAd.outputRatio || '9:16';
     state.luxuryAd.outputSize = $('#dhLuxAdSize')?.value || state.luxuryAd.outputSize || 'standard';
-    state.luxuryAd.videoResolution = $('#dhLuxAdVideoResolution')?.value || state.luxuryAd.videoResolution || '720p';
+    state.luxuryAd.videoResolution = $('#dhLuxAdVideoResolution')?.value || state.luxuryAd.videoResolution || '480p';
     state.luxuryAd.subtitle = getLuxuryAdSubtitlePayload($('#dhLuxAdSubtitleToggle')
       ? !!$('#dhLuxAdSubtitleToggle')?.checked
       : (($('#dhLuxAdSubtitle')?.value || 'on') !== 'off'));
@@ -15051,7 +15051,7 @@
         industry_contract: state.luxuryAd.industryContract || null,
         output_ratio: state.luxuryAd.outputRatio || '9:16',
         output_size: state.luxuryAd.outputSize || 'standard',
-        video_resolution: state.luxuryAd.videoResolution || '720p',
+        video_resolution: state.luxuryAd.videoResolution || '480p',
         expand_brief: state.luxuryAd.expandBrief !== false,
         planning_mode: detail ? 'detailed' : 'outline',
         controlled_production: luxuryControlledProductionPayload(),
@@ -15416,7 +15416,7 @@
         storyboard_review_only: singleIndex === null && !force,
         storyboard_final_keyframes: !!force || singleIndex !== null,
         ...outputPayload(state.luxuryAd.outputRatio, state.luxuryAd.outputSize),
-        video_resolution: state.luxuryAd.videoResolution || '720p',
+        video_resolution: state.luxuryAd.videoResolution || '480p',
       };
       let r;
       try {
@@ -15764,7 +15764,7 @@
         speech_segments: compactLuxurySegments(state.luxuryAd.segments || []),
         generation_mode: 'luxury_storyboard',
         ...outputPayload(state.luxuryAd.outputRatio, state.luxuryAd.outputSize),
-        video_resolution: state.luxuryAd.videoResolution || '720p',
+        video_resolution: state.luxuryAd.videoResolution || '480p',
       };
       const r = await api('/api/dh/spaces/generate', {
         method: 'POST',
@@ -15859,7 +15859,7 @@
         generation_mode: 'material_film',
         ad_mode: 'material_film',
         ...outputPayload(state.luxuryAd.outputRatio, state.luxuryAd.outputSize),
-        video_resolution: state.luxuryAd.videoResolution || '720p',
+        video_resolution: state.luxuryAd.videoResolution || '480p',
       };
       const r = await api('/api/dh/material-film/generate', {
         method: 'POST',
@@ -18457,8 +18457,8 @@
     const luxVideoResolution = closest('[data-lux-video-resolution]');
     if (luxVideoResolution) {
       if (luxuryAdStepIsLocked(1)) return toast(luxuryAdLockedStepMessage(1), 'error');
-      const value = luxVideoResolution.dataset.luxVideoResolution || '720p';
-      state.luxuryAd.videoResolution = VIDEO_RESOLUTION_LABELS[value] ? value : '720p';
+      const value = luxVideoResolution.dataset.luxVideoResolution || '480p';
+      state.luxuryAd.videoResolution = VIDEO_RESOLUTION_LABELS[value] ? value : '480p';
       const resolutionSelect = $('#dhLuxAdVideoResolution');
       if (resolutionSelect) resolutionSelect.value = state.luxuryAd.videoResolution;
       $$('[data-lux-video-resolution]').forEach(b => b.classList.toggle('active', b === luxVideoResolution));
@@ -20925,7 +20925,7 @@ const gChip = closest('[data-gender]'); if (gChip) { selectGender(gChip.dataset.
     if (luxSize) luxSize.addEventListener('change', e => { state.luxuryAd.outputSize = e.target.value || 'standard'; state.luxuryAd.storyboardDetailed = false; state.luxuryAd.globalVisualBible = null; state.luxuryAd.keyframes = []; updateLuxuryAdOutputHint(); renderLuxuryAdStoryboard(); });
     const luxVideoResolution = $('#dhLuxAdVideoResolution');
     if (luxVideoResolution) luxVideoResolution.addEventListener('change', e => {
-      state.luxuryAd.videoResolution = VIDEO_RESOLUTION_LABELS[e.target.value] ? e.target.value : '720p';
+      state.luxuryAd.videoResolution = VIDEO_RESOLUTION_LABELS[e.target.value] ? e.target.value : '480p';
       updateLuxuryAdOutputHint();
     });
     const luxSubtitle = $('#dhLuxAdSubtitle');

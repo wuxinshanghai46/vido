@@ -41,9 +41,9 @@ function createVideoAdapterMediaRuntime({ videoDir }) {
     return { width: 720, height: 1280 };
   }
 
-  function outputSize(ratio = '9:16', resolution = '1080p') {
+  function outputSize(ratio = '9:16', resolution = '480p') {
     const base = ratioSize(ratio);
-    const scale = { '480p': 480 / 720, '720p': 1, '1080p': 1080 / 720, '4k': 2160 / 720 }[String(resolution || '1080p').toLowerCase()] || 1;
+    const scale = { '480p': 480 / 720, '720p': 1, '1080p': 1080 / 720, '4k': 2160 / 720 }[String(resolution || '480p').toLowerCase()] || (480 / 720);
     const even = value => Math.max(2, Math.round(value * scale / 2) * 2);
     return { width: even(base.width), height: even(base.height) };
   }
@@ -95,14 +95,14 @@ function createVideoAdapterMediaRuntime({ videoDir }) {
     });
   }
 
-  function encodingProfile(qualityTier = 'final', resolution = '1080p') {
+  function encodingProfile(qualityTier = 'final', resolution = '480p') {
     const tier = String(qualityTier || 'final').toLowerCase();
     if (tier === 'draft') return { tier: 'draft', preset: 'veryfast', crf: '22', audio_bitrate: '128k' };
     if (String(resolution || '').toLowerCase() === '4k') return { tier: 'final', preset: 'fast', crf: '18', audio_bitrate: '192k' };
     return { tier: 'final', preset: 'fast', crf: '18', audio_bitrate: '160k' };
   }
 
-  async function normalizeProviderClip({ inputPath, outputPath, audioPath = '', preserveDrivenAudio = false, requireSourceAudio = false, durationSec = 4, startSec = 0, aspectRatio = '9:16', resolution = '1080p', qualityTier = 'final' } = {}) {
+  async function normalizeProviderClip({ inputPath, outputPath, audioPath = '', preserveDrivenAudio = false, requireSourceAudio = false, durationSec = 4, startSec = 0, aspectRatio = '9:16', resolution = '480p', qualityTier = 'final' } = {}) {
     ensureDir(path.dirname(outputPath));
     const { width, height } = outputSize(aspectRatio, resolution);
     const profile = encodingProfile(qualityTier, resolution);

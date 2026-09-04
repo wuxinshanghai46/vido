@@ -72,6 +72,9 @@ function taskFailureMessage(task = {}, clean = normalize) {
 function authorizedFailureMessage(code = '', message = '') {
   const source = `${normalize(code, 160)} ${normalize(message, 1800)}`.toLowerCase();
   if (!source.trim()) return '';
+  if (/(?:vision[_\s-]?qa[_\s-]?unavailable|vision[_\s-]?circuit[_\s-]?open|自动审片服务暂不可用|视觉审核服务.*(?:不可用|繁忙))/i.test(source)) {
+    return '视频已经生成并保留，但自动审片服务暂时不可用。再次继续时会先复审已保存视频，再生成剩余镜头，不会重复生成已保存的视频。';
+  }
   if (/(?:insufficient[_\s-]?quota|provider_billing|余额不足|额度不足|余额、额度|billing|payment|required credits?|not enough credits?)/i.test(source)) {
     return '当前视频供应商余额或额度不足，视频任务未能开始。请联系管理员补充额度，或选择其他可用模型。';
   }

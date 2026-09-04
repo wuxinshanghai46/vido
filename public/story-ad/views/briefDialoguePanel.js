@@ -1,9 +1,9 @@
-import { escapeHtml } from '../components/ui.js?v=20260904-production-v450';
-import { createReferenceLinkDialogueHandler, referenceDialogueStatus, referenceNextStepDescription, routeReferenceInput, syncReferenceDialogueStatus } from './briefReferenceDialogueState.js?v=20260904-production-v450';
-import { allowedDialogueTopics,referenceDialoguePhase,sanitizeDialogueTopics } from './briefDialoguePolicy.js?v=20260904-production-v450';
-import { followConversationAfter } from './briefConversationScroll.js?v=20260904-production-v450';
-import { appendDialogueSuggestions,briefIdeaPreview,contextualDialogueFallback,dialogueHistoryMarkup,ideaMarkup,modeLabel,normalizedDialogueHistory,recordDialogueHistory } from './briefDialogueProjection.js?v=20260904-production-v450';
-import { dialogueIntakeState, dialogueProgressState } from './briefDialogueReadiness.js?v=20260904-production-v450';
+import { escapeHtml } from '../components/ui.js?v=20260904-production-v451';
+import { createReferenceLinkDialogueHandler, referenceDialogueStatus, referenceNextStepDescription, routeReferenceInput, syncReferenceDialogueStatus } from './briefReferenceDialogueState.js?v=20260904-production-v451';
+import { allowedDialogueTopics,referenceDialoguePhase,sanitizeDialogueTopics } from './briefDialoguePolicy.js?v=20260904-production-v451';
+import { followConversationAfter } from './briefConversationScroll.js?v=20260904-production-v451';
+import { appendDialogueSuggestions,briefIdeaPreview,contextualDialogueFallback,dialogueHistoryMarkup,ideaMarkup,modeLabel,normalizedDialogueHistory,recordDialogueHistory } from './briefDialogueProjection.js?v=20260904-production-v451';
+import { dialogueIntakeState, dialogueProgressState } from './briefDialogueReadiness.js?v=20260904-production-v451';
 export { referenceDialogueStatus, referenceNextStepDescription, syncReferenceDialogueStatus };
 export { briefIdeaPreview,dialogueIntakeState,dialogueProgressState };
 export const acceptsDirection=(ok,next,active,h=[])=>ok&&next==='idea_details'&&!active&&/^大概会这样呈现[：:]/.test(h.findLast(x=>x?.role==='assistant')?.content||'');
@@ -40,7 +40,7 @@ export function briefDialogueMarkup(bundle={}, _route={}, options={}) {
       <ol class="brief-contract-checklist" aria-label="立项准备度依据"><li data-progress-item="mode">内容类型 15%</li><li data-progress-item="idea">核心内容 30%</li><li data-progress-item="name">项目名称 10%</li><li data-progress-item="cast">出镜人物 10%</li><li data-progress-item="specifications">成片规格 15%</li><li data-progress-item="reference">参考决定 10%</li><li data-progress-item="confirm">最终确认 10%</li></ol>
       <p class="brief-contract-hint">对话内容会自动同步到这里。这是立项准备度，不是高级设置完成度；系统建议的规格不算完成，必须由你明确确认。</p>
       <section><h3>基础信息</h3><dl><div><dt>项目名称</dt><dd data-contract-name>待根据创意命名</dd></div><div><dt>内容类型</dt><dd data-contract-mode>${escapeHtml(modeLabel(brief.content_mode_source === 'user' ? brief.content_mode : ''))}</dd></div><div class="wide"><dt>核心创意</dt><dd data-contract-idea>${ideaMarkup(brief.text, 'contract')}</dd></div></dl></section>
-      <section><h3>成片规格</h3><dl class="triple"><div><dt>时长</dt><dd><span data-contract-duration>${Number(brief.target_duration || 30)}秒</span> <i data-contract-spec-source>${intake.specifications_confirmed === true ? '用户已确认' : '建议·待确认'}</i></dd></div><div><dt>画幅</dt><dd><span data-contract-ratio>${escapeHtml(brief.output_ratio || '9:16')}</span> <i data-contract-spec-source>${intake.specifications_confirmed === true ? '用户已确认' : '建议·待确认'}</i></dd></div><div><dt>清晰度</dt><dd><span data-contract-resolution>${escapeHtml(brief.video_resolution || '1080p')}</span> <i data-contract-spec-source>${intake.specifications_confirmed === true ? '用户已确认' : '建议·待确认'}</i></dd></div></dl></section>
+      <section><h3>成片规格</h3><dl class="triple"><div><dt>时长</dt><dd><span data-contract-duration>${Number(brief.target_duration || 30)}秒</span> <i data-contract-spec-source>${intake.specifications_confirmed === true ? '用户已确认' : '建议·待确认'}</i></dd></div><div><dt>画幅</dt><dd><span data-contract-ratio>${escapeHtml(brief.output_ratio || '9:16')}</span> <i data-contract-spec-source>${intake.specifications_confirmed === true ? '用户已确认' : '建议·待确认'}</i></dd></div><div><dt>清晰度</dt><dd><span data-contract-resolution>${escapeHtml(brief.video_resolution || '480p')}</span> <i data-contract-spec-source>${intake.specifications_confirmed === true ? '用户已确认' : '建议·待确认'}</i></dd></div></dl></section>
       <section><h3>信息依据</h3><div class="brief-evidence"><span class="user">用户明确</span><b data-contract-user>${hasIdea ? 2 : 0} 项</b></div><div class="brief-evidence"><span class="ai">AI 建议</span><b>3 项</b></div><div class="brief-evidence"><span class="pending">等待确认</span><b data-contract-pending>${hasIdea ? 2 : 5} 项</b></div></section>
       <button class="brief-confirm-concept" type="button" data-dialogue-confirm disabled>确认设想，生成${outputLabel}</button>
     </aside>
@@ -115,7 +115,7 @@ export function bindBriefDialogue(host, { form, referenceState={}, referenceAtta
   const appendReferenceQuestion = async () => {
     if (referenceQuestionLoading || conversation.querySelector('[data-reference-question]') || referencePresent || referenceSkipped) return;
     referenceQuestionLoading = true;
-    const { mountReferenceQuestion, referenceQuestionText } = await import('./briefReferenceQuestion.js?v=20260904-production-v450');
+    const { mountReferenceQuestion, referenceQuestionText } = await import('./briefReferenceQuestion.js?v=20260904-production-v451');
     recordHistory('assistant', referenceQuestionText({ mode: String(control('content_mode')?.value || ''), idea: briefIdeaPreview(String(control('brief')?.value || ''), 54).text }), { topic: 'reference' });
     mountReferenceQuestion(conversation, {
       mode: String(control('content_mode')?.value || ''),
@@ -136,13 +136,13 @@ export function bindBriefDialogue(host, { form, referenceState={}, referenceAtta
   const appendSpecificationQuestion = async () => {
     if (specificationQuestionLoading || conversation.querySelector('[data-specification-question]') || specificationsConfirmed) return;
     specificationQuestionLoading = true;
-    const { mountSpecificationQuestion, specificationQuestionText } = await import('./briefSpecificationQuestion.js?v=20260904-production-v450');
-    recordHistory('assistant', specificationQuestionText({ mode: String(control('content_mode')?.value || ''), duration: Number(control('target_duration')?.value || 30) || 30, ratio: String(control('output_ratio')?.value || '9:16'), resolution: String(control('video_resolution')?.value || '1080p') }), { topic: 'specifications' });
+    const { mountSpecificationQuestion, specificationQuestionText } = await import('./briefSpecificationQuestion.js?v=20260904-production-v451');
+    recordHistory('assistant', specificationQuestionText({ mode: String(control('content_mode')?.value || ''), duration: Number(control('target_duration')?.value || 30) || 30, ratio: String(control('output_ratio')?.value || '9:16'), resolution: String(control('video_resolution')?.value || '480p') }), { topic: 'specifications' });
     mountSpecificationQuestion(conversation, {
       mode: String(control('content_mode')?.value || ''),
       duration: Number(control('target_duration')?.value || 30) || 30,
       ratio: String(control('output_ratio')?.value || '9:16'),
-      resolution: String(control('video_resolution')?.value || '1080p'),
+      resolution: String(control('video_resolution')?.value || '480p'),
       onConfirm: async () => {
         specificationsConfirmed = true;
         message('user', '确认当前成片规格');
@@ -172,7 +172,7 @@ export function bindBriefDialogue(host, { form, referenceState={}, referenceAtta
   const appendCastQuestion = async () => {
     if (castQuestionLoading || conversation.querySelector('[data-cast-question]') || castIntent?.confirmed === true || String(control('content_mode')?.value || '') !== 'commercial_subject') return;
     castQuestionLoading = true;
-    const { mountCastQuestion, castQuestionText } = await import('./briefCastQuestion.js?v=20260904-production-v450');
+    const { mountCastQuestion, castQuestionText } = await import('./briefCastQuestion.js?v=20260904-production-v451');
     const question = castQuestionText();
     recordHistory('assistant', question, { topic: 'on_screen_cast' });
     mountCastQuestion(conversation, {
@@ -197,7 +197,7 @@ export function bindBriefDialogue(host, { form, referenceState={}, referenceAtta
     const idea = String(control('brief')?.value || '').trim();
     const duration = Number(control('target_duration')?.value || 30) || 30;
     const ratio = String(control('output_ratio')?.value || '9:16');
-    const resolution = String(control('video_resolution')?.value || '1080p');
+    const resolution = String(control('video_resolution')?.value || '480p');
     const castIntentConfirmed = castIntent?.confirmed === true;
     const intake = dialogueIntakeState({ name, mode, idea, ideaReady, castIntentConfirmed, specificationsConfirmed, referenceAttached: referencePresent, referenceSkipped });
     const ready = intake.ready;
@@ -267,7 +267,7 @@ export function bindBriefDialogue(host, { form, referenceState={}, referenceAtta
     sending = true;
     send.disabled = true;
     panel.setAttribute('aria-busy', 'true');
-    const explicitSettings = await import('./briefExplicitSettings.js?v=20260904-production-v450');
+    const explicitSettings = await import('./briefExplicitSettings.js?v=20260904-production-v451');
     input.value = '';
     const intakeBefore = sync();
     if (await routeReferenceInput({
@@ -316,7 +316,7 @@ export function bindBriefDialogue(host, { form, referenceState={}, referenceAtta
       specificationsConfirmed = confirmedByReply || explicitSpecificationKeys.size === explicitSettings.OUTPUT_SETTING_KEYS.length;
       const duration = Number(control('target_duration')?.value || 30) || 30;
       const ratio = String(control('output_ratio')?.value || '9:16');
-      const resolution = String(control('video_resolution')?.value || '1080p');
+      const resolution = String(control('video_resolution')?.value || '480p');
       await finishImmediate(specificationsConfirmed
         ? `成片规格现已由你明确确认：${duration} 秒、${ratio}、${resolution}。下一步再决定是否使用参考材料。`
         : `已修改你明确给出的规格。当前组合为 ${duration} 秒、${ratio}、${resolution}，其余仍是系统建议；请回复“确认”采用整组规格，或继续修改。`);
@@ -361,7 +361,7 @@ export function bindBriefDialogue(host, { form, referenceState={}, referenceAtta
         project_name: String(control('project_name')?.value || '').trim(),
         target_duration: Number(control('target_duration')?.value || 30) || 30,
         output_ratio: String(control('output_ratio')?.value || '9:16'),
-        video_resolution: String(control('video_resolution')?.value || '1080p'),
+        video_resolution: String(control('video_resolution')?.value || '480p'),
         specifications_confirmed: specificationsConfirmed,
         reference_attached: referencePresent,
         reference_skipped: referenceSkipped,
@@ -415,7 +415,7 @@ export function bindBriefDialogue(host, { form, referenceState={}, referenceAtta
   const initialReferencePhase = referenceDialoguePhase(currentReference);
   applyReferenceGate(currentReference).catch(() => {});
   if (!requireUserInitiation && initialReferencePhase === 'none' && String(control('brief')?.value || '').trim() && !ideaReady) {
-    import('./briefGuidedResume.js?v=20260904-production-v450').then(({ guidedResumePrompt }) => {
+    import('./briefGuidedResume.js?v=20260904-production-v451').then(({ guidedResumePrompt }) => {
       if (disposed) return;
       const guidance = guidedResumePrompt({ mode: String(control('content_mode')?.value || ''), idea: String(control('brief')?.value || '') });
       const entry = message('assistant', guidance.text);

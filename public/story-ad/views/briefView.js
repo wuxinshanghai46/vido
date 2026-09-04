@@ -1,22 +1,22 @@
-import { request } from '../api.js?v=20260904-production-v450';
-import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260904-production-v450';
-import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260904-production-v450';
-import { briefSettingsSummary } from './briefSettingsSummary.js?v=20260904-production-v450';
-import { worldSettingFields } from './briefWorldSettings.js?v=20260904-production-v450';
-import { bindNarrativeRecognitionLayout } from './briefNarrativeRecognition.js?v=20260904-production-v450';
-import { referenceProgress as renderReferenceProgress } from './referenceProgressCard.js?v=20260904-production-v450';
-import { assertBriefReadback } from './briefTextContract.js?v=20260904-production-v450';
-import { confirmContentModeMigration } from './briefContentModeMigration.js?v=20260904-production-v450';
-import { BRIEF_MATERIALS } from './briefMaterials.js?v=20260904-production-v450';
-import { bindAdvancedReferenceControls, renderAdvancedReferenceControls } from './briefAdvancedConfig.js?v=20260904-production-v450';
-import { bindBriefDialogueWorkflow, briefDialogueMarkup, referenceNextStepDescription } from './briefDialoguePanel.js?v=20260904-production-v450';
-import { syncReferenceDialogueStatus } from './briefReferenceDialogueState.js?v=20260904-production-v450';
-import { referenceActionState, syncReferenceAction } from './briefReferenceActionState.js?v=20260904-production-v450';
-import { bindBriefViewport, briefDialogueAssist } from './briefDialogueRuntime.js?v=20260904-production-v450';
-import { bindBriefSettingsModal } from './briefSettingsModal.js?v=20260904-production-v450';
-import { formPayload } from './briefFormPayload.js?v=20260904-production-v450';
-import { bindBriefReferenceRecovery } from './briefReferenceRecovery.js?v=20260904-production-v450';
-import { durationOptionsMarkup } from './briefDurationOptions.js?v=20260904-production-v450';
+import { request } from '../api.js?v=20260904-production-v451';
+import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260904-production-v451';
+import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260904-production-v451';
+import { briefSettingsSummary } from './briefSettingsSummary.js?v=20260904-production-v451';
+import { worldSettingFields } from './briefWorldSettings.js?v=20260904-production-v451';
+import { bindNarrativeRecognitionLayout } from './briefNarrativeRecognition.js?v=20260904-production-v451';
+import { referenceProgress as renderReferenceProgress } from './referenceProgressCard.js?v=20260904-production-v451';
+import { assertBriefReadback } from './briefTextContract.js?v=20260904-production-v451';
+import { confirmContentModeMigration } from './briefContentModeMigration.js?v=20260904-production-v451';
+import { BRIEF_MATERIALS } from './briefMaterials.js?v=20260904-production-v451';
+import { bindAdvancedReferenceControls, renderAdvancedReferenceControls } from './briefAdvancedConfig.js?v=20260904-production-v451';
+import { bindBriefDialogueWorkflow, briefDialogueMarkup, referenceNextStepDescription } from './briefDialoguePanel.js?v=20260904-production-v451';
+import { syncReferenceDialogueStatus } from './briefReferenceDialogueState.js?v=20260904-production-v451';
+import { referenceActionState, syncReferenceAction } from './briefReferenceActionState.js?v=20260904-production-v451';
+import { bindBriefViewport, briefDialogueAssist } from './briefDialogueRuntime.js?v=20260904-production-v451';
+import { bindBriefSettingsModal } from './briefSettingsModal.js?v=20260904-production-v451';
+import { formPayload } from './briefFormPayload.js?v=20260904-production-v451';
+import { bindBriefReferenceRecovery } from './briefReferenceRecovery.js?v=20260904-production-v451';
+import { durationOptionsMarkup } from './briefDurationOptions.js?v=20260904-production-v451';
 export function referenceProgress(reference = {}) { return renderReferenceProgress(reference); }
 
 export async function mount(host, context) {
@@ -64,7 +64,7 @@ export async function mount(host, context) {
 ${durationOptionsMarkup(brief.target_duration || 30)}
 </select><small>决定节奏与建议镜头量</small></label>
 <label class="field brief-output-field"><span>画面比例</span><select class="select" name="output_ratio">${['9:16', '16:9', '1:1'].map(value => `<option ${brief.output_ratio === value ? 'selected' : ''}>${value}</option>`).join('')}</select><small>竖屏、横屏或方形</small></label>
-<label class="field brief-output-field"><span>视频分辨率</span><select class="select" name="video_resolution">${['1080p', '720p', '4K'].map(value => `<option ${brief.video_resolution === value ? 'selected' : ''}>${value}</option>`).join('')}</select><small>最终导出清晰度</small></label>
+<label class="field brief-output-field"><span>视频分辨率</span><select class="select" name="video_resolution">${['480p', '720p', '1080p', '4K'].map(value => `<option ${brief.video_resolution === value ? 'selected' : ''}>${value}</option>`).join('')}</select><small>默认 480P，可按需选择更高清晰度</small></label>
 </div></section>
 <section class="brief-config-section full" aria-labelledby="brief-optional-settings-title">
 <header class="brief-config-heading"><span class="brief-config-index">03</span><span><b id="brief-optional-settings-title">参考材料与识别信息</b><small>这些是可选精调项，不是创建项目的必经步骤。</small></span></header>
@@ -137,7 +137,7 @@ ${renderAdvancedReferenceControls(bundle, route.isNew)}
       if (understandingHost) understandingHost.innerHTML = '';
       return;
     }
-    const module = await import('./referenceUnderstandingView.js?v=20260904-production-v450');
+    const module = await import('./referenceUnderstandingView.js?v=20260904-production-v451');
     if (disposed || sequence !== understandingLoadSequence || !understandingHost) return;
     if (understandingController) understandingController.update(reference);
     else understandingController = module.mountReferenceUnderstanding(understandingHost, {
@@ -167,7 +167,7 @@ ${renderAdvancedReferenceControls(bundle, route.isNew)}
       target_duration: Number(latest.target_duration || 30) || 30,
       output_ratio: latest.output_ratio || '9:16',
       output_size: latest.output_size || 'standard',
-      video_resolution: latest.video_resolution || '1080p',
+      video_resolution: latest.video_resolution || '480p',
       creative_brief_confirmed: latest.brief_intake?.creative_brief_confirmed === true ? 'true' : 'false',
       specifications_confirmed: latest.brief_intake?.specifications_confirmed === true ? 'true' : 'false',
       reference_decision: latest.brief_intake?.reference_decision || '',
@@ -201,7 +201,7 @@ ${renderAdvancedReferenceControls(bundle, route.isNew)}
       content_mode: latest.content_mode_source === 'user' ? (latest.content_mode || '') : '',
       target_duration: String(Number(latest.target_duration || 30) || 30),
       output_ratio: latest.output_ratio || '9:16',
-      video_resolution: latest.video_resolution || '1080p',
+      video_resolution: latest.video_resolution || '480p',
       benchmark_opening_hook: latest.benchmark_strategy?.opening_hook || '',
       benchmark_subject_introduction: latest.benchmark_strategy?.subject_introduction || '',
       benchmark_proof_sequence: latest.benchmark_strategy?.proof_sequence || '',

@@ -1,4 +1,4 @@
-import { worldSettingPayload } from './briefWorldSettings.js?v=20260904-production-v450';
+import { worldSettingPayload } from './briefWorldSettings.js?v=20260904-production-v451';
 
 export function formPayload(form) {
   const data = new FormData(form);
@@ -18,7 +18,7 @@ export function formPayload(form) {
     target_duration: Number(data.get('target_duration') || 30) || 30,
     output_ratio: String(data.get('output_ratio') || '9:16'),
     output_size: String(data.get('output_size') || 'standard'),
-    video_resolution: String(data.get('video_resolution') || '1080p'),
+    video_resolution: String(data.get('video_resolution') || '480p'),
     production_mode: String(data.get('production_mode') || 'auto'),
     brief_intake: {
       creative_brief_confirmed: String(data.get('creative_brief_confirmed') || '') === 'true',

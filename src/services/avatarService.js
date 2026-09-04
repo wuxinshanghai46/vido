@@ -935,7 +935,7 @@ async function _hedraGenerateVideo(imgParam, audioPath, model, apiKey, aspectRat
     start_keyframe_id: imageAssetId,
     audio_id: audioAssetId,
     aspect_ratio: sizeMap[aspectRatio] || '9:16',
-    resolution: '720p',
+    resolution: '480p',
   }, {
     headers: { 'X-API-KEY': apiKey, 'Content-Type': 'application/json' },
     timeout: 60000,
@@ -1062,10 +1062,10 @@ function getArkKey() {
 async function _seedanceAVGenerate(imgParam, prompt, model, apiKey, onProgress, opts = {}) {
   const ratio = opts.ratio || '9:16';
   const duration = Math.min(Math.max(opts.duration || 5, 3), 10);
-  const rawResolution = String(opts.resolution || opts.videoResolution || '720p').trim().toLowerCase().replace(/\s+/g, '');
+  const rawResolution = String(opts.resolution || opts.videoResolution || '480p').trim().toLowerCase().replace(/\s+/g, '');
   const resolution = rawResolution === '4k' || rawResolution === '2160p'
     ? '4k'
-    : (['480p', '720p', '1080p'].includes(rawResolution) ? rawResolution : '720p');
+    : (['480p', '720p', '1080p'].includes(rawResolution) ? rawResolution : '480p');
   // hasAudio：1.5-pro/2.0 支持音频同步输出
   const hasAudio = opts.hasAudio ?? isSeedanceAVModel(model);
 

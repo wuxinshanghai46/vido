@@ -1,4 +1,4 @@
-import { escapeHtml, mediaPreview } from '../components/ui.js?v=20260904-production-v450';
+import { escapeHtml, mediaPreview } from '../components/ui.js?v=20260904-production-v451';
 
 export function finalVideoUrl(item = {}) { return item.video_url || item.videoUrl || item.url || ''; }
 
@@ -25,13 +25,20 @@ export function mediaCard(item, index, kind) {
 }
 
 export function clipReviewState(clips, shotCount) {
-  const passed = clips.filter(item => item.qa_pass === true || item.status === 'qa_passed' || item.qa_status === 'passed');
-  const failed = clips.filter(item => item.qa_pass === false || item.status === 'qa_failed' || item.qa_status === 'failed');
+  const generated = clips.filter(item => item && (item.video_url || item.videoUrl || item.original_url || item.status !== 'pending'));
+  const passed = generated.filter(item => item.qa_pass === true || item.status === 'qa_passed' || item.qa_status === 'passed');
+  const failed = generated.filter(item => item.qa_pass === false || item.status === 'qa_failed' || item.qa_status === 'failed');
+  const pending = generated.filter(item => !passed.includes(item) && !failed.includes(item));
+  const remaining = Math.max(0, shotCount - generated.length);
   return {
+    generated,
     passed,
     failed,
+    pending,
+    remaining,
     ready: shotCount > 0 && passed.length >= shotCount,
     action: failed.length ? `重新生成未通过镜头（${failed.length}）`
-      : (clips.length ? `继续生成分镜视频（${Math.max(0, shotCount - passed.length)}）` : '生成分镜视频'),
+      : (remaining ? `继续生成剩余分镜视频（${remaining}）`
+        : (pending.length ? `重新审片已生成视频（${pending.length}）` : '生成分镜视频')),
   };
 }

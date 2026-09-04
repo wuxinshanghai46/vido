@@ -486,8 +486,8 @@ async function generateProviderClip({ taskId, shot, previousShot, keyframe, audi
         image_url: personReferenceAsset ? undefined : imageUrl,
         reference_image_urls: personReferenceAsset ? [...personReferenceAssets, ...sceneReferenceAssets] : [],
         aspectRatio: ctx.output_ratio || options.aspectRatio || '9:16',
-        videoResolution: options.video_resolution || options.videoResolution || ctx.video_resolution || '1080p',
-        resolution: options.video_resolution || options.videoResolution || ctx.video_resolution || '1080p',
+        videoResolution: options.video_resolution || options.videoResolution || ctx.video_resolution || '480p',
+        resolution: options.video_resolution || options.videoResolution || ctx.video_resolution || '480p',
         userId: ctx.user_id || '',
         agentId: VIDEO_STAGE,
         idempotencyKey: [
@@ -533,7 +533,7 @@ async function generateProviderClip({ taskId, shot, previousShot, keyframe, audi
         audioPath,
         durationSec: duration,
         aspectRatio: ctx.output_ratio || options.aspectRatio || '9:16',
-        resolution: options.video_resolution || options.videoResolution || ctx.video_resolution || '1080p',
+        resolution: options.video_resolution || options.videoResolution || ctx.video_resolution || '480p',
         qualityTier: options.video_quality || options.videoQuality || ctx.video_quality || 'final',
       });
       modelGateway.recordHealth(model, { ok: true, latencyMs: Date.now() - startedAt });
@@ -868,7 +868,7 @@ async function splitSceneBlockClip({ taskId = '', block = {}, sourceClip = {}, s
       startSec: beat.start_sec,
       durationSec: beat.duration_sec,
       aspectRatio: ctx.output_ratio || options.aspectRatio || '9:16',
-      resolution: options.video_resolution || options.videoResolution || ctx.video_resolution || '1080p',
+      resolution: options.video_resolution || options.videoResolution || ctx.video_resolution || '480p',
       qualityTier: options.video_quality || options.videoQuality || ctx.video_quality || 'final',
     });
     output.push(outputPayload(filePath, {

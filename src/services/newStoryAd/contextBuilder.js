@@ -1253,7 +1253,7 @@ function buildContext(body = {}, user = {}) {
     duration_source: durationContract.source,
     shot_count: shotCount,
     output_ratio: outputRatio,
-    video_resolution: cleanText(body.video_resolution || body.videoResolution || '1080p', 20),
+    video_resolution: cleanText(body.video_resolution || body.videoResolution || '480p', 20),
     video_quality: cleanText(body.video_quality || body.videoQuality || 'final', 20),
     visible_text_policy: inferVisibleTextPolicy(body, brief),
     production_mode: normalizeProductionMode(body.production_mode || body.productionMode || 'auto'),
@@ -1568,7 +1568,7 @@ function contextPrompt(ctx) {
     referenceVideoAnalysisPrompt(ctx.reference_video_analysis),
     propAssetsPrompt(ctx.prop_assets),
     sceneAssetsPrompt(ctx.scene_assets),
-    `视频分辨率：${ctx.video_resolution || '1080p'}`,
+    `视频分辨率：${ctx.video_resolution || '480p'}`,
   ].join('\n');
 }
 

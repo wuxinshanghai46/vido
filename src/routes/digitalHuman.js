@@ -2215,7 +2215,7 @@ function _normalizeVideoResolution(v) {
   const raw = String(v || '').trim().toLowerCase().replace(/\s+/g, '');
   if (raw === '4k' || raw === '2160p') return '4k';
   if (['480p', '720p', '1080p'].includes(raw)) return raw;
-  return '720p';
+  return '480p';
 }
 function _outputPixels(aspectRatio = '9:16', outputSize = 'standard') {
   const ar = _normalizeAspectRatio(aspectRatio);
@@ -2239,7 +2239,7 @@ function _outputSizeString(aspectRatio, outputSize) {
   const [w, h] = _outputPixels(aspectRatio, outputSize);
   return `${w}x${h}`;
 }
-function _videoResolutionPixels(aspectRatio = '9:16', videoResolution = '720p') {
+function _videoResolutionPixels(aspectRatio = '9:16', videoResolution = '480p') {
   const ar = _normalizeAspectRatio(aspectRatio);
   const res = _normalizeVideoResolution(videoResolution);
   const presets = {
@@ -2248,9 +2248,9 @@ function _videoResolutionPixels(aspectRatio = '9:16', videoResolution = '720p') 
     '1080p': { '9:16': [1080, 1920], '16:9': [1920, 1080], '1:1': [1080, 1080], '3:4': [1080, 1440], '4:3': [1440, 1080] },
     '4k': { '9:16': [2160, 3840], '16:9': [3840, 2160], '1:1': [2160, 2160], '3:4': [2160, 2880], '4:3': [2880, 2160] },
   };
-  return presets[res]?.[ar] || presets['720p']['9:16'];
+  return presets[res]?.[ar] || presets['480p']['9:16'];
 }
-function _videoResolutionSizeString(aspectRatio = '9:16', videoResolution = '720p') {
+function _videoResolutionSizeString(aspectRatio = '9:16', videoResolution = '480p') {
   const [w, h] = _videoResolutionPixels(aspectRatio, videoResolution);
   return `${w}x${h}`;
 }
@@ -10659,7 +10659,7 @@ async function _runMaterialFilmTask(req, taskId, payload = {}) {
     durationSec = 30,
     aspectRatio = '9:16',
     outputSize = 'standard',
-    videoResolution = '720p',
+    videoResolution = '480p',
     subtitle = null,
     bgmAsset = null,
     personAsset = null,
@@ -12205,7 +12205,7 @@ async function _runDeyunaiAdMarketingVideo(req, taskId, {
   scenes = [],
   aspectRatio,
   outputSize,
-  videoResolution = '720p',
+  videoResolution = '480p',
   adMode,
   adStyle,
   subtitle,

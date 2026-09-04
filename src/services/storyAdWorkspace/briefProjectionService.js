@@ -26,7 +26,7 @@ function project(context = {}, task = {}, clean = value => String(value || '').t
     target_duration: Number(context.target_duration || context.duration || 0) || 0,
     output_ratio: clean(context.output_ratio || '9:16', 20),
     output_size: clean(context.output_size || 'standard', 30),
-    video_resolution: clean(context.video_resolution || '1080p', 30),
+    video_resolution: clean(context.video_resolution || '480p', 30),
     video_quality: clean(context.video_quality || 'final', 30),
     cast_mode: projectedCastMode,
     expected_people: projectedPeople,

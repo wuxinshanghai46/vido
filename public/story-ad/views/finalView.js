@@ -1,7 +1,7 @@
-import { generationElapsedTimeTag, emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260904-production-v450';
-import { bindMoreMedia, moreMediaButton } from './finalMediaPagination.js?v=20260904-production-v450';
-import { bindGenerationModelPicker, loadGenerationModelPicker } from './generationModelPicker.js?v=20260904-production-v450';
-import { clipReviewState, finalVideoPlayer, finalVideoUrl, mediaCard } from './clipReviewPresentation.js?v=20260904-production-v450';
+import { generationElapsedTimeTag, emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260904-production-v451';
+import { bindMoreMedia, moreMediaButton } from './finalMediaPagination.js?v=20260904-production-v451';
+import { bindGenerationModelPicker, loadGenerationModelPicker } from './generationModelPicker.js?v=20260904-production-v451';
+import { clipReviewState, finalVideoPlayer, finalVideoUrl, mediaCard } from './clipReviewPresentation.js?v=20260904-production-v451';
 
 export async function mount(host, context) {
   const { bundle, store } = context;
@@ -10,7 +10,8 @@ export async function mount(host, context) {
   const approvedFrames = Array.isArray(generation.approved_frames) ? generation.approved_frames : [];
   const clips = Array.isArray(generation.clips) ? generation.clips : [];
   const clipReview = clipReviewState(clips, shots.length);
-  const passedClips = clipReview.passed, failedClips = clipReview.failed;
+  const passedClips = clipReview.passed || [], failedClips = clipReview.failed || [], pendingClips = clipReview.pending || [];
+  const generatedClipCount = Array.isArray(clipReview.generated) ? clipReview.generated.length : clips.length;
   const framesReady = shots.length > 0 && approvedFrames.length >= shots.length;
   const clipsReady = clipReview.ready;
   const storyboardComplete = bundle?.storyboard?.image_gate?.ready === true;
@@ -30,7 +31,7 @@ export async function mount(host, context) {
     <div data-video-feedback-host></div>
     ${finalVideo ? `<section class="card final-player"><div class="card-head"><div><h2>初版成片</h2><p>可直接下载，也可在独立剪辑弹窗中调整节奏、声音和转场。</p></div></div><div class="final-media">${finalVideoPlayer(finalVideo, posterUrl)}</div></section>` : ''}
     <details class="card generation-section generation-details"><summary class="card-head"><div><h2>已确认分镜 / 视频首帧</h2><p>${approvedFrames.length}/${shots.length} · 直接进入图生视频，不重复生成图片</p></div><span class="details-chevron" aria-hidden="true">⌄</span></summary><div class="card-body">${approvedFrames.length ? `<div class="generation-grid">${approvedFrames.map((item, index) => mediaCard(item, index, '首帧')).join('')}</div>` : emptyState({ title: storyboardComplete ? '分镜待确认' : '分镜尚未完整', body: storyboardHint, action: storyboardAction, actionId: 'back-storyboard' })}</div></details>
-    <section class="card generation-section"><div class="card-head"><div><h2>分镜视频</h2><p>已生成 ${clips.length}/${shots.length} · 审片通过 ${passedClips.length}/${shots.length}${failedClips.length ? ` · 未通过 ${failedClips.length}` : ''}</p></div></div><div class="card-body">${clips.length ? `<div class="generation-grid video-review-grid">${clips.map((item, index) => mediaCard(item, index, '视频')).join('')}</div>${moreMediaButton(mediaCatalog.clips, 'clips', '继续加载视频片段')}` : `<div data-video-empty>${emptyState({ title: '还没有分镜视频', body: framesReady ? '选择视频模型后，生成包含剧情声音的分镜视频。' : (storyboardComplete ? storyboardHint : `还缺少 ${Math.max(0, shots.length - approvedFrames.length)} 张已确认首帧，请先返回人物场景分镜生成并确认。`), action: framesReady ? '' : storyboardAction, actionId: framesReady ? '' : 'back-storyboard' })}</div>`}</div></section>
+    <section class="card generation-section"><div class="card-head"><div><h2>分镜视频</h2><p>已生成 ${generatedClipCount}/${shots.length} · 审片通过 ${passedClips.length}/${shots.length}${pendingClips.length ? ` · 待审片 ${pendingClips.length}` : ''}${failedClips.length ? ` · 未通过 ${failedClips.length}` : ''}</p></div></div><div class="card-body">${clips.length ? `<div class="generation-grid video-review-grid">${clips.map((item, index) => mediaCard(item, index, '视频')).join('')}</div>${moreMediaButton(mediaCatalog.clips, 'clips', '继续加载视频片段')}` : `<div data-video-empty>${emptyState({ title: '还没有分镜视频', body: framesReady ? '选择视频模型后，生成包含剧情声音的分镜视频。' : (storyboardComplete ? storyboardHint : `还缺少 ${Math.max(0, shots.length - approvedFrames.length)} 张已确认首帧，请先返回人物场景分镜生成并确认。`), action: framesReady ? '' : storyboardAction, actionId: framesReady ? '' : 'back-storyboard' })}</div>`}</div></section>
     <div data-video-submit-feedback role="alert"></div>`;
 
   const selectedVideoModel = bindGenerationModelPicker(host, videoModelPicker);
@@ -40,7 +41,7 @@ export async function mount(host, context) {
   const run = async (button, path, pending, success) => { try { setButtonBusy(button, true, pending, { elapsed: true }); await store.runStage(path); toast(success, 'success'); await context.refreshShell(); } catch (error) { toast(error.message, 'danger'); } finally { setButtonBusy(button, false); } };
   host.querySelector('[data-compose]')?.addEventListener('click', event => run(event.currentTarget, 'compose', '正在合成初版成片…', '初版成片合成任务已提交。'));
   const openEditor = async () => {
-    const editor = await import('./finalEditView.js?v=20260904-production-v450');
+    const editor = await import('./finalEditView.js?v=20260904-production-v451');
     return editor.openEditorModal(context);
   };
   host.querySelector('[data-open-editor]')?.addEventListener('click', () => openEditor().catch(error => toast(error.message, 'danger')));

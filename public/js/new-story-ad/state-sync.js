@@ -643,7 +643,7 @@
     if (durationControl) durationControl.dataset.durationSource = request.duration_source || request.durationSource || 'persisted_context';
     state.outputRatio = request.output_ratio || request.outputRatio || state.outputRatio || '9:16';
     state.outputSize = request.output_size || request.outputSize || state.outputSize || 'standard';
-    state.videoResolution = request.video_resolution || request.videoResolution || state.videoResolution || '720p';
+    state.videoResolution = request.video_resolution || request.videoResolution || state.videoResolution || '480p';
     setFieldValue('#dhNsaAdProductionMode', request.production_mode || request.productionMode || 'auto', { within });
     window.NewStoryAdStorySetup?.hydrate(state, request);
     state.voiceId = request.voice_id || request.voiceId || state.voiceId || '';

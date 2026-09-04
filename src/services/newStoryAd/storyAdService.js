@@ -2287,7 +2287,7 @@ function projectVideoOutputContext(storedCtx = {}, options = {}) {
   return {
     ...nativeAudio.context(storedCtx),
     output_ratio: options.aspect_ratio || options.aspectRatio || storedCtx.output_ratio || '9:16',
-    video_resolution: options.video_resolution || options.videoResolution || storedCtx.video_resolution || '1080p',
+    video_resolution: options.video_resolution || options.videoResolution || storedCtx.video_resolution || '480p',
   };
 }
 
@@ -2337,7 +2337,7 @@ function buildVideoPreflightPlan(taskId, options = {}) {
   for (let pass = 0; pass < 3; pass += 1) {
     appliedCompatibilityFingerprint = compatibilityReport?.fingerprint || '';
     plan = videoPreflight.buildVideoPreflight({ ...baseArgs, compatibilityReport });
-    expectedLineages = videoArtifactWorkflow.buildExpectedLineages({ shots: plan.reconciled_shots || shots, contracts, keyframes, ctx, blueprint, storyboardMeta, modelRoute: providerRoute, modelRouteFor, audioTracks, sceneBlocks: plan.scene_blocks || [], shotPlans: plan.shots || [], qaPolicyVersion: videoFrameQa.VIDEO_FRAME_QA_POLICY_VERSION, speechModeFor: (shot, contract) => videoAdapter.explicitShotSpeechMode(shot, contract), motionPromptFor: (shot, contract, index) => ((plan.shots || []).find(item => item.index === index)?.action !== 'provider_generate' && clips[index]?.motion_prompt) || videoAdapter.clipPrompt(shot, ctx, contract, index > 0 ? shots[index - 1] : null, keyframes[index] || {}, plan.repair_instructions?.[index] || '') });
+    expectedLineages = videoArtifactWorkflow.buildExpectedLineages({ shots: plan.reconciled_shots || shots, contracts, keyframes, ctx, blueprint, storyboardMeta, modelRoute: providerRoute, modelRouteFor, contextFor: (_shot, index, baseCtx) => { const prior = clips[index]?.lineage || {}; return videoLineage.clipHasMediaFile(clips[index]) ? { ...baseCtx, output_ratio: prior.output_ratio || baseCtx.output_ratio, video_resolution: prior.video_resolution || baseCtx.video_resolution } : baseCtx; }, audioTracks, sceneBlocks: plan.scene_blocks || [], shotPlans: plan.shots || [], qaPolicyVersion: videoFrameQa.VIDEO_FRAME_QA_POLICY_VERSION, speechModeFor: (shot, contract) => videoAdapter.explicitShotSpeechMode(shot, contract), motionPromptFor: (shot, contract, index) => ((plan.shots || []).find(item => item.index === index)?.action !== 'provider_generate' && clips[index]?.motion_prompt) || videoAdapter.clipPrompt(shot, ctx, contract, index > 0 ? shots[index - 1] : null, keyframes[index] || {}, plan.repair_instructions?.[index] || '') });
     const nextReport = videoArtifactWorkflow.buildCompatibilityReport({ clips, expectedLineages, onlyIndexes: requestedOnlyIndexes });
     if (compatibilityReport?.fingerprint === nextReport.fingerprint) { compatibilityReport = nextReport; break; }
     compatibilityReport = nextReport;
@@ -2485,8 +2485,8 @@ async function generateVideoStage(taskId, options = {}) { options = paidExecutio
     sceneBlock: sceneBlockService.blockForIndex(sceneBlocks, index),
     });
   });
-  let clips = previousClips.slice();
-  async function reviewVideoIndexes(reviewedIndexes = [], repairAttempt = 0, { stopOnFailure = false } = {}) {
+  let clips = previousClips.slice(); const qaAvailability = require('./videoQaAvailabilityService');
+  const qaDeferral = qaAvailability.createDeferral({ storage, videoAdapter, videoCostAuthorization, taskId, shots }); async function reviewVideoIndexes(reviewedIndexes = [], repairAttempt = 0, { stopOnFailure = false } = {}) {
     const failures = [];
     for (const index of reviewedIndexes) {
       const clip = clips[index];
@@ -2505,12 +2505,19 @@ async function generateVideoStage(taskId, options = {}) { options = paidExecutio
         ? await videoFrameQa.verifyDeterministicLocalMotionClip({ taskId, clip, keyframe: keyframes[index] || {}, contract: contracts[index] || {}, index })
         : null;
       const audioShot = generationShots[index] || shots[index] || {};
-      const audioQa = await nativeAudioQa.review({ taskId, clip, shot: audioShot, index }).catch(error => ({ pass: false, problems: [error.message], error_code: error.code }));
+      const audioQa = await nativeAudioQa.review({ taskId, clip, shot: audioShot, index }).catch(error => ({ pass: false, problems: [error.message], error_code: error.code, availability_error: error }));
       // Audio failure must not hide a paid clip's visual/action defects. Always
       // finish the applicable frame review, then merge both independent gates.
-      const visualQa = (continuityReviewOnly || transitionBridge)
-        ? (clip.qa || { pass: true, status: 'not_applicable', problems: [], failure_dimensions: [], failure_labels_zh: [] })
-        : (savedContractQa || localMotionQa || await videoFrameQa.reviewVideoClip({ taskId, clip, shot: audioShot, keyframe: keyframes[index] || {}, contract: contracts[index] || {}, ctx, index }));
+      let visualQa; try {
+        visualQa = (continuityReviewOnly || transitionBridge)
+          ? (clip.qa || { pass: true, status: 'not_applicable', problems: [], failure_dimensions: [], failure_labels_zh: [] })
+          : (savedContractQa || localMotionQa || await videoFrameQa.reviewVideoClip({ taskId, clip, shot: audioShot, keyframe: keyframes[index] || {}, contract: contracts[index] || {}, ctx, index }));
+      } catch (error) { if (!qaAvailability.isUnavailable(error)) throw error;
+        qaDeferral.preserve(clips, index, clip, error, 'visual'); continue;
+      }
+      if (qaAvailability.isUnavailable(audioQa)) {
+        qaDeferral.preserve(clips, index, { ...clip, visual_qa_checkpoint: visualQa }, audioQa.availability_error || audioQa, 'audio'); continue;
+      }
       const qa = videoQaDecision.merge({
         audioQa,
         visualQa,
@@ -2772,7 +2779,7 @@ async function generateVideoStage(taskId, options = {}) { options = paidExecutio
     error.code = 'VIDEO_QA_FAILED'; error.retryable = true; error.video_clips = clips; error.qa_failures = mergedFailures;
     throw error;
   }
-  const boundaryAudit = videoBoundaryPolicy.audit(clips, shots.length);
+  qaDeferral.throwIfPending(clips); const boundaryAudit = videoBoundaryPolicy.audit(clips, shots.length);
   const remainingUnapproved = [...new Set(shots.map((_, index) => index).filter(index => !videoLineage.qaApproved(clips[index] || {})).concat(boundaryAudit.unready_indexes))];
   if (remainingUnapproved.length) {
     storage.saveStage(taskId, 'video', {

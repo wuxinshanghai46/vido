@@ -124,12 +124,12 @@ function seedanceRatioFromSize(size = '') {
 
 function seedanceResolutionFromSize(size = '') {
   const match = String(size || '').match(/^(\d+)x(\d+)$/i);
-  if (!match) return '720p';
+  if (!match) return '480p';
   const shortSide = Math.min(Number(match[1]), Number(match[2]));
   if (shortSide >= 2160) return '4k';
   if (shortSide >= 1080) return '1080p';
   if (shortSide <= 480) return '480p';
-  return '720p';
+  return '480p';
 }
 
 function normalizeSeedanceAssetUri(value = '') {

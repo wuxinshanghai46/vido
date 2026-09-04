@@ -739,7 +739,7 @@ async function generateLumaClip({ prompt, duration = 5, outputDir, filename, ima
   const bodyObj = {
     prompt: prompt.substring(0, 500),
     model,
-    resolution: '720p',
+    resolution: '480p',
     duration: Math.min(Math.max(Math.round(duration), 5), 9) + 's',
     aspect_ratio: '16:9',
   };
@@ -1697,7 +1697,7 @@ function _isSmscrwReference(value = '') {
   return /^https?:\/\//i.test(value) || /^asset:\/\/pa_[A-Za-z0-9_-]+$/i.test(value);
 }
 
-function buildSmscrwVideoRequest({ prompt = '', model = 'doubao-seedance-2.0', duration = 5, aspectRatio = '16:9', resolution = '720p', image_url = '', reference_image_urls = [], generateAudio = false, generate_audio = false, idempotencyKey = '' } = {}) {
+function buildSmscrwVideoRequest({ prompt = '', model = 'doubao-seedance-2.0', duration = 5, aspectRatio = '16:9', resolution = '480p', image_url = '', reference_image_urls = [], generateAudio = false, generate_audio = false, idempotencyKey = '' } = {}) {
   const text = String(prompt || '').trim().slice(0, 4000);
   if (!text) throw new Error('SZZNAI Seedance 提示词不能为空');
   const content = [{ type: 'text', text }];
@@ -1807,10 +1807,10 @@ function _normalizeSeedanceResolution(value = '') {
   const raw = String(value || '').trim().toLowerCase().replace(/\s+/g, '');
   if (raw === '4k' || raw === '2160p') return '4k';
   if (['480p', '720p', '1080p'].includes(raw)) return raw;
-  return '720p';
+  return '480p';
 }
 
-function _deyunaiVideoSize(aspectRatio = '9:16', videoResolution = '720p') {
+function _deyunaiVideoSize(aspectRatio = '9:16', videoResolution = '480p') {
   const ratio = ['9:16', '16:9', '1:1', '3:4', '4:3', '21:9'].includes(aspectRatio) ? aspectRatio : '9:16';
   const resolution = _normalizeSeedanceResolution(videoResolution);
   const presets = {
@@ -1819,10 +1819,10 @@ function _deyunaiVideoSize(aspectRatio = '9:16', videoResolution = '720p') {
     '1080p': { '9:16': '1080x1920', '16:9': '1920x1080', '1:1': '1080x1080', '3:4': '1080x1440', '4:3': '1440x1080', '21:9': '2520x1080' },
     '4k': { '9:16': '2160x3840', '16:9': '3840x2160', '1:1': '2160x2160', '3:4': '2160x2880', '4:3': '2880x2160', '21:9': '5040x2160' },
   };
-  return presets[resolution]?.[ratio] || presets['720p']['9:16'];
+  return presets[resolution]?.[ratio] || presets['480p']['9:16'];
 }
 
-async function generateWebangSeedanceClip({ prompt, duration = 5, outputDir, filename, aspectRatio = '16:9', image_url, audio_url = '', video_model, resolution = '720p', videoResolution = '', userId = null, agentId = null, generateAudio = false, generate_audio = false }) {
+async function generateWebangSeedanceClip({ prompt, duration = 5, outputDir, filename, aspectRatio = '16:9', image_url, audio_url = '', video_model, resolution = '480p', videoResolution = '', userId = null, agentId = null, generateAudio = false, generate_audio = false }) {
   const { getApiKey, loadSettings } = require('./settingsService');
   let provider = null;
   try {
@@ -1917,7 +1917,7 @@ async function cancelSmscrwSeedanceTask({ provider = null, apiKey = '', taskId =
 }
 
 // ——— SZZNAI（SMSCRW）Seedance 2.0：/api/v3/contents/generations/tasks 异步视频合同 ———
-async function generateSmscrwSeedanceClip({ prompt, duration = 5, outputDir, filename, aspectRatio = '16:9', image_url = '', reference_image_urls = [], video_model, resolution = '720p', videoResolution = '', provider_task_id = '', idempotencyKey = '', idempotency_key = '', userId = null, agentId = null, generateAudio = false, generate_audio = false, signal = null, onSubmitted = null, onProgress = null }) {
+async function generateSmscrwSeedanceClip({ prompt, duration = 5, outputDir, filename, aspectRatio = '16:9', image_url = '', reference_image_urls = [], video_model, resolution = '480p', videoResolution = '', provider_task_id = '', idempotencyKey = '', idempotency_key = '', userId = null, agentId = null, generateAudio = false, generate_audio = false, signal = null, onSubmitted = null, onProgress = null }) {
   const { getApiKey, loadSettings } = require('./settingsService');
   const provider = _findSmscrwProvider(loadSettings());
   const apiKey = (provider?.id ? getApiKey(provider.id) : '') || getApiKey('smscrw') || process.env.SMSCRW_API_KEY;
@@ -2523,7 +2523,7 @@ async function generateVideoClip(options) {
 // 漫路（DeyunAI）聚合 — 视频生成
 // 通过 deyunaiService.generateVideo 统一调用 + 自动埋点
 // ════════════════════════════════════════════════
-async function generateDeyunaiClip({ prompt, duration = 5, outputDir, filename, aspectRatio = '16:9', image_url, audio_url = '', reference_image_urls = [], video_model, provider_task_id = '', resolution = '720p', videoResolution = '', size: requestedSize = '', userId = null, agentId = null, signal = null, onSubmitted = null, onProgress = null, generateAudio = false, generate_audio = false }) {
+async function generateDeyunaiClip({ prompt, duration = 5, outputDir, filename, aspectRatio = '16:9', image_url, audio_url = '', reference_image_urls = [], video_model, provider_task_id = '', resolution = '480p', videoResolution = '', size: requestedSize = '', userId = null, agentId = null, signal = null, onSubmitted = null, onProgress = null, generateAudio = false, generate_audio = false }) {
   const dy = require('./deyunaiService');
   fs.mkdirSync(outputDir, { recursive: true });
   const outputPath = path.join(outputDir, `${filename}.mp4`);

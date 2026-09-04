@@ -45,7 +45,8 @@ assert(!finalView.includes("${clips.length && !finalVideo ? '<button class=\"btn
 assert(theme.includes('#storyAdApp .btn{display:inline-flex;min-width:112px;min-height:42px'));
 assert(theme.includes('.generation-card.is-video .generation-media video.media'));
 assert(theme.includes('object-fit:contain'), '竖版视频必须完整显示，不能 16:9 cover 裁切');
-assert(service.indexOf('const visualQa =') > service.indexOf('const audioQa ='), '音频审片后仍必须执行独立视觉审片');
+assert(service.indexOf('let visualQa;') > service.indexOf('const audioQa ='), '音频审片后仍必须执行独立视觉审片');
+assert(service.includes("qaDeferral.preserve(clips, index, clip, error, 'visual')"), '视觉审片线路不可用时必须保留已付费视频供稍后复审');
 assert(service.includes('videoQaDecision.merge'));
 
 console.log(JSON.stringify({ passed: true, checks: 19, paid_model_calls: 0 }));

@@ -65,14 +65,14 @@ function buildCompatibilityReport({ clips = [], expectedLineages = [], onlyIndex
 
 function buildExpectedLineages({
   shots = [], contracts = [], keyframes = [], ctx = {}, blueprint = {}, storyboardMeta = {},
-  modelRoute = '', modelRouteFor = null, audioTracks = [], sceneBlocks = [], shotPlans = [], speechModeFor = () => '',
+  modelRoute = '', modelRouteFor = null, contextFor = null, audioTracks = [], sceneBlocks = [], shotPlans = [], speechModeFor = () => '',
   motionPromptFor = () => '', qaPolicyVersion = '',
 } = {}) {
   const plans = new Map((shotPlans || []).map(item => [item.index, item]));
   return shots.map((shot, index) => {
     const plan = plans.get(index) || {};
     return videoLineage.buildShotLineage({
-      shot, index, contract: contracts[index] || {}, keyframe: keyframes[index] || {}, ctx,
+      shot, index, contract: contracts[index] || {}, keyframe: keyframes[index] || {}, ctx: typeof contextFor === 'function' ? contextFor(shot, index, ctx) : ctx,
       blueprint, storyboardMeta, modelRoute: typeof modelRouteFor === 'function'
         ? modelRouteFor(shot, contracts[index] || {}, index)
         : modelRoute,
