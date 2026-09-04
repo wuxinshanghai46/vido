@@ -97,6 +97,15 @@ const videoQa = require('../src/services/newStoryAd/videoFrameQaService');
   assert.strictEqual(qa.frames.length, 5);
   assert.deepEqual(qa.frames.map(frame => frame.point), [0, 0.25, 0.5, 0.75, 1]);
   assert(qa.frames.every(frame => fs.existsSync(frame.file_path)));
+  const mismatchedDurationQa = await videoQa.reviewVideoClip({
+    taskId: 'video-qa-mismatched-duration',
+    clip: { file_path: clipPath, duration_sec: 12 },
+    shot: { title: '标称时长长于真实媒体', action: '保持现有画面' },
+    contract: {}, ctx: { cast_mode: 'no_human', assets: [] }, index: 0,
+  });
+  assert.strictEqual(mismatchedDurationQa.frames.length, 5);
+  assert(mismatchedDurationQa.frames.at(-1).second < 2, '尾帧必须受真实解码采样末端约束');
+  assert(mismatchedDurationQa.frames.every(frame => fs.existsSync(frame.file_path)), 'ffmpeg 成功码不能替代真实帧文件证据');
   process.env.NEW_STORY_AD_MOCK_LLM = '0';
   const matchedKeyframeQa = await videoQa.reviewVideoClip({
     taskId: 'video-qa-keyframe-people-match',

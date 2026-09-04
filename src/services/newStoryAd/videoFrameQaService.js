@@ -153,7 +153,9 @@ async function extractReviewFrames({ taskId = '', clip = {}, index = 0 } = {}) {
   const localSamples = motionEvidence.samples
     .filter(sample => Number(sample.second) >= sourceOffset && Number(sample.second) <= sourceOffset + duration)
     .map(sample => ({ ...sample, second: Number(sample.second) - sourceOffset }));
-  const representativeTimes = motionAwareEdit.chooseRepresentativeTimes(localSamples, duration, FRAME_POINTS.length);
+  const observedTailSec = Math.max(0, ...localSamples.map(sample => Number(sample.second) || 0));
+  const evidenceDuration = observedTailSec > 0 ? Math.min(duration, observedTailSec) : duration;
+  const representativeTimes = motionAwareEdit.chooseRepresentativeTimes(localSamples, evidenceDuration, FRAME_POINTS.length);
   const frames = [];
   for (let i = 0; i < representativeTimes.length; i += 1) {
     cancellation.throwIfCancelled(taskId);
@@ -163,6 +165,11 @@ async function extractReviewFrames({ taskId = '', clip = {}, index = 0 } = {}) {
     const output = path.join(mediaAdapter.ASSET_DIR, filename);
     fs.mkdirSync(mediaAdapter.ASSET_DIR, { recursive: true });
     await runFfmpeg(['-y', '-ss', (second + sourceOffset).toFixed(3), '-i', input, '-frames:v', '1', '-q:v', '3', output]);
+    if (!fs.existsSync(output) || fs.statSync(output).size <= 0) {
+      const error = new Error(`第 ${index + 1} 镜在 ${second.toFixed(3)} 秒没有可提取的视频帧`);
+      error.code = 'VIDEO_FRAME_EXTRACTION_OUTPUT_MISSING';
+      throw error;
+    }
     frames.push({
       point, second, filename, file_path: output, image_url: mediaAdapter.publicAssetUrl(filename),
       selection: 'dense_full_timeline_motion_representative',
@@ -176,6 +183,8 @@ async function extractReviewFrames({ taskId = '', clip = {}, index = 0 } = {}) {
         analysis_cache_hit: motionEvidence.cache_hit === true,
         source_range_start_sec: sourceOffset,
         source_range_duration_sec: duration,
+        observed_tail_sec: observedTailSec,
+        evidence_duration_sec: evidenceDuration,
       },
     });
   }
