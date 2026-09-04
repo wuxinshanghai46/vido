@@ -237,7 +237,7 @@ export function bindSoundDesign(host, { bundle, store, soundDesign = {}, refresh
       const previousSelected = container.querySelector('.bgm-candidate.is-selected');
       container.querySelectorAll('.bgm-candidate').forEach(item => item.classList.remove('is-selected'));
       candidate?.classList.add('is-selected');
-      try { await importSound(row, event.currentTarget, event.currentTarget.dataset.importBgm); toast('替换音乐已选好，应用声音修改后生效。', 'success'); await refreshShell(); }
+      try { await importSound(row, event.currentTarget, event.currentTarget.dataset.importBgm); toast('背景音乐已替换，原音乐不会重复叠加；应用声音修改后生效。', 'success'); await refreshShell(); }
       catch (error) {
         candidate?.classList.remove('is-selected');
         previousSelected?.classList.add('is-selected');
