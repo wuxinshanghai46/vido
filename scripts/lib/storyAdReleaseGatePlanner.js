@@ -8,6 +8,7 @@ const path = require('path');
 
 const CONTRACT_VERSION = 'story-ad-release-gates-v3';
 const CACHE_DIRECTORY = path.join('.runtime', 'story-ad-release-gates');
+const FINAL_CLOSURE_GATES = new Set(['release_core', 'targeted_release_core']);
 const STORY_AD_PLANNER_FILES = new Set([
   'scripts/deploy-story-ad-immutable-release.js',
   'scripts/lib/storyAdReleaseGatePlanner.js',
@@ -280,6 +281,13 @@ function generatedReleaseOnlyChange(file = '', patch = '') {
   return changed.length > 0 && changed.every(line => /\?v=202\d|(?:CLIENT_)?BUILD_ID\s*=\s*['"]202\d/i.test(line));
 }
 
+function releaseBuildIdOnlyChange(file = '', patch = '') {
+  if (normalizeFile(file) !== 'config/story-ad-release.json') return false;
+  const changed = String(patch || '').split(/\r?\n/)
+    .filter(line => /^[+-]/.test(line) && !/^(?:\+\+\+|---)/.test(line));
+  return changed.length > 0 && changed.every(line => /["']?build_id["']?\s*:/i.test(line));
+}
+
 function git(root, args = []) {
   return childProcess.execFileSync('git', args, { cwd: root, encoding: 'utf8', windowsHide: true }).trim();
 }
@@ -529,12 +537,70 @@ function cachePath(root, plan, gate) {
 }
 
 function readGateCache(root, plan, gate) {
-  if (process.env.VIDO_RELEASE_GATE_CACHE === '0' || !plan.source_tree) return null;
+  if (process.env.VIDO_RELEASE_GATE_CACHE === '0' || !plan.source_tree || FINAL_CLOSURE_GATES.has(gate.id)) return null;
   const file = cachePath(root, plan, gate);
   try {
     const row = JSON.parse(fs.readFileSync(file, 'utf8'));
     return row?.passed === true && row?.contract_version === CONTRACT_VERSION ? row : null;
   } catch { return null; }
+}
+
+function gateAffectedByRevisionDelta(root, cached, plan, gate) {
+  if (FINAL_CLOSURE_GATES.has(gate.id)) return true;
+  if (!/^[a-f0-9]{40}$/i.test(String(cached?.target_revision || ''))
+    || !/^[a-f0-9]{40}$/i.test(String(plan?.target_revision || ''))) return true;
+  if (cached.target_revision === plan.target_revision) {
+    return String(cached.source_tree || '') !== String(plan.source_tree || '');
+  }
+  const delta = changedFiles(root, cached.target_revision, plan.target_revision);
+  if (!delta.reliable) return true;
+  const patches = Object.fromEntries(delta.files.map(file => [
+    file, diffPatch(root, cached.target_revision, plan.target_revision, file),
+  ]));
+  const runtimeFiles = delta.files.filter(file => {
+    if (/^(?:docs\/|README(?:\.|$)|AGENTS\.md$|\.github\/|\.gitee\/)/i.test(file)) return false;
+    if (STORY_AD_PLANNER_FILES.has(file)) return false;
+    if (generatedReleaseOnlyChange(file, patches[file])) return false;
+    if (releaseBuildIdOnlyChange(file, patches[file])) return false;
+    return true;
+  });
+  if (!runtimeFiles.length) return false;
+  const deltaPlan = createPlan({
+    root,
+    baseRevision: cached.target_revision,
+    targetRevision: plan.target_revision,
+    sourceTree: plan.source_tree,
+    files: runtimeFiles,
+    reliable: true,
+    fullPlatform: plan.full_platform,
+    targetedHome: plan.targeted_home,
+    patches,
+  });
+  return deltaPlan.unknown_files.length > 0 || deltaPlan.gates.some(item => item.id === gate.id);
+}
+
+function readCompatibleGateCache(root, plan, gate) {
+  if (process.env.VIDO_RELEASE_GATE_CACHE === '0' || !plan.source_tree || FINAL_CLOSURE_GATES.has(gate.id)) return null;
+  const directory = path.join(root, CACHE_DIRECTORY);
+  let candidates = [];
+  try {
+    candidates = fs.readdirSync(directory).filter(file => file.endsWith('.json')).map(file => {
+      const fullPath = path.join(directory, file);
+      try { return { file: fullPath, row: JSON.parse(fs.readFileSync(fullPath, 'utf8')), mtime: fs.statSync(fullPath).mtimeMs }; }
+      catch { return null; }
+    }).filter(Boolean).sort((a, b) => b.mtime - a.mtime);
+  } catch { return null; }
+  for (const candidate of candidates) {
+    const row = candidate.row;
+    if (row?.passed !== true || row?.contract_version !== CONTRACT_VERSION
+      || row?.gate_id !== gate.id || row?.command !== gate.command
+      || row?.node_version !== process.version
+      || (row?.platform && row.platform !== `${process.platform}-${process.arch}`)) continue;
+    if (!gateAffectedByRevisionDelta(root, row, plan, gate)) {
+      return { ...row, compatible_cache: true, cache_file: candidate.file };
+    }
+  }
+  return null;
 }
 
 function saveGateCache(root, plan, gate, details = {}) {
@@ -549,6 +615,7 @@ function saveGateCache(root, plan, gate, details = {}) {
     source_tree: plan.source_tree,
     target_revision: plan.target_revision,
     node_version: process.version,
+    platform: `${process.platform}-${process.arch}`,
     completed_at: new Date().toISOString(),
     ...details,
   }, null, 2)}\n`, 'utf8');
@@ -606,9 +673,22 @@ async function runPlan(root, plan, options = {}) {
     console.log(`RELEASE_GATE_PLAN=${JSON.stringify({ profile: plan.profile, domains: plan.domains, changed_files: plan.changed_files.length, gates: plan.gates.map(gate => gate.id), reasons: plan.reasons })}`);
     for (let index = 0; index < plan.gates.length; index += 1) {
       const gate = plan.gates[index];
-      const cached = readGateCache(root, plan, gate);
+      const exactCached = readGateCache(root, plan, gate);
+      const cached = exactCached || readCompatibleGateCache(root, plan, gate);
       if (cached) {
-        const result = { gate: gate.id, status: 'cached', duration_ms: 0, cached_at: cached.completed_at };
+        const status = exactCached ? 'cached' : 'compatible_cached';
+        if (!exactCached) saveGateCache(root, plan, gate, {
+          duration_ms: 0,
+          reused_from_target_revision: cached.target_revision,
+          reused_from_source_tree: cached.source_tree,
+        });
+        const result = {
+          gate: gate.id,
+          status,
+          duration_ms: 0,
+          cached_at: cached.completed_at,
+          ...(exactCached ? {} : { reused_from_target_revision: cached.target_revision }),
+        };
         results.push(result);
         console.log(`RELEASE_GATE_RESULT=${JSON.stringify({ index: index + 1, total: plan.gates.length, ...result })}`);
         continue;
@@ -620,7 +700,7 @@ async function runPlan(root, plan, options = {}) {
       results.push(result);
       console.log(`RELEASE_GATE_RESULT=${JSON.stringify({ index: index + 1, total: plan.gates.length, ...result })}`);
     }
-    return { passed: true, profile: plan.profile, results, cached_count: results.filter(row => row.status === 'cached').length };
+    return { passed: true, profile: plan.profile, results, cached_count: results.filter(row => row.status.endsWith('cached')).length };
   } finally {
     fs.rmSync(outputDir, { recursive: true, force: true });
   }
@@ -638,6 +718,8 @@ module.exports = {
   executeGate,
   gateIdsForProfile,
   readGateCache,
+  readCompatibleGateCache,
+  gateAffectedByRevisionDelta,
   releaseConfigChangeKind,
   releaseConfigDelta,
   resolveArtifactRevision,
@@ -645,4 +727,5 @@ module.exports = {
   saveGateCache,
   scopedDomainFromPatch,
   generatedReleaseOnlyChange,
+  releaseBuildIdOnlyChange,
 };

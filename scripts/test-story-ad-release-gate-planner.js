@@ -286,6 +286,33 @@ assert.equal(planner.generatedReleaseOnlyChange('public/story-ad/app.js', [
   '-const enabled = false;',
   '+const enabled = true;',
 ].join('\n')), false);
+assert.equal(planner.releaseBuildIdOnlyChange('config/story-ad-release.json', [
+  '@@ release',
+  '-  "build_id": "20260904-production-v457",',
+  '+  "build_id": "20260904-production-v458",',
+].join('\n')), true);
+assert.equal(planner.releaseBuildIdOnlyChange('config/story-ad-release.json', [
+  '@@ release',
+  '-  "contract_version": "v8",',
+  '+  "contract_version": "v9",',
+].join('\n')), false);
+
+const v458DeltaPlan = {
+  target_revision: '948b58bad48d002a6a87e53faa079a9eee0642e0',
+  source_tree: '9b851b1a03baeda1e3c71b4f18b551ff8ad8d4d3',
+  targeted_home: false,
+  full_platform: true,
+};
+const v457CacheEvidence = {
+  target_revision: '66de633e06e88b3b37035105d9330e95b599cb15',
+  source_tree: 'not-the-current-tree',
+};
+assert.equal(planner.gateAffectedByRevisionDelta(process.cwd(), v457CacheEvidence, v458DeltaPlan, { id: 'final_media', ...planner.GATES.final_media }), false,
+  'V458 仅修改发布编号和工作台测试时，V457 已通过的最终媒体门禁必须可复用');
+assert.equal(planner.gateAffectedByRevisionDelta(process.cwd(), v457CacheEvidence, v458DeltaPlan, { id: 'workspace_ui', ...planner.GATES.workspace_ui }), true,
+  '修改的工作台测试必须使工作台门禁失效');
+assert.equal(planner.gateAffectedByRevisionDelta(process.cwd(), v457CacheEvidence, v458DeltaPlan, { id: 'release_core', ...planner.GATES.release_core }), true,
+  '每个候选的最终发布闭包必须重新执行，禁止缓存跳过');
 const targetedReferencePlan = planner.createPlan({
   root: process.cwd(),
   baseRevision: 'a'.repeat(40),
@@ -352,25 +379,27 @@ const fakeExecute = async () => { executions += 1; return { duration_ms: 7 }; };
     assert.equal(first.cached_count, 0);
     assert.equal(executions, 2);
     const repeated = await planner.runPlan(tempRoot, firstPlan, { executeGate: fakeExecute });
-    assert.equal(repeated.cached_count, 2);
-    assert.equal(executions, 2, '同一源码树与同一门禁不得重复执行');
+    assert.equal(repeated.cached_count, 1);
+    assert.equal(executions, 3, '同一源码树只复用功能门禁，最终发布闭包仍必须重跑');
     const changedTree = plan(['public/story-ad/views/briefView.js'], { sourceTree: 'd'.repeat(40) });
     const changed = await planner.runPlan(tempRoot, changedTree, { executeGate: fakeExecute });
     assert.equal(changed.cached_count, 0);
-    assert.equal(executions, 4, '源码树变化后缓存必须失效');
+    assert.equal(executions, 5, '同一提交却出现不同源码树时缓存必须全部失效');
     const failedTree = plan(['public/story-ad/views/briefView.js'], { sourceTree: 'e'.repeat(40) });
     await assert.rejects(() => planner.runPlan(tempRoot, failedTree, {
       executeGate: async () => { throw new Error('synthetic-gate-failure'); },
     }), /synthetic-gate-failure/);
     const recoveredAfterFailure = await planner.runPlan(tempRoot, failedTree, { executeGate: fakeExecute });
     assert.equal(recoveredAfterFailure.cached_count, 0, '失败门禁不得写入成功缓存');
-    assert.equal(executions, 6);
+    assert.equal(executions, 7);
     console.log(JSON.stringify({
       passed: true,
       profiles: 7,
       story_ad_unclassified_is_impact_scoped: true,
       shared_unknown_falls_back_full: true,
-      exact_tree_cache: true,
+      exact_tree_functional_cache: true,
+      final_release_closure_always_runs: true,
+      ancestor_candidate_impact_cache: true,
       changed_tree_invalidates: true,
       failed_gate_not_cached: true,
       non_home_full_platform_only_for_shared_or_unreliable_changes: true,
