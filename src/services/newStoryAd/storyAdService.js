@@ -2498,32 +2498,32 @@ async function generateVideoStage(taskId, options = {}) { options = paidExecutio
       }, shots.length);
       const planned = preflightShotActions.get(index) || {}, plannedAction = planned.action || '', continuityReviewOnly = plannedAction === 'review_only' && planned.review_scope === 'cross_shot';
       const transitionBridge = plannedAction === 'transition_bridge';
+      const { clip: reviewClip, frames: preparedFrames } = await videoEvidencePreflight.prepareClipForReview(taskId, clips, index, { required: !continuityReviewOnly && !transitionBridge && plannedAction !== 'local_motion' });
       const savedContractQa = plannedAction === 'review_only' && !continuityReviewOnly
-        ? videoFrameQa.reconcileExistingApprovedPartialPersonQa({ qa: clip.qa || {}, keyframe: keyframes[index] || {}, contract: contracts[index] || {} })
+        ? videoFrameQa.reconcileExistingApprovedPartialPersonQa({ qa: reviewClip.qa || {}, keyframe: keyframes[index] || {}, contract: contracts[index] || {} })
         : null;
       const localMotionQa = plannedAction === 'local_motion'
-        ? await videoFrameQa.verifyDeterministicLocalMotionClip({ taskId, clip, keyframe: keyframes[index] || {}, contract: contracts[index] || {}, index })
+        ? await videoFrameQa.verifyDeterministicLocalMotionClip({ taskId, clip: reviewClip, keyframe: keyframes[index] || {}, contract: contracts[index] || {}, index })
         : null;
       const audioShot = generationShots[index] || shots[index] || {};
-      const audioQa = await nativeAudioQa.review({ taskId, clip, shot: audioShot, index }).catch(error => ({ pass: false, problems: [error.message], error_code: error.code, availability_error: error }));
-      // Audio failure must not hide a paid clip's visual/action defects. Always
-      // finish the applicable frame review, then merge both independent gates.
+      const audioQa = await nativeAudioQa.review({ taskId, clip: reviewClip, shot: audioShot, index }).catch(error => ({ pass: false, problems: [error.message], error_code: error.code, availability_error: error }));
+      // Audio failure must not hide visual/action defects; finish both independent gates.
       let visualQa; try {
         visualQa = (continuityReviewOnly || transitionBridge)
-          ? (clip.qa || { pass: true, status: 'not_applicable', problems: [], failure_dimensions: [], failure_labels_zh: [] })
-          : (savedContractQa || localMotionQa || await videoFrameQa.reviewVideoClip({ taskId, clip, shot: audioShot, keyframe: keyframes[index] || {}, contract: contracts[index] || {}, ctx, index }));
+          ? (reviewClip.qa || { pass: true, status: 'not_applicable', problems: [], failure_dimensions: [], failure_labels_zh: [] })
+          : (savedContractQa || localMotionQa || await videoFrameQa.reviewVideoClip({ taskId, clip: reviewClip, shot: audioShot, keyframe: keyframes[index] || {}, contract: contracts[index] || {}, ctx, index, frames: preparedFrames }));
       } catch (error) { if (!qaAvailability.isUnavailable(error)) throw error;
-        qaDeferral.preserve(clips, index, clip, error, 'visual'); continue;
+        qaDeferral.preserve(clips, index, reviewClip, error, 'visual'); continue;
       }
       if (qaAvailability.isUnavailable(audioQa)) {
-        qaDeferral.preserve(clips, index, { ...clip, visual_qa_checkpoint: visualQa }, audioQa.availability_error || audioQa, 'audio'); continue;
+        qaDeferral.preserve(clips, index, { ...reviewClip, visual_qa_checkpoint: visualQa }, audioQa.availability_error || audioQa, 'audio'); continue;
       }
       const qa = videoQaDecision.merge({
         audioQa,
         visualQa,
         speechMode: videoAdapter.explicitShotSpeechMode(audioShot, contracts[index] || {}),
       });
-      clips[index] = { ...clip, native_audio_qa: audioQa, lip_sync_applied: audioQa.lip_sync?.verified === true, qa, error: qa.pass ? '' : '视频质检未通过', error_code: qa.pass ? '' : (!audioQa.pass ? 'VIDEO_AUDIO_QA_FAILED' : 'VIDEO_FRAME_QA_FAILED') };
+      clips[index] = { ...reviewClip, native_audio_qa: audioQa, lip_sync_applied: audioQa.lip_sync?.verified === true, qa, error: qa.pass ? '' : '视频质检未通过', error_code: qa.pass ? '' : (!audioQa.pass ? 'VIDEO_AUDIO_QA_FAILED' : 'VIDEO_FRAME_QA_FAILED') };
       videoAdapter.updateVideoShotStatus(taskId, index, {
         lifecycle: qa.pass ? 'qa_passed' : 'qa_failed', qa_status: qa.pass ? 'passed' : 'failed',
         qa_problems: qa.problems || [], qa_failure_dimensions: qa.failure_dimensions || [], qa_failure_labels_zh: qa.failure_labels_zh || [],

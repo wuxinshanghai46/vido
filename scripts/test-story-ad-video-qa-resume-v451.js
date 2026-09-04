@@ -11,6 +11,7 @@ const availability = require('../src/services/newStoryAd/videoQaAvailabilityServ
 const failure = require('../src/services/newStoryAd/publicFailureProjectionService');
 const workflow = require('../src/services/newStoryAd/videoArtifactWorkflowService');
 const mediaRuntime = require('../src/services/newStoryAd/videoAdapterMediaRuntime').createVideoAdapterMediaRuntime({ videoDir: '' });
+const frameQa = require('../src/services/newStoryAd/videoFrameQaService');
 
 (async () => {
   assert.equal(availability.isUnavailable({ code: 'VISION_QA_UNAVAILABLE' }), true);
@@ -38,7 +39,43 @@ const mediaRuntime = require('../src/services/newStoryAd/videoAdapterMediaRuntim
   assert.equal(expected[1].video_resolution, '480p', '后续未生成镜头必须使用新的 480P 默认值');
   assert.deepEqual(mediaRuntime.outputSize('9:16'), { width: 480, height: 854 });
 
+  let extractionCalls = 0;
+  const savedPendingClip = {
+    file_path: '/persistent/generated-shot-1.mp4',
+    video_url: '/api/new-story-ad/videos/generated-shot-1.mp4',
+    qa: null,
+    qa_pending: true,
+  };
+  const evidence = await frameQa.ensureBoundaryFrameEvidence({
+    taskId: 'all-industry-task',
+    clips: [savedPendingClip, null],
+    targetIndexes: [0, 1],
+    includeTargetIndexes: [0],
+    extractFrames: async ({ index }) => {
+      extractionCalls += 1;
+      assert.equal(index, 0);
+      return [
+        { image_url: '/api/new-story-ad/assets/head.jpg', point: 0, second: 0 },
+        { image_url: '/api/new-story-ad/assets/tail.jpg', point: 1, second: 4 },
+      ];
+    },
+  });
+  assert.equal(extractionCalls, 1, '待复审旧片段必须在新付费提交前本地补齐一次证据');
+  assert.deepEqual(evidence.backfilled_indexes, [0]);
+  assert.equal(evidence.clips[0].qa.status, 'evidence_ready');
+  assert.equal(evidence.clips[0].qa.pass, undefined, '技术帧证据不能冒充内容质检通过');
+  assert.equal(frameQa.hasReviewFrameEvidence(evidence.clips[0].qa), true);
+  const reusedEvidence = await frameQa.ensureBoundaryFrameEvidence({
+    taskId: 'all-industry-task',
+    clips: evidence.clips,
+    targetIndexes: [0, 1],
+    includeTargetIndexes: [0],
+    extractFrames: async () => { throw new Error('已经持久化的证据不得重复抽取'); },
+  });
+  assert.deepEqual(reusedEvidence.backfilled_indexes, []);
+
   const service = read('src/services/newStoryAd/storyAdService.js');
+  const evidenceService = read('src/services/newStoryAd/videoEvidencePreflightService.js');
   assert.match(service, /qaDeferral\.preserve/);
   assert.match(service, /if \(!qaAvailability\.isUnavailable\(error\)\) throw error;/);
   assert.match(service, /qaDeferral\.throwIfPending\(clips\)/);
@@ -46,5 +83,7 @@ const mediaRuntime = require('../src/services/newStoryAd/videoAdapterMediaRuntim
   assert.match(read('src/services/newStoryAd/contextBuilder.js'), /videoResolution \|\| '480p'/);
   assert.match(read('public/story-ad/views/briefView.js'), /\['480p', '720p', '1080p', '4K'\]/);
   assert.match(read('public/digital-human.html'), /class="dh-chip active" data-nsa-video-resolution="480p"/);
-  console.log(JSON.stringify({ passed: true, cases: 17, paid_video_calls: 0, qa_fallback_calls: 0 }));
+  assert.match(evidenceService, /prepareClipReviewFrameEvidence/);
+  assert.match(evidenceService, /storage\.saveOutput\(taskId, 'video_clips', clips\)/);
+  console.log(JSON.stringify({ passed: true, cases: 24, paid_video_calls: 0, qa_fallback_calls: 0 }));
 })().catch(error => { console.error(error); process.exitCode = 1; });

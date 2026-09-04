@@ -26,4 +26,13 @@ async function prepareRequiredBoundaryEvidence(taskId, preflightPlan = {}) {
   }
 }
 
-module.exports = { prepareRequiredBoundaryEvidence };
+async function prepareClipForReview(taskId, clips, index, { required = true } = {}) {
+  const clip = clips[index];
+  if (!required) return { clip, frames: null };
+  const prepared = await videoFrameQa.prepareClipReviewFrameEvidence({ taskId, clip, index });
+  clips[index] = prepared.clip;
+  if (prepared.backfilled) storage.saveOutput(taskId, 'video_clips', clips);
+  return { clip: prepared.clip, frames: prepared.frames };
+}
+
+module.exports = { prepareRequiredBoundaryEvidence, prepareClipForReview };

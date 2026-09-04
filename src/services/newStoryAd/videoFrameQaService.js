@@ -205,6 +205,37 @@ function evidenceError(index = 0, cause = null) {
   return error;
 }
 
+/**
+ * Materialize technical review evidence independently from the model verdict.
+ * A generated clip may be waiting for QA because every vision route was
+ * unavailable.  The extracted frames must survive that outage so the next
+ * run can review the saved clip before any new paid submission.
+ */
+async function prepareClipReviewFrameEvidence({
+  taskId = '', clip = {}, index = 0, extractFrames = extractReviewFrames,
+} = {}) {
+  if (!(clip.file_path || clip.filePath || clip.scene_block_source_file)) {
+    throw evidenceError(index);
+  }
+  if (hasReviewFrameEvidence(clip.qa || {})) {
+    return { clip, frames: clip.qa.frames, backfilled: false };
+  }
+  let frames = [];
+  try {
+    frames = await extractFrames({ taskId, clip, index });
+  } catch (error) {
+    throw evidenceError(index, error);
+  }
+  const qa = {
+    ...(clip.qa || {}),
+    status: clip.qa?.status || 'evidence_ready',
+    frames,
+    evidence_prepared_locally_at: new Date().toISOString(),
+  };
+  if (!hasReviewFrameEvidence(qa)) throw evidenceError(index);
+  return { clip: { ...clip, qa }, frames, backfilled: true };
+}
+
 /** Backfill reused boundary clips locally before any paid provider submission. */
 function boundaryEvidenceIndexes({ clips = [], targetIndexes = [], includeTargetIndexes = [] } = {}) {
   const count = Array.isArray(clips) ? clips.length : 0;
@@ -219,26 +250,15 @@ function boundaryEvidenceIndexes({ clips = [], targetIndexes = [], includeTarget
   return [...included].sort((a, b) => a - b);
 }
 
-async function ensureBoundaryFrameEvidence({ taskId = '', clips = [], targetIndexes = [], includeTargetIndexes = [] } = {}) {
+async function ensureBoundaryFrameEvidence({ taskId = '', clips = [], targetIndexes = [], includeTargetIndexes = [], extractFrames = extractReviewFrames } = {}) {
   const next = Array.isArray(clips) ? clips.slice() : [];
   const boundaryIndexes = boundaryEvidenceIndexes({ clips: next, targetIndexes, includeTargetIndexes });
   const backfilledIndexes = [];
   for (const index of boundaryIndexes) {
     const clip = next[index] || {};
-    if (clip.qa?.pass !== true || !(clip.file_path || clip.filePath || clip.scene_block_source_file)) {
-      throw evidenceError(index);
-    }
-    if (hasReviewFrameEvidence(clip.qa)) continue;
-    let frames = [];
-    try {
-      frames = await extractReviewFrames({ taskId, clip, index });
-    } catch (error) {
-      throw evidenceError(index, error);
-    }
-    const qa = { ...clip.qa, frames, evidence_backfilled_locally_at: new Date().toISOString() };
-    if (!hasReviewFrameEvidence(qa)) throw evidenceError(index);
-    next[index] = { ...clip, qa };
-    backfilledIndexes.push(index);
+    const prepared = await prepareClipReviewFrameEvidence({ taskId, clip, index, extractFrames });
+    next[index] = prepared.clip;
+    if (prepared.backfilled) backfilledIndexes.push(index);
   }
   return { clips: next, backfilled_indexes: backfilledIndexes, boundary_indexes: boundaryIndexes };
 }
@@ -387,8 +407,10 @@ async function verifyDeterministicLocalMotionClip({ taskId = '', clip = {}, keyf
   return { ...base, frames, local_motion_evidence: frames[0].local_motion_evidence };
 }
 
-async function reviewVideoClip({ taskId = '', clip = {}, shot = {}, keyframe = {}, contract = {}, ctx = {}, index = 0, gateway = modelGateway, repair = jsonRepair } = {}) {
-  const frames = await extractReviewFrames({ taskId, clip, index });
+async function reviewVideoClip({ taskId = '', clip = {}, shot = {}, keyframe = {}, contract = {}, ctx = {}, index = 0, frames: preparedFrames = null, gateway = modelGateway, repair = jsonRepair } = {}) {
+  const frames = Array.isArray(preparedFrames) && preparedFrames.length
+    ? preparedFrames
+    : (hasReviewFrameEvidence(clip.qa || {}) ? clip.qa.frames : await extractReviewFrames({ taskId, clip, index }));
   if (process.env.NEW_STORY_AD_MOCK_LLM === '1') {
     return { pass: true, status: 'verified', qa_policy_version: VIDEO_FRAME_QA_POLICY_VERSION, frames, person_pass: true, product_pass: true, scene_pass: true, action_pass: true, people_count_pass: true, animal_count_pass: true, pet_identity_pass: true, text_watermark_pass: true, anatomy_physics_pass: true, temporal_stability_pass: true, rendering_intent_pass: true, problems: [], checked_at: new Date().toISOString(), used_model: 'mock/new-story-ad-video-frame-qa' };
   }
@@ -663,6 +685,7 @@ module.exports = {
   extractReviewFrames,
   frameEvidenceUsable,
   hasReviewFrameEvidence,
+  prepareClipReviewFrameEvidence,
   boundaryEvidenceIndexes,
   ensureBoundaryFrameEvidence,
   reviewDecision,
