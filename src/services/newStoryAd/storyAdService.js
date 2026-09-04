@@ -2331,7 +2331,7 @@ function buildVideoPreflightPlan(taskId, options = {}) {
   const requestedOnlyIndexes = videoSubmissionGate.normalizeOnlyIndexes(options, shots.length);
   const blueprint = storage.getOutput(taskId, 'blueprint') || {}, storyboardMeta = storage.getOutput(taskId, 'storyboard_meta') || {};
   const audioTracks = [];
-  const providerCapabilityRegistry = videoArtifactWorkflow.capabilityRegistry({ route: providerRoute, model: pinnedModel || {}, configured: options.provider_capability_registry || options.providerCapabilityRegistry || {} });
+  const providerCapabilityRegistry = videoArtifactWorkflow.capabilityRegistry({ route: providerRoute, model: pinnedModel || {}, configured: options.provider_capability_registry || options.providerCapabilityRegistry || {}, taskPrivateAsset: storage.getOutput(taskId, 'deyunai_person_asset') || null });
   const baseArgs = { taskId, shots, keyframes, contracts, clips, statuses, ctx, mode: options.video_generation_mode || options.videoGenerationMode || options.mode || 'economy', providerRoute, providerId: pinnedModel?.provider_id || '', modelId: pinnedModel?.model_id || '', providerCapabilityRegistry, executionPlan, executionOptions: options, onlyIndexes: requestedOnlyIndexes };
   let plan, compatibilityReport = null, expectedLineages = [], appliedCompatibilityFingerprint = '';
   for (let pass = 0; pass < 3; pass += 1) {

@@ -42,7 +42,7 @@ export async function loadGenerationModelPicker(taskId, stage, options = {}) {
 export function bindGenerationModelPicker(host, picker) {
   const select = host.querySelector(`[data-generation-model-picker="${CSS.escape(picker.stage)}"] select`);
   select?.addEventListener('change', () => localStorage.setItem(storageKey(picker.taskId, picker.stage), select.value));
-  return () => select?.value || picker.selected || '';
+  return () => select?.value || '';
 }
 
 export function selectedGenerationModel(host, stage) {

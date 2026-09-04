@@ -95,12 +95,24 @@ function compatibilityMotionPrompt(clip = {}, buildPrompt = () => '') {
   return typeof buildPrompt === 'function' ? buildPrompt() : '';
 }
 
-function capabilityRegistry({ route = '', model = {}, configured = {} } = {}) {
+function activePrivateAssetEvidence(asset = {}) {
+  const rows = Array.isArray(asset.assets) ? asset.assets : (asset.asset_id ? [asset] : []);
+  if (!rows.length || !rows.every(row => row.asset_id && /^active$/i.test(String(row.status || asset.status || '')))) return null;
+  return {
+    state: 'supported',
+    source: 'active_task_private_asset',
+    checked_at: asset.updated_at || rows.map(row => row.updated_at).filter(Boolean).sort().at(-1) || '',
+    reason: 'the same provider account already created and activated a private image asset for this task',
+  };
+}
+
+function capabilityRegistry({ route = '', model = {}, configured = {}, taskPrivateAsset = null } = {}) {
   if (configured && Object.keys(configured).length) return configured;
   const evidence = model.capabilities || model.capability_evidence || {};
   const privateAsset = model.private_asset_capability || model.privateAssetCapability;
-  return route && (Object.keys(evidence).length || privateAsset)
-    ? { [route]: { capabilities: evidence, ...(privateAsset ? { private_asset: privateAsset } : {}) } }
+  const taskEvidence = /^deyunai\//i.test(route) ? activePrivateAssetEvidence(taskPrivateAsset || {}) : null;
+  return route && (Object.keys(evidence).length || privateAsset || taskEvidence)
+    ? { [route]: { capabilities: evidence, ...(privateAsset || taskEvidence ? { private_asset: privateAsset || taskEvidence } : {}) } }
     : {};
 }
 
@@ -195,6 +207,7 @@ module.exports = {
   buildExpectedLineages,
   compatibilityMotionPrompt,
   capabilityRegistry,
+  activePrivateAssetEvidence,
   assessUnitCapabilities,
   assertComposeCompatible,
   claimUnitAttempts,

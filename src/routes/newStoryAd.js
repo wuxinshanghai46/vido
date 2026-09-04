@@ -2016,8 +2016,7 @@ router.get('/tasks/:id/video/preflight', asyncRoute(async (req, res) => {
   const selected = mediaModelSelection.applySelection('new_story_ad.video', req.query || {});
   const plan = service.buildVideoPreflightPlan(req.params.id, {
     video_generation_mode: req.query.mode || 'economy',
-    video_provider: selected.video_provider,
-    video_model: selected.video_model,
+    ...selected,
     ...(requestedIndexes ? { only_indexes: requestedIndexes } : {}),
   });
   res.json({ success: true, task_id: req.params.id, preflight: storyAdErrorPermission.canViewErrors(userFromReq(req))

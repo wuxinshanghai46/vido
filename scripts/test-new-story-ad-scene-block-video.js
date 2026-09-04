@@ -315,6 +315,22 @@ async function run() {
     assert.strictEqual(submittedOptions._deyunaiPersonAsset.asset_url, 'asset://current-keyframe');
     assert.deepStrictEqual(submittedOptions._sceneReferenceAssetUrls, ['asset://previous-tail']);
     assert.strictEqual(submittedOptions._inputModeOverride, 'approved_keyframe_and_previous_tail_private_references');
+
+    await videoAdapter.generateSceneBlockVideos({
+      taskId: boundaryTaskId, shots: boundaryShots, contracts: boundaryContracts,
+      keyframes: boundaryKeyframes, sceneBlocks: boundaryBlocks,
+      ctx: { cast_mode: 'single', person_asset: { image_url: '/actor.png' }, output_ratio: '16:9', video_resolution: '480p' }, existingClips: boundaryClips,
+      options: {
+        only_indexes: [0], _pinnedVideoModel: { provider_id: 'deyunai', model_id: 'doubao-seedance-2-0-260128' },
+        _keyframeReferenceOnlyIndexes: [0], _boundaryRepairContracts: {},
+        _preparePersonAsset: async () => { throw new Error('private-keyframe mode must not prepare the shared person asset'); },
+        _prepareKeyframeReferenceAsset: async () => ({ asset_url: 'asset://approved-keyframe' }),
+        _generateShotVideo: async ({ index, options }) => { submittedOptions = options; return { shot_index: index, file_path: __filename, video_url: '/mock-private-keyframe.mp4', provider_used: 'deyunai/doubao-seedance-2-0-260128', provider_task_id: 'mock-private-keyframe' }; },
+      },
+    });
+    assert.strictEqual(submittedOptions._deyunaiPersonAsset.asset_url, 'asset://approved-keyframe');
+    assert.strictEqual(submittedOptions._inputModeOverride, 'approved_keyframe_private_reference_only');
+    assert.deepStrictEqual(submittedOptions._sceneReferenceAssetUrls, []);
   } finally {
     storage.deleteTask(boundaryTaskId);
   }

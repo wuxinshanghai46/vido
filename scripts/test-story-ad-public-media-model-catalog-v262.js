@@ -5,6 +5,7 @@ const assert = require('assert/strict');
 const fs = require('fs');
 const path = require('path');
 const selection = require('../src/services/newStoryAd/mediaGenerationModelSelectionService');
+const videoAdapter = require('../src/services/newStoryAd/videoAdapter');
 const migration = require('./migrate-story-ad-public-media-models-v262');
 
 const IMAGE_STAGES = [
@@ -61,7 +62,7 @@ assert.deepEqual(selection.PUBLIC_MEDIA_CHOICES.video.map(choice => choice.execu
 
 const videoCatalog = selection.publicCatalog('new_story_ad.video', configuredVideo);
 assert.deepEqual(labels(videoCatalog.models), VIDEO_LABELS);
-assert.equal(videoCatalog.default_selection, 'seedance-dy');
+assert.equal(videoCatalog.default_selection, '', 'paid video generation must require an explicit or remembered browser selection');
 
 const image = selection.applyResolvedSelection({}, selection.resolveSelection('new_story_ad.scene_asset', 'image-sz', configuredImage));
 const nano = selection.applyResolvedSelection({}, selection.resolveSelection('new_story_ad.scene_asset', 'nano-dy', configuredImage));
@@ -69,6 +70,17 @@ const video = selection.applyResolvedSelection({}, selection.resolveSelection('n
 assert.equal(image.image_model, 'smscrw/gpt-image-2');
 assert.equal(nano.image_model, 'deyunai/gemini-2.5-flash-image');
 assert.equal(video.video_model_route, 'deyunai/doubao-seedance-2-0-260128');
+assert.equal(video.video_model_selection_id, 'seedance-dy');
+assert.equal(video.video_execution_route, video.video_model_route);
+assert.deepEqual(selection.assertVideoSelectionInvariant(video, {
+  provider_id: 'deyunai', model_id: 'doubao-seedance-2-0-260128',
+}), { selection_id: 'seedance-dy', execution_route: 'deyunai/doubao-seedance-2-0-260128' });
+assert.throws(() => selection.assertVideoSelectionInvariant(video, {
+  provider_id: 'smscrw', model_id: 'doubao-seedance-2.0',
+}), error => error.code === 'VIDEO_MODEL_SELECTION_DRIFT' && error.providerSubmitted === false && error.billingState === 'not_submitted');
+assert.throws(() => videoAdapter.assertLockedVideoRoute(video, {
+  provider_id: 'smscrw', model_id: 'doubao-seedance-2.0',
+}), error => error.code === 'VIDEO_MODEL_SELECTION_DRIFT' && error.providerSubmitted === false && error.billingState === 'not_submitted');
 assert.equal(image.single_attempt, true);
 assert.equal(nano.max_scene_retries, 0);
 assert.throws(() => selection.resolveSelection('new_story_ad.scene_asset', 'smscrw/gpt-image-2', configuredImage), error => error.code === 'MEDIA_GENERATION_MODEL_SELECTION_INVALID');
@@ -117,6 +129,6 @@ assert(!picker.includes('generationProviderInitials'));
 
 console.log(JSON.stringify({
   passed: true, image_stages: IMAGE_STAGES.length, image_choices: IMAGE_LABELS,
-  default_image: 'Image-2 · SZ', video_choices: VIDEO_LABELS, default_video: 'Seedance · DY',
+  default_image: 'Image-2 · SZ', video_choices: VIDEO_LABELS, default_video: 'explicit_selection_required',
   raw_provider_routes_rejected: true, migration_idempotent: true, migration_atomic: true, provider_calls: 0,
 }));

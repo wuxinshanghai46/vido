@@ -132,4 +132,30 @@ assert.strictEqual(freshQuality.paid_unit_count, 4, '全新任务必须让每个
 assert.strictEqual(freshQuality.local_unit_count, 2);
 assert.strictEqual(freshQuality.paid_video_seconds, 20);
 
+const providerAwareContext = {
+  cast_mode: 'single',
+  person_asset: { image_url: '/actor.png' },
+};
+const providerAwareRegistry = {
+  'deyunai/doubao-seedance-2-0-260128': {
+    private_asset: { state: 'supported', source: 'active_task_private_asset' },
+  },
+};
+const deyunaiPerson = preflight.buildVideoPreflight({
+  taskId: 'provider-aware-deyunai', shots: [shots[0]], keyframes: [keyframes[0]], contracts: [contracts[0]], clips: [null], statuses: [],
+  mode: 'economy', providerRoute: 'deyunai/doubao-seedance-2-0-260128', providerId: 'deyunai', modelId: 'doubao-seedance-2-0-260128',
+  providerCapabilityRegistry: providerAwareRegistry, ctx: providerAwareContext,
+});
+assert.strictEqual(deyunaiPerson.units[0].input_strategy, 'approved_keyframe_private_asset_only');
+assert.deepStrictEqual(deyunaiPerson.keyframe_reference_only_indexes, [0]);
+assert.deepStrictEqual(deyunaiPerson.keyframe_first_frame_only_indexes, []);
+assert.strictEqual(deyunaiPerson.provider_capability_assessment.ready, true);
+
+const szPerson = preflight.buildVideoPreflight({
+  taskId: 'provider-aware-sz', shots: [shots[0]], keyframes: [keyframes[0]], contracts: [contracts[0]], clips: [null], statuses: [],
+  mode: 'economy', providerRoute: 'smscrw/doubao-seedance-2.0', providerId: 'smscrw', modelId: 'doubao-seedance-2.0', ctx: providerAwareContext,
+});
+assert.strictEqual(szPerson.units[0].input_strategy, 'approved_keyframe_first_frame_only');
+assert.deepStrictEqual(szPerson.keyframe_first_frame_only_indexes, [0]);
+
 console.log('new story ad video preflight: ok');

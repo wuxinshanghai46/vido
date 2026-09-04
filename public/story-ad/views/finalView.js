@@ -20,7 +20,9 @@ export async function mount(host, context) {
   const finalVideo = generation.final_video || (bundle?.project?.final_video_url ? { video_url: bundle.project.final_video_url, status: '已生成' } : null);
   const posterUrl = finalVideo?.poster_url || finalVideo?.thumbnail_url || approvedFrames.find(item => item.thumbnail_url || item.image_url || item.imageUrl)?.thumbnail_url || approvedFrames.find(item => item.image_url || item.imageUrl)?.image_url || '';
   const mediaCatalog = generation.media_catalog || {};
-  const videoModelPicker = await loadGenerationModelPicker(bundle.project.id, 'new_story_ad.video', { label: '视频模型' });
+  const videoModelPicker = await loadGenerationModelPicker(bundle.project.id, 'new_story_ad.video', {
+    label: failedClips.length ? '下次视频模型' : '本次视频模型',
+  });
   const primaryAction = !framesReady && !finalVideo
     ? `<button class="btn primary" type="button" data-back-storyboard>${storyboardAction}</button>`
     : (framesReady && !finalVideo && clipsReady

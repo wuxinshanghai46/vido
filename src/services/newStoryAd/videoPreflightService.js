@@ -5,9 +5,10 @@ const boundaryPolicy = require('./videoBoundaryPolicyService');
 const boundaryRepair = require('./videoBoundaryRepairService');
 const artifactCompatibility = require('./videoArtifactCompatibilityService');
 const artifactWorkflow = require('./videoArtifactWorkflowService');
+const personIdentity = require('./personIdentityContractService');
 const videoCore = require('../videoGenerationCore');
 
-const VIDEO_PREFLIGHT_POLICY_VERSION = 'cost-aware-video-preflight-v8';
+const VIDEO_PREFLIGHT_POLICY_VERSION = 'cost-aware-video-preflight-v9';
 const POST_GENERATION_TRANSITION_SCOPE = 'post_generation_deterministic_transition';
 
 function text(value = '') {
@@ -57,6 +58,43 @@ function reconcileShots(shots = [], keyframes = [], contracts = []) {
     keyframes[index] || {},
     contracts[index] || {},
   ));
+}
+
+function isDeyunaiSeedance(providerId = '', modelId = '') {
+  return text(providerId).toLowerCase() === 'deyunai'
+    && /^doubao-seedance-2-0(?:-|$)/i.test(text(modelId));
+}
+
+/**
+ * Different Seedance gateways do not accept the same person-reference contract.
+ * Deyunai must receive person-bearing approved keyframes through its private asset
+ * channel; sending that same frame as a public first-frame URL can be rejected by
+ * the provider's privacy filter before a provider task exists.
+ */
+function applyProviderInputStrategies({ shotPlans = [], units = [], shots = [], contracts = [], ctx = {}, providerId = '', modelId = '' } = {}) {
+  if (!isDeyunaiSeedance(providerId, modelId)) return { shotPlans, units };
+  const nextPlans = shotPlans.map(item => ({ ...item, changes: [...(item.changes || [])] }));
+  const nextUnits = units.map(unit => {
+    if (!unit.paid || unit.boundary_repair) return { ...unit };
+    const personRequired = (unit.member_indexes || []).some(index => personIdentity.shotPersonRequired(
+      ctx,
+      shots[index] || {},
+      contracts[index] || {},
+    ));
+    if (!personRequired) return { ...unit };
+    const changes = [
+      ...(unit.changes || []),
+      '漫路人物镜头使用已确认关键帧的私有素材引用，避免公开首帧触发真人隐私拦截',
+    ];
+    (unit.member_indexes || []).forEach(index => {
+      const plan = nextPlans.find(item => item.index === index);
+      if (!plan) return;
+      plan.input_strategy = 'approved_keyframe_private_asset_only';
+      plan.changes = [...(plan.changes || []), changes.at(-1)];
+    });
+    return { ...unit, input_strategy: 'approved_keyframe_private_asset_only', changes };
+  });
+  return { shotPlans: nextPlans, units: nextUnits };
 }
 
 function clipHasMedia(clip = {}) {
@@ -467,6 +505,15 @@ function buildVideoPreflight({
       unit.changes = shotPlan?.changes || unit.changes || [];
     }
   });
+  ({ shotPlans, units } = applyProviderInputStrategies({
+    shotPlans,
+    units,
+    shots: reconciledShots,
+    contracts,
+    ctx,
+    providerId,
+    modelId,
+  }));
   const billingBlocked = providerBillingBlocked(statuses, clips, paidIndexes);
   const localUnits = units.filter(unit => !unit.paid && unit.action === 'local_motion');
   const transitionUnits = units.filter(unit => !unit.paid && unit.action === 'transition_bridge');
@@ -656,6 +703,7 @@ module.exports = {
   peopleOnlyFailureCanBeRechecked,
   continuityEvidenceOnlyFailureCanBeRechecked,
   repairInstruction,
+  applyProviderInputStrategies,
   buildVideoPreflight,
   publicVideoPreflight,
 };

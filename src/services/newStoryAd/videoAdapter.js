@@ -181,6 +181,15 @@ function clipRoute(clip = {}) {
   return String(clip.provider_used || clip.providerUsed || '').trim().toLowerCase();
 }
 
+function assertLockedVideoRoute(options = {}, model = {}) {
+  const lockedRoute = String(options.video_execution_route || options.videoExecutionRoute || '').trim().toLowerCase();
+  if (!lockedRoute || modelRoute(model) === lockedRoute) return model;
+  const error = new Error('用户选择的视频模型与实际执行路由不一致，已在供应商提交前停止。');
+  error.code = 'VIDEO_MODEL_SELECTION_DRIFT'; error.status = 409; error.retryable = false;
+  error.providerSubmitted = false; error.billingState = 'not_submitted';
+  throw error;
+}
+
 function resolvePinnedVideoModel(options = {}, existingClips = []) {
   const configured = videoCandidates(options, { includeCircuitOpen: true });
   const explicitSelection = Boolean(String(options.video_provider || options.videoProvider || '').trim()
@@ -211,7 +220,7 @@ function resolvePinnedVideoModel(options = {}, existingClips = []) {
     const available = configured.find(candidate => !modelGateway.healthState(candidate).circuit_open);
     if (available) return available;
   }
-  const primary = configured[0];
+  const primary = assertLockedVideoRoute(options, configured[0]);
   if (modelGateway.healthState(primary).circuit_open) {
     const error = new Error(`模型调用管理首选视频模型 ${modelRoute(primary)} 当前处于熔断状态；为避免未确认的模型降级，任务已停止`);
     error.code = 'PRIMARY_VIDEO_MODEL_UNAVAILABLE';
@@ -1137,6 +1146,7 @@ module.exports = {
   personReferenceUrl,
   prepareDeyunaiPersonAsset,
   prepareDeyunaiSceneReferenceAssets,
+  assertLockedVideoRoute,
   useSeedanceReferenceAssets,
   videoPathFromName,
   publicVideoUrl,

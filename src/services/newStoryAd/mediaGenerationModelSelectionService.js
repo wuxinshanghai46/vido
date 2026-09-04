@@ -115,7 +115,11 @@ function publicCatalog(stageId = '', configured = []) {
     media_type: mediaType,
     selection_required: true,
     fallback_after_failure: false,
-    default_selection: models.some(model => model.route === preferred?.id && model.available) ? preferred.id : '',
+    // Video generation is paid and provider contracts differ. Never silently
+    // turn a missing browser choice into the default provider.
+    default_selection: mediaType === 'video'
+      ? ''
+      : (models.some(model => model.route === preferred?.id && model.available) ? preferred.id : ''),
     models,
   };
 }
@@ -179,8 +183,33 @@ function resolveSelection(stageId = '', selectedId = '', configured = []) {
 
 function applyResolvedSelection(body = {}, selected = {}) {
   return selected.media_type === 'video'
-    ? { ...body, video_provider: selected.provider_id, video_model: selected.model_id, video_model_route: selected.route }
+    ? {
+      ...body,
+      video_provider: selected.provider_id,
+      video_model: selected.model_id,
+      video_model_route: selected.route,
+      video_model_selection_id: selected.selection_id,
+      video_execution_route: selected.route,
+    }
     : { ...body, image_model: selected.route, single_attempt: true, max_scene_retries: 0 };
+}
+
+function assertVideoSelectionInvariant(options = {}, model = {}) {
+  const actualRoute = route(model);
+  const lockedRoute = clean(options.video_execution_route || options.videoExecutionRoute, 220).toLowerCase();
+  const selectionId = clean(options.video_model_selection_id || options.videoModelSelectionId, 80).toLowerCase();
+  const selectedChoice = PUBLIC_MEDIA_CHOICES.video.find(choice => choice.id === selectionId);
+  const expectedRoute = clean(selectedChoice?.execution_route || lockedRoute, 220).toLowerCase();
+  if (!lockedRoute || !selectionId || !selectedChoice || lockedRoute !== expectedRoute || actualRoute !== expectedRoute) {
+    const error = new Error('本次视频模型选择与实际执行路由不一致，已在供应商提交前停止。请重新选择模型后提交。');
+    error.code = 'VIDEO_MODEL_SELECTION_DRIFT';
+    error.status = 409;
+    error.retryable = false;
+    error.providerSubmitted = false;
+    error.billingState = 'not_submitted';
+    throw error;
+  }
+  return { selection_id: selectionId, execution_route: actualRoute };
 }
 
 function applySelection(stageId = '', body = {}) {
@@ -188,6 +217,6 @@ function applySelection(stageId = '', body = {}) {
 }
 
 module.exports = {
-  ALLOWED_STAGES, PUBLIC_MEDIA_CHOICES, applyResolvedSelection, applySelection, catalog, publicCatalog, publicRows,
+  ALLOWED_STAGES, PUBLIC_MEDIA_CHOICES, applyResolvedSelection, applySelection, assertVideoSelectionInvariant, catalog, publicCatalog, publicRows,
   requireSelection, resolveSelection, route, rows, selectableRows, selectionFrom, stage,
 };

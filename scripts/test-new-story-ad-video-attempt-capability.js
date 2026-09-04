@@ -4,6 +4,7 @@ const assert = require('assert');
 const attempts = require('../src/services/newStoryAd/videoAttemptStore');
 const capabilities = require('../src/services/newStoryAd/videoProviderCapabilityService');
 const privacyRetryPolicy = require('../src/services/newStoryAd/videoPrivacyRetryPolicyService');
+const artifactWorkflow = require('../src/services/newStoryAd/videoArtifactWorkflowService');
 
 function memoryStorage() {
   const values = new Map();
@@ -184,6 +185,21 @@ function testCapabilityGateNeverUsesMutationAsProbe() {
   assert.strictEqual(capabilities.CREATE_ASSET_GROUP_PROBE_ALLOWED, false);
 }
 
+function testActiveTaskAssetIsReadOnlyCapabilityEvidence() {
+  const evidence = artifactWorkflow.activePrivateAssetEvidence({
+    status: 'Active', updated_at: '2026-09-02T12:12:22.673Z',
+    assets: [{ asset_id: 'asset-ready', status: 'Active' }],
+  });
+  assert.strictEqual(evidence.state, 'supported');
+  assert.strictEqual(evidence.source, 'active_task_private_asset');
+  const registry = artifactWorkflow.capabilityRegistry({
+    route: 'deyunai/doubao-seedance-2-0-260128',
+    taskPrivateAsset: { status: 'Active', assets: [{ asset_id: 'asset-ready', status: 'Active' }] },
+  });
+  assert.strictEqual(registry['deyunai/doubao-seedance-2-0-260128'].private_asset.state, 'supported');
+  assert.strictEqual(artifactWorkflow.activePrivateAssetEvidence({ status: 'Pending', asset_id: 'asset-pending' }), null);
+}
+
 function testPrivacyFailureBlocksOnlySameDirectFirstFrameInput() {
   const plan = {
     blockers: [], status: 'ready', zero_cost_action_count: 0,
@@ -217,5 +233,6 @@ function testPrivacyFailureBlocksOnlySameDirectFirstFrameInput() {
 testAttemptClaimAndAppendOnlyEvents();
 testCurrentAndLastProjection();
 testCapabilityGateNeverUsesMutationAsProbe();
+testActiveTaskAssetIsReadOnlyCapabilityEvidence();
 testPrivacyFailureBlocksOnlySameDirectFirstFrameInput();
 console.log('new story ad video attempt and provider capability tests: ok');
