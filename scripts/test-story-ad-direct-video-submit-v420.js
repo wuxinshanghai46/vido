@@ -56,7 +56,7 @@ async function uiTest() {
   let pending = new Promise(r => { resolve = r; });
   const button = { dataset: {}, addEventListener: (_event, fn) => { handler = fn; } };
   const host = { innerHTML: '', querySelectorAll: () => [], querySelector: selector => selector === '[data-generate-video]' ? button : null };
-  const ui = { bindVideoGenerationFeedback: () => () => {}, emptyState: x => JSON.stringify(x), escapeHtml: String, mediaPreview: () => '', bindMoreMedia: () => {}, moreMediaButton: () => '', loadGenerationModelPicker: async () => ({ html: '' }), bindGenerationModelPicker: () => () => route, setButtonBusy: () => {}, toast: (...args) => messages.push(args) };
+  const ui = { bindVideoGenerationFeedback: () => () => {}, emptyState: x => JSON.stringify(x), escapeHtml: String, mediaCard: () => '', clipReviewState: (clips, count) => ({ passed: [], failed: [], ready: false, action: clips.length ? `继续生成分镜视频（${count}）` : '生成分镜视频' }), bindMoreMedia: () => {}, moreMediaButton: () => '', loadGenerationModelPicker: async () => ({ html: '' }), bindGenerationModelPicker: () => () => route, setButtonBusy: () => {}, toast: (...args) => messages.push(args) };
   vm.createContext(ui); vm.runInContext(read('public/story-ad/views/finalView.js').replace(/^import .*;\r?\n/gm, '').replace(/export /g, '') + '\nglobalThis.render = mount;', ui);
   const context = { bundle: { project: { id: base.task_id }, storyboard: { shots: [{}] }, generation: { approved_frames: [{}] } }, refreshShell: async () => {}, store: { startVideo: async options => { assert.equal(options.video_model_route, route); submitted++; return pending; } } };
   await ui.render(host, context);
