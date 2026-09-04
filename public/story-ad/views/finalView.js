@@ -70,7 +70,7 @@ export async function mount(host, context) {
       toast('视频提交未完成。', 'danger');
       const target = host.querySelector('[data-video-submit-feedback]');
       if (target) target.innerHTML = `<section class="project-generation-progress is-failed"><b>视频提交未完成</b><p>请核对上方任务状态；若仍在生成中，请勿重复提交。</p>${bundle.permissions?.can_view_errors === true ? `<details><summary>具体失败原因（授权账号可见）</summary><p>${escapeHtml(error.message)}</p></details>` : ''}</section>`;
-      try { await store.refreshSections?.('summary'); } catch { /* Keep the submission result visible when status refresh is unavailable. */ }
+      try { await store.refreshSections?.('summary'); } catch {}
     } finally { delete button.dataset.submitting; setButtonBusy(button, false); }
   });
   const disposeFeedback = bindVideoGenerationFeedback(host, context, escapeHtml);
