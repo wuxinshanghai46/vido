@@ -1,7 +1,7 @@
-import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260904-production-v436';
-import { bindMoreMedia, moreMediaButton } from './finalMediaPagination.js?v=20260904-production-v436';
-import { bindGenerationModelPicker, loadGenerationModelPicker } from './generationModelPicker.js?v=20260904-production-v436';
-import { clipReviewState, mediaCard } from './clipReviewPresentation.js?v=20260904-production-v436';
+import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260904-production-v437';
+import { bindMoreMedia, moreMediaButton } from './finalMediaPagination.js?v=20260904-production-v437';
+import { bindGenerationModelPicker, loadGenerationModelPicker } from './generationModelPicker.js?v=20260904-production-v437';
+import { clipReviewState, mediaCard } from './clipReviewPresentation.js?v=20260904-production-v437';
 
 function finalVideoUrl(item = {}) { return item.video_url || item.videoUrl || item.url || ''; }
 
