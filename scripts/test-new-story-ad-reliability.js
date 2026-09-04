@@ -639,8 +639,10 @@ async function main() {
     cast_mode: 'no_human',
   });
   const planPublication = require('../src/services/newStoryAd/assetPlanPublicationService');
+  const planFingerprint = require('../src/services/newStoryAd/assetPlanService')
+    .fingerprint(storage.getTask(planCarryTask.id), storage.getOutput(planCarryTask.id, 'context'));
   planPublication.publish(planCarryTask.id, { cast_profiles: [], scene_plan: { spaces: [] } }, {
-    fingerprint: 'unchanged-upstream-input',
+    fingerprint: planFingerprint,
     source: 'reliability_test',
   });
   service.updateBlueprint(planCarryTask.id, {
@@ -650,7 +652,7 @@ async function main() {
   const carriedPlan = planPublication.activeRecord(planCarryTask.id);
   assert.equal(carriedPlan.content_revision, storage.getTask(planCarryTask.id).content_revision);
   assert.equal(carriedPlan.plan.content_revision, storage.getTask(planCarryTask.id).content_revision);
-  assert.equal(planPublication.eligibility(planCarryTask.id, { fingerprint: 'unchanged-upstream-input' }).eligible, true);
+  assert.equal(planPublication.eligibility(planCarryTask.id, { fingerprint: planFingerprint }).eligible, true);
 
   let resumedCheckpoint = null;
   const resumedStoryboard = await storyboardTable.generateStoryboardTable({
