@@ -34,12 +34,13 @@ assert.deepEqual(items[0].qa_failure_labels_zh, ['旁白声音不合格', '动�
 
 const root = path.join(__dirname, '..');
 const finalView = fs.readFileSync(path.join(root, 'public/story-ad/views/finalView.js'), 'utf8');
+const clipPresentation = fs.readFileSync(path.join(root, 'public/story-ad/views/clipReviewPresentation.js'), 'utf8');
 const theme = fs.readFileSync(path.join(root, 'public/story-ad/dialogue-theme.css'), 'utf8');
 const service = fs.readFileSync(path.join(root, 'src/services/newStoryAd/storyAdService.js'), 'utf8');
-assert(finalView.includes('controls: isVideo'), '分镜视频必须提供完整播放控件，而非仅静音悬停');
-assert(finalView.includes('const clipsReady = shots.length > 0 && passedClips.length >= shots.length;'));
+assert(clipPresentation.includes('controls: isVideo'), '分镜视频必须提供完整播放控件，而非仅静音悬停');
+assert(clipPresentation.includes('ready: shotCount > 0 && passed.length >= shotCount'));
 assert(finalView.includes('审片通过 ${passedClips.length}/${shots.length}'));
-assert(finalView.includes('重新生成未通过镜头'));
+assert(clipPresentation.includes('重新生成未通过镜头'));
 assert(!finalView.includes("${clips.length && !finalVideo ? '<button class=\"btn primary\" type=\"button\" data-compose>"), '存在失败片段时不能出现合成按钮');
 assert(theme.includes('#storyAdApp .btn{display:inline-flex;min-width:112px;min-height:42px'));
 assert(theme.includes('.generation-card.is-video .generation-media video.media'));

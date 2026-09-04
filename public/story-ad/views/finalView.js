@@ -1,22 +1,7 @@
-import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260904-production-v427';
+import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260904-production-v427';
 import { bindMoreMedia, moreMediaButton } from './finalMediaPagination.js?v=20260904-production-v427';
 import { bindGenerationModelPicker, loadGenerationModelPicker } from './generationModelPicker.js?v=20260904-production-v427';
-
-function itemIndex(item = {}, index = 0) {
-  const value = Number(item.shot_index ?? item.shotIndex ?? item.index);
-  return Number.isFinite(value) ? (value === index ? index + 1 : value) : index + 1;
-}
-
-function mediaCard(item, index, kind) {
-  const number = itemIndex(item, index);
-  const isVideo = kind === '视频' || item.media_type === 'video' || Boolean(item.video_url || item.videoUrl);
-  const failed = item.qa_pass === false || item.status === 'qa_failed' || item.qa_status === 'failed';
-  const passed = item.qa_pass === true || item.status === 'qa_passed' || item.qa_status === 'passed';
-  const status = failed ? '审片未通过' : (passed ? '审片通过' : (item.status || item.qa_status || '已生成'));
-  const reasons = failed && Array.isArray(item.qa_failure_labels_zh) && item.qa_failure_labels_zh.length
-    ? `<small>${item.qa_failure_labels_zh.map(escapeHtml).join(' · ')}</small>` : '';
-  return `<article class="generation-card card${isVideo ? ' is-video' : ''}${failed ? ' is-review-failed' : ''}"><div class="generation-media">${mediaPreview(item, { label: `${kind} ${number}`, width: 640, symbol: kind, controls: isVideo })}</div><div class="generation-copy"><div><b>SH${String(number).padStart(2, '0')}</b>${reasons}</div><span>${escapeHtml(status)}</span></div></article>`;
-}
+import { clipReviewState, mediaCard } from './clipReviewPresentation.js?v=20260904-production-v427';
 
 function finalVideoUrl(item = {}) { return item.video_url || item.videoUrl || item.url || ''; }
 
@@ -33,10 +18,10 @@ export async function mount(host, context) {
   const shots = bundle?.storyboard?.shots || [];
   const approvedFrames = Array.isArray(generation.approved_frames) ? generation.approved_frames : [];
   const clips = Array.isArray(generation.clips) ? generation.clips : [];
-  const passedClips = clips.filter(item => item.qa_pass === true || item.status === 'qa_passed' || item.qa_status === 'passed');
-  const failedClips = clips.filter(item => item.qa_pass === false || item.status === 'qa_failed' || item.qa_status === 'failed');
+  const clipReview = clipReviewState(clips, shots.length);
+  const passedClips = clipReview.passed, failedClips = clipReview.failed;
   const framesReady = shots.length > 0 && approvedFrames.length >= shots.length;
-  const clipsReady = shots.length > 0 && passedClips.length >= shots.length;
+  const clipsReady = clipReview.ready;
   const storyboardComplete = bundle?.storyboard?.image_gate?.ready === true;
   const storyboardAction = storyboardComplete ? '返回分镜页确认' : '返回人物场景分镜生成首帧';
   const storyboardHint = storyboardComplete ? '分镜图片已齐全，请返回分镜页确认后继续，无需重新生成图片。' : '请返回分镜页逐镜生成或重绘，然后确认镜头设计。';
@@ -44,14 +29,11 @@ export async function mount(host, context) {
   const posterUrl = finalVideo?.poster_url || finalVideo?.thumbnail_url || approvedFrames.find(item => item.thumbnail_url || item.image_url || item.imageUrl)?.thumbnail_url || approvedFrames.find(item => item.image_url || item.imageUrl)?.image_url || '';
   const mediaCatalog = generation.media_catalog || {};
   const videoModelPicker = await loadGenerationModelPicker(bundle.project.id, 'new_story_ad.video', { label: '视频模型' });
-  const generationAction = failedClips.length
-    ? `重新生成未通过镜头（${failedClips.length}）`
-    : (clips.length ? `继续生成分镜视频（${Math.max(0, shots.length - passedClips.length)}）` : '生成分镜视频');
   const primaryAction = !framesReady && !finalVideo
     ? `<button class="btn primary" type="button" data-back-storyboard>${storyboardAction}</button>`
     : (framesReady && !finalVideo && clipsReady
       ? '<button class="btn primary" type="button" data-compose>合成初版成片</button>'
-      : (framesReady && !finalVideo ? `${videoModelPicker.html}<button class="btn primary" type="button" data-generate-video>${generationAction}</button>` : ''));
+      : (framesReady && !finalVideo ? `${videoModelPicker.html}<button class="btn primary" type="button" data-generate-video>${clipReview.action}</button>` : ''));
   host.innerHTML = `
     <section class="view-head post-production-head"><div><span class="stage-kicker">第 6 步</span><h1>视频与合成</h1><p>使用已确认分镜生成逐镜视频；全部镜头审片通过后才能合成为初版成片。本页不提供剪辑。</p></div><div class="view-actions">${primaryAction}${finalVideo ? '<button class="btn primary" type="button" data-open-editor>进入成片剪辑</button>' : ''}</div></section>
     <div data-video-feedback-host></div>
