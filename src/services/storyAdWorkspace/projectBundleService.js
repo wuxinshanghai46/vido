@@ -432,16 +432,29 @@ function buildProjectBundle(taskId, { sections = '', user = {} } = {}) {
     video_submission_failure: failureProjection.submissionFailure(storage.getStage(taskId, 'video_submission'), canViewErrors),
     ...(failure.technical_diagnostics ? { technical_diagnostics: failure.technical_diagnostics } : {}),
   };
-  const projectedProps = include('assets') ? propAssets(outputs, context) : [];
-  const projectedAssets = include('assets') ? {
+  const countAssetsForPartialWorkspace = !requested.size
+    || include('assets')
+    || [...requested].some(section => !['summary', 'reference'].includes(section));
+  const projectedProps = countAssetsForPartialWorkspace ? propAssets(outputs, context) : [];
+  const projectedScenesForCounts = countAssetsForPartialWorkspace
+    ? sceneAssets(outputs, context, { sceneWorldOverrides: storage.getOutput(taskId, 'scene_world_overrides') || {} })
+    : [];
+  const persistedScenesForCounts = countAssetsForPartialWorkspace
+    ? (list(outputs.scene_assets).length ? list(outputs.scene_assets) : list(storage.getOutput(taskId, 'scene_assets')))
+    : [];
+  const countableAssets = countAssetsForPartialWorkspace ? {
     people: subjectCheckpointProjection.mergePeople(peopleAssets(context, projectedProps), outputs),
     animals: animalAssets(context),
     products: productAssets(context),
     logos: logoAssets(context),
     props: projectedProps,
-    scenes: sceneAssets(outputs, context, { sceneWorldOverrides: storage.getOutput(taskId, 'scene_world_overrides') || {} }).map(scene => { const promptState = scenePromptConfirmation.project(taskId, scene.id); return { ...scene, generation_prompt: promptState.generation_prompt || scene.generation_prompt, prompt_state: promptState }; }),
+    scenes: persistedScenesForCounts.length ? persistedScenesForCounts : projectedScenesForCounts,
   } : null;
-  const projectedCounts = projectedAssets ? countProjection.projectCounts(projectedAssets, mediaUrl, list)
+  const projectedAssets = include('assets') ? {
+    ...countableAssets,
+    scenes: list(countableAssets?.scenes).map(scene => { const promptState = scenePromptConfirmation.project(taskId, scene.id); return { ...scene, generation_prompt: promptState.generation_prompt || scene.generation_prompt, prompt_state: promptState }; }),
+  } : null;
+  const projectedCounts = countableAssets ? countProjection.projectCounts(countableAssets, mediaUrl, list)
     : { assets: 0, subject_assets: 0, ready_subject_assets: 0, planned_assets: 0, scenes: 0 };
   const navigation = workflowNavigation.build({ task: raw.task, context, outputs, counts: projectedCounts, clean, list });
   const bundle = {

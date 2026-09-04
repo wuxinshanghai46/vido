@@ -176,6 +176,10 @@ async function main() {
   assert(bundle.navigation.counts.assets >= 3, '已生成或已上传资产必须计入侧栏');
   assert.equal(bundle.navigation.counts.subject_assets, 3, '人物资产步骤只能统计人物、动物、商品与 LOGO，不能混入场景和道具');
   assert.equal(bundle.navigation.counts.ready_subject_assets, 3, '已就绪主体资产必须使用与资产中心相同的分类口径');
+  const composeBundle = projectBundles.buildProjectBundle(taskId, { sections: 'summary,shots,media', user: owner });
+  assert.equal(composeBundle.assets, undefined, '视频与合成页不得返回资产详情大域');
+  assert.equal(composeBundle.navigation.counts.subject_assets, 3, '视频与合成页即使不加载资产详情，也必须保留真实主体资产计数');
+  assert.equal(composeBundle.navigation.counts.scenes, 1, '视频与合成页即使不加载资产详情，也必须保留真实场景计数');
   assert.equal(bundle.project.content_mode, 'commercial_subject', '项目列表摘要必须携带内容类型');
   assert.equal(bundle.project.content_mode_source, 'user', '项目列表摘要必须保留内容类型来源');
 
