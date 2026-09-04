@@ -46,7 +46,7 @@ async function main() {
   await stale;
   assert.equal(raced.state.bundle.brief.shot_design_confirmed, true, 'late pre-confirmation prefetch cannot overwrite confirmation');
   assert.equal(raced.state.bundle.generation.approved_frames.length, 7);
-  const ui = { bindVideoGenerationFeedback: () => () => {}, emptyState: x => JSON.stringify(x), escapeHtml: String, mediaPreview: () => '', bindMoreMedia: () => {}, moreMediaButton: () => '', loadGenerationModelPicker: async () => ({ html: '' }), bindGenerationModelPicker: () => () => '' };
+  const ui = { bindVideoGenerationFeedback: () => () => {}, emptyState: x => JSON.stringify(x), escapeHtml: String, mediaCard: () => '', clipReviewState: () => ({ passed: [], failed: [], ready: false, action: '生成分镜视频' }), bindMoreMedia: () => {}, moreMediaButton: () => '', loadGenerationModelPicker: async () => ({ html: '' }), bindGenerationModelPicker: () => () => '' };
   vm.createContext(ui); vm.runInContext(source('public/story-ad/views/finalView.js') + '\nglobalThis.render = mount;', ui);
   const host = { innerHTML: '', querySelectorAll: () => [], querySelector: () => null };
   await ui.render(host, { bundle: { project: { id }, storyboard: { shots: frameRows, image_gate: { ready: true } }, brief: { shot_design_confirmed: false }, generation: { approved_frames: [] } }, store: {} });
