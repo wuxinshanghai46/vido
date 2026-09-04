@@ -97,6 +97,48 @@ const videoQa = require('../src/services/newStoryAd/videoFrameQaService');
   assert.strictEqual(qa.frames.length, 5);
   assert.deepEqual(qa.frames.map(frame => frame.point), [0, 0.25, 0.5, 0.75, 1]);
   assert(qa.frames.every(frame => fs.existsSync(frame.file_path)));
+  const boundedVisionInputs = videoQa.buildClipReviewVisionInputs([
+    { role: 'approved_keyframe', url: 'https://test.invalid/keyframe.jpg' },
+    { role: 'person_identity', url: 'https://test.invalid/person.jpg' },
+    { role: 'product_identity', url: 'https://test.invalid/product.jpg' },
+    { role: 'pet_identity', url: 'https://test.invalid/pet-1.jpg' },
+    { role: 'pet_identity', url: 'https://test.invalid/pet-2.jpg' },
+  ], qa.frames, 8);
+  assert.strictEqual(boundedVisionInputs.image_urls.length, 8);
+  assert.strictEqual(boundedVisionInputs.manifest.reference_images.length, 3, 'identity references must yield capacity to all five temporal samples');
+  assert.deepStrictEqual(boundedVisionInputs.manifest.clip_samples.map(item => item.sample_index), [0, 1, 2, 3, 4]);
+  assert.deepStrictEqual(boundedVisionInputs.manifest.clip_samples.map(item => item.time_sec), qa.frames.map(item => Number(item.second.toFixed(3))));
+  let temporalPrompt = '', temporalImageUrls = [];
+  process.env.NEW_STORY_AD_MOCK_LLM = '0';
+  const manifestQa = await videoQa.reviewVideoClip({
+    taskId: 'video-qa-explicit-sample-manifest',
+    clip: { file_path: clipPath, duration_sec: 2 },
+    shot: {
+      title: '动作三阶段', action: '人物从起点走到终点并停下',
+      temporal_evidence: { shot_state: { state_before: ['位于起点'], state_after: ['停在终点'] } },
+    },
+    contract: {}, ctx: { cast_mode: 'no_human', assets: [] }, index: 0,
+    gateway: { generateVision: async request => {
+      temporalPrompt = request.userPrompt;
+      temporalImageUrls = request.imageUrls;
+      const sampleTimes = JSON.parse(temporalPrompt.match(/Image input manifest: (\{.*\})\nThe manifest is authoritative\./)[1]).clip_samples.map(item => item.time_sec);
+      return { text: JSON.stringify({
+        pass: true, person_pass: true, product_pass: true, scene_pass: true, action_pass: true,
+        people_count_pass: true, unexpected_people_added: false, unexpected_animals_added: false,
+        text_watermark_pass: true, anatomy_physics_pass: true, temporal_stability_pass: true,
+        rendering_intent_pass: true, problems: [], evidence_checks: {
+          state_transition: { pass: true, evidence: '起点、移动过程与终点停稳均可见', frame_indexes: [0, 2, 4], time_sec: [sampleTimes[0], sampleTimes[2], sampleTimes[4]] },
+        },
+      }), used_model: 'test/vision' };
+    } },
+    repair: { parseOrRepair: async ({ raw }) => JSON.parse(raw) },
+  });
+  assert.strictEqual(manifestQa.pass, true);
+  assert.match(temporalPrompt, /Never use the overall image_position as frame_indexes/);
+  assert.strictEqual(temporalImageUrls.length, 5, 'all five clip samples must reach vision QA when no references exist');
+  assert.deepStrictEqual(manifestQa.evidence_checks.state_transition.frame_indexes, [0, 2, 4]);
+  assert.strictEqual(manifestQa.evidence_checks.state_transition.observed_evidence_points, 3);
+  process.env.NEW_STORY_AD_MOCK_LLM = '1';
   const mismatchedDurationQa = await videoQa.reviewVideoClip({
     taskId: 'video-qa-mismatched-duration',
     clip: { file_path: clipPath, duration_sec: 12 },
