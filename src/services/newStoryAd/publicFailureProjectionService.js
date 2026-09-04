@@ -69,11 +69,45 @@ function taskFailureMessage(task = {}, clean = normalize) {
   return publicFailureMessage(task.error, clean);
 }
 
+function authorizedFailureMessage(code = '', message = '') {
+  const source = `${normalize(code, 160)} ${normalize(message, 1800)}`.toLowerCase();
+  if (!source.trim()) return '';
+  if (/(?:insufficient[_\s-]?quota|provider_billing|余额不足|额度不足|余额、额度|billing|payment|required credits?|not enough credits?)/i.test(source)) {
+    return '当前视频供应商余额或额度不足，视频任务未能开始。请联系管理员补充额度，或选择其他可用模型。';
+  }
+  if (/(?:organization[_\s-]?access[_\s-]?denied|access[_\s-]?denied|未开通(?:模型)?能力|无访问权限)/i.test(source)) {
+    return '当前视频供应商账号未开通该模型能力或无访问权限，请联系管理员处理。';
+  }
+  if (/(?:invalid[_\s-]?api[_\s-]?key|api\s*key.{0,16}(?:无效|缺失)|令牌无效|unauthorized|\b401\b)/i.test(source)) {
+    return '当前视频供应商 API Key 无效或缺失，请联系管理员更新配置。';
+  }
+  if (/(?:rate[_\s-]?limit[_\s-]?exceeded|rate[_\s-]?limit|限流|too many requests|\b429\b)/i.test(source)) {
+    return '当前视频供应商请求已触发限流，请稍后重试。';
+  }
+  if (/(?:video[_\s-]?upstream[_\s-]?unavailable|upstream.{0,12}unavailable|上游暂不可用|\b502\b)/i.test(source)) {
+    return '当前视频供应商上游暂不可用，请稍后重试。';
+  }
+  if (/(?:video[_\s-]?task[_\s-]?not[_\s-]?found|任务不存在|任务已被删除|\b404\b)/i.test(source)) {
+    return '供应商侧未找到对应视频任务，任务可能不存在或已被删除。';
+  }
+  if (/(?:\bconflict\b|状态不允许|\b409\b)/i.test(source)) {
+    return '供应商侧任务当前状态不允许该操作，请刷新状态后重试。';
+  }
+  if (/(?:invalid[_\s-]?request|\bbadrequest\b|参数或状态不合法|请求参数错误|\b400\b)/i.test(source)) {
+    return '供应商拒绝了当前请求：参数或任务状态不合法，请联系管理员核对配置。';
+  }
+  if (/(?:video[_\s-]?internal[_\s-]?error|provider_5xx|internalservererror|服务内部错误|\b5\d\d\b)/i.test(source)) {
+    return '当前视频供应商服务内部错误，请稍后重试。';
+  }
+  return '';
+}
+
 function project(task = {}, { isAdmin = false, clean = normalize } = {}) {
   const public_error = taskFailureMessage(task, clean);
   const generation_progress = publicProgress(task.generation_progress, clean);
   const technical_diagnostics = isAdmin ? {
     error: clean(task.error, 1200), error_code: clean(task.error_code, 100),
+    operator_error: authorizedFailureMessage(task.error_code, task.error),
     support_id: clean(task.support_id || task.generation_progress?.support_id, 120),
     generation_progress: task.generation_progress && typeof task.generation_progress === 'object' ? task.generation_progress : null,
   } : null;
@@ -94,7 +128,7 @@ function submissionFailure(record, canViewErrors = false, { activePlanEligible =
   if (!record?.finished_at || record.status !== 'failed') return null;
   const errorCode = normalize(record.diagnostics?.error_code || record.error_code, 100).toUpperCase();
   if (activePlanEligible && ['GENERATION_ACTIVE_PLAN_REQUIRED', 'GENERATION_RELEASE_SYNC_BLOCKED'].includes(errorCode)) return null;
-  return { finished_at: record.finished_at, error: '视频生成失败。', ...(canViewErrors ? { technical_diagnostics: { error: normalize(record.error, 1200), error_code: normalize(record.diagnostics?.error_code || record.error_code, 100) } } : {}) };
+  return { finished_at: record.finished_at, error: '视频生成失败。', ...(canViewErrors ? { technical_diagnostics: { error: normalize(record.error, 1200), error_code: normalize(record.diagnostics?.error_code || record.error_code, 100), operator_error: authorizedFailureMessage(record.diagnostics?.error_code || record.error_code, record.error) } } : {}) };
 }
 
-module.exports = { submissionFailure, taskFailureMessage, project, publicErrorCode, publicFailureMessage, publicProgress, publicStage, publicTask, withoutSupportId };
+module.exports = { authorizedFailureMessage, submissionFailure, taskFailureMessage, project, publicErrorCode, publicFailureMessage, publicProgress, publicStage, publicTask, withoutSupportId };

@@ -118,6 +118,7 @@ export function videoGenerationFeedback(bundle = {}) {
   }
   const diagnostics = bundle.permissions?.can_view_errors === true && failed
     ? (rejected ? submission.technical_diagnostics : project.technical_diagnostics) : null;
+  if (failed && diagnostics?.operator_error) message = diagnostics.operator_error;
   return { status, title, message, completed, total, percent: active ? Math.max(2, percent) : percent, active, diagnostics };
 }
 

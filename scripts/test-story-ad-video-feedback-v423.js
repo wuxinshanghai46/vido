@@ -26,6 +26,21 @@ const load=source=>import('data:text/javascript;base64,'+Buffer.from(source).toS
  assert.equal(storage.getStage(base.project.id,'video_submission').error,record.error);
  const ordinary=failure.submissionFailure(record,false),admin=failure.submissionFailure(record,true);
  assert(!JSON.stringify(ordinary).includes('private'));assert.equal(admin.technical_diagnostics.error_code,'INTERNAL_CONFIG');
+ const quotaRaw='供应商诊断：smscrw/doubao-seedance-2.0：HTTP 403 insufficient_quota，organization quota insufficient';
+ const quotaProjected=failure.project({stage:'video_failed',error:quotaRaw,error_code:'VIDEO_ATTEMPTS_EXHAUSTED'},{isAdmin:true});
+ assert.match(quotaProjected.technical_diagnostics.operator_error,/余额或额度不足/);
+ assert.equal(failure.project({stage:'video_failed',error:quotaRaw,error_code:'VIDEO_ATTEMPTS_EXHAUSTED'}).technical_diagnostics,null);
+ const quotaBundle={...base,permissions:{can_view_errors:true},project:{...base.project,technical_diagnostics:quotaProjected.technical_diagnostics}};
+ assert.match(view(quotaBundle).message,/余额或额度不足/);assert.match(html(quotaBundle),/余额或额度不足/);
+ assert(!view({...quotaBundle,permissions:{can_view_errors:false}}).message.includes('余额'));
+ assert.match(failure.authorizedFailureMessage('invalid_api_key','HTTP 401'),/API Key 无效/);
+ assert.match(failure.authorizedFailureMessage('organization_access_denied','HTTP 403'),/未开通该模型能力/);
+ assert.match(failure.authorizedFailureMessage('rate_limit_exceeded','HTTP 429'),/限流/);
+ assert.match(failure.authorizedFailureMessage('video_upstream_unavailable','HTTP 502'),/上游暂不可用/);
+ assert.match(failure.authorizedFailureMessage('video_task_not_found','HTTP 404'),/未找到对应视频任务/);
+ assert.match(failure.authorizedFailureMessage('Conflict','HTTP 409'),/状态不允许/);
+ assert.match(failure.authorizedFailureMessage('BadRequest','HTTP 400'),/参数或任务状态不合法/);
+ assert.match(failure.authorizedFailureMessage('video_internal_error','HTTP 500'),/服务内部错误/);
  const stalePlanRecord=storage.saveStage(base.project.id,'video_submission',{status:'failed',error:'stale plan',diagnostics:{error_code:'GENERATION_ACTIVE_PLAN_REQUIRED'}});
  assert.equal(failure.submissionFailure(stalePlanRecord,false,{activePlanEligible:true}),null);
  assert(failure.submissionFailure(stalePlanRecord,false,{activePlanEligible:false}));
@@ -47,5 +62,5 @@ const load=source=>import('data:text/javascript;base64,'+Buffer.from(source).toS
    assert.equal(result.status,status);assert.equal(result.disabled,disabled);assert.equal(result.empty,empty);assert(!result.text.includes('private'));
   }
  }finally{await browser.close();}
- console.log(JSON.stringify({passed:true,cases:22,browser_transitions:6,model_calls:0}));
+ console.log(JSON.stringify({passed:true,cases:37,browser_transitions:6,model_calls:0}));
 })().catch(e=>{console.error(e);process.exitCode=1});
