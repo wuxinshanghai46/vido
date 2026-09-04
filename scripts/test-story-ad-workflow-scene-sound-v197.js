@@ -38,16 +38,16 @@ const finalSoundDesignView = [
   path.join(__dirname, '../public/story-ad/views/soundDesignFeature.js'),
   path.join(__dirname, '../public/story-ad/controllers/liveAudioPreviewController.js'),
 ].map(file => fs.readFileSync(file, 'utf8')).join('\n');
-assert(app.includes("['brief', 'plot', 'assets', 'scene', 'storyboard', 'sound', 'compose', 'edit', 'workflow']"));
+assert(app.includes("['brief', 'plot', 'assets', 'scene', 'storyboard', 'compose', 'workflow']"));
 assert(app.includes("plot: ['2', '剧情与对白']"));
 assert(app.includes("scene: ['4', '场景世界']"));
 assert(app.includes("storyboard: ['5', '人物场景分镜']"));
-assert(app.includes("sound: ['6', '声音']"));
-assert(app.includes("compose: ['7', '视频与合成']"));
-assert(app.includes("edit: ['8', '成片剪辑']"));
+assert(!app.includes("sound: ['6', '声音']"));
+assert(app.includes("compose: ['6', '视频与合成']"));
+assert(!app.includes("edit: ['8', '成片剪辑']"));
 assert(matrix.includes('data-world-assignment-order'));
 assert(matrix.includes('data-world-assignment-camera'));
-assert(finalSoundView.includes("from './finalSoundDesignView.js"));
+assert(finalSoundView.includes('?view=edit'), '旧声音页只能重定向到独立剪辑器');
 assert(!finalView.includes('data-save-timeline'));
 assert(finalEditView.includes('镜头时间线'));
 assert(finalSoundDesignView.includes('配音与对白'));

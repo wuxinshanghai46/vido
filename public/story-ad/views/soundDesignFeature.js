@@ -52,7 +52,7 @@ export function soundDesignMarkup(soundDesign = {}) {
   const overallPreviewReady = !!activeBgmAsset?.file_url && spokenShots > 0 && readyVoiceTracks === spokenShots;
   const keySoundCount = shots.filter(item => item.auto_recommend_sound).length;
   return `<section class="card generation-section sound-journey-section">
-    <div class="card-head"><div><h2>配音与对白</h2><p>可选：替换当前成片声音。原视频的人声与音乐合在一起，应用时将用这里的配音和音乐整体替换；出镜对白须重新通过口型检查。</p></div><span class="status-badge ${production.approved ? 'success' : 'warning'}">${production.approved ? '声音已确认' : '待试听确认'}</span></div>
+    <div class="card-head"><div><h2>配音与对白</h2><p>可选：替换当前成片声音。旁白/画外音不做口型，只有人物出镜对白才进行口型同步；应用时会用这里的配音和音乐整体替换原声。</p></div><span class="status-badge ${production.approved ? 'success' : 'warning'}">${production.approved ? '声音已确认' : '待试听确认'}</span></div>
     <div class="card-body">
       <div class="guide"><b>当前主流程：</b>选择音色 → 生成并试听配音 → 从页面顶部确认并进入“视频与合成”。背景音乐和场景音效均为可选，不会改变前 5 步内容。</div>
       <div class="voice-setup-panel" data-audio-plan data-has-speech="${spokenShots > 0 ? 'true' : 'false'}">

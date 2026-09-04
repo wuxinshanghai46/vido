@@ -47,7 +47,7 @@ async function main() {
   const root = path.resolve(__dirname, '..');
   const compose = fs.readFileSync(path.join(root, 'src/services/newStoryAd/composeService.js'), 'utf8');
   const soundView = ['finalSoundDesignView.js', 'soundDesignFeature.js'].map(file => fs.readFileSync(path.join(root, 'public/story-ad/views', file), 'utf8')).join('\n');
-  assert(compose.includes('preserveSourceAudio = !unit.clips.some'), '最终混音必须移除口型临时驱动音轨，避免对白重复');
+  assert(compose.includes('preserveSourceAudio = !replaceSourceAudio && !unit.clips.some'), '最终混音必须移除口型临时驱动音轨，避免对白重复');
   assert(soundView.includes('旁白/画外音不做口型') && soundView.includes('只有人物出镜对白才进行口型同步'));
 
   console.log(JSON.stringify({ ok: true, narration_lip_sync: false, mixed_dialogue_driver_tracks: 1, duplicate_dialogue_mix_prevented: true, model_calls: 0 }));

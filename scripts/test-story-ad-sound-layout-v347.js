@@ -32,6 +32,7 @@ function main() {
   assert.strictEqual(soundDesign.shouldAutoRecommend({ ambient_sound: 'room tone', sfx: [] }), false);
   assert.strictEqual(soundDesign.shouldAutoRecommend({ ambient_sound: 'room tone', sfx: ['door close'] }), true);
 
+  storage.saveOutput(taskId, 'final_video', { video_url: '/test/final.mp4' });
   audioProduction.savePlan(taskId, { include_voiceover: true, voice_id: '' });
   const confirmed = audioProduction.confirm(taskId);
   assert.strictEqual(confirmed.approved, true, '不采用场景音效和背景音乐也必须可以确认声音并继续');
@@ -45,9 +46,10 @@ function main() {
     path.join(root, 'public/story-ad/controllers/liveAudioPreviewController.js'),
   ].map(file => fs.readFileSync(file, 'utf8')).join('\n');
   const shell = fs.readFileSync(path.join(root, 'public/story-ad/views/finalSoundView.js'), 'utf8');
+  const editor = fs.readFileSync(path.join(root, 'public/story-ad/views/finalEditView.js'), 'utf8');
   const css = fs.readFileSync(path.join(root, 'public/story-ad/workspace-ux.css'), 'utf8');
   const compose = fs.readFileSync(path.join(root, 'src/services/newStoryAd/composeService.js'), 'utf8');
-  assert(shell.includes('data-confirm-audio'), '确认入口必须位于页面顶部操作区');
+  assert(shell.includes('?view=edit') && editor.includes('data-confirm-audio'), '旧声音入口必须转入独立剪辑器，确认入口只在展开的声音编辑区出现');
   assert(!view.includes('sound-confirm-flow'), '页面底部不得重复放置确认入口');
   assert(view.includes('背景音乐') && view.includes('场景音效') && view.includes('均为可选'), '背景音乐和场景音效必须拆分并明确可选');
   assert(view.includes('[data-auto-recommend="true"]'), '前端只能为标记后的剧情声音主动匹配');
