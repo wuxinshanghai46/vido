@@ -7,6 +7,7 @@ const storage=require('../src/services/newStoryAd/storageService');
 const load=source=>import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));
 (async()=>{
  const ui=await load(read('public/story-ad/components/ui.js'));
+ globalThis.generationElapsedTimeTag=ui.generationElapsedTimeTag;
  const feedback=await load(read('public/story-ad/views/finalView.js').replace(/^import .*;\r?\n/gm,''));
  const base={project:{id:'task-'+ 'a'.repeat(180),status:'failed',stage:'video_failed',generation_progress:{stage:'video',status:'failed',completed:1,failed:1,generated:0,total:7,started_at:'2026-09-03T07:49:13Z'},technical_diagnostics:{error:'private sound configuration error',error_code:'SOUND_GENERATION_MODEL_NOT_ALIGNED'}},storyboard:{shots:Array.from({length:7},()=>({}))},generation:{clips:[],approved_frames:Array.from({length:7},()=>({}))},permissions:{can_view_errors:false}};
  const view=b=>feedback.videoGenerationFeedback(b),html=b=>feedback.videoGenerationFeedbackMarkup(b,ui.escapeHtml);
@@ -56,7 +57,7 @@ const load=source=>import('data:text/javascript;base64,'+Buffer.from(source).toS
  const browser=await require('puppeteer-core').launch({executablePath:chrome,headless:true,args:['--no-sandbox']});
  try{
   const page=await browser.newPage();await page.setContent('<div id="status"></div><div data-video-empty>还没有分镜视频</div><button data-generate-video>生成</button><button data-compose>合成</button>');
-  await page.addScriptTag({content:read('public/story-ad/views/finalView.js').replace(/^import .*;\r?\n/gm,'').replace(/export /g,'')});
+  await page.addScriptTag({content:`const generationElapsedTimeTag=()=>'';\n`+read('public/story-ad/views/finalView.js').replace(/^import .*;\r?\n/gm,'').replace(/export /g,'')});
   for(const [bundle,status,disabled,empty] of [[idle,'idle',false,false],[queued,'running',true,true],[running,'running',true,true],[base,'failed',false,true],[partial,'failed',false,true],[complete,'succeeded',false,true]]){
    const result=await page.evaluate(bundle=>{document.querySelector('#status').innerHTML=videoGenerationFeedbackMarkup(bundle,s=>String(s).replaceAll('<','&lt;'));syncVideoGenerationControls(bundle);return {status:document.querySelector('[data-video-feedback]')?.dataset.videoFeedback||'idle',disabled:document.querySelector('[data-generate-video]').disabled,empty:document.querySelector('[data-video-empty]').hidden,text:document.querySelector('#status').textContent}},bundle);
    assert.equal(result.status,status);assert.equal(result.disabled,disabled);assert.equal(result.empty,empty);assert(!result.text.includes('private'));

@@ -1,15 +1,7 @@
-import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260904-production-v448';
+import { generationElapsedTimeTag, emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260904-production-v448';
 import { bindMoreMedia, moreMediaButton } from './finalMediaPagination.js?v=20260904-production-v448';
 import { bindGenerationModelPicker, loadGenerationModelPicker } from './generationModelPicker.js?v=20260904-production-v448';
-import { clipReviewState, mediaCard } from './clipReviewPresentation.js?v=20260904-production-v448';
-
-function finalVideoUrl(item = {}) { return item.video_url || item.videoUrl || item.url || ''; }
-
-function finalVideoPlayer(item = {}, poster = '') {
-  const url = finalVideoUrl(item);
-  if (!url) return '<div class="media-placeholder final-video-empty"><span>成片文件尚未就绪</span></div>';
-  return `<video class="final-video" src="${escapeHtml(url)}" poster="${escapeHtml(poster)}" controls preload="none" playsinline aria-label="初版成片">您的浏览器暂不支持视频播放。</video>`;
-}
+import { clipReviewState, finalVideoPlayer, finalVideoUrl, mediaCard } from './clipReviewPresentation.js?v=20260904-production-v448';
 
 export async function mount(host, context) {
   const { bundle, store } = context;
@@ -127,7 +119,8 @@ export function videoGenerationFeedbackMarkup(bundle, escapeHtml) {
   if (view.status === 'idle') return '';
   const details = view.diagnostics?.error ? `<details data-authorized-error-details><summary>具体失败原因（授权账号可见）</summary><p>${escapeHtml(view.diagnostics.error)}</p><small>${escapeHtml(view.diagnostics.error_code || '')}</small></details>` : '';
   const progress = view.active ? `<div class="project-progress-track ${view.percent <= 2 ? 'is-indeterminate' : ''}" aria-hidden="true"><i style="width:${view.percent}%"></i></div>` : '';
-  return `<section class="project-generation-progress ${view.status === 'failed' ? 'is-failed' : ''}" data-video-feedback="${view.status}" role="${view.status === 'failed' ? 'alert' : 'status'}" aria-live="polite"><div class="project-progress-head"><div><b>${escapeHtml(view.title)}</b><span>视频成功 ${view.completed}/${view.total}${view.active ? ` · ${view.percent}%` : ''}</span></div></div>${progress}<p>${escapeHtml(view.message)}</p>${details}</section>`;
+  const elapsed = generationElapsedTimeTag(bundle.project, view.active);
+  return `<section class="project-generation-progress ${view.status === 'failed' ? 'is-failed' : ''}" data-video-feedback="${view.status}" role="${view.status === 'failed' ? 'alert' : 'status'}" aria-live="polite"><div class="project-progress-head"><div><b>${escapeHtml(view.title)}</b><span>视频成功 ${view.completed}/${view.total}${view.active ? ` · ${view.percent}%` : ''}</span></div><span class="project-progress-stats">${elapsed}</span></div>${progress}<p>${escapeHtml(view.message)}</p>${details}</section>`;
 }
 
 export function syncVideoGenerationControls(bundle, scope = document) {

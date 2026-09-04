@@ -35,10 +35,11 @@ function inlineJobProgress(production = {}) {
   const jobs = [production.provider_sync, production.dossier_job, production.candidate_job].filter(Boolean);
   const job = jobs.find(row => ['queued', 'running', 'cancelling'].includes(String(row.status || '').toLowerCase())) || jobs[0] || {};
   const progress = Math.max(0, Math.min(100, Number(job.progress || 0) || 0));
+  const active = ['queued', 'running', 'cancelling'].includes(String(job.status || '').toLowerCase());
   const started = job.started_at || job.created_at || production.updated_at || '';
   return `<section class="inline-asset-progress" data-person-progress>
     <div><b>${escapeHtml(job.phase || '等待下一步')}</b><strong>${progress}%</strong></div>
-    <div class="progress-track"><i style="width:${progress}%"></i></div>
+    <div class="progress-track ${active && progress <= 2 ? 'is-indeterminate' : ''}"><i style="width:${progress}%"></i></div>
     ${started ? `<small data-elapsed-started-at="${escapeHtml(started)}" data-elapsed-prefix="已耗时">已耗时 0分00秒</small>` : ''}
     ${job.error?.message ? `<p class="error-text">${escapeHtml(job.error.message)}</p>` : ''}
   </section>`;

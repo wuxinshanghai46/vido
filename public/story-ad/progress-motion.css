@@ -1,0 +1,46 @@
+.project-progress-track i,
+.person-plan-inline-progress i,
+.inline-asset-progress .progress-track i {
+  position: relative;
+  overflow: hidden;
+}
+
+.project-progress-track i::after,
+.person-plan-inline-progress i::after,
+.inline-asset-progress .progress-track i::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  width: 46%;
+  transform: translateX(-140%);
+  background: linear-gradient(90deg, transparent, rgb(255 255 255 / 58%), transparent);
+  animation: vido-progress-sheen 1.25s linear infinite;
+}
+
+.project-progress-track.is-indeterminate i,
+.person-plan-inline-progress.is-indeterminate i,
+.progress-track.is-indeterminate i {
+  width: 38% !important;
+  animation: vido-progress-travel 1.35s ease-in-out infinite;
+}
+
+@keyframes vido-progress-sheen {
+  to { transform: translateX(320%); }
+}
+
+@keyframes vido-progress-travel {
+  0% { transform: translateX(-110%); }
+  55% { transform: translateX(115%); }
+  100% { transform: translateX(275%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .project-progress-track i,
+  .person-plan-inline-progress i,
+  .inline-asset-progress .progress-track i,
+  .project-progress-track i::after,
+  .person-plan-inline-progress i::after,
+  .inline-asset-progress .progress-track i::after {
+    animation: none !important;
+  }
+}

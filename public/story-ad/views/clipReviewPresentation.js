@@ -1,5 +1,13 @@
 import { escapeHtml, mediaPreview } from '../components/ui.js?v=20260904-production-v448';
 
+export function finalVideoUrl(item = {}) { return item.video_url || item.videoUrl || item.url || ''; }
+
+export function finalVideoPlayer(item = {}, poster = '') {
+  const url = finalVideoUrl(item);
+  if (!url) return '<div class="media-placeholder final-video-empty"><span>成片文件尚未就绪</span></div>';
+  return `<video class="final-video" src="${escapeHtml(url)}" poster="${escapeHtml(poster)}" controls preload="none" playsinline aria-label="初版成片">您的浏览器暂不支持视频播放。</video>`;
+}
+
 function itemIndex(item = {}, index = 0) {
   const value = Number(item.shot_index ?? item.shotIndex ?? item.index);
   return Number.isFinite(value) ? (value === index ? index + 1 : value) : index + 1;

@@ -56,6 +56,15 @@ export function elapsedTimeTag({ startedAt = '', finishedAt = '', active = false
   return `<em class="elapsed-time" data-elapsed-started-at="${escapeHtml(startedAt)}" data-elapsed-finished-at="${escapeHtml(active ? '' : finishedAt)}" data-elapsed-prefix="${prefix}">${prefix} ${formatElapsedText(elapsed)}</em>`;
 }
 
+export function generationElapsedTimeTag(project = {}, active = false) {
+  const progress = project.generation_progress || {};
+  return elapsedTimeTag({
+    startedAt: progress.started_at || project.generation_started_at || project.generation_queued_at,
+    finishedAt: progress.finished_at || project.generation_finished_at || project.updated_at,
+    active,
+  });
+}
+
 export function refreshElapsedLabels(scope = document, nowMs = Date.now()) {
   scope.querySelectorAll?.('[data-elapsed-started-at]').forEach(element => {
     const elapsed = elapsedMilliseconds(element.dataset.elapsedStartedAt, element.dataset.elapsedFinishedAt, nowMs);
@@ -304,7 +313,7 @@ export function generationProgressPanel(bundle = {}, currentView = '') {
   const outcomeCounts = view.failedCount > 0 ? ` · 成功 ${view.succeededCount}，失败 ${view.failedCount}` : '';
   return `<section class="project-generation-progress ${view.failed ? 'is-failed' : ''}" role="status" aria-live="polite">
     <div class="project-progress-head"><div><b>${escapeHtml(view.failed ? `${view.stageLabel}需要处理` : `正在生成${view.stageLabel}`)}</b><span>处理进度 ${view.processed}/${view.total} ${escapeHtml(view.unitLabel)}${outcomeCounts} · ${escapeHtml(view.liveText)}</span></div><span class="project-progress-stats">${elapsedTimeTag({ startedAt: view.startedAt, finishedAt: view.finishedAt, active: view.active })}<strong>处理进度 ${view.percent}%</strong></span></div>
-    <div class="project-progress-track" aria-hidden="true"><i style="width:${view.percent}%"></i></div>${laneRows}
+    <div class="project-progress-track ${view.percent <= 2 ? 'is-indeterminate' : ''}" aria-hidden="true"><i style="width:${view.percent}%"></i></div>${laneRows}
     <div class="project-progress-foot"><small>${escapeHtml(view.message)}</small>${view.active ? `<button class="btn small danger" type="button" data-cancel-generation data-generation-id="${escapeHtml(view.generationId)}">停止生成</button>` : ''}</div>
   </section>`;
 }
@@ -315,6 +324,7 @@ export function syncInlineGenerationProgress(bundle = {}, scope = document) {
     const active = Boolean(view?.active && allowed); host.hidden = !active;
     if (!active) return;
     const percent = Math.max(2, Math.min(99, Number(view.percent || 0))); host.setAttribute('aria-valuenow', String(percent));
+    host.classList.toggle('is-indeterminate', percent <= 2);
     const fill = host.querySelector('i'); if (fill) fill.style.width = `${percent}%`;
     const label = host.querySelector('[data-person-plan-progress-label]'); if (label) label.textContent = `${percent}% · ${view.liveText || '正在处理'}`;
   });
@@ -324,8 +334,13 @@ export function syncInlineGenerationProgress(bundle = {}, scope = document) {
     if (!active) return;
     const percent = Math.max(2, Math.min(99, Number(view.percent || 0)));
     host.setAttribute('aria-valuenow', String(percent));
+    host.querySelector('.project-progress-track')?.classList.toggle('is-indeterminate', percent <= 2);
     const fill = host.querySelector('i'); if (fill) fill.style.width = `${percent}%`;
     const label = host.querySelector('[data-tts-progress-label]'); if (label) label.textContent = `${view.completed}/${view.total} 段 · ${view.liveText || '正在生成配音'}`;
+    const elapsed = host.querySelector('[data-tts-progress-elapsed]'); if (elapsed) {
+      elapsed.dataset.elapsedStartedAt = view.startedAt || new Date().toISOString(); elapsed.dataset.elapsedPrefix = '已耗时';
+      elapsed.textContent = `已耗时 ${formatElapsedText(elapsedMilliseconds(elapsed.dataset.elapsedStartedAt) || 0)}`;
+    }
     const value = host.querySelector('[data-tts-progress-value]'); if (value) value.textContent = `${percent}%`;
   });
 }
