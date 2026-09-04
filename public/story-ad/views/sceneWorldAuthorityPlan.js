@@ -1,5 +1,5 @@
-import { escapeHtml as esc } from '../components/ui.js?v=20260904-production-v471';
-import { list } from './sceneWorldData.js?v=20260904-production-v471';
+import { escapeHtml as esc } from '../components/ui.js?v=20260904-production-v472';
+import { list } from './sceneWorldData.js?v=20260904-production-v472';
 
 const value = (row, keys) => keys.map(key => row?.[key]).find(item => item !== undefined && item !== null && item !== '');
 export function normalizedLayoutPoint(input) {
