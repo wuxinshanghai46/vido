@@ -22,6 +22,7 @@ const gateway = require('../src/services/newStoryAd/modelGateway');
 const storage = require('../src/services/newStoryAd/storageService');
 const publication = require('../src/services/newStoryAd/assetPlanPublicationService');
 const permit = require('../src/services/newStoryAd/generationPermitService');
+const assetPlan = require('../src/services/newStoryAd/assetPlanService');
 const releaseBundle = require('../src/services/storyAdReleaseBundleService');
 const releaseFiles = require('./lib/storyAdReleaseFiles');
 
@@ -221,14 +222,15 @@ async function main() {
   assert.equal(publication.eligibility(taskId, { fingerprint: 'legacy-only' }).eligible, false, '旧 asset_plan 投影不得授权付费流程');
   assert.throws(() => permit.issue(taskId, 'scene_asset', { idempotencyKey: 'legacy' }), error => error?.code === 'GENERATION_ACTIVE_PLAN_REQUIRED');
 
-  const active = publication.publish(taskId, compiled, { fingerprint: 'current-input', source: 'platform-v111-test' });
+  const currentFingerprint = assetPlan.fingerprint(storage.getTask(taskId), storage.getOutput(taskId, 'context'));
+  const active = publication.publish(taskId, compiled, { fingerprint: currentFingerprint, source: 'platform-v111-test' });
   assert.equal(active.release_envelope.producer_bundle_id, releaseBundle.identity().bundle_id, 'Active Plan 必须绑定完整 release bundle');
-  const eligibility = publication.eligibility(taskId, { fingerprint: 'current-input' });
+  const eligibility = publication.eligibility(taskId, { fingerprint: currentFingerprint });
   assert.equal(eligibility.eligible, true, eligibility.issues.join(','));
   const issued = permit.issue(taskId, 'scene_asset', { idempotencyKey: 'one-paid-action' });
   assert.equal(permit.consume(taskId, issued).status, 'consumed', '合法 Active Plan 才能消费生成许可');
   storage.updateTask(taskId, { content_revision: 2, status: 'running', stage: 'scene_config' }, { systemFinalization: true });
-  assert.equal(publication.eligibility(taskId, { fingerprint: 'current-input' }).eligible, false, '输入 revision 改变后旧 Active Plan 必须失效');
+  assert.equal(publication.eligibility(taskId, { fingerprint: currentFingerprint }).eligible, false, '输入 revision 改变后旧 Active Plan 必须失效');
   const migrationRun = () => childProcess.spawnSync(process.execPath, [path.join(root, 'scripts/migrate-story-ad-platform-v111.js'), '--apply', '--task', taskId], {
     cwd: root,
     env: process.env,
@@ -288,7 +290,7 @@ async function main() {
     const id = `platform-v111-concurrency-${index}`;
     storage.createTask({ id, brief: `${facts.logline}${index}`, request: context(), status: 'running', stage: 'scene_config', content_revision: 1 });
     storage.saveOutput(id, 'context', context());
-    publication.publish(id, compiled, { fingerprint: `concurrent-${index}`, source: 'concurrency-matrix' });
+    publication.publish(id, compiled, { fingerprint: assetPlan.fingerprint(storage.getTask(id), storage.getOutput(id, 'context')), source: 'concurrency-matrix' });
     const permits = Array.from({ length: 10 }, () => permit.issue(id, 'scene_asset', { idempotencyKey: `one-action-${index}` }));
     assert.equal(new Set(permits.map(item => item.permit_id)).size, 1, '同任务重复点击必须复用同一许可');
     concurrentPlanIds.push(publication.activeRecord(id).plan_id);
