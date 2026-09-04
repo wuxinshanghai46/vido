@@ -75,6 +75,12 @@ async function renderEditor(host, context, options = {}) {
 }
 
 export async function openEditorModal(context) {
+  if (!document.querySelector('[data-story-editor-styles]')) {
+    const styles = document.createElement('style');
+    styles.dataset.storyEditorStyles = 'true';
+    styles.textContent = 'body.story-editor-open{overflow:hidden}.story-editor-modal-backdrop{position:fixed;inset:0;z-index:520;display:grid;place-items:center;padding:24px;background:rgb(2 8 14/78%);backdrop-filter:blur(10px)}.story-editor-modal{width:min(1480px,96vw);height:min(920px,92vh);overflow:hidden;border:1px solid var(--line);border-radius:20px;background:var(--bg);box-shadow:0 28px 100px rgb(0 0 0/55%)}.story-editor-modal-scroll{height:100%;overflow:auto;padding:28px}.story-editor-modal .view-head{margin-top:0}';
+    document.head.appendChild(styles);
+  }
   document.querySelector('[data-story-editor-modal]')?.remove();
   const backdrop = document.createElement('div');
   backdrop.className = 'story-editor-modal-backdrop';

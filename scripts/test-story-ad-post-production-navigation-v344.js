@@ -48,7 +48,7 @@ const soundWorkbench = read('public/story-ad/views/finalSoundDesignView.js') + r
 const css = read('public/story-ad/workspace-ux.css');
 
 assert.match(app, /rawView === 'final' \? 'compose'/, '历史 final 链接必须迁移到合成页');
-assert.match(app, /filter\(view => view !== 'edit'\)/, '剪辑不得作为主流程第7步导航');
+assert.doesNotMatch(app, /VIEW_ORDER\s*=\s*\[[^\]]*['"]edit['"]/, '剪辑不得作为主流程第7步导航');
 assert.match(soundView, /view=edit/);
 assert.match(editView, /soundDesignMarkup/);
 assert.doesNotMatch(soundView, /data-generate-video|data-compose|data-save-timeline/);

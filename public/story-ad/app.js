@@ -15,16 +15,16 @@ await assertCurrentRelease().then(() => startReleaseHeartbeat()).catch(error => 
 
 const app = document.querySelector('#storyAdApp');
 const store = createProjectStore();
-const VIEW_ORDER = ['brief', 'plot', 'assets', 'scene', 'storyboard', 'compose', 'edit', 'workflow'];
+const editorTool = new URLSearchParams(location.search).get('tool') === 'editor'
+  ? await import('./views/editorToolCenter.js?v=20260904-production-v440') : null;
+const VIEW_ORDER = ['brief', 'plot', 'assets', 'scene', 'storyboard', 'compose', 'workflow'];
 const VIEW_META = {
   brief: ['1', '对话立项'],
   plot: ['2', '剧情与对白'],
   assets: ['3', '人物资产'],
   scene: ['4', '场景世界'],
   storyboard: ['5', '人物场景分镜'],
-  sound: ['6', '声音'],
   compose: ['6', '视频与合成'],
-  edit: ['7', '成片剪辑'],
   workflow: ['⌘', '工作流画布'],
 };
 const VIEW_MODULES = {
@@ -33,9 +33,7 @@ const VIEW_MODULES = {
   scene: () => import('./views/sceneWorldPage.js?v=20260904-production-v440'),
   plot: () => import('./views/plotRoomView.js?v=20260904-production-v440'),
   storyboard: () => import('./views/storyboardView.js?v=20260904-production-v440'),
-  sound: () => import('./views/finalSoundView.js?v=20260904-production-v440'),
   compose: () => import('./views/finalView.js?v=20260904-production-v440'),
-  edit: () => import('./views/finalEditView.js?v=20260904-production-v440'),
   workflow: () => import('./views/workflowView.js?v=20260904-production-v440'),
 };
 const VIEW_SECTIONS = Object.freeze({
@@ -44,9 +42,7 @@ const VIEW_SECTIONS = Object.freeze({
   scene: 'summary,assets,shots',
   plot: 'summary,story',
   storyboard: 'summary,assets,story,shots',
-  sound: 'summary,shots,media',
   compose: 'summary,shots,media',
-  edit: 'summary,shots,media',
   workflow: 'summary,reference,assets,story,shots,media,graph',
 });
 function sectionsForView(view = 'brief') { return VIEW_SECTIONS[view] || VIEW_SECTIONS.brief; }
@@ -75,7 +71,9 @@ function currentRoute() {
   const match = location.pathname.match(/^\/story-ad\/projects\/([^/]+)$/);
   const params = new URLSearchParams(location.search);
   const rawView = params.get('view');
-  const requestedView = rawView === 'flow' ? 'storyboard' : (rawView === 'final' ? 'compose' : rawView === 'sound' ? 'edit' : rawView);
+  const legacyEditor = rawView === 'edit' || rawView === 'sound';
+  if (legacyEditor) params.set('editor', '1');
+  const requestedView = rawView === 'final' ? 'compose' : (rawView === 'flow' ? 'storyboard' : (legacyEditor ? 'compose' : rawView));
   const view = VIEW_ORDER.includes(requestedView) ? requestedView : 'brief';
   return {
     page: match ? 'project' : 'center',
@@ -110,10 +108,10 @@ function applyTheme(theme, options = {}) {
 
 function statCards(stats = {}) {
   return [
-    ['进行中的项目', stats.running || 0, '需要继续制作或正在生成'],
-    ['等待处理', stats.waiting || 0, '存在阻塞或失败'],
-    ['已完成', stats.completed || 0, '已经形成最终成片'],
-    ['累计镜头', stats.shots || 0, '来自当前项目列表'],
+    ['进行中的项目', stats.running || 0, '制作中'],
+    ['等待处理', stats.waiting || 0, '待处理'],
+    ['已完成', stats.completed || 0, '已有成片'],
+    ['累计镜头', stats.shots || 0, '镜头总数'],
   ].map(([label, value, hint]) => `
     <article class="stat-card">
       <span>${escapeHtml(label)}</span>
@@ -124,11 +122,10 @@ function statCards(stats = {}) {
 
 function renderCenter() {
   const { projects, stats, projectListScope, loading, error } = store.state;
-  const editorToolMode = new URLSearchParams(location.search).get('tool') === 'editor';
   const stageOptions = [...new Set(projects.map(project => statusView(project).label).filter(Boolean))]
     .sort((a, b) => a.localeCompare(b, 'zh-CN'));
   const statusProjects = projects.filter(project => {
-    if (editorToolMode && !project.final_video_url) return false;
+    if (editorTool && !project.final_video_url) return false;
     const tone = statusView(project).tone;
     return !centerFilter
       || (centerFilter === 'waiting' && tone === 'danger')
@@ -148,8 +145,7 @@ function renderCenter() {
         </aside>
         <section class="center-content">
           <div class="create-banner">
-            <div><h1>${editorToolMode ? '视频剪辑' : '从一个想法开始制作剧情广告'}</h1><p>${editorToolMode ? '选择一个已生成成片的项目，在独立弹窗中剪辑；原分镜和原成片会保留。' : '视频、人物、商品、场景和脚本均为可选材料，可以进入项目后按需补充。'}</p></div>
-            ${editorToolMode ? '<button class="btn" type="button" data-workbench>返回工作台</button>' : '<button class="btn primary" type="button" data-new-project>开始创作</button>'}
+            ${editorTool ? editorTool.editorBanner() : '<div><h1>从一个想法开始制作剧情广告</h1><p>人物、商品、场景和脚本可按需补充。</p></div><button class="btn primary" type="button" data-new-project>开始创作</button>'}
           </div>
           <div class="stat-grid">${statCards(stats)}</div>
           <section class="project-table-card">
@@ -185,10 +181,10 @@ function renderCenter() {
                   <span class="status-tag is-${status.tone}">${escapeHtml(status.label)}</span>
                   <span>${Number(project.shot_count) || 0}</span>
                   <time>${escapeHtml(formatDate(project.updated_at))}</time>
-                  ${deleting ? '<span class="project-delete-state" role="status"><i></i>正在彻底删除</span>' : `<span class="project-actions"><button class="btn small${editorToolMode ? ' primary' : ''}" type="button" data-open-project="${escapeHtml(project.id)}">${editorToolMode ? '打开剪辑' : '打开'}</button>${editorToolMode ? '' : `<button class="btn small danger" type="button" data-delete-project="${escapeHtml(project.id)}" data-project-title="${escapeHtml(project.title)}">删除</button>`}</span>`}
+                  ${editorTool ? editorTool.editorProjectActions(project, deleting, escapeHtml) : (deleting ? '<span class="project-delete-state" role="status"><i></i>正在彻底删除</span>' : `<span class="project-actions"><button class="btn small" type="button" data-open-project="${escapeHtml(project.id)}">打开</button><button class="btn small danger" type="button" data-delete-project="${escapeHtml(project.id)}" data-project-title="${escapeHtml(project.title)}">删除</button></span>`)}
                 </div>`;
               }).join('')}
-              ${!loading ? `<div class="table-empty" data-query-empty ${visibleProjects.length ? 'hidden' : ''}><b>${editorToolMode ? '还没有可剪辑的成片' : (projects.length ? '当前查询没有项目' : '还没有剧情广告项目')}</b><span>${editorToolMode ? '分镜视频全部通过并合成成片后，会在这里出现。' : (projects.length ? '请调整任务名称、任务类型或当前阶段。' : '点击“开始创作”建立第一个项目。')}</span></div>` : ''}
+              ${!loading ? (editorTool ? editorTool.editorEmptyState(visibleProjects.length) : `<div class="table-empty" data-query-empty ${visibleProjects.length ? 'hidden' : ''}><b>${projects.length ? '当前查询没有项目' : '还没有剧情广告项目'}</b><span>${projects.length ? '请调整任务名称、任务类型或当前阶段。' : '点击“开始创作”建立第一个项目。'}</span></div>`) : ''}
             </div>
           </section>
         </section>
@@ -208,7 +204,7 @@ function projectNavigation(bundle, active) {
     compose: counts.clips,
     edit: Number(counts.final_videos || 0),
   }[view]);
-  return VIEW_ORDER.filter(view => view !== 'edit').map(view => {
+  return VIEW_ORDER.map(view => {
     const [number, label] = VIEW_META[view];
     const count = countFor(view);
     const state = steps[view] || { enabled: true, completed: false, blocker: '' };
@@ -353,8 +349,7 @@ document.addEventListener('click', event => {
     return;
   }
   if (target.dataset.openProject) {
-    const editorToolMode = new URLSearchParams(location.search).get('tool') === 'editor';
-    navigate(`/story-ad/projects/${encodeURIComponent(target.dataset.openProject)}?view=${editorToolMode ? 'compose&editor=1' : 'brief'}`);
+    navigate(`/story-ad/projects/${encodeURIComponent(target.dataset.openProject)}?view=${editorTool ? 'compose&editor=1' : 'brief'}`);
     return;
   }
   if (target.dataset.deleteProject) {
